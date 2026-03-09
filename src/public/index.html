@@ -536,6 +536,23 @@
 
     .add-guild-row input {
       flex: 1;
+      padding: 0.65rem 0.85rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 0.9rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .add-guild-row input:focus {
+      border-color: var(--accent);
+    }
+
+    .add-guild-row input::placeholder {
+      color: #3a3a4a;
     }
 
     .btn-sm {
