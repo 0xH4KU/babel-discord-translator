@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Babel — Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg: #0f0f13;
+      --surface: #16161d;
+      --border: #1e1e2a;
+      --border-hover: #2a2a3a;
+      --text: #e0e0e6;
+      --text-dim: #72728a;
+      --accent: #5865f2;
+      --accent-hover: #4752c4;
+      --green: #43b581;
+      --yellow: #faa61a;
+      --red: #f04747;
+      --radius: 12px;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .view {
+      display: none;
+    }
+
+    .view.active {
+      display: flex;
+    }
+
+    /* ===== LOGIN ===== */
+    #login-view {
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    .login-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 2.5rem;
+      width: 100%;
+      max-width: 380px;
+      text-align: center;
+    }
+
+    .login-card h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 0.5rem;
+    }
+
+    .login-card .subtitle {
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      margin-bottom: 2rem;
+    }
+
+    .input-group {
+      margin-bottom: 1rem;
+      text-align: left;
+    }
+
+    .input-group label {
+      display: block;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      margin-bottom: 0.4rem;
+      font-weight: 600;
+    }
+
+    .input-group input,
+    .input-group select {
+      width: 100%;
+      padding: 0.65rem 0.85rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 0.9rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .input-group input:focus {
+      border-color: var(--accent);
+    }
+
+    .input-group input::placeholder {
+      color: #3a3a4a;
+    }
+
+    .input-group .hint {
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      margin-top: 0.3rem;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0.65rem 1.5rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-hover);
+    }
+
+    .btn-secondary {
+      background: transparent;
+      color: var(--text-dim);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--border-hover);
+      color: var(--text);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .error-msg {
+      color: var(--red);
+      font-size: 0.85rem;
+      margin-top: 0.75rem;
+      min-height: 1.2em;
+    }
+
+    /* ===== WIZARD ===== */
+    #wizard-view {
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+
+    .wizard-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 2.5rem;
+      width: 100%;
+      max-width: 480px;
+    }
+
+    .wizard-steps {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .wizard-steps .step-dot {
+      flex: 1;
+      height: 3px;
+      border-radius: 2px;
+      background: var(--border);
+      transition: background 0.3s;
+    }
+
+    .wizard-steps .step-dot.active {
+      background: var(--accent);
+    }
+
+    .wizard-steps .step-dot.done {
+      background: var(--green);
+    }
+
+    .wizard-card h2 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 0.4rem;
+    }
+
+    .wizard-card .step-desc {
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .wizard-step {
+      display: none;
+    }
+
+    .wizard-step.active {
+      display: block;
+    }
+
+    .wizard-nav {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 1.5rem;
+    }
+
+    /* ===== DASHBOARD ===== */
+    #dashboard-view {
+      flex-direction: column;
+      min-height: 100vh;
+      padding: 2rem;
+      max-width: 960px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .header img {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: 2px solid var(--accent);
+    }
+
+    .header h1 {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .header .tag {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+    }
+
+    .header .status {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.85rem;
+      color: var(--green);
+    }
+
+    .header .status::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+    }
+
+    .tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 1.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .tab-btn {
+      padding: 0.65rem 1.25rem;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--text-dim);
+      font-size: 0.9rem;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .tab-btn:hover {
+      color: var(--text);
+    }
+
+    .tab-btn.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    /* Stats Cards */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      transition: border-color 0.2s;
+    }
+
+    .card:hover {
+      border-color: var(--border-hover);
+    }
+
+    .card .label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      margin-bottom: 0.4rem;
+      font-weight: 600;
+    }
+
+    .card .value {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .card .sub {
+      font-size: 0.8rem;
+      color: var(--accent);
+      margin-top: 0.2rem;
+    }
+
+    /* Budget Bar */
+    .budget-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .budget-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 0.6rem;
+    }
+
+    .budget-header .label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      font-weight: 600;
+    }
+
+    .budget-header .amount {
+      font-size: 0.85rem;
+      color: var(--text);
+    }
+
+    .budget-bar {
+      width: 100%;
+      height: 6px;
+      background: var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .budget-bar .fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.5s ease, background 0.3s;
+      background: var(--green);
+      min-width: 0;
+    }
+
+    .budget-bar .fill.warning {
+      background: var(--yellow);
+    }
+
+    .budget-bar .fill.danger {
+      background: var(--red);
+    }
+
+    .budget-details {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      margin-top: 0.4rem;
+    }
+
+    /* Settings */
+    .settings-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .settings-section h3 {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-dim);
+      margin-bottom: 1rem;
+      font-weight: 600;
+    }
+
+    .settings-row {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .settings-row .input-group {
+      flex: 1;
+    }
+
+    .settings-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .guild-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .guild-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.6rem 0.85rem;
+      background: var(--bg);
+      border-radius: 8px;
+    }
+
+    .guild-item img {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+    }
+
+    .guild-item .guild-name {
+      flex: 1;
+      font-size: 0.9rem;
+    }
+
+    .guild-item .guild-members {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+    }
+
+    .toggle {
+      position: relative;
+      width: 36px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+
+    .toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle .slider {
+      position: absolute;
+      inset: 0;
+      background: var(--border);
+      border-radius: 20px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .toggle .slider::before {
+      content: '';
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      left: 3px;
+      bottom: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+
+    .toggle input:checked+.slider {
+      background: var(--accent);
+    }
+
+    .toggle input:checked+.slider::before {
+      transform: translateX(16px);
+    }
+
+    .save-bar {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.75rem;
+      padding-top: 1rem;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      background: var(--green);
+      color: #fff;
+      padding: 0.75rem 1.25rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: all 0.3s;
+      pointer-events: none;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .no-guilds {
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      text-align: center;
+      padding: 1rem;
+    }
+
+    .refresh-note {
+      text-align: center;
+      color: #2a2a3a;
+      font-size: 0.7rem;
+      margin-top: 1rem;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ===== LOGIN ===== -->
+  <div id="login-view" class="view">
+    <div class="login-card">
+      <h1>Babel</h1>
+      <div class="subtitle">Translation Bot Dashboard</div>
+      <div class="input-group">
+        <label>Password</label>
+        <input type="password" id="login-pw" placeholder="Enter password" autofocus>
+      </div>
+      <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+      <div class="error-msg" id="login-error"></div>
+    </div>
+  </div>
+
+  <!-- ===== WIZARD ===== -->
+  <div id="wizard-view" class="view">
+    <div class="wizard-card">
+      <div class="wizard-steps">
+        <div class="step-dot active" id="dot-0"></div>
+        <div class="step-dot" id="dot-1"></div>
+        <div class="step-dot" id="dot-2"></div>
+      </div>
+
+      <div class="wizard-step active" id="wiz-0">
+        <h2>API Connection</h2>
+        <div class="step-desc">Connect to Vertex AI Gemini for translation.</div>
+        <div class="input-group">
+          <label>Vertex AI API Key</label>
+          <input type="password" id="wiz-apikey" placeholder="AQ.Ab8R...">
+        </div>
+        <div class="input-group">
+          <label>GCP Project ID</label>
+          <input type="text" id="wiz-project" placeholder="gen-lang-client-xxxxxx">
+        </div>
+        <div class="input-group">
+          <label>GCP Location</label>
+          <input type="text" id="wiz-location" value="global">
+        </div>
+        <div class="wizard-nav">
+          <div></div>
+          <button class="btn btn-primary" onclick="wizNext()">Next →</button>
+        </div>
+      </div>
+
+      <div class="wizard-step" id="wiz-1">
+        <h2>Model Selection</h2>
+        <div class="step-desc">Choose which Gemini model to use for translations.</div>
+        <div class="input-group">
+          <label>Model Name</label>
+          <input type="text" id="wiz-model" value="gemini-2.5-flash-lite">
+        </div>
+        <div class="wizard-nav">
+          <button class="btn btn-secondary" onclick="wizPrev()">← Back</button>
+          <button class="btn btn-primary" onclick="wizNext()">Next →</button>
+        </div>
+      </div>
+
+      <div class="wizard-step" id="wiz-2">
+        <h2>Bot Settings</h2>
+        <div class="step-desc">Configure rate limiting and caching.</div>
+        <div class="input-group">
+          <label>Cooldown (seconds per user)</label>
+          <input type="number" id="wiz-cooldown" value="5" min="1" max="60">
+        </div>
+        <div class="input-group">
+          <label>Cache Max Size (messages)</label>
+          <input type="number" id="wiz-cache" value="2000" min="100" max="10000">
+        </div>
+        <div class="wizard-nav">
+          <button class="btn btn-secondary" onclick="wizPrev()">← Back</button>
+          <button class="btn btn-primary" onclick="wizFinish()">Complete Setup ✓</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== DASHBOARD ===== -->
+  <div id="dashboard-view" class="view">
+    <div class="header">
+      <img id="bot-avatar" src="" alt="">
+      <div>
+        <h1 id="bot-name">Loading...</h1>
+        <span class="tag" id="bot-tag"></span>
+      </div>
+      <div class="status">Online</div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('overview')">Overview</button>
+      <button class="tab-btn" onclick="switchTab('settings')">Settings</button>
+    </div>
+
+    <!-- Overview Tab -->
+    <div class="tab-content active" id="tab-overview">
+      <!-- Budget Progress Bar -->
+      <div class="budget-card" id="budget-card">
+        <div class="budget-header">
+          <span class="label">Today's Budget</span>
+          <span class="amount" id="budget-amount">-</span>
+        </div>
+        <div class="budget-bar">
+          <div class="fill" id="budget-fill" style="width: 0%"></div>
+        </div>
+        <div class="budget-details">
+          <span id="budget-tokens">-</span>
+          <span id="budget-requests">-</span>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <div class="label">Today's Cost</div>
+          <div class="value" id="stat-cost">-</div>
+          <div class="sub" id="stat-cost-breakdown"></div>
+        </div>
+        <div class="card">
+          <div class="label">Total Translations</div>
+          <div class="value" id="stat-total">-</div>
+        </div>
+        <div class="card">
+          <div class="label">Cache Hit Rate</div>
+          <div class="value" id="stat-hitrate">-</div>
+          <div class="sub" id="stat-saved"></div>
+        </div>
+        <div class="card">
+          <div class="label">Uptime</div>
+          <div class="value" id="stat-uptime">-</div>
+          <div class="sub" id="stat-memory"></div>
+        </div>
+      </div>
+
+      <div class="refresh-note">Auto-refresh every 5s</div>
+    </div>
+
+    <!-- Settings Tab -->
+    <div class="tab-content" id="tab-settings">
+      <div class="settings-section">
+        <h3>Vertex AI API</h3>
+        <div class="settings-row">
+          <div class="input-group">
+            <label>API Key</label>
+            <input type="password" id="cfg-apikey" placeholder="Enter new key to change">
+          </div>
+        </div>
+        <div class="settings-row">
+          <div class="input-group">
+            <label>GCP Project</label>
+            <input type="text" id="cfg-project">
+          </div>
+          <div class="input-group">
+            <label>Location</label>
+            <input type="text" id="cfg-location">
+          </div>
+        </div>
+        <div class="settings-row">
+          <div class="input-group">
+            <label>Model</label>
+            <input type="text" id="cfg-model">
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Pricing & Budget</h3>
+        <div class="settings-row">
+          <div class="input-group">
+            <label>Input Price ($ per 1M tokens)</label>
+            <input type="number" id="cfg-input-price" min="0" step="0.01">
+            <div class="hint">e.g. Gemini 2.5 Flash Lite: $0.10</div>
+          </div>
+          <div class="input-group">
+            <label>Output Price ($ per 1M tokens)</label>
+            <input type="number" id="cfg-output-price" min="0" step="0.01">
+            <div class="hint">e.g. Gemini 2.5 Flash Lite: $0.40</div>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div class="input-group">
+            <label>Daily Budget (USD, 0 = unlimited)</label>
+            <input type="number" id="cfg-budget" min="0" step="0.1">
+            <div class="hint">Translation stops when budget is reached</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Bot Settings</h3>
+        <div class="settings-row">
+          <div class="input-group">
+            <label>Cooldown (seconds)</label>
+            <input type="number" id="cfg-cooldown" min="1" max="60">
+          </div>
+          <div class="input-group">
+            <label>Cache Max Size</label>
+            <input type="number" id="cfg-cache" min="100" max="10000">
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Server Whitelist</h3>
+        <div id="guild-list" class="guild-list">
+          <div class="no-guilds">Loading servers...</div>
+        </div>
+      </div>
+
+      <div class="save-bar">
+        <button class="btn btn-primary" onclick="saveSettings()">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // ========== Helpers ==========
+
+    function show(id) {
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+    }
+
+    function showToast(msg, isError) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.style.background = isError ? 'var(--red)' : 'var(--green)';
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 2500);
+    }
+
+    async function api(path, opts = {}) {
+      const res = await fetch('/api' + path, {
+        headers: { 'Content-Type': 'application/json' },
+        ...opts,
+      });
+      if (res.status === 401 && path !== '/login' && path !== '/auth/check') {
+        show('login-view');
+        throw new Error('Session expired');
+      }
+      return res;
+    }
+
+    function formatUptime(s) {
+      const d = Math.floor(s / 86400);
+      const h = Math.floor((s % 86400) / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      if (d > 0) return d + 'd ' + h + 'h';
+      if (h > 0) return h + 'h ' + m + 'm';
+      return m + 'm';
+    }
+
+    function formatUsd(n) {
+      if (n === 0) return '$0';
+      if (n < 0.01) return '$' + n.toFixed(4);
+      return '$' + n.toFixed(2);
+    }
+
+    function formatTokens(n) {
+      if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+      if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+      return String(n);
+    }
+
+    // ========== Login ==========
+
+    async function doLogin() {
+      const pw = document.getElementById('login-pw').value;
+      const res = await api('/login', {
+        method: 'POST',
+        body: JSON.stringify({ password: pw }),
+      });
+      if (res.ok) {
+        await checkSetup();
+      } else {
+        document.getElementById('login-error').textContent = 'Wrong password';
+      }
+    }
+
+    document.getElementById('login-pw').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') doLogin();
+    });
+
+    // ========== Wizard ==========
+
+    let wizStep = 0;
+
+    function wizUpdateDots() {
+      for (let i = 0; i < 3; i++) {
+        const dot = document.getElementById('dot-' + i);
+        dot.className = 'step-dot';
+        if (i < wizStep) dot.classList.add('done');
+        if (i === wizStep) dot.classList.add('active');
+      }
+      document.querySelectorAll('.wizard-step').forEach((s, i) => {
+        s.classList.toggle('active', i === wizStep);
+      });
+    }
+
+    function wizNext() {
+      if (wizStep === 0) {
+        const key = document.getElementById('wiz-apikey').value.trim();
+        const proj = document.getElementById('wiz-project').value.trim();
+        if (!key || !proj) {
+          showToast('Please fill in API Key and Project ID', true);
+          return;
+        }
+      }
+      wizStep++;
+      wizUpdateDots();
+    }
+
+    function wizPrev() {
+      wizStep--;
+      wizUpdateDots();
+    }
+
+    async function wizFinish() {
+      const cfg = {
+        vertexAiApiKey: document.getElementById('wiz-apikey').value.trim(),
+        gcpProject: document.getElementById('wiz-project').value.trim(),
+        gcpLocation: document.getElementById('wiz-location').value.trim() || 'global',
+        geminiModel: document.getElementById('wiz-model').value.trim(),
+        cooldownSeconds: parseInt(document.getElementById('wiz-cooldown').value) || 5,
+        cacheMaxSize: parseInt(document.getElementById('wiz-cache').value) || 2000,
+        setupComplete: true,
+      };
+
+      const res = await api('/config', {
+        method: 'POST',
+        body: JSON.stringify(cfg),
+      });
+
+      if (res.ok) {
+        showToast('Setup complete!');
+        show('dashboard-view');
+        loadDashboard();
+      } else {
+        showToast('Save failed', true);
+      }
+    }
+
+    // ========== Dashboard ==========
+
+    function switchTab(name) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      document.querySelector(`[onclick="switchTab('${name}')"]`).classList.add('active');
+      document.getElementById('tab-' + name).classList.add('active');
+      if (name === 'settings') loadSettings();
+    }
+
+    async function loadStats() {
+      try {
+        const res = await api('/stats');
+        if (!res.ok) return;
+        const d = await res.json();
+
+        // Header
+        document.getElementById('bot-name').textContent = d.bot.name.split('#')[0];
+        document.getElementById('bot-tag').textContent = d.bot.name;
+        if (d.bot.avatar) document.getElementById('bot-avatar').src = d.bot.avatar;
+
+        // Cost card
+        document.getElementById('stat-cost').textContent = formatUsd(d.usage.totalCost);
+        const parts = [];
+        if (d.usage.inputTokens > 0) parts.push(formatTokens(d.usage.inputTokens) + ' in');
+        if (d.usage.outputTokens > 0) parts.push(formatTokens(d.usage.outputTokens) + ' out');
+        document.getElementById('stat-cost-breakdown').textContent = parts.join(' / ') || 'No usage today';
+
+        // Budget bar
+        const budgetCard = document.getElementById('budget-card');
+        if (d.usage.dailyBudget > 0) {
+          budgetCard.style.display = '';
+          const pct = d.usage.budgetUsedPercent;
+          document.getElementById('budget-amount').textContent =
+            formatUsd(d.usage.totalCost) + ' / ' + formatUsd(d.usage.dailyBudget);
+
+          const fill = document.getElementById('budget-fill');
+          fill.style.width = Math.min(pct, 100) + '%';
+          fill.className = 'fill' + (pct > 90 ? ' danger' : pct > 60 ? ' warning' : '');
+
+          document.getElementById('budget-tokens').textContent =
+            formatTokens(d.usage.inputTokens + d.usage.outputTokens) + ' tokens';
+          document.getElementById('budget-requests').textContent =
+            d.usage.requests + ' requests today';
+        } else {
+          budgetCard.style.display = 'none';
+        }
+
+        // Stats cards
+        document.getElementById('stat-total').textContent = d.translations.total;
+        document.getElementById('stat-hitrate').textContent = d.cache.hitRate;
+        document.getElementById('stat-saved').textContent =
+          d.translations.saved > 0 ? d.translations.saved + ' cache hits' : d.cache.size + ' / ' + d.cache.maxSize;
+        document.getElementById('stat-uptime').textContent = formatUptime(d.bot.uptime);
+        document.getElementById('stat-memory').textContent = d.bot.memoryMB + ' MB';
+      } catch { }
+    }
+
+    let currentConfig = {};
+    let allGuilds = [];
+
+    async function loadSettings() {
+      try {
+        const [cfgRes, guildRes] = await Promise.all([api('/config'), api('/guilds')]);
+        currentConfig = await cfgRes.json();
+        allGuilds = await guildRes.json();
+
+        document.getElementById('cfg-apikey').value = '';
+        document.getElementById('cfg-apikey').placeholder =
+          currentConfig.hasApiKey ? currentConfig.vertexAiApiKey + ' (leave blank to keep)' : 'Not set';
+        document.getElementById('cfg-project').value = currentConfig.gcpProject || '';
+        document.getElementById('cfg-location').value = currentConfig.gcpLocation || 'global';
+        document.getElementById('cfg-model').value = currentConfig.geminiModel || '';
+        document.getElementById('cfg-cooldown').value = currentConfig.cooldownSeconds || 5;
+        document.getElementById('cfg-cache').value = currentConfig.cacheMaxSize || 2000;
+        document.getElementById('cfg-input-price').value = currentConfig.inputPricePerMillion || 0;
+        document.getElementById('cfg-output-price').value = currentConfig.outputPricePerMillion || 0;
+        document.getElementById('cfg-budget').value = currentConfig.dailyBudgetUsd || 0;
+
+        renderGuilds();
+      } catch { }
+    }
+
+    function renderGuilds() {
+      const container = document.getElementById('guild-list');
+      if (allGuilds.length === 0) {
+        container.innerHTML = '<div class="no-guilds">Bot is not in any servers yet.</div>';
+        return;
+      }
+
+      const allowed = currentConfig.allowedGuildIds || [];
+
+      container.innerHTML = allGuilds.map(g => `
+        <div class="guild-item">
+          <img src="${g.icon || 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2228%22 height=%2228%22><rect width=%2228%22 height=%2228%22 rx=%2214%22 fill=%22%2336393f%22/><text x=%2214%22 y=%2219%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2214%22>${g.name[0]}</text></svg>'}" alt="">
+          <span class="guild-name">${g.name}</span>
+          <span class="guild-members">${g.memberCount} members</span>
+          <label class="toggle">
+            <input type="checkbox" data-guild-id="${g.id}" ${allowed.length === 0 || allowed.includes(g.id) ? 'checked' : ''}>
+            <span class="slider"></span>
+          </label>
+        </div>
+      `).join('');
+    }
+
+    async function saveSettings() {
+      const updates = {};
+
+      const newKey = document.getElementById('cfg-apikey').value.trim();
+      if (newKey) updates.vertexAiApiKey = newKey;
+
+      updates.gcpProject = document.getElementById('cfg-project').value.trim();
+      updates.gcpLocation = document.getElementById('cfg-location').value.trim() || 'global';
+      updates.geminiModel = document.getElementById('cfg-model').value.trim();
+      updates.cooldownSeconds = parseInt(document.getElementById('cfg-cooldown').value) || 5;
+      updates.cacheMaxSize = parseInt(document.getElementById('cfg-cache').value) || 2000;
+      updates.inputPricePerMillion = parseFloat(document.getElementById('cfg-input-price').value) || 0;
+      updates.outputPricePerMillion = parseFloat(document.getElementById('cfg-output-price').value) || 0;
+      updates.dailyBudgetUsd = parseFloat(document.getElementById('cfg-budget').value) || 0;
+
+      const checkboxes = document.querySelectorAll('[data-guild-id]');
+      const allChecked = [...checkboxes].every(cb => cb.checked);
+
+      if (allChecked || checkboxes.length === 0) {
+        updates.allowedGuildIds = [];
+      } else {
+        updates.allowedGuildIds = [...checkboxes]
+          .filter(cb => cb.checked)
+          .map(cb => cb.dataset.guildId);
+      }
+
+      const res = await api('/config', {
+        method: 'POST',
+        body: JSON.stringify(updates),
+      });
+
+      if (res.ok) {
+        showToast('Settings saved!');
+        loadSettings();
+      } else {
+        showToast('Save failed', true);
+      }
+    }
+
+    // ========== Init ==========
+
+    let refreshTimer;
+
+    async function loadDashboard() {
+      loadStats();
+      if (refreshTimer) clearInterval(refreshTimer);
+      refreshTimer = setInterval(loadStats, 5000);
+    }
+
+    async function checkSetup() {
+      const res = await api('/setup-status');
+      const { complete } = await res.json();
+      if (complete) {
+        show('dashboard-view');
+        loadDashboard();
+      } else {
+        show('wizard-view');
+      }
+    }
+
+    async function init() {
+      const res = await api('/auth/check');
+      const { authenticated } = await res.json();
+      if (authenticated) {
+        await checkSetup();
+      } else {
+        show('login-view');
+      }
+    }
+
+    init();
+  </script>
+</body>
+
+</html>
