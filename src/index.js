@@ -40,9 +40,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     // --- Whitelist check ---
     const allowedGuilds = store.get('allowedGuildIds');
-    if (allowedGuilds.length > 0 && !allowedGuilds.includes(interaction.guildId)) {
+    if (!allowedGuilds.includes(interaction.guildId)) {
         return interaction.reply({
-            content: '⛔ This server is not authorized.',
+            content: '⛔ This server is not authorized.\n此伺服器未授權使用翻譯。',
             ephemeral: true,
         });
     }
@@ -89,7 +89,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
             apiCalls++;
         }
 
-        await interaction.editReply({ content: translated });
+        // Format: original (truncated) + translation
+        const original = content.length > 200 ? content.slice(0, 200) + '…' : content;
+        const reply = `> ${original.replace(/\n/g, '\n> ')}\n\n${translated}`;
+        await interaction.editReply({ content: reply });
     } catch (error) {
         console.error('[Translate]', error.message);
         await interaction.editReply({

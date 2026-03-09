@@ -826,8 +826,8 @@
       <div class="settings-section">
         <h3>Server Whitelist</h3>
         <div style="font-size:0.8rem;color:var(--text-dim);margin-bottom:0.75rem">
-          Toggle servers on to allow translation. If no servers are enabled, <strong style="color:var(--text)">all
-            servers are allowed</strong>.
+          Only <strong style="color:var(--text)">enabled</strong> servers can use translation. New servers are disabled
+          by default.
         </div>
         <div id="guild-list" class="guild-list">
           <div class="no-guilds">Loading servers...</div>
@@ -1076,7 +1076,7 @@
 
       // Bot's guilds — always shown, just toggleable
       html += allGuilds.map(g => {
-        const checked = allowed.length === 0 || allowed.includes(g.id);
+        const checked = allowed.includes(g.id);
         return `
         <div class="guild-item">
           <img src="${g.icon || genAvatar(g.name || g.id)}" alt="">
@@ -1149,15 +1149,11 @@
       updates.outputPricePerMillion = parseFloat(document.getElementById('cfg-output-price').value) || 0;
       updates.dailyBudgetUsd = parseFloat(document.getElementById('cfg-budget').value) || 0;
 
-      // Whitelist: collect checked guild IDs
+      // Whitelist: always save the explicit list of enabled IDs
       const checkboxes = document.querySelectorAll('[data-guild-id]');
-      const checkedIds = [...checkboxes]
+      updates.allowedGuildIds = [...checkboxes]
         .filter(cb => cb.checked)
         .map(cb => cb.dataset.guildId);
-      const allChecked = checkboxes.length > 0 && [...checkboxes].every(cb => cb.checked);
-
-      // Empty array = all allowed (when all are checked or none exist)
-      updates.allowedGuildIds = allChecked ? [] : checkedIds;
 
       const res = await api('/config', {
         method: 'POST',
