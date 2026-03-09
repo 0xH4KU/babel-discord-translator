@@ -808,12 +808,16 @@
 
       <div class="settings-section">
         <h3>Server Whitelist</h3>
+        <div style="font-size:0.8rem;color:var(--text-dim);margin-bottom:0.75rem">
+          Toggle servers on to allow translation. If no servers are enabled, <strong style="color:var(--text)">all
+            servers are allowed</strong>.
+        </div>
         <div id="guild-list" class="guild-list">
           <div class="no-guilds">Loading servers...</div>
         </div>
         <div class="add-guild-row">
-          <input type="text" id="add-guild-input" placeholder="Enter Guild ID to add">
-          <button class="btn btn-primary btn-sm" onclick="addGuild()">Add</button>
+          <input type="text" id="add-guild-input" placeholder="Paste a Guild ID to add manually">
+          <button class="btn btn-primary btn-sm" onclick="addManualGuild()">Add</button>
         </div>
       </div>
 
@@ -1035,37 +1039,41 @@
       } catch { }
     }
 
+    // Track manually added guild IDs separately
+    let manualGuildIds = [];
+
     function renderGuilds() {
       const container = document.getElementById('guild-list');
       const allowed = currentConfig.allowedGuildIds || [];
 
-      // Build combined list: known guilds + manually added IDs
+      // Compute manual IDs = IDs in whitelist that aren't in bot's guild cache
       const knownIds = new Set(allGuilds.map(g => g.id));
-      const manualIds = allowed.filter(id => !knownIds.has(id));
+      manualGuildIds = allowed.filter(id => !knownIds.has(id));
 
-      if (allGuilds.length === 0 && manualIds.length === 0) {
-        container.innerHTML = '<div class="no-guilds">No servers yet. Add a Guild ID below.</div>';
+      if (allGuilds.length === 0 && manualGuildIds.length === 0) {
+        container.innerHTML = '<div class="no-guilds">Bot is not in any servers. Paste a Guild ID below to add manually.</div>';
         return;
       }
 
       let html = '';
 
-      // Known guilds (from bot cache)
-      html += allGuilds.map(g => `
+      // Bot's guilds — always shown, just toggleable
+      html += allGuilds.map(g => {
+        const checked = allowed.length === 0 || allowed.includes(g.id);
+        return `
         <div class="guild-item">
-          <img src="${g.icon || genAvatar(g.name)}" alt="">
-          <span class="guild-name">${g.name}</span>
-          <span class="guild-members">${g.memberCount} members</span>
+          <img src="${g.icon || genAvatar(g.name || g.id)}" alt="">
+          <span class="guild-name">${g.name || g.id}</span>
+          <span class="guild-members">${g.memberCount ?? '?'} members</span>
           <label class="toggle">
-            <input type="checkbox" data-guild-id="${g.id}" ${allowed.length === 0 || allowed.includes(g.id) ? 'checked' : ''}>
+            <input type="checkbox" data-guild-id="${g.id}" ${checked ? 'checked' : ''}>
             <span class="slider"></span>
           </label>
-          <button class="btn-danger" onclick="removeGuild('${g.id}')">Remove</button>
-        </div>
-      `).join('');
+        </div>`;
+      }).join('');
 
-      // Manually added IDs (not in bot cache)
-      html += manualIds.map(id => `
+      // Manually added IDs
+      html += manualGuildIds.map(id => `
         <div class="guild-item">
           <img src="${genAvatar(id)}" alt="">
           <span class="guild-name" style="font-family:monospace;font-size:0.8rem">${id}</span>
@@ -1074,7 +1082,7 @@
             <input type="checkbox" data-guild-id="${id}" checked>
             <span class="slider"></span>
           </label>
-          <button class="btn-danger" onclick="removeGuild('${id}')">Remove</button>
+          <button class="btn-danger" onclick="removeManualGuild('${id}')">✕</button>
         </div>
       `).join('');
 
@@ -1086,28 +1094,27 @@
       return `data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2228%22 height=%2228%22><rect width=%2228%22 height=%2228%22 rx=%2214%22 fill=%22%2336393f%22/><text x=%2214%22 y=%2219%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2214%22>${c}</text></svg>`;
     }
 
-    function addGuild() {
+    function addManualGuild() {
       const input = document.getElementById('add-guild-input');
       const id = input.value.trim();
       if (!id || !/^\d+$/.test(id)) {
         showToast('Please enter a valid Guild ID (numbers only)', true);
         return;
       }
-      // Add to config and re-render
       if (!currentConfig.allowedGuildIds) currentConfig.allowedGuildIds = [];
       if (!currentConfig.allowedGuildIds.includes(id)) {
         currentConfig.allowedGuildIds.push(id);
       }
       input.value = '';
       renderGuilds();
-      showToast('Guild added — click Save Changes to apply');
+      showToast('Guild added — click Save to apply');
     }
 
-    function removeGuild(id) {
-      if (!currentConfig.allowedGuildIds) currentConfig.allowedGuildIds = [];
+    function removeManualGuild(id) {
+      if (!currentConfig.allowedGuildIds) return;
       currentConfig.allowedGuildIds = currentConfig.allowedGuildIds.filter(g => g !== id);
       renderGuilds();
-      showToast('Guild removed — click Save Changes to apply');
+      showToast('Guild removed — click Save to apply');
     }
 
     async function saveSettings() {
@@ -1125,16 +1132,15 @@
       updates.outputPricePerMillion = parseFloat(document.getElementById('cfg-output-price').value) || 0;
       updates.dailyBudgetUsd = parseFloat(document.getElementById('cfg-budget').value) || 0;
 
+      // Whitelist: collect checked guild IDs
       const checkboxes = document.querySelectorAll('[data-guild-id]');
-      const allChecked = [...checkboxes].every(cb => cb.checked);
+      const checkedIds = [...checkboxes]
+        .filter(cb => cb.checked)
+        .map(cb => cb.dataset.guildId);
+      const allChecked = checkboxes.length > 0 && [...checkboxes].every(cb => cb.checked);
 
-      if (allChecked || checkboxes.length === 0) {
-        updates.allowedGuildIds = [];
-      } else {
-        updates.allowedGuildIds = [...checkboxes]
-          .filter(cb => cb.checked)
-          .map(cb => cb.dataset.guildId);
-      }
+      // Empty array = all allowed (when all are checked or none exist)
+      updates.allowedGuildIds = allChecked ? [] : checkedIds;
 
       const res = await api('/config', {
         method: 'POST',
