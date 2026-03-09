@@ -528,6 +528,39 @@
       transform: translateX(16px);
     }
 
+    .add-guild-row {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+    }
+
+    .add-guild-row input {
+      flex: 1;
+    }
+
+    .btn-sm {
+      padding: 0.4rem 0.85rem;
+      font-size: 0.8rem;
+      border-radius: 6px;
+    }
+
+    .btn-danger {
+      background: transparent;
+      color: var(--red);
+      border: 1px solid var(--red);
+      padding: 0.25rem 0.5rem;
+      font-size: 0.7rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.2s;
+    }
+
+    .btn-danger:hover {
+      background: var(--red);
+      color: #fff;
+    }
+
     .save-bar {
       display: flex;
       justify-content: flex-end;
@@ -778,6 +811,10 @@
         <div id="guild-list" class="guild-list">
           <div class="no-guilds">Loading servers...</div>
         </div>
+        <div class="add-guild-row">
+          <input type="text" id="add-guild-input" placeholder="Enter Guild ID to add">
+          <button class="btn btn-primary btn-sm" onclick="addGuild()">Add</button>
+        </div>
       </div>
 
       <div class="save-bar">
@@ -1000,24 +1037,77 @@
 
     function renderGuilds() {
       const container = document.getElementById('guild-list');
-      if (allGuilds.length === 0) {
-        container.innerHTML = '<div class="no-guilds">Bot is not in any servers yet.</div>';
+      const allowed = currentConfig.allowedGuildIds || [];
+
+      // Build combined list: known guilds + manually added IDs
+      const knownIds = new Set(allGuilds.map(g => g.id));
+      const manualIds = allowed.filter(id => !knownIds.has(id));
+
+      if (allGuilds.length === 0 && manualIds.length === 0) {
+        container.innerHTML = '<div class="no-guilds">No servers yet. Add a Guild ID below.</div>';
         return;
       }
 
-      const allowed = currentConfig.allowedGuildIds || [];
+      let html = '';
 
-      container.innerHTML = allGuilds.map(g => `
+      // Known guilds (from bot cache)
+      html += allGuilds.map(g => `
         <div class="guild-item">
-          <img src="${g.icon || 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2228%22 height=%2228%22><rect width=%2228%22 height=%2228%22 rx=%2214%22 fill=%22%2336393f%22/><text x=%2214%22 y=%2219%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2214%22>${g.name[0]}</text></svg>'}" alt="">
+          <img src="${g.icon || genAvatar(g.name)}" alt="">
           <span class="guild-name">${g.name}</span>
           <span class="guild-members">${g.memberCount} members</span>
           <label class="toggle">
             <input type="checkbox" data-guild-id="${g.id}" ${allowed.length === 0 || allowed.includes(g.id) ? 'checked' : ''}>
             <span class="slider"></span>
           </label>
+          <button class="btn-danger" onclick="removeGuild('${g.id}')">Remove</button>
         </div>
       `).join('');
+
+      // Manually added IDs (not in bot cache)
+      html += manualIds.map(id => `
+        <div class="guild-item">
+          <img src="${genAvatar(id)}" alt="">
+          <span class="guild-name" style="font-family:monospace;font-size:0.8rem">${id}</span>
+          <span class="guild-members">manually added</span>
+          <label class="toggle">
+            <input type="checkbox" data-guild-id="${id}" checked>
+            <span class="slider"></span>
+          </label>
+          <button class="btn-danger" onclick="removeGuild('${id}')">Remove</button>
+        </div>
+      `).join('');
+
+      container.innerHTML = html;
+    }
+
+    function genAvatar(name) {
+      const c = (name || '?')[0];
+      return `data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2228%22 height=%2228%22><rect width=%2228%22 height=%2228%22 rx=%2214%22 fill=%22%2336393f%22/><text x=%2214%22 y=%2219%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2214%22>${c}</text></svg>`;
+    }
+
+    function addGuild() {
+      const input = document.getElementById('add-guild-input');
+      const id = input.value.trim();
+      if (!id || !/^\d+$/.test(id)) {
+        showToast('Please enter a valid Guild ID (numbers only)', true);
+        return;
+      }
+      // Add to config and re-render
+      if (!currentConfig.allowedGuildIds) currentConfig.allowedGuildIds = [];
+      if (!currentConfig.allowedGuildIds.includes(id)) {
+        currentConfig.allowedGuildIds.push(id);
+      }
+      input.value = '';
+      renderGuilds();
+      showToast('Guild added — click Save Changes to apply');
+    }
+
+    function removeGuild(id) {
+      if (!currentConfig.allowedGuildIds) currentConfig.allowedGuildIds = [];
+      currentConfig.allowedGuildIds = currentConfig.allowedGuildIds.filter(g => g !== id);
+      renderGuilds();
+      showToast('Guild removed — click Save Changes to apply');
     }
 
     async function saveSettings() {

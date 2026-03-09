@@ -1,4 +1,4 @@
-import { Client, Events } from 'discord.js';
+import { Client, Events, GatewayIntentBits } from 'discord.js';
 import { config } from './config.js';
 import { store } from './store.js';
 import { translate } from './translate.js';
@@ -14,7 +14,7 @@ let totalTranslations = 0;
 let apiCalls = 0;
 
 // --- Discord Client ---
-const client = new Client({ intents: [] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 client.once(Events.ClientReady, (c) => {
     console.log(`✅ ${c.user.tag} is online`);
