@@ -94,14 +94,15 @@ function buildTranslationEmbed(original, translated, sourceLang, targetLang) {
     const sourceName = getLangName(sourceLang);
     const targetName = getLangName(targetLang);
 
-    const truncated = original.length > 300 ? original.slice(0, 300) + '…' : original;
+    const truncated = original.length > 500 ? original.slice(0, 500) + '…' : original;
+    const quoted = truncated.replace(/^/gm, '> ');
 
     return new EmbedBuilder()
         .setColor(0x5865F2)
-        .setDescription(`${sourceFlag} ${sourceName} → ${targetFlag} ${targetName}`)
-        .addFields(
-            { name: 'Original', value: truncated },
-            { name: 'Translation', value: translated },
+        .setDescription(
+            `${sourceFlag} ${sourceName} → ${targetFlag} ${targetName}\n\n` +
+            `${quoted}\n\n` +
+            `${translated}`,
         )
         .setFooter({ text: 'Babel · Powered by Gemini' })
         .setTimestamp();
