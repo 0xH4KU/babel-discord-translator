@@ -106,6 +106,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const langSource = userPref ? 'setlang' : localeLang ? 'locale' : 'auto';
     console.log(`[Translate] user=${interaction.user.tag} lang=${targetLanguage} (from ${langSource}, locale=${interaction.locale})`);
 
+    // --- Same-language check (skip redundant translations) ---
+    if (isSameLanguage(content, targetLanguage, interaction.locale)) {
+        console.log(`[Translate] Skipped: content already in target language`);
+        return interaction.reply({
+            content: '這條訊息已經是你的語言了，不需要翻譯 \nThis message is already in your language!',
+            flags: MessageFlags.Ephemeral,
+        });
+    }
+
     // --- Defer + translate ---
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     cooldown.set(interaction.user.id);
@@ -162,6 +171,68 @@ function localeToLang(locale) {
     if (locale.startsWith('zh') || locale.startsWith('en')) return null;
     // For other locales, extract the base language code
     return locale.split('-')[0];
+}
+
+/**
+ * Detect the dominant script of text content.
+ * Returns: 'zh', 'ja', 'ko', 'ru', 'ar', 'th', 'hi', or null (Latin/unknown).
+ */
+function detectScript(text) {
+    let cjk = 0, kana = 0, hangul = 0, cyrillic = 0, arabic = 0, thai = 0, devanagari = 0;
+
+    for (const char of text) {
+        const c = char.codePointAt(0);
+        if (c >= 0x4e00 && c <= 0x9fff) cjk++;
+        else if ((c >= 0x3040 && c <= 0x309f) || (c >= 0x30a0 && c <= 0x30ff)) kana++;
+        else if (c >= 0xac00 && c <= 0xd7af) hangul++;
+        else if (c >= 0x0400 && c <= 0x04ff) cyrillic++;
+        else if (c >= 0x0600 && c <= 0x06ff) arabic++;
+        else if (c >= 0x0e00 && c <= 0x0e7f) thai++;
+        else if (c >= 0x0900 && c <= 0x097f) devanagari++;
+    }
+
+    // Japanese = has kana (hiragana/katakana), may also have kanji
+    if (kana > 0) return 'ja';
+    if (hangul > 0) return 'ko';
+    if (cjk > 0) return 'zh'; // Chinese (simplified & traditional treated the same)
+    if (cyrillic > 0) return 'ru';
+    if (arabic > 0) return 'ar';
+    if (thai > 0) return 'th';
+    if (devanagari > 0) return 'hi';
+
+    return null; // Latin or unrecognizable — don't block
+}
+
+/**
+ * Map a language code to its script family.
+ */
+function langToScript(lang) {
+    if (!lang) return null;
+    const map = {
+        'zh-TW': 'zh', 'zh-CN': 'zh', zh: 'zh',
+        ja: 'ja', ko: 'ko', ru: 'ru',
+        ar: 'ar', th: 'th', hi: 'hi',
+    };
+    return map[lang] || map[lang.split('-')[0]] || null;
+}
+
+/**
+ * Check if content is already in the user's target language.
+ * Only checks non-Latin scripts (Chinese, Japanese, Korean, etc.)
+ * since Latin-script languages can't be reliably distinguished.
+ */
+function isSameLanguage(content, targetLanguage, userLocale) {
+    const contentScript = detectScript(content);
+    if (!contentScript) return false; // Latin/unknown — let it through
+
+    if (targetLanguage === 'auto') {
+        // In auto mode, check against user's Discord locale
+        const userScript = langToScript(userLocale);
+        return contentScript === userScript;
+    }
+
+    // For explicit target, check if content matches target language's script
+    return contentScript === langToScript(targetLanguage);
 }
 
 // Cleanup expired cooldowns every minute

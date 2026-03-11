@@ -37,6 +37,7 @@ const commands = [
                 choices: [
                     { name: 'Auto (use Discord locale)', value: 'auto' },
                     { name: '繁體中文', value: 'zh-TW' },
+                    { name: '简体中文', value: 'zh-CN' },
                     { name: 'English', value: 'en' },
                     { name: '日本語', value: 'ja' },
                     { name: '한국어', value: 'ko' },
