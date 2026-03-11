@@ -21,7 +21,7 @@ if (!APP_ID || !BOT_TOKEN) {
 
 const commands = [
     {
-        name: 'Translate / 翻譯',
+        name: 'Babel',
         type: 3, // MESSAGE command (right-click context menu)
     },
     {
@@ -54,6 +54,43 @@ const commands = [
                 ],
             },
         ],
+    },
+    {
+        name: 'translate',
+        type: 1,
+        description: 'Translate text / 翻譯文字',
+        options: [
+            {
+                name: 'text',
+                description: 'Text to translate / 要翻譯的文字',
+                type: 3, // STRING
+                required: true,
+            },
+            {
+                name: 'to',
+                description: 'Target language / 目標語言',
+                type: 3, // STRING
+                required: false,
+                choices: [
+                    { name: 'Auto', value: 'auto' },
+                    { name: '繁體中文', value: 'zh-TW' },
+                    { name: '简体中文', value: 'zh-CN' },
+                    { name: 'English', value: 'en' },
+                    { name: '日本語', value: 'ja' },
+                    { name: '한국어', value: 'ko' },
+                    { name: 'Español', value: 'es' },
+                    { name: 'Français', value: 'fr' },
+                    { name: 'Deutsch', value: 'de' },
+                    { name: 'Português', value: 'pt' },
+                    { name: 'Русский', value: 'ru' },
+                ],
+            },
+        ],
+    },
+    {
+        name: 'help',
+        type: 1,
+        description: 'Show how to use Babel / 顯示使用說明',
     },
 ];
 

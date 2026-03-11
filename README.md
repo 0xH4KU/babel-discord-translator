@@ -1,10 +1,12 @@
 <div align="center">
 
+<img src="assets/babel-logo-transparent.png" alt="Babel" width="120">
+
 # Babel
 
 **Discord translation bot with one-click context menu, powered by Vertex AI Gemini.**
 
-Right-click any message → *Translate / 翻譯* → Get an ephemeral translation only you can see.
+Right-click any message → *Babel* → Get an ephemeral translation only you can see.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-20%2B-green.svg)](https://nodejs.org)
@@ -15,7 +17,7 @@ Right-click any message → *Translate / 翻譯* → Get an ephemeral translatio
 
 ## Features
 
-- 🔄 **Context Menu Translation** — Right-click → Apps → Translate / 翻譯
+- 🔄 **Context Menu Translation** — Right-click → Apps → Babel
 - 👁 **Ephemeral Messages** — Translations are private, only visible to you
 - 🌍 **Multi-language Support** — Auto-detects your Discord locale, or use `/setlang` to choose
 - ⚡ **LRU Cache** — Same message translated by 50 users = 1 API call
@@ -65,7 +67,7 @@ Open `http://localhost:3000` → Login → Complete the setup wizard.
 DISCORD_APP_ID=your_app_id DISCORD_BOT_TOKEN=your_token npm run register
 ```
 
-This registers both the **Translate / 翻譯** context menu and the **/setlang** slash command.
+This registers the **Babel** context menu, **/setlang**, **/translate**, and **/help** commands.
 
 ### 3. Invite the Bot
 
