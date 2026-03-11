@@ -1,4 +1,4 @@
-import { Client, Events, GatewayIntentBits } from 'discord.js';
+import { Client, Events, GatewayIntentBits, MessageFlags } from 'discord.js';
 import { config } from './config.js';
 import { store } from './store.js';
 import { translate } from './translate.js';
@@ -40,7 +40,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             store.set('userLanguagePrefs', prefs);
             return interaction.reply({
                 content: '✅ Language preference cleared. Will use your Discord locale automatically.',
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
         }
 
@@ -48,7 +48,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         store.set('userLanguagePrefs', prefs);
         return interaction.reply({
             content: `✅ Translation target set to: **${lang}**`,
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
         });
     }
 
@@ -59,7 +59,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (!store.isSetupComplete()) {
         return interaction.reply({
             content: 'Bot not configured yet. Please complete setup in the dashboard.',
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
         });
     }
 
@@ -68,7 +68,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (!allowedGuilds.includes(interaction.guildId)) {
         return interaction.reply({
             content: '⛔ This server is not authorized.\n此伺服器未授權使用翻譯。',
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
         });
     }
 
@@ -76,7 +76,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (usage.isBudgetExceeded()) {
         return interaction.reply({
             content: '已達每日預算上限，明天再試吧！\nDaily budget exceeded, try again tomorrow!',
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
         });
     }
 
@@ -85,7 +85,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (!cd.allowed) {
         return interaction.reply({
             content: `冷卻中，請等 ${cd.remaining} 秒 / Please wait ${cd.remaining}s`,
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
         });
     }
 
@@ -94,7 +94,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (!content?.trim()) {
         return interaction.reply({
             content: '沒有文字內容 / No text content',
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
         });
     }
 
@@ -107,7 +107,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     console.log(`[Translate] user=${interaction.user.tag} lang=${targetLanguage} (from ${langSource}, locale=${interaction.locale})`);
 
     // --- Defer + translate ---
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     cooldown.set(interaction.user.id);
     totalTranslations++;
 
