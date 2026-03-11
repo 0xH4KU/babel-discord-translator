@@ -23,7 +23,7 @@ function requireAuth(req, res, next) {
     next();
 }
 
-export function startDashboard({ cache, cooldown, client, getStats }) {
+export function startDashboard({ cache, cooldown, log, client, getStats }) {
     const app = express();
 
     app.use(express.json());
@@ -98,8 +98,10 @@ export function startDashboard({ cache, cooldown, client, getStats }) {
             delete updates.vertexAiApiKey;
         }
 
-        // Don't let dashboard overwrite tokenUsage
+        // Don't let dashboard overwrite these
         delete updates.tokenUsage;
+        delete updates.usageHistory;
+        delete updates.userLanguagePrefs;
 
         store.update(updates);
 
@@ -121,6 +123,17 @@ export function startDashboard({ cache, cooldown, client, getStats }) {
             memberCount: g.memberCount,
         }));
         res.json(guilds);
+    });
+
+    // --- New endpoints ---
+
+    app.get('/api/usage/history', requireAuth, (req, res) => {
+        res.json(usage.getHistory());
+    });
+
+    app.get('/api/logs', requireAuth, (req, res) => {
+        const count = Math.min(parseInt(req.query.count) || 50, 200);
+        res.json(log.getRecent(count));
     });
 
     app.listen(config.dashboardPort, () => {

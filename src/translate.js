@@ -1,10 +1,106 @@
 import { store } from './store.js';
 
+const RETRY_CODES = [429, 500, 502, 503];
+const MAX_RETRIES = 3;
+
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Fetch with exponential backoff retry for transient errors.
+ */
+async function fetchWithRetry(url, options, retries = MAX_RETRIES) {
+    for (let i = 0; i <= retries; i++) {
+        try {
+            const response = await fetch(url, options);
+            if (response.ok || !RETRY_CODES.includes(response.status)) {
+                return response;
+            }
+            if (i < retries) {
+                const delay = Math.pow(2, i) * 500;
+                console.warn(`[Translate] Retry ${i + 1}/${retries} after ${response.status}, waiting ${delay}ms`);
+                await sleep(delay);
+            }
+        } catch (err) {
+            if (i < retries) {
+                const delay = Math.pow(2, i) * 500;
+                console.warn(`[Translate] Retry ${i + 1}/${retries} after network error, waiting ${delay}ms`);
+                await sleep(delay);
+            } else {
+                throw err;
+            }
+        }
+    }
+    return fetch(url, options);
+}
+
+/**
+ * Map Discord locale code to a human-readable language name for the prompt.
+ */
+const LOCALE_MAP = {
+    'zh-TW': 'Traditional Chinese (繁體中文)',
+    'zh-CN': 'Simplified Chinese (简体中文)',
+    'en-US': 'English',
+    'en-GB': 'English',
+    ja: 'Japanese (日本語)',
+    ko: 'Korean (한국어)',
+    es: 'Spanish (Español)',
+    'es-ES': 'Spanish (Español)',
+    'es-419': 'Spanish (Español)',
+    fr: 'French (Français)',
+    de: 'German (Deutsch)',
+    pt: 'Portuguese (Português)',
+    'pt-BR': 'Brazilian Portuguese (Português Brasileiro)',
+    ru: 'Russian (Русский)',
+    it: 'Italian (Italiano)',
+    pl: 'Polish (Polski)',
+    nl: 'Dutch (Nederlands)',
+    tr: 'Turkish (Türkçe)',
+    vi: 'Vietnamese (Tiếng Việt)',
+    th: 'Thai (ไทย)',
+    ar: 'Arabic (العربية)',
+    hi: 'Hindi (हिन्दी)',
+    id: 'Indonesian (Bahasa Indonesia)',
+};
+
+function getLanguageName(code) {
+    if (!code || code === 'auto') return null;
+    return LOCALE_MAP[code] || LOCALE_MAP[code.split('-')[0]] || code;
+}
+
+const DEFAULT_PROMPT = `You are a translator. Detect the language of the following text and translate it.
+
+Rules:
+- If the text is Chinese (Traditional or Simplified) → translate to English
+- If the text is English → translate to Traditional Chinese (繁體中文)
+- If the text contains both Chinese and English → translate each part to the other language
+- If the text is in another language → translate to both English and Traditional Chinese
+- Output ONLY the translation. No explanations, no labels, no extra text.
+- Preserve the original formatting (line breaks, punctuation, etc.)`;
+
+/**
+ * Build a prompt tailored for a specific target language.
+ */
+function buildTargetedPrompt(targetLang) {
+    const langName = getLanguageName(targetLang);
+    return `You are a translator. Detect the language of the following text and translate it.
+
+Rules:
+- Translate the text to ${langName}.
+- If the text is already in ${langName}, translate it to English instead.
+- If the text contains multiple languages, translate all parts to ${langName}.
+- Output ONLY the translation. No explanations, no labels, no extra text.
+- Preserve the original formatting (line breaks, punctuation, etc.)`;
+}
+
 /**
  * Translate text using Vertex AI Gemini REST API.
- * Returns { text, inputTokens, outputTokens }.
+ * @param {string} text - Text to translate.
+ * @param {string} targetLanguage - Target language code (e.g. 'ja', 'zh-TW') or 'auto'.
+ * @returns {{ text: string, inputTokens: number, outputTokens: number }}
  */
-export async function translate(text) {
+export async function translate(text, targetLanguage = 'auto') {
     const model = store.get('geminiModel');
     const project = store.get('gcpProject');
     const location = store.get('gcpLocation');
@@ -21,20 +117,27 @@ export async function translate(text) {
 
     const url = `${baseUrl}/v1beta1/projects/${project}/locations/${location}/publishers/google/models/${model}:generateContent`;
 
-    const prompt = `You are a translator. Detect the language of the following text and translate it.
+    // Determine which prompt to use
+    let systemPrompt;
+    const customPrompt = store.get('translationPrompt');
 
-Rules:
-- If the text is Chinese (Traditional or Simplified) → translate to English
-- If the text is English → translate to Traditional Chinese (繁體中文)
-- If the text contains both Chinese and English → translate each part to the other language
-- If the text is in another language → translate to both English and Traditional Chinese
-- Output ONLY the translation. No explanations, no labels, no extra text.
-- Preserve the original formatting (line breaks, punctuation, etc.)
+    if (customPrompt?.trim()) {
+        // User-defined custom prompt always takes priority
+        systemPrompt = customPrompt.trim();
+    } else if (targetLanguage && targetLanguage !== 'auto') {
+        // Dynamic target language prompt
+        systemPrompt = buildTargetedPrompt(targetLanguage);
+    } else {
+        // Default auto-detect prompt
+        systemPrompt = DEFAULT_PROMPT;
+    }
+
+    const prompt = `${systemPrompt}
 
 Text:
 ${text}`;
 
-    const response = await fetch(url, {
+    const response = await fetchWithRetry(url, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -61,7 +164,6 @@ ${text}`;
         throw new Error('Empty response from Gemini');
     }
 
-    // Extract token usage from response
     const meta = data.usageMetadata || {};
 
     return {

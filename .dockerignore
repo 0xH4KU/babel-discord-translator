@@ -1,0 +1,10 @@
+node_modules
+data
+.env
+.git
+.github
+tests
+*.md
+.prettierrc
+eslint.config.js
+.wrangler

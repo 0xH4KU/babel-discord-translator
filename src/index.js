@@ -4,12 +4,14 @@ import { store } from './store.js';
 import { translate } from './translate.js';
 import { TranslationCache } from './cache.js';
 import { CooldownManager } from './cooldown.js';
+import { TranslationLog } from './log.js';
 import { usage } from './usage.js';
 import { startDashboard } from './dashboard.js';
 
 // --- State ---
 const cache = new TranslationCache(store.get('cacheMaxSize'));
 const cooldown = new CooldownManager(store.get('cooldownSeconds'));
+const log = new TranslationLog();
 let totalTranslations = 0;
 let apiCalls = 0;
 
@@ -21,12 +23,35 @@ client.once(Events.ClientReady, (c) => {
     startDashboard({
         cache,
         cooldown,
+        log,
         client,
         getStats: () => ({ totalTranslations, apiCalls }),
     });
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
+    // --- /setlang command ---
+    if (interaction.isChatInputCommand() && interaction.commandName === 'setlang') {
+        const lang = interaction.options.getString('language');
+        const prefs = store.get('userLanguagePrefs') || {};
+
+        if (lang === 'auto') {
+            delete prefs[interaction.user.id];
+            store.set('userLanguagePrefs', prefs);
+            return interaction.reply({
+                content: '✅ Language preference cleared. Will use your Discord locale automatically.',
+                ephemeral: true,
+            });
+        }
+
+        prefs[interaction.user.id] = lang;
+        store.set('userLanguagePrefs', prefs);
+        return interaction.reply({
+            content: `✅ Translation target set to: **${lang}**`,
+            ephemeral: true,
+        });
+    }
+
     if (!interaction.isMessageContextMenuCommand()) return;
     if (interaction.commandName !== 'Translate / 翻譯') return;
 
@@ -73,21 +98,38 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
     }
 
+    // --- Resolve target language ---
+    const userPrefs = store.get('userLanguagePrefs') || {};
+    const targetLanguage = userPrefs[interaction.user.id] || localeToLang(interaction.locale) || 'auto';
+
     // --- Defer + translate ---
     await interaction.deferReply({ ephemeral: true });
     cooldown.set(interaction.user.id);
     totalTranslations++;
 
     try {
-        let translated = cache.get(interaction.targetMessage.id);
+        // Cache key includes language to store per-language translations
+        const cacheKey = `${interaction.targetMessage.id}:${targetLanguage}`;
+        let translated = cache.get(cacheKey);
+        const cached = !!translated;
 
         if (!translated) {
-            const result = await translate(content);
+            const result = await translate(content, targetLanguage);
             translated = result.text;
-            cache.set(interaction.targetMessage.id, translated);
+            cache.set(cacheKey, translated);
             usage.record(result.inputTokens, result.outputTokens);
             apiCalls++;
         }
+
+        // Log the translation
+        log.add({
+            guildId: interaction.guildId,
+            guildName: interaction.guild?.name,
+            userId: interaction.user.id,
+            userTag: interaction.user.tag,
+            contentPreview: content,
+            cached,
+        });
 
         // Format: original (truncated) + translation
         const original = content.length > 200 ? content.slice(0, 200) + '…' : content;
@@ -100,6 +142,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
     }
 });
+
+/**
+ * Map Discord locale code to a short language code.
+ * Returns null for locales that should use the default auto-detect.
+ */
+function localeToLang(locale) {
+    if (!locale) return null;
+    // If it's a Chinese or English locale, use auto-detect (default behavior)
+    if (locale.startsWith('zh') || locale.startsWith('en')) return null;
+    // For other locales, extract the base language code
+    return locale.split('-')[0];
+}
 
 // Cleanup expired cooldowns every minute
 setInterval(() => cooldown.cleanup(), 60_000);

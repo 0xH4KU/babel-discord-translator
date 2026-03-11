@@ -20,6 +20,12 @@ const DEFAULTS = {
     outputPricePerMillion: 0,
     dailyBudgetUsd: 0,
     tokenUsage: null,
+    // Usage history (last 30 days)
+    usageHistory: [],
+    // Custom translation prompt (empty = use default)
+    translationPrompt: '',
+    // User language preferences { userId: 'ja' }
+    userLanguagePrefs: {},
 };
 
 class ConfigStore {

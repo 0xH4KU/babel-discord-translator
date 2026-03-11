@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * One-time script to register the "Translate / 翻譯" context menu command.
+ * Register commands for the Babel translation bot.
+ * Uses bulk overwrite to register all commands at once.
  *
  * Usage:
  *   DISCORD_APP_ID=xxx DISCORD_BOT_TOKEN=xxx node scripts/register.js
@@ -18,25 +19,59 @@ if (!APP_ID || !BOT_TOKEN) {
     process.exit(1);
 }
 
-const command = {
-    name: 'Translate / 翻譯',
-    type: 3, // MESSAGE command (right-click context menu)
-};
+const commands = [
+    {
+        name: 'Translate / 翻譯',
+        type: 3, // MESSAGE command (right-click context menu)
+    },
+    {
+        name: 'setlang',
+        type: 1, // CHAT_INPUT (slash command)
+        description: 'Set your preferred translation language / 設定偏好翻譯語言',
+        options: [
+            {
+                name: 'language',
+                description: 'Target language / 目標語言',
+                type: 3, // STRING
+                required: true,
+                choices: [
+                    { name: 'Auto (use Discord locale)', value: 'auto' },
+                    { name: '繁體中文', value: 'zh-TW' },
+                    { name: 'English', value: 'en' },
+                    { name: '日本語', value: 'ja' },
+                    { name: '한국어', value: 'ko' },
+                    { name: 'Español', value: 'es' },
+                    { name: 'Français', value: 'fr' },
+                    { name: 'Deutsch', value: 'de' },
+                    { name: 'Português', value: 'pt' },
+                    { name: 'Русский', value: 'ru' },
+                    { name: 'Italiano', value: 'it' },
+                    { name: 'Tiếng Việt', value: 'vi' },
+                    { name: 'ไทย', value: 'th' },
+                    { name: 'العربية', value: 'ar' },
+                    { name: 'Bahasa Indonesia', value: 'id' },
+                ],
+            },
+        ],
+    },
+];
 
+// Bulk overwrite all commands
 const url = `https://discord.com/api/v10/applications/${APP_ID}/commands`;
 
 const response = await fetch(url, {
-    method: 'POST',
+    method: 'PUT', // Bulk overwrite
     headers: {
         'Content-Type': 'application/json',
         Authorization: `Bot ${BOT_TOKEN}`,
     },
-    body: JSON.stringify(command),
+    body: JSON.stringify(commands),
 });
 
 if (response.ok) {
     const data = await response.json();
-    console.log(`✅ Registered: "${data.name}" (ID: ${data.id})`);
+    console.log(`✅ Registered ${data.length} commands:`);
+    data.forEach((cmd) => console.log(`   - "${cmd.name}" (ID: ${cmd.id})`));
 } else {
     const error = await response.text();
     console.error(`❌ Failed: ${response.status}`, error);

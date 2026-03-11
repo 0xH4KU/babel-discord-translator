@@ -619,6 +619,132 @@
       font-size: 0.7rem;
       margin-top: 1rem;
     }
+
+    /* ===== TABLES (History & Logs) ===== */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+
+    .data-table th {
+      text-align: left;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      font-weight: 600;
+      padding: 0.6rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .data-table td {
+      padding: 0.55rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .data-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .data-table tr:hover td {
+      background: rgba(88, 101, 242, 0.04);
+    }
+
+    .data-table .mono {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.8rem;
+    }
+
+    .data-table .dim {
+      color: var(--text-dim);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 600;
+    }
+
+    .badge-green {
+      background: rgba(67, 181, 129, 0.15);
+      color: var(--green);
+    }
+
+    .badge-yellow {
+      background: rgba(250, 166, 26, 0.15);
+      color: var(--yellow);
+    }
+
+    .table-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .table-card .table-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1rem 1.25rem 0.5rem;
+    }
+
+    .table-card .table-header h3 {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-dim);
+      font-weight: 600;
+    }
+
+    .table-card .table-header .sub-info {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+    }
+
+    .empty-state {
+      text-align: center;
+      color: var(--text-dim);
+      padding: 2rem;
+      font-size: 0.85rem;
+    }
+
+    /* ===== PROMPT EDITOR ===== */
+    .prompt-editor textarea {
+      width: 100%;
+      min-height: 160px;
+      padding: 0.85rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 0.85rem;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      line-height: 1.5;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .prompt-editor textarea:focus {
+      border-color: var(--accent);
+    }
+
+    .prompt-editor .prompt-actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 0.5rem;
+    }
+
+    .prompt-editor .prompt-hint {
+      font-size: 0.7rem;
+      color: var(--text-dim);
+    }
   </style>
 </head>
 
@@ -713,6 +839,8 @@
 
     <div class="tabs">
       <button class="tab-btn active" onclick="switchTab('overview')">Overview</button>
+      <button class="tab-btn" onclick="switchTab('history')">History</button>
+      <button class="tab-btn" onclick="switchTab('logs')">Logs</button>
       <button class="tab-btn" onclick="switchTab('settings')">Settings</button>
     </div>
 
@@ -756,6 +884,33 @@
       </div>
 
       <div class="refresh-note">Auto-refresh every 5s</div>
+    </div>
+
+    <!-- History Tab -->
+    <div class="tab-content" id="tab-history">
+      <div class="table-card">
+        <div class="table-header">
+          <h3>Usage History (Last 30 Days)</h3>
+          <span class="sub-info" id="history-summary"></span>
+        </div>
+        <div id="history-table-container">
+          <div class="empty-state">No history data yet. Usage is archived daily.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Logs Tab -->
+    <div class="tab-content" id="tab-logs">
+      <div class="table-card">
+        <div class="table-header">
+          <h3>Translation Log</h3>
+          <span class="sub-info" id="log-count"></span>
+        </div>
+        <div id="log-table-container">
+          <div class="empty-state">No translations logged yet. Logs are stored in memory only.</div>
+        </div>
+      </div>
+      <div class="refresh-note" style="margin-top:0.5rem">Logs are in-memory only — cleared on restart</div>
     </div>
 
     <!-- Settings Tab -->
@@ -819,6 +974,20 @@
           <div class="input-group">
             <label>Cache Max Size</label>
             <input type="number" id="cfg-cache" min="100" max="10000">
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Translation Prompt</h3>
+        <div style="font-size:0.8rem;color:var(--text-dim);margin-bottom:0.75rem">
+          Customize the system prompt used for translations. Leave empty to use the default.
+        </div>
+        <div class="prompt-editor">
+          <textarea id="cfg-prompt" placeholder="Leave empty to use default prompt..."></textarea>
+          <div class="prompt-actions">
+            <span class="prompt-hint">Use <code>${text}</code> is automatically appended. Only edit the instructions above it.</span>
+            <button class="btn btn-secondary btn-sm" onclick="restoreDefaultPrompt()">Restore Default</button>
           </div>
         </div>
       </div>
@@ -981,6 +1150,8 @@
       document.querySelector(`[onclick="switchTab('${name}')"]`).classList.add('active');
       document.getElementById('tab-' + name).classList.add('active');
       if (name === 'settings') loadSettings();
+      if (name === 'history') loadHistory();
+      if (name === 'logs') loadLogs();
     }
 
     async function loadStats() {
@@ -1051,6 +1222,7 @@
         document.getElementById('cfg-input-price').value = currentConfig.inputPricePerMillion || 0;
         document.getElementById('cfg-output-price').value = currentConfig.outputPricePerMillion || 0;
         document.getElementById('cfg-budget').value = currentConfig.dailyBudgetUsd || 0;
+        document.getElementById('cfg-prompt').value = currentConfig.translationPrompt || '';
 
         renderGuilds();
       } catch { }
@@ -1148,6 +1320,7 @@
       updates.inputPricePerMillion = parseFloat(document.getElementById('cfg-input-price').value) || 0;
       updates.outputPricePerMillion = parseFloat(document.getElementById('cfg-output-price').value) || 0;
       updates.dailyBudgetUsd = parseFloat(document.getElementById('cfg-budget').value) || 0;
+      updates.translationPrompt = document.getElementById('cfg-prompt').value;
 
       // Whitelist: always save the explicit list of enabled IDs
       const checkboxes = document.querySelectorAll('[data-guild-id]');
@@ -1197,6 +1370,95 @@
       } else {
         show('login-view');
       }
+    }
+
+    // ========== History ==========
+
+    async function loadHistory() {
+      try {
+        const res = await api('/usage/history');
+        if (!res.ok) return;
+        const data = await res.json();
+
+        const container = document.getElementById('history-table-container');
+        if (data.length === 0) {
+          container.innerHTML = '<div class="empty-state">No history data yet. Usage is archived daily.</div>';
+          document.getElementById('history-summary').textContent = '';
+          return;
+        }
+
+        const totalCost = data.reduce((sum, d) => sum + d.cost, 0);
+        const totalReqs = data.reduce((sum, d) => sum + d.requests, 0);
+        document.getElementById('history-summary').textContent =
+          `${data.length} days · ${totalReqs} requests · ${formatUsd(totalCost)} total`;
+
+        let html = `<table class="data-table">
+          <thead><tr>
+            <th>Date</th><th>Requests</th><th>Input Tokens</th><th>Output Tokens</th><th>Cost</th>
+          </tr></thead><tbody>`;
+
+        // Show newest first
+        for (const d of [...data].reverse()) {
+          html += `<tr>
+            <td class="mono">${d.date}</td>
+            <td>${d.requests}</td>
+            <td class="dim">${formatTokens(d.inputTokens)}</td>
+            <td class="dim">${formatTokens(d.outputTokens)}</td>
+            <td>${formatUsd(d.cost)}</td>
+          </tr>`;
+        }
+
+        html += '</tbody></table>';
+        container.innerHTML = html;
+      } catch { }
+    }
+
+    // ========== Logs ==========
+
+    async function loadLogs() {
+      try {
+        const res = await api('/logs');
+        if (!res.ok) return;
+        const data = await res.json();
+
+        const container = document.getElementById('log-table-container');
+        document.getElementById('log-count').textContent = data.length + ' entries';
+
+        if (data.length === 0) {
+          container.innerHTML = '<div class="empty-state">No translations logged yet.</div>';
+          return;
+        }
+
+        let html = `<table class="data-table">
+          <thead><tr>
+            <th>Time</th><th>Server</th><th>User</th><th>Preview</th><th>Source</th>
+          </tr></thead><tbody>`;
+
+        for (const e of data) {
+          const time = new Date(e.timestamp).toLocaleTimeString();
+          const preview = (e.contentPreview || '').replace(/</g, '&lt;');
+          const badge = e.cached
+            ? '<span class="badge badge-yellow">Cache</span>'
+            : '<span class="badge badge-green">API</span>';
+          html += `<tr>
+            <td class="mono dim">${time}</td>
+            <td>${e.guildName}</td>
+            <td class="dim">${e.userTag}</td>
+            <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${preview}</td>
+            <td>${badge}</td>
+          </tr>`;
+        }
+
+        html += '</tbody></table>';
+        container.innerHTML = html;
+      } catch { }
+    }
+
+    // ========== Prompt ==========
+
+    function restoreDefaultPrompt() {
+      document.getElementById('cfg-prompt').value = '';
+      showToast('Default prompt will be used — click Save to apply');
     }
 
     init();

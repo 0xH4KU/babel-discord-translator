@@ -1,13 +1,17 @@
 {
     "name": "babel-discord-translator",
-    "version": "2.0.0",
-    "description": "Discord right-click translation bot powered by Vertex AI Gemini — with LRU cache, cost tracking, and web dashboard",
+    "version": "2.1.0",
+    "description": "Discord right-click translation bot powered by Vertex AI Gemini — with LRU cache, cost tracking, multilingual support, and web dashboard",
     "type": "module",
     "main": "src/index.js",
     "scripts": {
         "start": "node src/index.js",
         "dev": "node --watch src/index.js",
-        "register": "node scripts/register.js"
+        "register": "node scripts/register.js",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "lint": "eslint src/ tests/",
+        "format": "prettier --write ."
     },
     "keywords": [
         "discord",
@@ -15,7 +19,8 @@
         "bot",
         "gemini",
         "vertex-ai",
-        "discord.js"
+        "discord.js",
+        "multilingual"
     ],
     "license": "MIT",
     "repository": {
@@ -26,5 +31,11 @@
         "discord.js": "^14.18.0",
         "dotenv": "^16.4.0",
         "express": "^4.21.0"
+    },
+    "devDependencies": {
+        "eslint": "^9.0.0",
+        "globals": "^15.0.0",
+        "prettier": "^3.0.0",
+        "vitest": "^3.0.0"
     }
 }
