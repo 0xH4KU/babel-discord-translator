@@ -1431,21 +1431,24 @@
 
         let html = `<table class="data-table">
           <thead><tr>
-            <th>Time</th><th>Server</th><th>User</th><th>Preview</th><th>Source</th>
+            <th>Time</th><th>Server</th><th>User</th><th>Preview</th><th>Lang</th><th>Source</th>
           </tr></thead><tbody>`;
 
         for (const e of data) {
           const time = new Date(e.timestamp).toLocaleTimeString();
           const preview = (e.contentPreview || '').replace(/</g, '&lt;');
-          const badge = e.cached
+          const sourceBadge = e.cached
             ? '<span class="badge badge-yellow">Cache</span>'
             : '<span class="badge badge-green">API</span>';
+          const langLabel = e.targetLanguage === 'auto' ? 'auto' : e.targetLanguage;
+          const langSrc = e.langSource === 'setlang' ? '⚙️' : e.langSource === 'locale' ? '🌐' : '';
           html += `<tr>
             <td class="mono dim">${time}</td>
             <td>${e.guildName}</td>
             <td class="dim">${e.userTag}</td>
-            <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${preview}</td>
-            <td>${badge}</td>
+            <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${preview}</td>
+            <td class="mono">${langLabel} ${langSrc}</td>
+            <td>${sourceBadge}</td>
           </tr>`;
         }
 

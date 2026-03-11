@@ -12,7 +12,7 @@ export class TranslationLog {
      * Add a translation log entry.
      * Only stores a short preview of the content, not full text.
      */
-    add({ guildId, guildName, userId, userTag, contentPreview, cached, timestamp }) {
+    add({ guildId, guildName, userId, userTag, contentPreview, cached, targetLanguage, langSource, timestamp }) {
         this.entries.push({
             guildId,
             guildName: guildName || guildId,
@@ -20,6 +20,8 @@ export class TranslationLog {
             userTag: userTag || userId,
             contentPreview: contentPreview?.slice(0, 50) || '',
             cached: !!cached,
+            targetLanguage: targetLanguage || 'auto',
+            langSource: langSource || 'auto',
             timestamp: timestamp || Date.now(),
         });
 

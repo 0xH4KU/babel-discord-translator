@@ -100,7 +100,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     // --- Resolve target language ---
     const userPrefs = store.get('userLanguagePrefs') || {};
-    const targetLanguage = userPrefs[interaction.user.id] || localeToLang(interaction.locale) || 'auto';
+    const userPref = userPrefs[interaction.user.id];
+    const localeLang = localeToLang(interaction.locale);
+    const targetLanguage = userPref || localeLang || 'auto';
+    const langSource = userPref ? 'setlang' : localeLang ? 'locale' : 'auto';
+    console.log(`[Translate] user=${interaction.user.tag} lang=${targetLanguage} (from ${langSource}, locale=${interaction.locale})`);
 
     // --- Defer + translate ---
     await interaction.deferReply({ ephemeral: true });
@@ -113,7 +117,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
         let translated = cache.get(cacheKey);
         const cached = !!translated;
 
-        if (!translated) {
+        if (cached) {
+            console.log(`[Translate] Cache HIT: ${cacheKey}`);
+        } else {
+            console.log(`[Translate] Cache MISS: ${cacheKey}, calling API...`);
             const result = await translate(content, targetLanguage);
             translated = result.text;
             cache.set(cacheKey, translated);
@@ -129,6 +136,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
             userTag: interaction.user.tag,
             contentPreview: content,
             cached,
+            targetLanguage,
+            langSource,
         });
 
         // Format: original (truncated) + translation
