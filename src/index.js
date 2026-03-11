@@ -110,7 +110,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (isSameLanguage(content, targetLanguage, interaction.locale)) {
         console.log(`[Translate] Skipped: content already in target language`);
         return interaction.reply({
-            content: '這條訊息已經是你的語言了，不需要翻譯 \nThis message is already in your language!',
+            content: 'This message is already in your language!',
             flags: MessageFlags.Ephemeral,
         });
     }
