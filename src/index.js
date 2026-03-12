@@ -248,11 +248,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
             return interaction.reply({ content: 'This server is not authorized.', flags: MessageFlags.Ephemeral });
         }
         if (usage.isBudgetExceeded()) {
-            return interaction.reply({ content: '已達每日預算上限 / Daily budget exceeded', flags: MessageFlags.Ephemeral });
+            return interaction.reply({ content: 'Daily budget exceeded', flags: MessageFlags.Ephemeral });
         }
         const cd = cooldown.check(interaction.user.id);
         if (!cd.allowed) {
-            return interaction.reply({ content: `冷卻中，請等 ${cd.remaining} 秒 / Please wait ${cd.remaining}s`, flags: MessageFlags.Ephemeral });
+            return interaction.reply({ content: `Please wait ${cd.remaining}s`, flags: MessageFlags.Ephemeral });
         }
 
         // Resolve target language
@@ -293,7 +293,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 error: error.message,
                 command: '/translate',
             });
-            await interaction.editReply({ content: `翻譯失敗 / Translation failed: ${error.message}` });
+            await interaction.editReply({ content: `Translation failed: ${error.message}` });
         }
         return;
     }
@@ -343,14 +343,14 @@ ${t.tips[1]}`;
         let reply;
         if (userPref) {
             const name = LANG_NAMES[userPref] || userPref;
-            reply = `🌐 Your translation language: **${name}** (\`${userPref}\`), set via /setlang\n` +
+            reply = `Your translation language: **${name}** (\`${userPref}\`), set via /setlang\n` +
                 `Use \`/setlang auto\` to reset to auto-detect.`;
         } else if (localeLang) {
             const name = LANG_NAMES[localeLang] || localeLang;
-            reply = `🌐 Your translation language: **${name}** (auto-detected from Discord locale: \`${interaction.locale}\`)\n` +
+            reply = `Your translation language: **${name}** (auto-detected from Discord locale: \`${interaction.locale}\`)\n` +
                 `Use \`/setlang\` to set a custom language.`;
         } else {
-            reply = `🌐 Your translation language: **Auto** (Chinese ↔ English based on content)\n` +
+            reply = `Your translation language: **Auto** (Chinese ↔ English based on content)\n` +
                 `Discord locale: \`${interaction.locale}\`\n` +
                 `Use \`/setlang\` to set a specific target language.`;
         }
@@ -374,7 +374,7 @@ ${t.tips[1]}`;
     const allowedGuilds = store.get('allowedGuildIds');
     if (!allowedGuilds.includes(interaction.guildId)) {
         return interaction.reply({
-            content: 'This server is not authorized.\n此伺服器未授權使用翻譯。',
+            content: 'This server is not authorized.',
             flags: MessageFlags.Ephemeral,
         });
     }
@@ -382,7 +382,7 @@ ${t.tips[1]}`;
     // --- Budget check ---
     if (usage.isBudgetExceeded()) {
         return interaction.reply({
-            content: '已達每日預算上限，明天再試吧！\nDaily budget exceeded, try again tomorrow!',
+            content: 'Daily budget exceeded, try again tomorrow!',
             flags: MessageFlags.Ephemeral,
         });
     }
@@ -391,7 +391,7 @@ ${t.tips[1]}`;
     const cd = cooldown.check(interaction.user.id);
     if (!cd.allowed) {
         return interaction.reply({
-            content: `冷卻中，請等 ${cd.remaining} 秒 / Please wait ${cd.remaining}s`,
+            content: `Please wait ${cd.remaining}s`,
             flags: MessageFlags.Ephemeral,
         });
     }
@@ -400,7 +400,7 @@ ${t.tips[1]}`;
     const content = interaction.targetMessage.content;
     if (!content?.trim()) {
         return interaction.reply({
-            content: '沒有文字內容 / No text content',
+            content: 'No text content',
             flags: MessageFlags.Ephemeral,
         });
     }
@@ -471,7 +471,7 @@ ${t.tips[1]}`;
             command: 'Babel (context menu)',
         });
         await interaction.editReply({
-            content: `翻譯失敗 / Translation failed: ${error.message}`,
+            content: `Translation failed: ${error.message}`,
         });
     }
 });

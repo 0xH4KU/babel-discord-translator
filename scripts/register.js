@@ -27,11 +27,11 @@ const commands = [
     {
         name: 'setlang',
         type: 1, // CHAT_INPUT (slash command)
-        description: 'Set your preferred translation language / 設定偏好翻譯語言',
+        description: 'Set your preferred translation language',
         options: [
             {
                 name: 'language',
-                description: 'Target language / 目標語言',
+                description: 'Target language',
                 type: 3, // STRING
                 required: true,
                 choices: [
@@ -58,17 +58,17 @@ const commands = [
     {
         name: 'translate',
         type: 1,
-        description: 'Translate text / 翻譯文字',
+        description: 'Translate text',
         options: [
             {
                 name: 'text',
-                description: 'Text to translate / 要翻譯的文字',
+                description: 'Text to translate',
                 type: 3, // STRING
                 required: true,
             },
             {
                 name: 'to',
-                description: 'Target language / 目標語言',
+                description: 'Target language',
                 type: 3, // STRING
                 required: false,
                 choices: [
@@ -90,12 +90,12 @@ const commands = [
     {
         name: 'help',
         type: 1,
-        description: 'Show how to use Babel / 顯示使用說明',
+        description: 'Show how to use Babel',
     },
     {
         name: 'mylang',
         type: 1,
-        description: 'Check your current translation language / 查看目前翻譯語言設定',
+        description: 'Check your current translation language',
     },
 ];
 
