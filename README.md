@@ -8,7 +8,7 @@
 
 Right-click any message → *Babel* → Get an ephemeral translation only you can see.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-20%2B-green.svg)](https://nodejs.org)
 [![discord.js](https://img.shields.io/badge/discord.js-v14-blue.svg)](https://discord.js.org)
 [![CI](https://github.com/0xH4KU/babel-discord-translator/actions/workflows/ci.yml/badge.svg)](https://github.com/0xH4KU/babel-discord-translator/actions)
@@ -17,21 +17,21 @@ Right-click any message → *Babel* → Get an ephemeral translation only you ca
 
 ## Features
 
-- 🔄 **Context Menu Translation** — Right-click → Apps → Babel
-- 👁 **Ephemeral Messages** — Translations are private, only visible to you
-- 🌍 **Multi-language Support** — Auto-detects your Discord locale, or use `/setlang` to choose
-- 🌐 **Check Your Language** — Use `/mylang` to see your current translation language
-- ⚡ **LRU Cache** — Same message translated by 50 users = 1 API call
-- 🔁 **Auto-Retry** — Exponential backoff for transient API errors (429, 503)
-- 🕐 **Per-User Cooldown** — Configurable rate limiting
-- 🔒 **Server Whitelist** — Control which servers can use the bot
-- 💰 **Cost Tracking** — Real-time token usage with daily budget + 30-day history chart
-- 📝 **Translation & Error Logs** — In-memory audit log with filter tabs
-- ✏️ **Custom Prompt** — Customize the translation prompt from the dashboard
-- 🖥 **Web Dashboard** — Login-protected admin panel with setup wizard
-- 🩺 **API Health Check** — Dashboard shows API connectivity status
-- 🧪 **Translation Test** — Test translations directly from the dashboard
-- 👤 **User Preferences** — View and manage user language settings
+- **Context Menu Translation** — Right-click → Apps → Babel
+- **Ephemeral Messages** — Translations are private, only visible to you
+- **Multi-language Support** — Auto-detects your Discord locale, or use `/setlang` to choose
+- **Check Your Language** — Use `/mylang` to see your current translation language
+- **LRU Cache** — Same message translated by 50 users = 1 API call
+- **Auto-Retry** — Exponential backoff for transient API errors (429, 503)
+- **Per-User Cooldown** — Configurable rate limiting
+- **Server Whitelist** — Control which servers can use the bot
+- **Cost Tracking** — Real-time token usage with daily budget + 30-day history chart
+- **Translation & Error Logs** — In-memory audit log with filter tabs
+- **Custom Prompt** — Customize the translation prompt from the dashboard
+- **Web Dashboard** — Login-protected admin panel with setup wizard
+- **API Health Check** — Dashboard shows API connectivity status
+- **Translation Test** — Test translations directly from the dashboard
+- **User Preferences** — View and manage user language settings
 
 ## Quick Start
 
@@ -163,4 +163,4 @@ docker run -d --name babel --env-file .env -p 3000:3000 -v babel-data:/app/data 
 
 ## License
 
-[MIT](LICENSE)
+[GPL-3.0](LICENSE)
