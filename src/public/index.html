@@ -286,6 +286,18 @@
             <button class="btn btn-secondary btn-sm" onclick="clearCache()">Clear Cache</button>
           </div>
         </div>
+        <div class="settings-row">
+          <div class="input-group">
+            <label>Max Input Length (chars)</label>
+            <input type="number" id="cfg-max-input" min="100" max="10000">
+            <div class="hint">Max characters per translation request (default: 2000)</div>
+          </div>
+          <div class="input-group">
+            <label>Max Output Tokens</label>
+            <input type="number" id="cfg-max-output" min="100" max="8192">
+            <div class="hint">Gemini response token limit (default: 1000)</div>
+          </div>
+        </div>
       </div>
 
       <div class="settings-section">

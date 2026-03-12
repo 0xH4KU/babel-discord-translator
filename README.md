@@ -21,7 +21,7 @@ Right-click any message → *Babel* → Get an ephemeral translation only you ca
 - **Ephemeral Messages** — Translations are private, only visible to you
 - **Multi-language Support** — Auto-detects your Discord locale, or use `/setlang` to choose
 - **Check Your Language** — Use `/mylang` to see your current translation language
-- **LRU Cache** — Same message translated by 50 users = 1 API call
+- **LRU Cache** — Same message translated by 50 users = 1 API call (both context menu and `/translate`)
 - **Auto-Retry** — Exponential backoff for transient API errors (429, 503)
 - **Per-User Cooldown** — Configurable rate limiting
 - **Server Whitelist** — Control which servers can use the bot
@@ -32,12 +32,17 @@ Right-click any message → *Babel* → Get an ephemeral translation only you ca
 - **API Health Check** — Dashboard shows API connectivity status
 - **Translation Test** — Test translations directly from the dashboard
 - **User Preferences** — View and manage user language settings
+- **Input Length Limit** — Configurable max input characters to prevent token waste (default: 2000)
+- **Configurable Output Tokens** — Adjust Gemini `maxOutputTokens` from dashboard (default: 1000)
+- **Same-Language Detection** — Skips translation when text is already in user's language
+- **CSRF Protection** — All dashboard mutation endpoints require a CSRF token
 - **Login Rate Limiting** — Brute-force protection (5 attempts / 15 min per IP)
 - **Timing-Safe Auth** — SHA-256 hashed password comparison prevents timing attacks
 - **Graceful Shutdown** — Clean `SIGTERM`/`SIGINT` handling for Docker & PM2
 - **Input Validation** — Config updates are sanitized and range-checked
 - **Error Sanitization** — API keys and URLs stripped from user-facing error messages
 - **Docker Health Check** — Built-in `/healthz` endpoint for container orchestration
+- **Webhook Auto-Recovery** — Automatically re-creates webhooks if deleted externally
 
 ## Quick Start
 
@@ -96,6 +101,7 @@ After starting the bot, open `http://localhost:3000`:
 - **Pricing** — Set per-million-token prices for cost tracking
 - **Budget** — Set daily USD limit (0 = unlimited)
 - **Prompt** — Customize the translation system prompt
+- **Limits** — Max input length (characters) and max output tokens
 - **Whitelist** — Toggle servers on/off
 - **Translation Test** — Test API connectivity and translations
 - **User Preferences** — View and manage per-user language settings

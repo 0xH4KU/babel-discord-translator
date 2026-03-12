@@ -31,6 +31,10 @@ const DEFAULTS = {
     translationPrompt: '',
     // User language preferences { userId: 'ja' }
     userLanguagePrefs: {},
+    // Max input text length (characters)
+    maxInputLength: 2000,
+    // Max output tokens for Gemini API response
+    maxOutputTokens: 1000,
 };
 
 /**

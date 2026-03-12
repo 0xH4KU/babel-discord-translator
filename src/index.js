@@ -37,9 +37,14 @@ const webhookCache = new Map();
 /**
  * Get or create a Babel webhook for a channel.
  * @param {import('discord.js').TextChannel} channel
+ * @param {boolean} [forceRefresh=false] - Clear cached webhook and re-fetch
  * @returns {Promise<import('discord.js').Webhook>}
  */
-async function getOrCreateWebhook(channel) {
+async function getOrCreateWebhook(channel, forceRefresh = false) {
+    if (forceRefresh) {
+        webhookCache.delete(channel.id);
+    }
+
     const cached = webhookCache.get(channel.id);
     if (cached) return cached;
 
@@ -61,7 +66,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             case 'setlang':
                 return handleSetlang(interaction);
             case 'translate':
-                return handleTranslate(interaction, { cooldown, log, getOrCreateWebhook, stats });
+                return handleTranslate(interaction, { cache, cooldown, log, getOrCreateWebhook, stats });
             case 'help':
                 return handleHelp(interaction);
             case 'mylang':

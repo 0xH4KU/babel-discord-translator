@@ -54,6 +54,15 @@ export async function handleBabel(interaction, { cache, cooldown, log, stats }) 
         });
     }
 
+    // --- Text length limit ---
+    const maxLen = store.get('maxInputLength') || 2000;
+    if (content.length > maxLen) {
+        return interaction.reply({
+            content: `Text too long (${content.length}/${maxLen} chars)`,
+            flags: MessageFlags.Ephemeral,
+        });
+    }
+
     // --- Resolve target language ---
     const userPrefs = store.get('userLanguagePrefs') || {};
     const userPref = userPrefs[interaction.user.id];

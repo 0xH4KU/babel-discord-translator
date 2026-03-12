@@ -5,6 +5,10 @@
  * Exposes: show, showToast, api, formatUptime, formatUsd, formatTokens, renderPagination, genAvatar
  */
 
+let _csrfToken = '';
+
+function setCsrfToken(token) { _csrfToken = token || ''; }
+
 function show(id) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById(id).classList.add('active');
@@ -19,10 +23,9 @@ function showToast(msg, isError) {
 }
 
 async function api(path, opts = {}) {
-  const res = await fetch('/api' + path, {
-    headers: { 'Content-Type': 'application/json' },
-    ...opts,
-  });
+  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  if (_csrfToken) headers['x-csrf-token'] = _csrfToken;
+  const res = await fetch('/api' + path, { ...opts, headers });
   if (res.status === 401 && path !== '/login' && path !== '/auth/check') {
     show('login-view');
     throw new Error('Session expired');

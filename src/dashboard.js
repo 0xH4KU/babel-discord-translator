@@ -11,15 +11,15 @@ import { dirname, join } from 'path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // --- Session management with expiry ---
-/** @type {Map<string, number>} token → expiry timestamp */
+/** @type {Map<string, { expiry: number, csrf: string }>} token → session data */
 const sessions = new Map();
 const SESSION_TTL_MS = 86400 * 1000; // 24 hours
 
 /** Clean up expired sessions every 10 minutes. */
 const sessionCleanupInterval = setInterval(() => {
     const now = Date.now();
-    for (const [token, expiry] of sessions) {
-        if (now > expiry) sessions.delete(token);
+    for (const [token, session] of sessions) {
+        if (now > session.expiry) sessions.delete(token);
     }
 }, 10 * 60 * 1000);
 sessionCleanupInterval.unref?.(); // Don't keep process alive
@@ -70,9 +70,26 @@ function requireAuth(req, res, next) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
     // Check expiry
-    if (Date.now() > sessions.get(token)) {
+    const session = sessions.get(token);
+    if (Date.now() > session.expiry) {
         sessions.delete(token);
         return res.status(401).json({ error: 'Session expired' });
+    }
+    req.csrfToken = session.csrf;
+    next();
+}
+
+/**
+ * Express middleware: reject requests without a valid CSRF token.
+ * Must be applied after requireAuth.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ */
+function requireCsrf(req, res, next) {
+    const headerToken = req.headers['x-csrf-token'];
+    if (!headerToken || !req.csrfToken || !safeCompare(headerToken, req.csrfToken)) {
+        return res.status(403).json({ error: 'Invalid CSRF token' });
     }
     next();
 }
@@ -109,6 +126,20 @@ function validateConfigUpdate(updates) {
             return { valid: false, error: 'cacheMaxSize must be 10–100000', sanitized };
         }
         sanitized.cacheMaxSize = v;
+    }
+    if (sanitized.maxInputLength !== undefined) {
+        const v = parseInt(sanitized.maxInputLength);
+        if (isNaN(v) || v < 100 || v > 10000) {
+            return { valid: false, error: 'maxInputLength must be 100–10000', sanitized };
+        }
+        sanitized.maxInputLength = v;
+    }
+    if (sanitized.maxOutputTokens !== undefined) {
+        const v = parseInt(sanitized.maxOutputTokens);
+        if (isNaN(v) || v < 100 || v > 8192) {
+            return { valid: false, error: 'maxOutputTokens must be 100–8192', sanitized };
+        }
+        sanitized.maxOutputTokens = v;
     }
     if (sanitized.dailyBudgetUsd !== undefined) {
         const v = parseFloat(sanitized.dailyBudgetUsd);
@@ -178,9 +209,10 @@ export function startDashboard({ cache, cooldown, log, client, getStats }) {
 
     app.post('/api/login', loginLimiter, (req, res) => {
         const { password } = req.body;
-        if (password && password === config.dashboardPassword) {
+        if (password && safeCompare(hashPassword(password), hashPassword(config.dashboardPassword))) {
             const token = crypto.randomBytes(32).toString('hex');
-            sessions.set(token, Date.now() + SESSION_TTL_MS);
+            const csrf = crypto.randomBytes(32).toString('hex');
+            sessions.set(token, { expiry: Date.now() + SESSION_TTL_MS, csrf });
             res.setHeader('Set-Cookie', buildSessionCookie(token, 86400, req));
             res.json({ ok: true });
         } else {
@@ -190,8 +222,9 @@ export function startDashboard({ cache, cooldown, log, client, getStats }) {
 
     app.get('/api/auth/check', (req, res) => {
         const token = getSession(req);
-        const valid = !!(token && sessions.has(token) && Date.now() <= sessions.get(token));
-        res.json({ authenticated: valid });
+        const session = token ? sessions.get(token) : null;
+        const valid = !!(session && Date.now() <= session.expiry);
+        res.json({ authenticated: valid, csrfToken: valid ? session.csrf : undefined });
     });
 
     // --- Logout ---
@@ -249,7 +282,7 @@ export function startDashboard({ cache, cooldown, log, client, getStats }) {
         });
     });
 
-    app.post('/api/config', requireAuth, (req, res) => {
+    app.post('/api/config', requireAuth, requireCsrf, (req, res) => {
         const { valid, error, sanitized } = validateConfigUpdate(req.body);
         if (!valid) {
             return res.status(400).json({ error });
@@ -301,7 +334,7 @@ export function startDashboard({ cache, cooldown, log, client, getStats }) {
         });
     });
 
-    app.delete('/api/user-prefs/:userId', requireAuth, (req, res) => {
+    app.delete('/api/user-prefs/:userId', requireAuth, requireCsrf, (req, res) => {
         const prefs = store.get('userLanguagePrefs') || {};
         const { userId } = req.params;
         if (prefs[userId]) {
@@ -315,7 +348,7 @@ export function startDashboard({ cache, cooldown, log, client, getStats }) {
 
     // --- Cache management ---
 
-    app.post('/api/cache/clear', requireAuth, (req, res) => {
+    app.post('/api/cache/clear', requireAuth, requireCsrf, (req, res) => {
         const before = cache.stats();
         cache.clear();
         res.json({ ok: true, cleared: before.size });
@@ -323,7 +356,7 @@ export function startDashboard({ cache, cooldown, log, client, getStats }) {
 
     // --- Translation test ---
 
-    app.post('/api/translate/test', requireAuth, async (req, res) => {
+    app.post('/api/translate/test', requireAuth, requireCsrf, async (req, res) => {
         const { text, targetLanguage } = req.body;
         if (!text?.trim()) {
             return res.status(400).json({ error: 'Text is required' });
@@ -394,4 +427,4 @@ export function startDashboard({ cache, cooldown, log, client, getStats }) {
 }
 
 // Export for testing internals
-export const _test = { hashPassword, safeCompare, validateConfigUpdate, buildSessionCookie, sessions };
+export const _test = { hashPassword, safeCompare, validateConfigUpdate, buildSessionCookie, sessions, requireCsrf };

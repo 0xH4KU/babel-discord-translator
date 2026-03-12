@@ -66,7 +66,7 @@ import { CooldownManager } from '../src/cooldown.js';
 import { TranslationLog } from '../src/log.js';
 
 // --- Helper: make HTTP requests to the test server ---
-function request(server, method, path, { body, cookie } = {}) {
+function request(server, method, path, { body, cookie, csrf } = {}) {
     return new Promise((resolve, reject) => {
         const addr = server.address();
         const options = {
@@ -77,6 +77,7 @@ function request(server, method, path, { body, cookie } = {}) {
             headers: { 'Content-Type': 'application/json' },
         };
         if (cookie) options.headers.Cookie = cookie;
+        if (csrf) options.headers['x-csrf-token'] = csrf;
 
         const req = http.request(options, (res) => {
             let data = '';
@@ -100,6 +101,7 @@ function request(server, method, path, { body, cookie } = {}) {
 describe('Dashboard API', () => {
     let server;
     let sessionCookie;
+    let csrfToken;
 
     beforeAll(async () => {
         const cache = new TranslationCache(100);
@@ -155,6 +157,8 @@ describe('Dashboard API', () => {
         });
         expect(res.status).toBe(200);
         expect(res.body.authenticated).toBe(true);
+        expect(res.body.csrfToken).toBeDefined();
+        csrfToken = res.body.csrfToken;
     });
 
     it('should report unauthenticated without cookie', async () => {
@@ -191,12 +195,24 @@ describe('Dashboard API', () => {
         expect(res.body.vertexAiApiKey).not.toContain('sk-abcdef');
     });
 
+    // --- CSRF protection ---
+
+    it('should reject mutation without CSRF token', async () => {
+        const res = await request(server, 'POST', '/api/config', {
+            cookie: sessionCookie,
+            body: { cooldownSeconds: 10 },
+        });
+        expect(res.status).toBe(403);
+        expect(res.body.error).toBe('Invalid CSRF token');
+    });
+
     // --- Config update protection ---
 
     it('should not overwrite protected fields via POST /api/config', async () => {
         const { store } = await import('../src/store.js');
         const res = await request(server, 'POST', '/api/config', {
             cookie: sessionCookie,
+            csrf: csrfToken,
             body: {
                 tokenUsage: { hacked: true },
                 usageHistory: [{ hacked: true }],
@@ -219,6 +235,7 @@ describe('Dashboard API', () => {
     it('should reject translate test with empty text', async () => {
         const res = await request(server, 'POST', '/api/translate/test', {
             cookie: sessionCookie,
+            csrf: csrfToken,
             body: { text: '' },
         });
         expect(res.status).toBe(400);
@@ -227,6 +244,7 @@ describe('Dashboard API', () => {
     it('should translate test text successfully', async () => {
         const res = await request(server, 'POST', '/api/translate/test', {
             cookie: sessionCookie,
+            csrf: csrfToken,
             body: { text: 'Hello', targetLanguage: 'ja' },
         });
         expect(res.status).toBe(200);

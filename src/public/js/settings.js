@@ -20,6 +20,8 @@ async function loadSettings() {
     document.getElementById('cfg-model').value = currentConfig.geminiModel || '';
     document.getElementById('cfg-cooldown').value = currentConfig.cooldownSeconds || 5;
     document.getElementById('cfg-cache').value = currentConfig.cacheMaxSize || 2000;
+    document.getElementById('cfg-max-input').value = currentConfig.maxInputLength || 2000;
+    document.getElementById('cfg-max-output').value = currentConfig.maxOutputTokens || 1000;
     document.getElementById('cfg-input-price').value = currentConfig.inputPricePerMillion || 0;
     document.getElementById('cfg-output-price').value = currentConfig.outputPricePerMillion || 0;
     document.getElementById('cfg-budget').value = currentConfig.dailyBudgetUsd || 0;
@@ -38,6 +40,8 @@ async function saveSettings() {
   updates.geminiModel = document.getElementById('cfg-model').value.trim();
   updates.cooldownSeconds = parseInt(document.getElementById('cfg-cooldown').value) || 5;
   updates.cacheMaxSize = parseInt(document.getElementById('cfg-cache').value) || 2000;
+  updates.maxInputLength = parseInt(document.getElementById('cfg-max-input').value) || 2000;
+  updates.maxOutputTokens = parseInt(document.getElementById('cfg-max-output').value) || 1000;
   updates.inputPricePerMillion = parseFloat(document.getElementById('cfg-input-price').value) || 0;
   updates.outputPricePerMillion = parseFloat(document.getElementById('cfg-output-price').value) || 0;
   updates.dailyBudgetUsd = parseFloat(document.getElementById('cfg-budget').value) || 0;
