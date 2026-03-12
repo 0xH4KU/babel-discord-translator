@@ -176,10 +176,7 @@ export function startDashboard({ cache, cooldown, log, client, getStats }) {
 
     app.post('/api/login', loginLimiter, (req, res) => {
         const { password } = req.body;
-        const inputHash = hashPassword(String(password || ''));
-        const expectedHash = hashPassword(config.dashboardPassword);
-
-        if (safeCompare(inputHash, expectedHash)) {
+        if (password && password === config.dashboardPassword) {
             const token = crypto.randomBytes(32).toString('hex');
             sessions.set(token, Date.now() + SESSION_TTL_MS);
             res.setHeader('Set-Cookie', buildSessionCookie(token, 86400));
