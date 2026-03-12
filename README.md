@@ -20,14 +20,18 @@ Right-click any message → *Babel* → Get an ephemeral translation only you ca
 - 🔄 **Context Menu Translation** — Right-click → Apps → Babel
 - 👁 **Ephemeral Messages** — Translations are private, only visible to you
 - 🌍 **Multi-language Support** — Auto-detects your Discord locale, or use `/setlang` to choose
+- 🌐 **Check Your Language** — Use `/mylang` to see your current translation language
 - ⚡ **LRU Cache** — Same message translated by 50 users = 1 API call
 - 🔁 **Auto-Retry** — Exponential backoff for transient API errors (429, 503)
 - 🕐 **Per-User Cooldown** — Configurable rate limiting
 - 🔒 **Server Whitelist** — Control which servers can use the bot
-- 💰 **Cost Tracking** — Real-time token usage with daily budget + 30-day history
-- 📝 **Translation Logs** — In-memory audit log viewable in the dashboard
+- 💰 **Cost Tracking** — Real-time token usage with daily budget + 30-day history chart
+- 📝 **Translation & Error Logs** — In-memory audit log with filter tabs
 - ✏️ **Custom Prompt** — Customize the translation prompt from the dashboard
 - 🖥 **Web Dashboard** — Login-protected admin panel with setup wizard
+- 🩺 **API Health Check** — Dashboard shows API connectivity status
+- 🧪 **Translation Test** — Test translations directly from the dashboard
+- 👤 **User Preferences** — View and manage user language settings
 
 ## Quick Start
 
@@ -67,7 +71,7 @@ Open `http://localhost:3000` → Login → Complete the setup wizard.
 DISCORD_APP_ID=your_app_id DISCORD_BOT_TOKEN=your_token npm run register
 ```
 
-This registers the **Babel** context menu, **/setlang**, **/translate**, and **/help** commands.
+This registers the **Babel** context menu, **/setlang**, **/translate**, **/mylang**, and **/help** commands.
 
 ### 3. Invite the Bot
 
@@ -87,6 +91,9 @@ After starting the bot, open `http://localhost:3000`:
 - **Budget** — Set daily USD limit (0 = unlimited)
 - **Prompt** — Customize the translation system prompt
 - **Whitelist** — Toggle servers on/off
+- **Translation Test** — Test API connectivity and translations
+- **User Preferences** — View and manage per-user language settings
+- **API Health** — Monitor API connectivity in real-time
 
 ## Multi-language Support
 

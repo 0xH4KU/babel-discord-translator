@@ -34,6 +34,12 @@ export class TranslationCache {
         this.cache.set(messageId, translation);
     }
 
+    clear() {
+        this.cache.clear();
+        this.hits = 0;
+        this.misses = 0;
+    }
+
     stats() {
         const total = this.hits + this.misses;
         return {

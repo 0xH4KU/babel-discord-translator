@@ -92,6 +92,11 @@ const commands = [
         type: 1,
         description: 'Show how to use Babel / 顯示使用說明',
     },
+    {
+        name: 'mylang',
+        type: 1,
+        description: 'Check your current translation language / 查看目前翻譯語言設定',
+    },
 ];
 
 // Bulk overwrite all commands

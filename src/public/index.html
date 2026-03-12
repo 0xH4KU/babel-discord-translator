@@ -745,6 +745,243 @@
       font-size: 0.7rem;
       color: var(--text-dim);
     }
+
+    /* ===== HEALTH BADGE ===== */
+    .health-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.8rem;
+      padding: 0.2rem 0.6rem;
+      border-radius: 6px;
+      font-weight: 600;
+    }
+
+    .health-badge.ok {
+      background: rgba(67, 181, 129, 0.15);
+      color: var(--green);
+    }
+
+    .health-badge.fail {
+      background: rgba(240, 71, 71, 0.15);
+      color: var(--red);
+    }
+
+    .health-badge.checking {
+      background: rgba(250, 166, 26, 0.15);
+      color: var(--yellow);
+    }
+
+    /* ===== LOG FILTERS ===== */
+    .log-filters {
+      display: flex;
+      gap: 0.5rem;
+      padding: 0 1.25rem 0.5rem;
+    }
+
+    .log-filter-btn {
+      padding: 0.3rem 0.75rem;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-dim);
+      font-size: 0.75rem;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .log-filter-btn:hover {
+      border-color: var(--border-hover);
+      color: var(--text);
+    }
+
+    .log-filter-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    .badge-red {
+      background: rgba(240, 71, 71, 0.15);
+      color: var(--red);
+    }
+
+    /* ===== BAR CHART ===== */
+    .bar-chart {
+      display: flex;
+      align-items: flex-end;
+      gap: 3px;
+      height: 80px;
+      padding: 0 1.25rem 0.5rem;
+    }
+
+    .bar-chart .bar {
+      flex: 1;
+      min-width: 8px;
+      background: var(--accent);
+      border-radius: 3px 3px 0 0;
+      transition: height 0.3s;
+      cursor: pointer;
+      position: relative;
+      opacity: 0.7;
+    }
+
+    .bar-chart .bar:hover {
+      opacity: 1;
+    }
+
+    .bar-chart .bar:hover::after {
+      content: attr(data-tip);
+      position: absolute;
+      bottom: calc(100% + 4px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.65rem;
+      white-space: nowrap;
+      color: var(--text);
+      z-index: 10;
+    }
+
+    /* ===== USER PREFS TABLE ===== */
+    .prefs-count {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      margin-bottom: 0.75rem;
+    }
+
+    /* ===== TEST WIDGET ===== */
+    .test-widget {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .test-widget input {
+      flex: 1;
+      padding: 0.65rem 0.85rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 0.9rem;
+      font-family: inherit;
+      outline: none;
+    }
+
+    .test-widget input:focus {
+      border-color: var(--accent);
+    }
+
+    .test-result {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.75rem;
+      font-size: 0.85rem;
+      line-height: 1.5;
+      display: none;
+    }
+
+    .test-result.show {
+      display: block;
+    }
+
+    .test-result .meta {
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      margin-top: 0.5rem;
+    }
+
+    /* ===== LOGOUT ===== */
+    .btn-logout {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 0.4rem 0.85rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-left: 0.75rem;
+    }
+
+    .btn-logout:hover {
+      border-color: var(--red);
+      color: var(--red);
+    }
+
+    /* ===== RESPONSIVE ===== */
+    @media (max-width: 768px) {
+      #dashboard-view {
+        padding: 1rem;
+      }
+
+      .header {
+        flex-wrap: wrap;
+        gap: 0.75rem;
+      }
+
+      .header .status {
+        margin-left: 0;
+      }
+
+      .grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.75rem;
+      }
+
+      .settings-row {
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+
+      .tabs {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .tab-btn {
+        white-space: nowrap;
+        padding: 0.65rem 0.85rem;
+        font-size: 0.8rem;
+      }
+
+      .data-table {
+        font-size: 0.75rem;
+      }
+
+      .data-table th,
+      .data-table td {
+        padding: 0.4rem 0.5rem;
+      }
+
+      .wizard-card,
+      .login-card {
+        padding: 1.5rem;
+      }
+
+      .bar-chart {
+        height: 60px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .card .value {
+        font-size: 1.3rem;
+      }
+    }
   </style>
 </head>
 
@@ -835,6 +1072,8 @@
         <span class="tag" id="bot-tag"></span>
       </div>
       <div class="status">Online</div>
+      <span class="health-badge checking" id="api-health">⟳ API</span>
+      <button class="btn-logout" onclick="doLogout()">Logout</button>
     </div>
 
     <div class="tabs">
@@ -893,6 +1132,7 @@
           <h3>Usage History (Last 30 Days)</h3>
           <span class="sub-info" id="history-summary"></span>
         </div>
+        <div class="bar-chart" id="history-chart"></div>
         <div id="history-table-container">
           <div class="empty-state">No history data yet. Usage is archived daily.</div>
         </div>
@@ -905,6 +1145,11 @@
         <div class="table-header">
           <h3>Translation Log</h3>
           <span class="sub-info" id="log-count"></span>
+        </div>
+        <div class="log-filters">
+          <button class="log-filter-btn active" onclick="setLogFilter(undefined)">All</button>
+          <button class="log-filter-btn" onclick="setLogFilter('translation')">Translations</button>
+          <button class="log-filter-btn" onclick="setLogFilter('error')">Errors</button>
         </div>
         <div id="log-table-container">
           <div class="empty-state">No translations logged yet. Logs are stored in memory only.</div>
@@ -975,6 +1220,9 @@
             <label>Cache Max Size</label>
             <input type="number" id="cfg-cache" min="100" max="10000">
           </div>
+          <div class="input-group" style="flex:0;align-self:flex-end">
+            <button class="btn btn-secondary btn-sm" onclick="clearCache()">Clear Cache</button>
+          </div>
         </div>
       </div>
 
@@ -1004,6 +1252,37 @@
         <div class="add-guild-row">
           <input type="text" id="add-guild-input" placeholder="Paste a Guild ID to add manually">
           <button class="btn btn-primary btn-sm" onclick="addManualGuild()">Add</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Translation Test</h3>
+        <div style="font-size:0.8rem;color:var(--text-dim);margin-bottom:0.75rem">
+          Test the translation API directly. This uses real tokens.
+        </div>
+        <div class="test-widget">
+          <input type="text" id="test-text" placeholder="Enter text to translate...">
+          <select id="test-lang" style="padding:0.65rem 0.85rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;font-size:0.85rem">
+            <option value="auto">Auto</option>
+            <option value="zh-TW">繁體中文</option>
+            <option value="zh-CN">简体中文</option>
+            <option value="en">English</option>
+            <option value="ja">日本語</option>
+            <option value="ko">한국어</option>
+          </select>
+          <button class="btn btn-primary btn-sm" id="test-btn" onclick="testTranslate()">Test</button>
+        </div>
+        <div class="test-result" id="test-result">
+          <div id="test-output"></div>
+          <div class="meta" id="test-meta"></div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>User Language Preferences</h3>
+        <div class="prefs-count" id="prefs-count">Loading...</div>
+        <div id="user-prefs-container">
+          <div class="empty-state">Loading user preferences...</div>
         </div>
       </div>
 
@@ -1079,6 +1358,12 @@
       }
     }
 
+    async function doLogout() {
+      await api('/logout', { method: 'POST' });
+      if (refreshTimer) clearInterval(refreshTimer);
+      show('login-view');
+    }
+
     document.getElementById('login-pw').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') doLogin();
     });
@@ -1149,7 +1434,7 @@
       document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
       document.querySelector(`[onclick="switchTab('${name}')"]`).classList.add('active');
       document.getElementById('tab-' + name).classList.add('active');
-      if (name === 'settings') loadSettings();
+      if (name === 'settings') { loadSettings(); loadUserPrefs(); }
       if (name === 'history') loadHistory();
       if (name === 'logs') loadLogs();
     }
@@ -1196,9 +1481,10 @@
         document.getElementById('stat-total').textContent = d.translations.total;
         document.getElementById('stat-hitrate').textContent = d.cache.hitRate;
         document.getElementById('stat-saved').textContent =
-          d.translations.saved > 0 ? d.translations.saved + ' cache hits' : d.cache.size + ' / ' + d.cache.maxSize;
+          d.cache.size + ' / ' + d.cache.maxSize + ' cached' +
+          (d.cache.hits > 0 ? ' · ' + d.cache.hits + ' hits' : '');
         document.getElementById('stat-uptime').textContent = formatUptime(d.bot.uptime);
-        document.getElementById('stat-memory').textContent = d.bot.memoryMB + ' MB';
+        document.getElementById('stat-memory').textContent = d.bot.memoryMB + ' MB · ' + d.bot.guilds + ' servers';
       } catch { }
     }
 
@@ -1347,6 +1633,7 @@
 
     async function loadDashboard() {
       loadStats();
+      checkApiHealth();
       if (refreshTimer) clearInterval(refreshTimer);
       refreshTimer = setInterval(loadStats, 5000);
     }
@@ -1381,8 +1668,10 @@
         const data = await res.json();
 
         const container = document.getElementById('history-table-container');
+        const chart = document.getElementById('history-chart');
         if (data.length === 0) {
           container.innerHTML = '<div class="empty-state">No history data yet. Usage is archived daily.</div>';
+          chart.innerHTML = '';
           document.getElementById('history-summary').textContent = '';
           return;
         }
@@ -1392,12 +1681,19 @@
         document.getElementById('history-summary').textContent =
           `${data.length} days · ${totalReqs} requests · ${formatUsd(totalCost)} total`;
 
+        // Bar chart
+        const maxReqs = Math.max(...data.map(d => d.requests), 1);
+        chart.innerHTML = data.map(d => {
+          const h = Math.max((d.requests / maxReqs) * 100, 3);
+          return `<div class="bar" style="height:${h}%" data-tip="${d.date}: ${d.requests} reqs · ${formatUsd(d.cost)}"></div>`;
+        }).join('');
+
+        // Table
         let html = `<table class="data-table">
           <thead><tr>
             <th>Date</th><th>Requests</th><th>Input Tokens</th><th>Output Tokens</th><th>Cost</th>
           </tr></thead><tbody>`;
 
-        // Show newest first
         for (const d of [...data].reverse()) {
           html += `<tr>
             <td class="mono">${d.date}</td>
@@ -1415,9 +1711,21 @@
 
     // ========== Logs ==========
 
+    let currentLogFilter;
+
+    function setLogFilter(filter) {
+      currentLogFilter = filter;
+      document.querySelectorAll('.log-filter-btn').forEach((btn, i) => {
+        const filters = [undefined, 'translation', 'error'];
+        btn.classList.toggle('active', filters[i] === filter);
+      });
+      loadLogs();
+    }
+
     async function loadLogs() {
       try {
-        const res = await api('/logs');
+        const filterParam = currentLogFilter ? `&filter=${currentLogFilter}` : '';
+        const res = await api('/logs?count=100' + filterParam);
         if (!res.ok) return;
         const data = await res.json();
 
@@ -1425,36 +1733,167 @@
         document.getElementById('log-count').textContent = data.length + ' entries';
 
         if (data.length === 0) {
-          container.innerHTML = '<div class="empty-state">No translations logged yet.</div>';
+          container.innerHTML = '<div class="empty-state">No entries found.</div>';
           return;
         }
 
         let html = `<table class="data-table">
           <thead><tr>
-            <th>Time</th><th>Server</th><th>User</th><th>Preview</th><th>Lang</th><th>Source</th>
+            <th>Time</th><th>Type</th><th>Server</th><th>User</th><th>Detail</th><th>Source</th>
           </tr></thead><tbody>`;
 
         for (const e of data) {
           const time = new Date(e.timestamp).toLocaleTimeString();
-          const preview = (e.contentPreview || '').replace(/</g, '&lt;');
-          const sourceBadge = e.cached
-            ? '<span class="badge badge-yellow">Cache</span>'
-            : '<span class="badge badge-green">API</span>';
-          const langLabel = e.targetLanguage === 'auto' ? 'auto' : e.targetLanguage;
-          const langSrc = e.langSource === 'setlang' ? '⚙️' : e.langSource === 'locale' ? '🌐' : '';
-          html += `<tr>
-            <td class="mono dim">${time}</td>
-            <td>${e.guildName}</td>
-            <td class="dim">${e.userTag}</td>
-            <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${preview}</td>
-            <td class="mono">${langLabel} ${langSrc}</td>
-            <td>${sourceBadge}</td>
-          </tr>`;
+          if (e.type === 'error') {
+            const errMsg = (e.error || '').replace(/</g, '&lt;');
+            html += `<tr style="background:rgba(240,71,71,0.04)">
+              <td class="mono dim">${time}</td>
+              <td><span class="badge badge-red">Error</span></td>
+              <td>${e.guildName}</td>
+              <td class="dim">${e.userTag}</td>
+              <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${errMsg}">${errMsg}</td>
+              <td class="dim">${e.command || ''}</td>
+            </tr>`;
+          } else {
+            const preview = (e.contentPreview || '').replace(/</g, '&lt;');
+            const sourceBadge = e.cached
+              ? '<span class="badge badge-yellow">Cache</span>'
+              : '<span class="badge badge-green">API</span>';
+            const langLabel = e.targetLanguage === 'auto' ? 'auto' : e.targetLanguage;
+            const langSrc = e.langSource === 'setlang' ? '⚙️' : e.langSource === 'locale' ? '🌐' : '';
+            html += `<tr>
+              <td class="mono dim">${time}</td>
+              <td><span class="badge badge-green">OK</span></td>
+              <td>${e.guildName}</td>
+              <td class="dim">${e.userTag}</td>
+              <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${preview}</td>
+              <td>${langLabel} ${langSrc} ${sourceBadge}</td>
+            </tr>`;
+          }
         }
 
         html += '</tbody></table>';
         container.innerHTML = html;
       } catch { }
+    }
+
+    // ========== Health Check ==========
+
+    async function checkApiHealth() {
+      const badge = document.getElementById('api-health');
+      badge.className = 'health-badge checking';
+      badge.textContent = '⟳ API';
+      try {
+        const res = await api('/health');
+        const data = await res.json();
+        if (data.healthy) {
+          badge.className = 'health-badge ok';
+          badge.textContent = '✓ API ' + data.latencyMs + 'ms';
+        } else {
+          badge.className = 'health-badge fail';
+          badge.textContent = '✗ API';
+          badge.title = data.error || 'Unknown error';
+        }
+      } catch {
+        badge.className = 'health-badge fail';
+        badge.textContent = '✗ API';
+      }
+    }
+
+    // ========== User Prefs ==========
+
+    const LANG_NAMES = {
+      'zh-TW': '繁體中文', 'zh-CN': '简体中文', en: 'English',
+      ja: '日本語', ko: '한국어', es: 'Español', fr: 'Français',
+      de: 'Deutsch', pt: 'Português', ru: 'Русский', it: 'Italiano',
+      vi: 'Tiếng Việt', th: 'ไทย', ar: 'العربية', hi: 'हिन्दी',
+      id: 'Bahasa Indonesia', tr: 'Türkçe',
+    };
+
+    async function loadUserPrefs() {
+      try {
+        const res = await api('/user-prefs');
+        if (!res.ok) return;
+        const { prefs, count } = await res.json();
+        document.getElementById('prefs-count').textContent = count + ' user(s) with custom settings';
+
+        const container = document.getElementById('user-prefs-container');
+        if (count === 0) {
+          container.innerHTML = '<div class="empty-state">No users have set custom languages yet.</div>';
+          return;
+        }
+
+        let html = `<table class="data-table"><thead><tr>
+          <th>User ID</th><th>Language</th><th></th>
+        </tr></thead><tbody>`;
+        for (const [userId, lang] of Object.entries(prefs)) {
+          const name = LANG_NAMES[lang] || lang;
+          html += `<tr>
+            <td class="mono" style="font-size:0.8rem">${userId}</td>
+            <td>${name} (${lang})</td>
+            <td><button class="btn-danger" onclick="deleteUserPref('${userId}')">Delete</button></td>
+          </tr>`;
+        }
+        html += '</tbody></table>';
+        container.innerHTML = html;
+      } catch { }
+    }
+
+    async function deleteUserPref(userId) {
+      const res = await api('/user-prefs/' + userId, { method: 'DELETE' });
+      if (res.ok) {
+        showToast('User preference deleted');
+        loadUserPrefs();
+      } else {
+        showToast('Delete failed', true);
+      }
+    }
+
+    // ========== Cache Clear ==========
+
+    async function clearCache() {
+      const res = await api('/cache/clear', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        showToast(`Cache cleared (${data.cleared} entries removed)`);
+        loadStats();
+      } else {
+        showToast('Clear failed', true);
+      }
+    }
+
+    // ========== Translation Test ==========
+
+    async function testTranslate() {
+      const text = document.getElementById('test-text').value.trim();
+      const lang = document.getElementById('test-lang').value;
+      if (!text) { showToast('Enter some text first', true); return; }
+
+      const btn = document.getElementById('test-btn');
+      btn.disabled = true;
+      btn.textContent = '...';
+      const resultDiv = document.getElementById('test-result');
+      resultDiv.classList.remove('show');
+
+      try {
+        const res = await api('/translate/test', {
+          method: 'POST',
+          body: JSON.stringify({ text, targetLanguage: lang }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          document.getElementById('test-output').textContent = data.translation;
+          document.getElementById('test-meta').textContent =
+            `${data.latencyMs}ms · ${data.inputTokens} in / ${data.outputTokens} out tokens`;
+          resultDiv.classList.add('show');
+        } else {
+          showToast('Test failed: ' + data.error, true);
+        }
+      } catch (err) {
+        showToast('Test failed: ' + err.message, true);
+      }
+      btn.disabled = false;
+      btn.textContent = 'Test';
     }
 
     // ========== Prompt ==========

@@ -14,6 +14,7 @@ export class TranslationLog {
      */
     add({ guildId, guildName, userId, userTag, contentPreview, cached, targetLanguage, langSource, timestamp }) {
         this.entries.push({
+            type: 'translation',
             guildId,
             guildName: guildName || guildId,
             userId,
@@ -31,10 +32,35 @@ export class TranslationLog {
     }
 
     /**
-     * Get recent log entries (newest first).
+     * Add an error log entry.
      */
-    getRecent(count = 50) {
-        return this.entries.slice(-count).reverse();
+    addError({ guildId, guildName, userId, userTag, error, command, timestamp }) {
+        this.entries.push({
+            type: 'error',
+            guildId,
+            guildName: guildName || guildId || 'Unknown',
+            userId,
+            userTag: userTag || userId || 'Unknown',
+            error: String(error).slice(0, 200),
+            command: command || 'unknown',
+            timestamp: timestamp || Date.now(),
+        });
+
+        if (this.entries.length > this.maxSize) {
+            this.entries.shift();
+        }
+    }
+
+    /**
+     * Get recent log entries (newest first).
+     * @param {number} count
+     * @param {string} [filter] - 'translation', 'error', or undefined for all
+     */
+    getRecent(count = 50, filter) {
+        const filtered = filter
+            ? this.entries.filter(e => e.type === filter)
+            : this.entries;
+        return filtered.slice(-count).reverse();
     }
 
     /**
@@ -42,5 +68,12 @@ export class TranslationLog {
      */
     get size() {
         return this.entries.length;
+    }
+
+    /**
+     * Get error count.
+     */
+    get errorCount() {
+        return this.entries.filter(e => e.type === 'error').length;
     }
 }

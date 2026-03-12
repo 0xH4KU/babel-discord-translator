@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { config } from './config.js';
 import { store } from './store.js';
 import { usage } from './usage.js';
+import { translate } from './translate.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -51,6 +52,18 @@ export function startDashboard({ cache, cooldown, log, client, getStats }) {
         res.json({ authenticated: !!(token && sessions.has(token)) });
     });
 
+    // --- Logout ---
+
+    app.post('/api/logout', (req, res) => {
+        const token = getSession(req);
+        if (token) sessions.delete(token);
+        res.setHeader(
+            'Set-Cookie',
+            'session=; HttpOnly; Path=/; SameSite=Strict; Max-Age=0',
+        );
+        res.json({ ok: true });
+    });
+
     // --- Protected routes ---
 
     app.get('/api/setup-status', requireAuth, (req, res) => {
@@ -77,6 +90,7 @@ export function startDashboard({ cache, cooldown, log, client, getStats }) {
             },
             cache: cacheStats,
             usage: usageStats,
+            errors: log.errorCount,
         });
     });
 
@@ -125,15 +139,113 @@ export function startDashboard({ cache, cooldown, log, client, getStats }) {
         res.json(guilds);
     });
 
-    // --- New endpoints ---
+    // --- Usage history ---
 
     app.get('/api/usage/history', requireAuth, (req, res) => {
         res.json(usage.getHistory());
     });
 
+    // --- Logs (with optional filter) ---
+
     app.get('/api/logs', requireAuth, (req, res) => {
         const count = Math.min(parseInt(req.query.count) || 50, 200);
-        res.json(log.getRecent(count));
+        const filter = req.query.filter; // 'translation', 'error', or undefined
+        res.json(log.getRecent(count, filter));
+    });
+
+    // --- User language preferences ---
+
+    app.get('/api/user-prefs', requireAuth, (req, res) => {
+        const prefs = store.get('userLanguagePrefs') || {};
+        res.json({
+            prefs,
+            count: Object.keys(prefs).length,
+        });
+    });
+
+    app.delete('/api/user-prefs/:userId', requireAuth, (req, res) => {
+        const prefs = store.get('userLanguagePrefs') || {};
+        const { userId } = req.params;
+        if (prefs[userId]) {
+            delete prefs[userId];
+            store.set('userLanguagePrefs', prefs);
+            res.json({ ok: true, deleted: userId });
+        } else {
+            res.status(404).json({ error: 'User not found' });
+        }
+    });
+
+    // --- Cache management ---
+
+    app.post('/api/cache/clear', requireAuth, (req, res) => {
+        const before = cache.stats();
+        cache.clear();
+        res.json({ ok: true, cleared: before.size });
+    });
+
+    // --- Translation test ---
+
+    app.post('/api/translate/test', requireAuth, async (req, res) => {
+        const { text, targetLanguage } = req.body;
+        if (!text?.trim()) {
+            return res.status(400).json({ error: 'Text is required' });
+        }
+        try {
+            const start = Date.now();
+            const result = await translate(text, targetLanguage || 'auto');
+            usage.record(result.inputTokens, result.outputTokens);
+            res.json({
+                ok: true,
+                translation: result.text,
+                inputTokens: result.inputTokens,
+                outputTokens: result.outputTokens,
+                latencyMs: Date.now() - start,
+            });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // --- API health check ---
+
+    app.get('/api/health', requireAuth, async (req, res) => {
+        const apiKey = store.get('vertexAiApiKey');
+        const project = store.get('gcpProject');
+        if (!apiKey || !project) {
+            return res.json({ healthy: false, error: 'API not configured' });
+        }
+        try {
+            const start = Date.now();
+            const location = store.get('gcpLocation') || 'global';
+            const model = store.get('geminiModel');
+            const baseUrl =
+                location === 'global'
+                    ? 'https://aiplatform.googleapis.com'
+                    : `https://${location}-aiplatform.googleapis.com`;
+            const url = `${baseUrl}/v1beta1/projects/${project}/locations/${location}/publishers/google/models/${model}:generateContent`;
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-goog-api-key': apiKey,
+                },
+                body: JSON.stringify({
+                    contents: [{ role: 'user', parts: [{ text: 'hi' }] }],
+                    generationConfig: { maxOutputTokens: 5 },
+                }),
+                signal: AbortSignal.timeout(10000),
+            });
+
+            if (response.ok) {
+                res.json({ healthy: true, latencyMs: Date.now() - start });
+            } else {
+                const err = await response.text();
+                res.json({ healthy: false, error: `${response.status}: ${err.slice(0, 200)}` });
+            }
+        } catch (err) {
+            res.json({ healthy: false, error: err.message });
+        }
     });
 
     app.listen(config.dashboardPort, () => {
