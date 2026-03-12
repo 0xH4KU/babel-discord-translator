@@ -172,3 +172,7 @@ ${text}`;
         outputTokens: meta.candidatesTokenCount || 0,
     };
 }
+
+// Exports for testing internals
+export const _test = { getLanguageName, buildTargetedPrompt, fetchWithRetry, LOCALE_MAP, DEFAULT_PROMPT };
+

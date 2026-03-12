@@ -119,6 +119,23 @@ All configuration is managed through the web dashboard. The `.env` file only nee
 | `DASHBOARD_PORT` | Dashboard web server port | `3000` |
 | `DASHBOARD_PASSWORD` | Dashboard login password | `admin` |
 
+## Project Structure
+
+```
+src/
+├── index.js        # Discord bot entry point & interaction handlers
+├── config.js       # Environment variable config
+├── lang.js         # Language detection & locale mapping (pure functions)
+├── translate.js    # Vertex AI Gemini API client with retry logic
+├── cache.js        # LRU translation cache
+├── cooldown.js     # Per-user rate limiter
+├── log.js          # In-memory ring buffer audit log
+├── store.js        # File-based config persistence
+├── usage.js        # Token usage tracking & budget enforcement
+├── dashboard.js    # Express web dashboard & API
+└── public/         # Dashboard frontend assets
+```
+
 ## Development
 
 ```bash
@@ -128,12 +145,30 @@ npm run dev
 # Run tests
 npm test
 
+# Run tests in watch mode
+npm run test:watch
+
 # Run linter
 npm run lint
 
 # Format code
 npm run format
 ```
+
+### Test Coverage
+
+108 tests across 8 suites covering all modules:
+
+| Suite | Tests | Covers |
+|---|---|---|
+| `cache.test.js` | 7 | LRU eviction, hit/miss stats |
+| `cooldown.test.js` | 6 | Rate limiting, cleanup, per-user isolation |
+| `log.test.js` | 14 | Ring buffer, addError, type filtering, defaults |
+| `lang.test.js` | 29 | Script detection (CJK/Cyrillic/Arabic/Thai/Hindi), locale mapping, same-language check |
+| `translate.test.js` | 20 | Retry logic, prompt building, API errors, URL routing |
+| `usage.test.js` | 12 | Cost calculation, budget enforcement, day rollover, history |
+| `store.test.js` | 8 | File persistence, defaults merging, corrupt JSON resilience |
+| `dashboard.test.js` | 12 | Auth flow, API key masking, config protection, translate endpoint |
 
 ## Production Deployment
 

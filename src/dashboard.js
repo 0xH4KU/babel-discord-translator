@@ -251,4 +251,6 @@ export function startDashboard({ cache, cooldown, log, client, getStats }) {
     app.listen(config.dashboardPort, () => {
         console.log(`📊 Dashboard: http://localhost:${config.dashboardPort}`);
     });
+
+    return app;
 }

@@ -1,0 +1,262 @@
+import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest';
+import http from 'http';
+
+// --- Mock dependencies ---
+vi.mock('dotenv/config', () => ({}));
+
+vi.mock('../src/config.js', () => ({
+    config: {
+        dashboardPort: 0, // bind to random port
+        dashboardPassword: 'test-pass-123',
+    },
+}));
+
+vi.mock('../src/store.js', () => {
+    const data = {
+        vertexAiApiKey: 'sk-abcdef123456',
+        gcpProject: 'test-project',
+        gcpLocation: 'global',
+        geminiModel: 'gemini-2.5-flash-lite',
+        cooldownSeconds: 5,
+        cacheMaxSize: 2000,
+        setupComplete: true,
+        userLanguagePrefs: { user1: 'ja', user2: 'ko' },
+    };
+    return {
+        store: {
+            get: vi.fn((key) => data[key]),
+            set: vi.fn((key, val) => { data[key] = val; }),
+            update: vi.fn((obj) => Object.assign(data, obj)),
+            getAll: vi.fn(() => ({ ...data })),
+            isSetupComplete: vi.fn(() => data.setupComplete),
+        },
+    };
+});
+
+vi.mock('../src/usage.js', () => ({
+    usage: {
+        getStats: vi.fn(() => ({
+            date: '2025-03-01',
+            inputTokens: 1000,
+            outputTokens: 500,
+            requests: 10,
+            inputCost: 0.001,
+            outputCost: 0.001,
+            totalCost: 0.002,
+            dailyBudget: 1.0,
+            budgetUsedPercent: 0.2,
+            budgetExceeded: false,
+        })),
+        getHistory: vi.fn(() => []),
+        record: vi.fn(),
+    },
+}));
+
+vi.mock('../src/translate.js', () => ({
+    translate: vi.fn(async (text) => ({
+        text: `translated: ${text}`,
+        inputTokens: 10,
+        outputTokens: 5,
+    })),
+}));
+
+import { startDashboard } from '../src/dashboard.js';
+import { TranslationCache } from '../src/cache.js';
+import { CooldownManager } from '../src/cooldown.js';
+import { TranslationLog } from '../src/log.js';
+
+// --- Helper: make HTTP requests to the test server ---
+function request(server, method, path, { body, cookie } = {}) {
+    return new Promise((resolve, reject) => {
+        const addr = server.address();
+        const options = {
+            hostname: '127.0.0.1',
+            port: addr.port,
+            path,
+            method,
+            headers: { 'Content-Type': 'application/json' },
+        };
+        if (cookie) options.headers.Cookie = cookie;
+
+        const req = http.request(options, (res) => {
+            let data = '';
+            res.on('data', (chunk) => { data += chunk; });
+            res.on('end', () => {
+                resolve({
+                    status: res.statusCode,
+                    headers: res.headers,
+                    body: data ? JSON.parse(data) : null,
+                    rawHeaders: res.headers,
+                });
+            });
+        });
+
+        req.on('error', reject);
+        if (body) req.write(JSON.stringify(body));
+        req.end();
+    });
+}
+
+describe('Dashboard API', () => {
+    let server;
+    let sessionCookie;
+
+    beforeAll(async () => {
+        const cache = new TranslationCache(100);
+        const cooldown = new CooldownManager(5);
+        const log = new TranslationLog(100);
+        const mockClient = {
+            user: { tag: 'Babel#1234', displayAvatarURL: () => 'https://example.com/avatar.png' },
+            guilds: { cache: { size: 3, map: (fn) => [] } },
+        };
+
+        const app = startDashboard({
+            cache,
+            cooldown,
+            log,
+            client: mockClient,
+            getStats: () => ({ totalTranslations: 42, apiCalls: 30 }),
+        });
+
+        // Start on a random port
+        server = app.listen(0);
+    });
+
+    afterAll(() => {
+        server?.close();
+    });
+
+    // --- Auth tests ---
+
+    it('should reject login with wrong password', async () => {
+        const res = await request(server, 'POST', '/api/login', {
+            body: { password: 'wrong' },
+        });
+        expect(res.status).toBe(401);
+        expect(res.body.error).toBe('Wrong password');
+    });
+
+    it('should accept login with correct password', async () => {
+        const res = await request(server, 'POST', '/api/login', {
+            body: { password: 'test-pass-123' },
+        });
+        expect(res.status).toBe(200);
+        expect(res.body.ok).toBe(true);
+
+        // Extract session cookie for subsequent requests
+        const setCookie = res.rawHeaders['set-cookie'];
+        expect(setCookie).toBeDefined();
+        sessionCookie = setCookie[0].split(';')[0]; // 'session=xxx'
+    });
+
+    it('should report authenticated after login', async () => {
+        const res = await request(server, 'GET', '/api/auth/check', {
+            cookie: sessionCookie,
+        });
+        expect(res.status).toBe(200);
+        expect(res.body.authenticated).toBe(true);
+    });
+
+    it('should report unauthenticated without cookie', async () => {
+        const res = await request(server, 'GET', '/api/auth/check');
+        expect(res.body.authenticated).toBe(false);
+    });
+
+    // --- Protected route access ---
+
+    it('should reject unauthenticated requests to protected routes', async () => {
+        const res = await request(server, 'GET', '/api/stats');
+        expect(res.status).toBe(401);
+    });
+
+    it('should return stats for authenticated user', async () => {
+        const res = await request(server, 'GET', '/api/stats', {
+            cookie: sessionCookie,
+        });
+        expect(res.status).toBe(200);
+        expect(res.body.bot.name).toBe('Babel#1234');
+        expect(res.body.translations.total).toBe(42);
+    });
+
+    // --- Config masking ---
+
+    it('should mask API key in config response', async () => {
+        const res = await request(server, 'GET', '/api/config', {
+            cookie: sessionCookie,
+        });
+        expect(res.status).toBe(200);
+        expect(res.body.vertexAiApiKey).toMatch(/^••••/);
+        expect(res.body.hasApiKey).toBe(true);
+        // Should NOT expose the real key
+        expect(res.body.vertexAiApiKey).not.toContain('sk-abcdef');
+    });
+
+    // --- Config update protection ---
+
+    it('should not overwrite protected fields via POST /api/config', async () => {
+        const { store } = await import('../src/store.js');
+        const res = await request(server, 'POST', '/api/config', {
+            cookie: sessionCookie,
+            body: {
+                tokenUsage: { hacked: true },
+                usageHistory: [{ hacked: true }],
+                userLanguagePrefs: { hacked: true },
+                cooldownSeconds: 10,
+            },
+        });
+        expect(res.status).toBe(200);
+
+        // store.update should have been called without the protected fields
+        const lastCall = store.update.mock.calls[store.update.mock.calls.length - 1][0];
+        expect(lastCall).not.toHaveProperty('tokenUsage');
+        expect(lastCall).not.toHaveProperty('usageHistory');
+        expect(lastCall).not.toHaveProperty('userLanguagePrefs');
+        expect(lastCall.cooldownSeconds).toBe(10);
+    });
+
+    // --- Translate test endpoint ---
+
+    it('should reject translate test with empty text', async () => {
+        const res = await request(server, 'POST', '/api/translate/test', {
+            cookie: sessionCookie,
+            body: { text: '' },
+        });
+        expect(res.status).toBe(400);
+    });
+
+    it('should translate test text successfully', async () => {
+        const res = await request(server, 'POST', '/api/translate/test', {
+            cookie: sessionCookie,
+            body: { text: 'Hello', targetLanguage: 'ja' },
+        });
+        expect(res.status).toBe(200);
+        expect(res.body.ok).toBe(true);
+        expect(res.body.translation).toBe('translated: Hello');
+    });
+
+    // --- Logs ---
+
+    it('should return logs with count limit', async () => {
+        const res = await request(server, 'GET', '/api/logs?count=5', {
+            cookie: sessionCookie,
+        });
+        expect(res.status).toBe(200);
+        expect(Array.isArray(res.body)).toBe(true);
+    });
+
+    // --- Logout ---
+
+    it('should logout and clear session', async () => {
+        const res = await request(server, 'POST', '/api/logout', {
+            cookie: sessionCookie,
+        });
+        expect(res.status).toBe(200);
+        expect(res.body.ok).toBe(true);
+
+        // Subsequent request should fail
+        const check = await request(server, 'GET', '/api/stats', {
+            cookie: sessionCookie,
+        });
+        expect(check.status).toBe(401);
+    });
+});
