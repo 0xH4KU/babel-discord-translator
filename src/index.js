@@ -353,6 +353,25 @@ client.once(Events.ClientReady, (c) => {
     });
 });
 
+// --- Webhook management for /translate ---
+const webhookCache = new Map(); // channelId → Webhook
+
+async function getOrCreateWebhook(channel) {
+    const cached = webhookCache.get(channel.id);
+    if (cached) return cached;
+
+    // Look for an existing Babel webhook in this channel
+    const webhooks = await channel.fetchWebhooks();
+    let webhook = webhooks.find(w => w.name === 'Babel' && w.owner?.id === channel.client.user.id);
+
+    if (!webhook) {
+        webhook = await channel.createWebhook({ name: 'Babel', reason: 'Babel /translate public output' });
+    }
+
+    webhookCache.set(channel.id, webhook);
+    return webhook;
+}
+
 client.on(Events.InteractionCreate, async (interaction) => {
     // --- /setlang command ---
     if (interaction.isChatInputCommand() && interaction.commandName === 'setlang') {
@@ -413,9 +432,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
             usage.record(result.inputTokens, result.outputTokens);
             apiCalls++;
 
-            const original = text.length > 200 ? text.slice(0, 200) + '…' : text;
-            const reply = `> ${original.replace(/\n/g, '\n> ')}\n\n${result.text}`;
-            await interaction.editReply({ content: reply });
+            // Send translation publicly via webhook with user's avatar and name
+            const webhook = await getOrCreateWebhook(interaction.channel);
+            const member = interaction.member;
+            await webhook.send({
+                content: result.text,
+                username: member?.displayName || interaction.user.displayName,
+                avatarURL: interaction.user.displayAvatarURL({ size: 128 }),
+            });
+
+            // Dismiss the ephemeral "thinking" message
+            await interaction.deleteReply();
         } catch (error) {
             console.error('[/translate]', error.message);
             await interaction.editReply({ content: `翻譯失敗 / Translation failed: ${error.message}` });
