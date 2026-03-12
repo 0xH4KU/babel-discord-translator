@@ -139,11 +139,13 @@ function validateConfigUpdate(updates) {
  * Build the cookie string for session management.
  * @param {string} token - Session token (empty string to clear)
  * @param {number} maxAge - Max age in seconds
+ * @param {import('express').Request} [req] - Request object to detect HTTPS
  * @returns {string}
  */
-function buildSessionCookie(token, maxAge) {
+function buildSessionCookie(token, maxAge, req) {
     const parts = [`session=${token}`, 'HttpOnly', 'Path=/', 'SameSite=Strict', `Max-Age=${maxAge}`];
-    if (process.env.NODE_ENV === 'production') parts.push('Secure');
+    const isSecure = req?.secure || req?.headers?.['x-forwarded-proto'] === 'https';
+    if (isSecure) parts.push('Secure');
     return parts.join('; ');
 }
 
@@ -179,7 +181,7 @@ export function startDashboard({ cache, cooldown, log, client, getStats }) {
         if (password && password === config.dashboardPassword) {
             const token = crypto.randomBytes(32).toString('hex');
             sessions.set(token, Date.now() + SESSION_TTL_MS);
-            res.setHeader('Set-Cookie', buildSessionCookie(token, 86400));
+            res.setHeader('Set-Cookie', buildSessionCookie(token, 86400, req));
             res.json({ ok: true });
         } else {
             res.status(401).json({ error: 'Wrong password' });
@@ -197,7 +199,7 @@ export function startDashboard({ cache, cooldown, log, client, getStats }) {
     app.post('/api/logout', (req, res) => {
         const token = getSession(req);
         if (token) sessions.delete(token);
-        res.setHeader('Set-Cookie', buildSessionCookie('', 0));
+        res.setHeader('Set-Cookie', buildSessionCookie('', 0, req));
         res.json({ ok: true });
     });
 
