@@ -1,9 +1,10 @@
-import { store } from './store.js';
-
 /**
  * Daily token usage tracker with cost calculation, budget enforcement,
  * and 30-day history archiving.
+ * @module usage
  */
+import { store } from './store.js';
+
 class UsageTracker {
     constructor() {
         this.ensureToday();
@@ -38,7 +39,11 @@ class UsageTracker {
         }
     }
 
-    /** Record a translation's token usage. */
+    /**
+     * Record a translation's token usage.
+     * @param {number} inputTokens
+     * @param {number} outputTokens
+     */
     record(inputTokens, outputTokens) {
         this.ensureToday();
         const usage = store.get('tokenUsage');
@@ -48,7 +53,10 @@ class UsageTracker {
         store.set('tokenUsage', usage);
     }
 
-    /** Calculate today's cost in USD. */
+    /**
+     * Calculate today's cost in USD.
+     * @returns {{ date: string, inputTokens: number, outputTokens: number, requests: number, inputCost: number, outputCost: number, totalCost: number }}
+     */
     getCost() {
         this.ensureToday();
         const usage = store.get('tokenUsage');
@@ -66,7 +74,10 @@ class UsageTracker {
         };
     }
 
-    /** Check if daily budget is exceeded. */
+    /**
+     * Check if daily budget is exceeded.
+     * @returns {boolean} True if budget exceeded, false if under budget or budget is 0 (unlimited).
+     */
     isBudgetExceeded() {
         const budget = store.get('dailyBudgetUsd') || 0;
         if (budget <= 0) return false; // 0 = unlimited
@@ -75,7 +86,10 @@ class UsageTracker {
         return totalCost >= budget;
     }
 
-    /** Get stats for dashboard. */
+    /**
+     * Get stats for dashboard display.
+     * @returns {{ date: string, inputTokens: number, outputTokens: number, requests: number, inputCost: number, outputCost: number, totalCost: number, dailyBudget: number, budgetUsedPercent: number, budgetExceeded: boolean }}
+     */
     getStats() {
         const cost = this.getCost();
         const budget = store.get('dailyBudgetUsd') || 0;
@@ -94,7 +108,10 @@ class UsageTracker {
         };
     }
 
-    /** Get usage history for dashboard (last 30 days). */
+    /**
+     * Get usage history for dashboard (last 30 days) with cost calculations.
+     * @returns {Array<{ date: string, inputTokens: number, outputTokens: number, requests: number, totalTokens: number, cost: number }>}
+     */
     getHistory() {
         this.ensureToday();
         const history = store.get('usageHistory') || [];

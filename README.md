@@ -32,6 +32,12 @@ Right-click any message → *Babel* → Get an ephemeral translation only you ca
 - **API Health Check** — Dashboard shows API connectivity status
 - **Translation Test** — Test translations directly from the dashboard
 - **User Preferences** — View and manage user language settings
+- **Login Rate Limiting** — Brute-force protection (5 attempts / 15 min per IP)
+- **Timing-Safe Auth** — SHA-256 hashed password comparison prevents timing attacks
+- **Graceful Shutdown** — Clean `SIGTERM`/`SIGINT` handling for Docker & PM2
+- **Input Validation** — Config updates are sanitized and range-checked
+- **Error Sanitization** — API keys and URLs stripped from user-facing error messages
+- **Docker Health Check** — Built-in `/healthz` endpoint for container orchestration
 
 ## Quick Start
 
@@ -123,17 +129,25 @@ All configuration is managed through the web dashboard. The `.env` file only nee
 
 ```
 src/
-├── index.js        # Discord bot entry point & interaction handlers
-├── config.js       # Environment variable config
-├── lang.js         # Language detection & locale mapping (pure functions)
-├── translate.js    # Vertex AI Gemini API client with retry logic
-├── cache.js        # LRU translation cache
-├── cooldown.js     # Per-user rate limiter
-├── log.js          # In-memory ring buffer audit log
-├── store.js        # File-based config persistence
-├── usage.js        # Token usage tracking & budget enforcement
-├── dashboard.js    # Express web dashboard & API
-└── public/         # Dashboard frontend assets
+├── index.js          # Entry point, client setup, graceful shutdown
+├── config.js         # Environment variable config
+├── lang.js           # Language detection & locale mapping
+├── translate.js      # Vertex AI Gemini API client with retry
+├── cache.js          # LRU translation cache
+├── cooldown.js       # Per-user rate limiter
+├── log.js            # In-memory ring buffer audit log
+├── store.js          # File-based config persistence
+├── usage.js          # Token usage tracking & budget enforcement
+├── dashboard.js      # Express dashboard with rate limiting & auth
+├── commands/         # Discord command handlers
+│   ├── babel.js      #   Context menu translation
+│   ├── translate.js  #   /translate (public via webhook)
+│   ├── setlang.js    #   /setlang & /mylang
+│   ├── help.js       #   /help (loads locales from JSON)
+│   └── shared.js     #   Error sanitization utilities
+├── locales/
+│   └── help.json     # Help text in 16 languages
+└── public/           # Dashboard frontend assets
 ```
 
 ## Development
@@ -188,12 +202,14 @@ docker build -t babel .
 docker run -d --name babel --env-file .env -p 3000:3000 -v babel-data:/app/data babel
 ```
 
+The Docker image includes a built-in `HEALTHCHECK` that pings `/healthz` every 30 seconds.
+
 ## Tech Stack
 
 - [discord.js](https://discord.js.org) v14 — Discord gateway client
-- [Express](https://expressjs.com) — Dashboard web server
+- [Express](https://expressjs.com) + [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) — Dashboard & API security
 - [Vertex AI Gemini](https://cloud.google.com/vertex-ai) — Translation engine
-- [Vitest](https://vitest.dev) — Testing framework
+- [Vitest](https://vitest.dev) — Testing (108 tests, 8 suites)
 - [ESLint](https://eslint.org) + [Prettier](https://prettier.io) — Code quality
 
 ## License
