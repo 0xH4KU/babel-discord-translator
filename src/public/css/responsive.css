@@ -1,0 +1,112 @@
+/* ===== RESPONSIVE ===== */
+
+@media (max-width: 768px) {
+  #dashboard-view {
+    padding: 1rem;
+  }
+
+  .header {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .header .status {
+    margin-left: 0;
+    order: 3;
+  }
+
+  .header .health-badge {
+    order: 4;
+  }
+
+  .header .btn-logout {
+    margin-left: auto;
+    order: 5;
+  }
+
+  .grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+  }
+
+  .settings-row {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .tab-btn {
+    padding: 0.65rem 0.85rem;
+    font-size: 0.8rem;
+  }
+
+  .data-table {
+    font-size: 0.75rem;
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: 0.4rem 0.5rem;
+  }
+
+  .wizard-card,
+  .login-card {
+    padding: 1.5rem;
+  }
+
+  .bar-chart {
+    height: 60px;
+  }
+
+  .pagination {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+  }
+
+  .prompt-editor .prompt-actions {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .card .value {
+    font-size: 1.3rem;
+  }
+
+  .test-widget {
+    flex-direction: column;
+  }
+
+  .test-widget .test-select {
+    width: 100%;
+  }
+
+  .add-guild-row {
+    flex-direction: column;
+  }
+
+  .add-guild-row input {
+    width: 100%;
+  }
+
+  .header h1 {
+    font-size: 1.1rem;
+  }
+
+  .budget-header {
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .table-card .table-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+}

@@ -7,7 +7,14 @@
   <title>Babel — Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
+  <!-- CSS Modules -->
+  <link rel="stylesheet" href="css/variables.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/login.css">
+  <link rel="stylesheet" href="css/wizard.css">
+  <link rel="stylesheet" href="css/dashboard.css">
+  <link rel="stylesheet" href="css/settings.css">
+  <link rel="stylesheet" href="css/responsive.css">
 </head>
 
 <body>
@@ -21,7 +28,7 @@
         <label>Password</label>
         <input type="password" id="login-pw" placeholder="Enter password" autofocus>
       </div>
-      <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+      <button class="btn btn-primary w-full" onclick="doLogin()">Login</button>
       <div class="error-msg" id="login-error"></div>
     </div>
   </div>
@@ -182,15 +189,15 @@
         </div>
         <div id="log-pagination"></div>
       </div>
-      <div class="refresh-note" style="margin-top:0.5rem">Logs are in-memory only — cleared on restart</div>
+      <div class="refresh-note mt-sm">Logs are in-memory only — cleared on restart</div>
     </div>
 
     <!-- Access Tab -->
     <div class="tab-content" id="tab-access">
       <div class="settings-section">
         <h3>Server Whitelist</h3>
-        <div style="font-size:0.8rem;color:var(--text-dim);margin-bottom:0.75rem">
-          Only <strong style="color:var(--text)">enabled</strong> servers can use translation. New servers are disabled
+        <div class="desc-text">
+          Only <strong>enabled</strong> servers can use translation. New servers are disabled
           by default.
         </div>
         <div id="guild-list" class="guild-list">
@@ -275,7 +282,7 @@
             <label>Cache Max Size</label>
             <input type="number" id="cfg-cache" min="100" max="10000">
           </div>
-          <div class="input-group" style="flex:0;align-self:flex-end">
+          <div class="input-group inline-action">
             <button class="btn btn-secondary btn-sm" onclick="clearCache()">Clear Cache</button>
           </div>
         </div>
@@ -283,7 +290,7 @@
 
       <div class="settings-section">
         <h3>Translation Prompt</h3>
-        <div style="font-size:0.8rem;color:var(--text-dim);margin-bottom:0.75rem">
+        <div class="desc-text">
           Customize the system prompt used for translations. Leave empty to use the default.
         </div>
         <div class="prompt-editor">
@@ -297,12 +304,12 @@
 
       <div class="settings-section">
         <h3>Translation Test</h3>
-        <div style="font-size:0.8rem;color:var(--text-dim);margin-bottom:0.75rem">
+        <div class="desc-text">
           Test the translation API directly. This uses real tokens.
         </div>
         <div class="test-widget">
           <input type="text" id="test-text" placeholder="Enter text to translate...">
-          <select id="test-lang" style="padding:0.65rem 0.85rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;font-size:0.85rem">
+          <select id="test-lang" class="test-select">
             <option value="auto">Auto</option>
             <option value="zh-TW">繁體中文</option>
             <option value="zh-CN">简体中文</option>
@@ -326,7 +333,16 @@
 
   <div class="toast" id="toast"></div>
 
-  <script src="app.js"></script>
+  <!-- JS Modules (dependency order) -->
+  <script src="js/utils.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/wizard.js"></script>
+  <script src="js/dashboard.js"></script>
+  <script src="js/settings.js"></script>
+  <script src="js/access.js"></script>
+  <script src="js/history.js"></script>
+  <script src="js/logs.js"></script>
+  <script src="js/app.js"></script>
 </body>
 
 </html>

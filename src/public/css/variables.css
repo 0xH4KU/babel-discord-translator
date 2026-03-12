@@ -1,0 +1,36 @@
+/* ===== RESET & VARIABLES ===== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #0f0f13;
+  --surface: #16161d;
+  --border: #1e1e2a;
+  --border-hover: #2a2a3a;
+  --text: #e0e0e6;
+  --text-dim: #72728a;
+  --accent: #5865f2;
+  --accent-hover: #4752c4;
+  --green: #43b581;
+  --yellow: #faa61a;
+  --red: #f04747;
+  --radius: 12px;
+}
+
+body {
+  font-family: 'Inter', -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+.view {
+  display: none;
+}
+
+.view.active {
+  display: flex;
+}
