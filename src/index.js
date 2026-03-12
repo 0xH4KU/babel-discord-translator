@@ -1,4 +1,4 @@
-import { Client, Events, GatewayIntentBits, MessageFlags, EmbedBuilder } from 'discord.js';
+import { Client, Events, GatewayIntentBits, MessageFlags } from 'discord.js';
 import { config } from './config.js';
 import { store } from './store.js';
 import { translate } from './translate.js';
@@ -431,19 +431,21 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         const t = HELP_TEXTS[lang] || HELP_TEXTS.en;
 
-        const embed = new EmbedBuilder()
-            .setColor(0x5865F2)
-            .setTitle(t.title)
-            .addFields(
-                { name: t.translate[0], value: t.translate[1] },
-                { name: t.quick[0], value: t.quick[1] },
-                { name: t.setlang[0], value: t.setlang[1] },
-                { name: t.tips[0], value: t.tips[1] },
-            )
-            .setFooter({ text: 'Babel · Powered by Gemini' })
-            .setTimestamp();
+        const text = `## ${t.title}
 
-        return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+**${t.translate[0]}**
+${t.translate[1]}
+
+**${t.quick[0]}**
+${t.quick[1]}
+
+**${t.setlang[0]}**
+${t.setlang[1]}
+
+**${t.tips[0]}**
+${t.tips[1]}`;
+
+        return interaction.reply({ content: text, flags: MessageFlags.Ephemeral });
     }
 
 
