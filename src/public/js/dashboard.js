@@ -84,21 +84,24 @@ async function loadStats() {
 async function checkApiHealth() {
   const badge = document.getElementById('api-health');
   badge.className = 'health-badge checking';
-  badge.textContent = '⟳ API';
+  badge.textContent = 'API';
+  badge.title = 'Checking...';
   try {
     const res = await api('/health');
     const data = await res.json();
     if (data.healthy) {
       badge.className = 'health-badge ok';
-      badge.textContent = '✓ API ' + data.latencyMs + 'ms';
+      badge.textContent = 'API';
+      badge.title = 'Healthy · ' + data.latencyMs + 'ms';
     } else {
       badge.className = 'health-badge fail';
-      badge.textContent = '✗ API';
+      badge.textContent = 'API';
       badge.title = data.error || 'Unknown error';
     }
   } catch {
     badge.className = 'health-badge fail';
-    badge.textContent = '✗ API';
+    badge.textContent = 'API';
+    badge.title = 'Connection failed';
   }
 }
 
