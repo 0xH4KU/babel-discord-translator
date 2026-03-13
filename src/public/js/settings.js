@@ -46,12 +46,6 @@ async function saveSettings() {
   updates.dailyBudgetUsd = parseFloat(document.getElementById('cfg-budget').value) || 0;
   updates.translationPrompt = document.getElementById('cfg-prompt').value;
 
-  // Whitelist: always save the explicit list of enabled IDs
-  const checkboxes = document.querySelectorAll('[data-guild-id]');
-  updates.allowedGuildIds = [...checkboxes]
-    .filter(cb => cb.checked)
-    .map(cb => cb.dataset.guildId);
-
   const res = await api('/config', {
     method: 'POST',
     body: JSON.stringify(updates),

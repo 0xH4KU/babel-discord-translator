@@ -17,6 +17,26 @@ async function loadAccess() {
   } catch { }
 }
 
+/** Persist the current allowedGuildIds to the server. */
+async function saveWhitelist() {
+  const res = await api('/config', {
+    method: 'POST',
+    body: JSON.stringify({ allowedGuildIds: currentConfig.allowedGuildIds || [] }),
+  });
+  if (!res.ok) showToast('Save failed', true);
+}
+
+/** Handle guild toggle checkbox change — auto-saves immediately. */
+function onGuildToggle(guildId, checked) {
+  if (!currentConfig.allowedGuildIds) currentConfig.allowedGuildIds = [];
+  if (checked && !currentConfig.allowedGuildIds.includes(guildId)) {
+    currentConfig.allowedGuildIds.push(guildId);
+  } else if (!checked) {
+    currentConfig.allowedGuildIds = currentConfig.allowedGuildIds.filter(id => id !== guildId);
+  }
+  saveWhitelist();
+}
+
 function renderGuilds() {
   const container = document.getElementById('guild-list');
   const allowed = currentConfig.allowedGuildIds || [];
@@ -45,7 +65,7 @@ function renderGuilds() {
         <img src="${genAvatar(g.id)}" alt="">
         <span class="guild-name" style="font-family:monospace;font-size:0.8rem">${g.id}</span>
         <span class="guild-members">manually added</span>
-        <label class="toggle"><input type="checkbox" data-guild-id="${g.id}" checked><span class="slider"></span></label>
+        <label class="toggle"><input type="checkbox" data-guild-id="${g.id}" onchange="onGuildToggle('${g.id}', this.checked)" checked><span class="slider"></span></label>
         <button class="btn-danger" onclick="removeManualGuild('${g.id}')">✕</button>
       </div>`;
     }
@@ -53,7 +73,7 @@ function renderGuilds() {
       <img src="${g.icon || genAvatar(g.name || g.id)}" alt="">
       <span class="guild-name">${g.name || g.id}</span>
       <span class="guild-members">${g.memberCount ?? '?'} members</span>
-      <label class="toggle"><input type="checkbox" data-guild-id="${g.id}" ${checked ? 'checked' : ''}><span class="slider"></span></label>
+      <label class="toggle"><input type="checkbox" data-guild-id="${g.id}" onchange="onGuildToggle('${g.id}', this.checked)" ${checked ? 'checked' : ''}><span class="slider"></span></label>
     </div>`;
   }).join('');
 
@@ -71,7 +91,7 @@ function renderGuilds() {
 function setGuildPage(p) { guildPage = p; renderGuilds(); }
 function setGuildPageSize(s) { guildPageSize = s; guildPage = 1; renderGuilds(); }
 
-function addManualGuild() {
+async function addManualGuild() {
   const input = document.getElementById('add-guild-input');
   const id = input.value.trim();
   if (!id || !/^\d+$/.test(id)) {
@@ -83,15 +103,17 @@ function addManualGuild() {
     currentConfig.allowedGuildIds.push(id);
   }
   input.value = '';
+  await saveWhitelist();
   renderGuilds();
-  showToast('Guild added — click Save to apply');
+  showToast('Guild added');
 }
 
-function removeManualGuild(id) {
+async function removeManualGuild(id) {
   if (!currentConfig.allowedGuildIds) return;
   currentConfig.allowedGuildIds = currentConfig.allowedGuildIds.filter(g => g !== id);
+  await saveWhitelist();
   renderGuilds();
-  showToast('Guild removed — click Save to apply');
+  showToast('Guild removed');
 }
 
 // ===== User Preferences =====
