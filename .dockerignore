@@ -8,5 +8,5 @@ tests
 *.md
 .prettierrc
 eslint.config.js
-tsconfig.json
+
 .wrangler
