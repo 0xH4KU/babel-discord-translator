@@ -12,6 +12,10 @@ import type { TranslationLog } from './log.js';
 
 // --- Store ---
 
+export interface GuildBudgetConfig {
+    dailyBudgetUsd: number;
+}
+
 export interface StoreData {
     vertexAiApiKey: string;
     gcpProject: string;
@@ -30,6 +34,10 @@ export interface StoreData {
     userLanguagePrefs: Record<string, string>;
     maxInputLength: number;
     maxOutputTokens: number;
+    // Per-guild budget & usage
+    guildBudgets: Record<string, GuildBudgetConfig>;
+    guildTokenUsage: Record<string, TokenUsage>;
+    guildUsageHistory: Record<string, UsageHistoryEntry[]>;
 }
 
 export interface TokenUsage {

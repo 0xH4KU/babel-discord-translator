@@ -75,6 +75,97 @@
   white-space: nowrap;
 }
 
+/* --- Guild Budget Layout --- */
+.guild-item.guild-item-col {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.guild-item-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.guild-budget-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.4rem 0 0 2.5rem;
+  border-top: 1px solid var(--border);
+  margin-top: 0.4rem;
+}
+
+.guild-budget-info {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.75rem;
+}
+
+.guild-budget-label {
+  color: var(--text-dim);
+}
+
+.guild-budget-cost {
+  color: var(--text-dim);
+  opacity: 0.8;
+}
+
+.guild-budget-bar {
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.guild-budget-bar .fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.guild-budget-bar .fill.warning {
+  background: var(--yellow, #f0b429);
+}
+
+.guild-budget-bar .fill.danger {
+  background: var(--red, #e53e3e);
+}
+
+.guild-budget-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.guild-budget-input {
+  width: 80px;
+  padding: 0.3rem 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 0.75rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.guild-budget-input:focus {
+  border-color: var(--accent);
+}
+
+.guild-budget-input::placeholder {
+  color: #3a3a4a;
+  font-size: 0.7rem;
+}
+
+.btn-xs {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.7rem;
+}
+
 .no-guilds {
   color: var(--text-dim);
   font-size: 0.85rem;

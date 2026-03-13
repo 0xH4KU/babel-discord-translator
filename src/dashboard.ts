@@ -95,6 +95,9 @@ function validateConfigUpdate(updates: Record<string, unknown>): { valid: boolea
     delete sanitized.tokenUsage;
     delete sanitized.usageHistory;
     delete sanitized.userLanguagePrefs;
+    delete sanitized.guildBudgets;
+    delete sanitized.guildTokenUsage;
+    delete sanitized.guildUsageHistory;
 
     // Validate numeric fields
     if (sanitized.cooldownSeconds !== undefined) {
@@ -282,8 +285,55 @@ export function startDashboard({ cache, cooldown, log, client, getStats }: Dashb
 
     // --- Usage history ---
 
-    app.get('/api/usage/history', requireAuth, (_req: Request, res: Response) => {
-        res.json(usage.getHistory());
+    app.get('/api/usage/history', requireAuth, (req: Request, res: Response) => {
+        const guildId = req.query.guildId as string | undefined;
+        if (guildId) {
+            res.json(usage.getGuildHistory(guildId));
+        } else {
+            res.json(usage.getHistory());
+        }
+    });
+
+    // --- Guild budgets ---
+
+    app.get('/api/guild-budgets', requireAuth, (_req: Request, res: Response) => {
+        const guildBudgets = store.get('guildBudgets') || {};
+        const guilds = client.guilds.cache;
+        const result: Record<string, { name: string; budget: number; usage: ReturnType<typeof usage.getGuildStats> }> = {};
+
+        for (const [id, guild] of guilds) {
+            result[id] = {
+                name: guild.name,
+                budget: guildBudgets[id]?.dailyBudgetUsd ?? -1, // -1 = using global
+                usage: usage.getGuildStats(id),
+            };
+        }
+        res.json(result);
+    });
+
+    app.post('/api/guild-budgets/:guildId', requireAuth, requireCsrf, (req: Request, res: Response) => {
+        const guildId = req.params.guildId as string;
+        const { dailyBudgetUsd } = req.body;
+
+        if (dailyBudgetUsd === null || dailyBudgetUsd === undefined) {
+            // Remove guild-specific budget (use global fallback)
+            const guildBudgets = store.get('guildBudgets') || {};
+            delete guildBudgets[guildId];
+            store.set('guildBudgets', guildBudgets);
+            res.json({ ok: true, mode: 'global' });
+            return;
+        }
+
+        const v = parseFloat(String(dailyBudgetUsd));
+        if (isNaN(v) || v < 0) {
+            res.status(400).json({ error: 'dailyBudgetUsd must be >= 0' });
+            return;
+        }
+
+        const guildBudgets = store.get('guildBudgets') || {};
+        guildBudgets[guildId] = { dailyBudgetUsd: v };
+        store.set('guildBudgets', guildBudgets);
+        res.json({ ok: true, budget: v });
     });
 
     // --- Logs (with optional filter) ---

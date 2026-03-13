@@ -30,7 +30,7 @@ export async function handleBabel(interaction: MessageContextMenuCommandInteract
     }
 
     // --- Budget check ---
-    if (usage.isBudgetExceeded()) {
+    if (usage.isBudgetExceeded(interaction.guildId)) {
         await interaction.reply({
             content: 'Daily budget exceeded, try again tomorrow!',
             flags: MessageFlags.Ephemeral,
@@ -104,7 +104,7 @@ export async function handleBabel(interaction: MessageContextMenuCommandInteract
             const result = await translate(content, targetLanguage);
             translated = result.text;
             cache.set(cacheKey, translated);
-            usage.record(result.inputTokens, result.outputTokens);
+            usage.record(result.inputTokens, result.outputTokens, interaction.guildId);
             stats.apiCalls++;
         }
 

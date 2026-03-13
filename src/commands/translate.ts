@@ -24,7 +24,7 @@ export async function handleTranslate(interaction: ChatInputCommandInteraction, 
         await interaction.reply({ content: 'This server is not authorized.', flags: MessageFlags.Ephemeral });
         return;
     }
-    if (usage.isBudgetExceeded()) {
+    if (usage.isBudgetExceeded(interaction.guildId)) {
         await interaction.reply({ content: 'Daily budget exceeded', flags: MessageFlags.Ephemeral });
         return;
     }
@@ -75,7 +75,7 @@ export async function handleTranslate(interaction: ChatInputCommandInteraction, 
             const result = await translate(text, targetLanguage);
             translated = result.text;
             cache.set(cacheKey, translated);
-            usage.record(result.inputTokens, result.outputTokens);
+            usage.record(result.inputTokens, result.outputTokens, interaction.guildId);
             stats.apiCalls++;
         }
 

@@ -34,6 +34,10 @@ const DEFAULTS: StoreData = {
     maxInputLength: 2000,
     // Max output tokens for Gemini API response
     maxOutputTokens: 1000,
+    // Per-guild budget & usage
+    guildBudgets: {},
+    guildTokenUsage: {},
+    guildUsageHistory: {},
 };
 
 /**
