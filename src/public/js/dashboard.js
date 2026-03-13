@@ -34,22 +34,38 @@ async function loadStats() {
     if (d.usage.outputTokens > 0) parts.push(formatTokens(d.usage.outputTokens) + ' out');
     document.getElementById('stat-cost-breakdown').textContent = parts.join(' / ') || 'No usage today';
 
-    // Budget bar
+    // Budget overview — per-server
     const budgetCard = document.getElementById('budget-card');
-    if (d.usage.dailyBudget > 0) {
+    const guilds = d.guildBudgets || [];
+    const hasAnyBudget = guilds.some(g => g.budget > 0);
+
+    if (hasAnyBudget || d.usage.dailyBudget > 0) {
       budgetCard.style.display = '';
-      const pct = d.usage.budgetUsedPercent;
       document.getElementById('budget-amount').textContent =
-        formatUsd(d.usage.totalCost) + ' / ' + formatUsd(d.usage.dailyBudget);
+        'Total: ' + formatUsd(d.usage.totalCost);
 
-      const fill = document.getElementById('budget-fill');
-      fill.style.width = Math.min(pct, 100) + '%';
-      fill.className = 'fill' + (pct > 90 ? ' danger' : pct > 60 ? ' warning' : '');
-
-      document.getElementById('budget-tokens').textContent =
-        formatTokens(d.usage.inputTokens + d.usage.outputTokens) + ' tokens';
-      document.getElementById('budget-requests').textContent =
-        d.usage.requests + ' requests today';
+      const container = document.getElementById('guild-budget-overview');
+      if (guilds.length > 0) {
+        container.innerHTML = guilds.map(g => {
+          if (g.budget <= 0) {
+            return `<div class="guild-budget-overview-item">
+              <span class="gbo-name">${g.name}</span>
+              <span class="gbo-cost">${formatUsd(g.totalCost)} · ${g.requests} req</span>
+              <span class="gbo-limit">Unlimited</span>
+            </div>`;
+          }
+          const pct = Math.min((g.totalCost / g.budget) * 100, 100);
+          const barClass = pct > 90 ? ' danger' : pct > 60 ? ' warning' : '';
+          return `<div class="guild-budget-overview-item">
+            <span class="gbo-name">${g.name}${g.isCustom ? '' : ' <span class="gbo-tag">global</span>'}</span>
+            <span class="gbo-cost">${formatUsd(g.totalCost)} / ${formatUsd(g.budget)}</span>
+            <div class="gbo-bar"><div class="fill${barClass}" style="width:${pct}%"></div></div>
+            ${g.exceeded ? '<span class="gbo-exceeded">EXCEEDED</span>' : ''}
+          </div>`;
+        }).join('');
+      } else {
+        container.innerHTML = '';
+      }
     } else {
       budgetCard.style.display = 'none';
     }

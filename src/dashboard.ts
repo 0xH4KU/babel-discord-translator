@@ -224,6 +224,25 @@ export function startDashboard({ cache, cooldown, log, client, getStats }: Dashb
         const cacheStats = cache.stats();
         const usageStats = usage.getStats();
 
+        // Gather per-guild budget status
+        const guildBudgetConfigs = store.get('guildBudgets') || {};
+        const globalBudget = store.get('dailyBudgetUsd') || 0;
+        const guildBudgetList = client.guilds.cache.map((guild) => {
+            const guildCfg = guildBudgetConfigs[guild.id];
+            const hasCustom = guildCfg && guildCfg.dailyBudgetUsd !== undefined;
+            const budget = hasCustom ? guildCfg.dailyBudgetUsd : globalBudget;
+            const guildStats = usage.getGuildStats(guild.id);
+            return {
+                id: guild.id,
+                name: guild.name,
+                budget,
+                isCustom: hasCustom,
+                totalCost: guildStats.totalCost,
+                requests: guildStats.requests,
+                exceeded: budget > 0 && guildStats.totalCost >= budget,
+            };
+        });
+
         res.json({
             bot: {
                 name: client.user?.tag || 'Unknown',
@@ -239,6 +258,7 @@ export function startDashboard({ cache, cooldown, log, client, getStats }: Dashb
             },
             cache: cacheStats,
             usage: usageStats,
+            guildBudgets: guildBudgetList,
             errors: log.errorCount,
         });
     });

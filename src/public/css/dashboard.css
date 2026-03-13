@@ -253,6 +253,86 @@
   margin-top: 0.4rem;
 }
 
+/* --- Per-Server Budget Overview Items --- */
+.guild-budget-overview-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.8rem;
+}
+
+.guild-budget-overview-item:last-child {
+  border-bottom: none;
+}
+
+.gbo-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.gbo-tag {
+  font-size: 0.6rem;
+  color: var(--text-dim);
+  background: var(--border);
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+  margin-left: 0.25rem;
+}
+
+.gbo-cost {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.gbo-limit {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  opacity: 0.6;
+}
+
+.gbo-bar {
+  width: 60px;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.gbo-bar .fill {
+  height: 100%;
+  background: var(--green);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.gbo-bar .fill.warning {
+  background: var(--yellow);
+}
+
+.gbo-bar .fill.danger {
+  background: var(--red);
+}
+
+.gbo-exceeded {
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--red);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
 /* --- Bar Chart --- */
 .bar-chart {
   display: flex;

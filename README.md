@@ -26,7 +26,7 @@ Right-click any message → *Babel* → Get an ephemeral translation only you ca
 - **Auto-Retry** — Exponential backoff for transient API errors (429, 503)
 - **Per-User Cooldown** — Configurable rate limiting
 - **Server Whitelist** — Control which servers can use the bot
-- **Cost Tracking** — Real-time token usage with daily budget + 30-day history chart
+- **Cost Tracking** — Real-time token usage with per-server budgets + 30-day history chart
 - **Translation & Error Logs** — In-memory audit log with filter tabs
 - **Custom Prompt** — Customize the translation prompt from the dashboard
 - **Web Dashboard** — Login-protected admin panel with setup wizard
@@ -100,10 +100,11 @@ After starting the bot, open `http://localhost:3000`:
 - **API Settings** — Vertex AI API key, GCP project, location
 - **Model** — Choose your Gemini model
 - **Pricing** — Set per-million-token prices for cost tracking
-- **Budget** — Set daily USD limit (0 = unlimited)
+- **Global Budget** — Set default daily USD limit (0 = unlimited)
+- **Per-Server Budget** — Override budget per server in the Access tab
 - **Prompt** — Customize the translation system prompt
 - **Limits** — Max input length (characters) and max output tokens
-- **Whitelist** — Toggle servers on/off
+- **Whitelist** — Toggle servers on/off, manage per-server budgets
 - **Translation Test** — Test API connectivity and translations
 - **User Preferences** — View and manage per-user language settings
 - **API Health** — Monitor API connectivity in real-time
@@ -145,7 +146,7 @@ src/
 ├── cooldown.ts       # Per-user rate limiter
 ├── log.ts            # In-memory ring buffer audit log
 ├── store.ts          # File-based config persistence
-├── usage.ts          # Token usage tracking & budget enforcement
+├── usage.ts          # Token usage tracking & per-server budget enforcement
 ├── dashboard.ts      # Express dashboard with rate limiting & auth
 ├── commands/         # Discord command handlers
 │   ├── babel.ts      #   Context menu translation
@@ -188,7 +189,7 @@ npm run build
 
 ### Test Coverage
 
-108 tests across 8 suites covering all modules:
+119 tests across 8 suites covering all modules:
 
 | Suite | Tests | Covers |
 |---|---|---|
@@ -197,7 +198,7 @@ npm run build
 | `log.test.ts` | 14 | Ring buffer, addError, type filtering, defaults |
 | `lang.test.ts` | 29 | Script detection (CJK/Cyrillic/Arabic/Thai/Hindi), locale mapping, same-language check |
 | `translate.test.ts` | 20 | Retry logic, prompt building, API errors, URL routing |
-| `usage.test.ts` | 12 | Cost calculation, budget enforcement, day rollover, history |
+| `usage.test.ts` | 23 | Cost calculation, per-server budget enforcement, global fallback, day rollover, guild history |
 | `store.test.ts` | 7 | File persistence, defaults merging, corrupt JSON resilience |
 | `dashboard.test.ts` | 13 | Auth flow, API key masking, config protection, translate endpoint |
 
@@ -228,7 +229,7 @@ The Docker image includes a built-in `HEALTHCHECK` that pings `/healthz` every 3
 - [Express](https://expressjs.com) + [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) — Dashboard & API security
 - [Vertex AI Gemini](https://cloud.google.com/vertex-ai) — Translation engine
 - [tsx](https://tsx.is) — TypeScript execution for development
-- [Vitest](https://vitest.dev) — Testing (108 tests, 8 suites, v8 coverage)
+- [Vitest](https://vitest.dev) — Testing (119 tests, 8 suites, v8 coverage)
 - [ESLint](https://eslint.org) + [Prettier](https://prettier.io) — Code quality
 
 ## License
