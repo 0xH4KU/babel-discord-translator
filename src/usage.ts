@@ -1,9 +1,9 @@
 /**
  * Daily token usage tracker with cost calculation, budget enforcement,
  * and 30-day history archiving.
- * @module usage
  */
 import { store } from './store.js';
+import type { UsageCost, UsageStats, UsageHistoryDay } from './types.js';
 
 class UsageTracker {
     constructor() {
@@ -11,7 +11,7 @@ class UsageTracker {
     }
 
     /** Reset counters if the date has changed, archiving previous day. */
-    ensureToday() {
+    ensureToday(): void {
         const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
         const usage = store.get('tokenUsage');
 
@@ -39,27 +39,20 @@ class UsageTracker {
         }
     }
 
-    /**
-     * Record a translation's token usage.
-     * @param {number} inputTokens
-     * @param {number} outputTokens
-     */
-    record(inputTokens, outputTokens) {
+    /** Record a translation's token usage. */
+    record(inputTokens: number, outputTokens: number): void {
         this.ensureToday();
-        const usage = store.get('tokenUsage');
+        const usage = store.get('tokenUsage')!;
         usage.inputTokens += inputTokens || 0;
         usage.outputTokens += outputTokens || 0;
         usage.requests += 1;
         store.set('tokenUsage', usage);
     }
 
-    /**
-     * Calculate today's cost in USD.
-     * @returns {{ date: string, inputTokens: number, outputTokens: number, requests: number, inputCost: number, outputCost: number, totalCost: number }}
-     */
-    getCost() {
+    /** Calculate today's cost in USD. */
+    getCost(): UsageCost {
         this.ensureToday();
-        const usage = store.get('tokenUsage');
+        const usage = store.get('tokenUsage')!;
         const inputPrice = store.get('inputPricePerMillion') || 0;
         const outputPrice = store.get('outputPricePerMillion') || 0;
 
@@ -74,11 +67,8 @@ class UsageTracker {
         };
     }
 
-    /**
-     * Check if daily budget is exceeded.
-     * @returns {boolean} True if budget exceeded, false if under budget or budget is 0 (unlimited).
-     */
-    isBudgetExceeded() {
+    /** Check if daily budget is exceeded. */
+    isBudgetExceeded(): boolean {
         const budget = store.get('dailyBudgetUsd') || 0;
         if (budget <= 0) return false; // 0 = unlimited
 
@@ -86,11 +76,8 @@ class UsageTracker {
         return totalCost >= budget;
     }
 
-    /**
-     * Get stats for dashboard display.
-     * @returns {{ date: string, inputTokens: number, outputTokens: number, requests: number, inputCost: number, outputCost: number, totalCost: number, dailyBudget: number, budgetUsedPercent: number, budgetExceeded: boolean }}
-     */
-    getStats() {
+    /** Get stats for dashboard display. */
+    getStats(): UsageStats {
         const cost = this.getCost();
         const budget = store.get('dailyBudgetUsd') || 0;
 
@@ -108,11 +95,8 @@ class UsageTracker {
         };
     }
 
-    /**
-     * Get usage history for dashboard (last 30 days) with cost calculations.
-     * @returns {Array<{ date: string, inputTokens: number, outputTokens: number, requests: number, totalTokens: number, cost: number }>}
-     */
-    getHistory() {
+    /** Get usage history for dashboard (last 30 days) with cost calculations. */
+    getHistory(): UsageHistoryDay[] {
         this.ensureToday();
         const history = store.get('usageHistory') || [];
         const inputPrice = store.get('inputPricePerMillion') || 0;

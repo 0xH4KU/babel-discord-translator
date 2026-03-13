@@ -1,4 +1,3 @@
-/* eslint-disable no-unused-vars */
 
 /**
  * Settings tab: load/save configuration, translation test, prompt editor.

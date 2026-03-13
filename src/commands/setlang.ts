@@ -1,9 +1,8 @@
-import { MessageFlags } from 'discord.js';
+import { MessageFlags, type ChatInputCommandInteraction } from 'discord.js';
 import { store } from '../store.js';
 import { localeToLang } from '../lang.js';
 
-/** @type {Record<string, string>} language code → display name */
-const LANG_NAMES = {
+const LANG_NAMES: Record<string, string> = {
     'zh-TW': '繁體中文', 'zh-CN': '简体中文', en: 'English',
     ja: '日本語', ko: '한국어', es: 'Español', fr: 'Français',
     de: 'Deutsch', pt: 'Português', ru: 'Русский', it: 'Italiano',
@@ -11,41 +10,36 @@ const LANG_NAMES = {
     id: 'Bahasa Indonesia', tr: 'Türkçe',
 };
 
-/**
- * Handle /setlang command — set user's preferred translation language.
- * @param {import('discord.js').ChatInputCommandInteraction} interaction
- */
-export async function handleSetlang(interaction) {
-    const lang = interaction.options.getString('language');
+/** Handle /setlang command — set user's preferred translation language. */
+export async function handleSetlang(interaction: ChatInputCommandInteraction): Promise<void> {
+    const lang = interaction.options.getString('language')!;
     const prefs = store.get('userLanguagePrefs') || {};
 
     if (lang === 'auto') {
         delete prefs[interaction.user.id];
         store.set('userLanguagePrefs', prefs);
-        return interaction.reply({
+        await interaction.reply({
             content: 'Language preference cleared. Will use your Discord locale automatically.',
             flags: MessageFlags.Ephemeral,
         });
+        return;
     }
 
     prefs[interaction.user.id] = lang;
     store.set('userLanguagePrefs', prefs);
-    return interaction.reply({
+    await interaction.reply({
         content: ` Translation target set to: **${lang}**`,
         flags: MessageFlags.Ephemeral,
     });
 }
 
-/**
- * Handle /mylang command — show user's current translation language.
- * @param {import('discord.js').ChatInputCommandInteraction} interaction
- */
-export async function handleMylang(interaction) {
+/** Handle /mylang command — show user's current translation language. */
+export async function handleMylang(interaction: ChatInputCommandInteraction): Promise<void> {
     const prefs = store.get('userLanguagePrefs') || {};
     const userPref = prefs[interaction.user.id];
     const localeLang = localeToLang(interaction.locale);
 
-    let reply;
+    let reply: string;
     if (userPref) {
         const name = LANG_NAMES[userPref] || userPref;
         reply = `Your translation language: **${name}** (\`${userPref}\`), set via /setlang\n` +
@@ -60,5 +54,5 @@ export async function handleMylang(interaction) {
             `Use \`/setlang\` to set a specific target language.`;
     }
 
-    return interaction.reply({ content: reply, flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: reply, flags: MessageFlags.Ephemeral });
 }

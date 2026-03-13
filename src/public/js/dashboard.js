@@ -1,4 +1,3 @@
-/* eslint-disable no-unused-vars */
 
 /**
  * Dashboard overview: stats loading, tab switching, health check, auto-refresh.

@@ -1,4 +1,3 @@
-/* eslint-disable no-unused-vars */
 
 /**
  * Setup wizard step navigation.

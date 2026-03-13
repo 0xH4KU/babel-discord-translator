@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { type Request, type Response, type NextFunction } from 'express';
 import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
 import { config } from './config.js';
@@ -7,12 +7,19 @@ import { usage } from './usage.js';
 import { translate } from './translate.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import type { SessionData, DashboardDeps, StoreData } from './types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+// Extend Express Request to include csrfToken
+declare module 'express-serve-static-core' {
+    interface Request {
+        csrfToken?: string;
+    }
+}
+
 // --- Session management with expiry ---
-/** @type {Map<string, { expiry: number, csrf: string }>} token → session data */
-const sessions = new Map();
+const sessions = new Map<string, SessionData>();
 const SESSION_TTL_MS = 86400 * 1000; // 24 hours
 
 /** Clean up expired sessions every 10 minutes. */
@@ -24,22 +31,13 @@ const sessionCleanupInterval = setInterval(() => {
 }, 10 * 60 * 1000);
 sessionCleanupInterval.unref?.(); // Don't keep process alive
 
-/**
- * Hash a password with SHA-256 for timing-safe comparison.
- * @param {string} password
- * @returns {string}
- */
-function hashPassword(password) {
+/** Hash a password with SHA-256 for timing-safe comparison. */
+function hashPassword(password: string): string {
     return crypto.createHash('sha256').update(password).digest('hex');
 }
 
-/**
- * Compare two strings in constant time to prevent timing attacks.
- * @param {string} a
- * @param {string} b
- * @returns {boolean}
- */
-function safeCompare(a, b) {
+/** Compare two strings in constant time to prevent timing attacks. */
+function safeCompare(a: string, b: string): boolean {
     if (typeof a !== 'string' || typeof b !== 'string') return false;
     const bufA = Buffer.from(a);
     const bufB = Buffer.from(b);
@@ -47,60 +45,46 @@ function safeCompare(a, b) {
     return crypto.timingSafeEqual(bufA, bufB);
 }
 
-/**
- * Extract session token from request cookie.
- * @param {import('express').Request} req
- * @returns {string|null}
- */
-function getSession(req) {
+/** Extract session token from request cookie. */
+function getSession(req: Request): string | null {
     const cookie = req.headers.cookie || '';
     const match = cookie.match(/session=([^;]+)/);
-    return match ? match[1] : null;
+    return match?.[1] ?? null;
 }
 
-/**
- * Express middleware: reject unauthenticated requests.
- * @param {import('express').Request} req
- * @param {import('express').Response} res
- * @param {import('express').NextFunction} next
- */
-function requireAuth(req, res, next) {
+/** Express middleware: reject unauthenticated requests. */
+function requireAuth(req: Request, res: Response, next: NextFunction): void {
     const token = getSession(req);
     if (!token || !sessions.has(token)) {
-        return res.status(401).json({ error: 'Unauthorized' });
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
     }
     // Check expiry
-    const session = sessions.get(token);
+    const session = sessions.get(token)!;
     if (Date.now() > session.expiry) {
         sessions.delete(token);
-        return res.status(401).json({ error: 'Session expired' });
+        res.status(401).json({ error: 'Session expired' });
+        return;
     }
     req.csrfToken = session.csrf;
     next();
 }
 
-/**
- * Express middleware: reject requests without a valid CSRF token.
- * Must be applied after requireAuth.
- * @param {import('express').Request} req
- * @param {import('express').Response} res
- * @param {import('express').NextFunction} next
- */
-function requireCsrf(req, res, next) {
-    const headerToken = req.headers['x-csrf-token'];
+/** Express middleware: reject requests without a valid CSRF token. */
+function requireCsrf(req: Request, res: Response, next: NextFunction): void {
+    const headerToken = req.headers['x-csrf-token'] as string | undefined;
     if (!headerToken || !req.csrfToken || !safeCompare(headerToken, req.csrfToken)) {
-        return res.status(403).json({ error: 'Invalid CSRF token' });
+        res.status(403).json({ error: 'Invalid CSRF token' });
+        return;
     }
     next();
 }
 
 /**
  * Validate and sanitize config update payload.
- * @param {Record<string, unknown>} updates
- * @returns {{ valid: boolean, error?: string, sanitized: Record<string, unknown> }}
  */
-function validateConfigUpdate(updates) {
-    const sanitized = { ...updates };
+function validateConfigUpdate(updates: Record<string, unknown>): { valid: boolean; error?: string; sanitized: Partial<StoreData> } {
+    const sanitized: Record<string, unknown> = { ...updates };
 
     // Strip masked or empty API key
     if (!sanitized.vertexAiApiKey || String(sanitized.vertexAiApiKey).startsWith('••••')) {
@@ -114,83 +98,68 @@ function validateConfigUpdate(updates) {
 
     // Validate numeric fields
     if (sanitized.cooldownSeconds !== undefined) {
-        const v = parseInt(sanitized.cooldownSeconds);
+        const v = parseInt(String(sanitized.cooldownSeconds));
         if (isNaN(v) || v < 1 || v > 300) {
-            return { valid: false, error: 'cooldownSeconds must be 1–300', sanitized };
+            return { valid: false, error: 'cooldownSeconds must be 1–300', sanitized: sanitized as Partial<StoreData> };
         }
         sanitized.cooldownSeconds = v;
     }
     if (sanitized.cacheMaxSize !== undefined) {
-        const v = parseInt(sanitized.cacheMaxSize);
+        const v = parseInt(String(sanitized.cacheMaxSize));
         if (isNaN(v) || v < 10 || v > 100000) {
-            return { valid: false, error: 'cacheMaxSize must be 10–100000', sanitized };
+            return { valid: false, error: 'cacheMaxSize must be 10–100000', sanitized: sanitized as Partial<StoreData> };
         }
         sanitized.cacheMaxSize = v;
     }
     if (sanitized.maxInputLength !== undefined) {
-        const v = parseInt(sanitized.maxInputLength);
+        const v = parseInt(String(sanitized.maxInputLength));
         if (isNaN(v) || v < 100 || v > 10000) {
-            return { valid: false, error: 'maxInputLength must be 100–10000', sanitized };
+            return { valid: false, error: 'maxInputLength must be 100–10000', sanitized: sanitized as Partial<StoreData> };
         }
         sanitized.maxInputLength = v;
     }
     if (sanitized.maxOutputTokens !== undefined) {
-        const v = parseInt(sanitized.maxOutputTokens);
+        const v = parseInt(String(sanitized.maxOutputTokens));
         if (isNaN(v) || v < 100 || v > 8192) {
-            return { valid: false, error: 'maxOutputTokens must be 100–8192', sanitized };
+            return { valid: false, error: 'maxOutputTokens must be 100–8192', sanitized: sanitized as Partial<StoreData> };
         }
         sanitized.maxOutputTokens = v;
     }
     if (sanitized.dailyBudgetUsd !== undefined) {
-        const v = parseFloat(sanitized.dailyBudgetUsd);
+        const v = parseFloat(String(sanitized.dailyBudgetUsd));
         if (isNaN(v) || v < 0) {
-            return { valid: false, error: 'dailyBudgetUsd must be >= 0', sanitized };
+            return { valid: false, error: 'dailyBudgetUsd must be >= 0', sanitized: sanitized as Partial<StoreData> };
         }
         sanitized.dailyBudgetUsd = v;
     }
     if (sanitized.inputPricePerMillion !== undefined) {
-        const v = parseFloat(sanitized.inputPricePerMillion);
+        const v = parseFloat(String(sanitized.inputPricePerMillion));
         if (isNaN(v) || v < 0) {
-            return { valid: false, error: 'inputPricePerMillion must be >= 0', sanitized };
+            return { valid: false, error: 'inputPricePerMillion must be >= 0', sanitized: sanitized as Partial<StoreData> };
         }
         sanitized.inputPricePerMillion = v;
     }
     if (sanitized.outputPricePerMillion !== undefined) {
-        const v = parseFloat(sanitized.outputPricePerMillion);
+        const v = parseFloat(String(sanitized.outputPricePerMillion));
         if (isNaN(v) || v < 0) {
-            return { valid: false, error: 'outputPricePerMillion must be >= 0', sanitized };
+            return { valid: false, error: 'outputPricePerMillion must be >= 0', sanitized: sanitized as Partial<StoreData> };
         }
         sanitized.outputPricePerMillion = v;
     }
 
-    return { valid: true, sanitized };
+    return { valid: true, sanitized: sanitized as Partial<StoreData> };
 }
 
-/**
- * Build the cookie string for session management.
- * @param {string} token - Session token (empty string to clear)
- * @param {number} maxAge - Max age in seconds
- * @param {import('express').Request} [req] - Request object to detect HTTPS
- * @returns {string}
- */
-function buildSessionCookie(token, maxAge, req) {
+/** Build the cookie string for session management. */
+function buildSessionCookie(token: string, maxAge: number, req?: Request): string {
     const parts = [`session=${token}`, 'HttpOnly', 'Path=/', 'SameSite=Strict', `Max-Age=${maxAge}`];
     const isSecure = req?.secure || req?.headers?.['x-forwarded-proto'] === 'https';
     if (isSecure) parts.push('Secure');
     return parts.join('; ');
 }
 
-/**
- * Start the dashboard Express server.
- * @param {object} deps - Injected dependencies.
- * @param {import('./cache.js').TranslationCache} deps.cache
- * @param {import('./cooldown.js').CooldownManager} deps.cooldown
- * @param {import('./log.js').TranslationLog} deps.log
- * @param {import('discord.js').Client} deps.client
- * @param {() => { totalTranslations: number, apiCalls: number }} deps.getStats
- * @returns {import('express').Express}
- */
-export function startDashboard({ cache, cooldown, log, client, getStats }) {
+/** Start the dashboard Express server. */
+export function startDashboard({ cache, cooldown, log, client, getStats }: DashboardDeps): express.Express {
     const app = express();
 
     app.use(express.json());
@@ -207,7 +176,7 @@ export function startDashboard({ cache, cooldown, log, client, getStats }) {
 
     // --- Public routes ---
 
-    app.post('/api/login', loginLimiter, (req, res) => {
+    app.post('/api/login', loginLimiter, (req: Request, res: Response) => {
         const { password } = req.body;
         if (password && safeCompare(hashPassword(password), hashPassword(config.dashboardPassword))) {
             const token = crypto.randomBytes(32).toString('hex');
@@ -220,16 +189,16 @@ export function startDashboard({ cache, cooldown, log, client, getStats }) {
         }
     });
 
-    app.get('/api/auth/check', (req, res) => {
+    app.get('/api/auth/check', (req: Request, res: Response) => {
         const token = getSession(req);
         const session = token ? sessions.get(token) : null;
         const valid = !!(session && Date.now() <= session.expiry);
-        res.json({ authenticated: valid, csrfToken: valid ? session.csrf : undefined });
+        res.json({ authenticated: valid, csrfToken: valid ? session!.csrf : undefined });
     });
 
     // --- Logout ---
 
-    app.post('/api/logout', (req, res) => {
+    app.post('/api/logout', (req: Request, res: Response) => {
         const token = getSession(req);
         if (token) sessions.delete(token);
         res.setHeader('Set-Cookie', buildSessionCookie('', 0, req));
@@ -237,17 +206,17 @@ export function startDashboard({ cache, cooldown, log, client, getStats }) {
     });
 
     // --- Docker / LB health check (public, no auth) ---
-    app.get('/healthz', (req, res) => {
+    app.get('/healthz', (_req: Request, res: Response) => {
         res.json({ status: 'ok' });
     });
 
     // --- Protected routes ---
 
-    app.get('/api/setup-status', requireAuth, (req, res) => {
+    app.get('/api/setup-status', requireAuth, (_req: Request, res: Response) => {
         res.json({ complete: store.isSetupComplete() });
     });
 
-    app.get('/api/stats', requireAuth, (req, res) => {
+    app.get('/api/stats', requireAuth, (_req: Request, res: Response) => {
         const stats = getStats();
         const cacheStats = cache.stats();
         const usageStats = usage.getStats();
@@ -271,7 +240,7 @@ export function startDashboard({ cache, cooldown, log, client, getStats }) {
         });
     });
 
-    app.get('/api/config', requireAuth, (req, res) => {
+    app.get('/api/config', requireAuth, (_req: Request, res: Response) => {
         const cfg = store.getAll();
         res.json({
             ...cfg,
@@ -282,10 +251,11 @@ export function startDashboard({ cache, cooldown, log, client, getStats }) {
         });
     });
 
-    app.post('/api/config', requireAuth, requireCsrf, (req, res) => {
+    app.post('/api/config', requireAuth, requireCsrf, (req: Request, res: Response) => {
         const { valid, error, sanitized } = validateConfigUpdate(req.body);
         if (!valid) {
-            return res.status(400).json({ error });
+            res.status(400).json({ error });
+            return;
         }
 
         store.update(sanitized);
@@ -300,7 +270,7 @@ export function startDashboard({ cache, cooldown, log, client, getStats }) {
         res.json({ ok: true });
     });
 
-    app.get('/api/guilds', requireAuth, (req, res) => {
+    app.get('/api/guilds', requireAuth, (_req: Request, res: Response) => {
         const guilds = client.guilds.cache.map((g) => ({
             id: g.id,
             name: g.name,
@@ -312,21 +282,21 @@ export function startDashboard({ cache, cooldown, log, client, getStats }) {
 
     // --- Usage history ---
 
-    app.get('/api/usage/history', requireAuth, (req, res) => {
+    app.get('/api/usage/history', requireAuth, (_req: Request, res: Response) => {
         res.json(usage.getHistory());
     });
 
     // --- Logs (with optional filter) ---
 
-    app.get('/api/logs', requireAuth, (req, res) => {
-        const count = Math.min(parseInt(req.query.count) || 50, 200);
-        const filter = req.query.filter; // 'translation', 'error', or undefined
+    app.get('/api/logs', requireAuth, (req: Request, res: Response) => {
+        const count = Math.min(parseInt(req.query.count as string) || 50, 200);
+        const filter = req.query.filter as string | undefined;
         res.json(log.getRecent(count, filter));
     });
 
     // --- User language preferences ---
 
-    app.get('/api/user-prefs', requireAuth, (req, res) => {
+    app.get('/api/user-prefs', requireAuth, (_req: Request, res: Response) => {
         const prefs = store.get('userLanguagePrefs') || {};
         res.json({
             prefs,
@@ -334,9 +304,9 @@ export function startDashboard({ cache, cooldown, log, client, getStats }) {
         });
     });
 
-    app.delete('/api/user-prefs/:userId', requireAuth, requireCsrf, (req, res) => {
+    app.delete('/api/user-prefs/:userId', requireAuth, requireCsrf, (req: Request, res: Response) => {
         const prefs = store.get('userLanguagePrefs') || {};
-        const { userId } = req.params;
+        const userId = req.params.userId as string;
         if (prefs[userId]) {
             delete prefs[userId];
             store.set('userLanguagePrefs', prefs);
@@ -348,7 +318,7 @@ export function startDashboard({ cache, cooldown, log, client, getStats }) {
 
     // --- Cache management ---
 
-    app.post('/api/cache/clear', requireAuth, requireCsrf, (req, res) => {
+    app.post('/api/cache/clear', requireAuth, requireCsrf, (_req: Request, res: Response) => {
         const before = cache.stats();
         cache.clear();
         res.json({ ok: true, cleared: before.size });
@@ -356,10 +326,11 @@ export function startDashboard({ cache, cooldown, log, client, getStats }) {
 
     // --- Translation test ---
 
-    app.post('/api/translate/test', requireAuth, requireCsrf, async (req, res) => {
+    app.post('/api/translate/test', requireAuth, requireCsrf, async (req: Request, res: Response) => {
         const { text, targetLanguage } = req.body;
         if (!text?.trim()) {
-            return res.status(400).json({ error: 'Text is required' });
+            res.status(400).json({ error: 'Text is required' });
+            return;
         }
         try {
             const start = Date.now();
@@ -373,17 +344,18 @@ export function startDashboard({ cache, cooldown, log, client, getStats }) {
                 latencyMs: Date.now() - start,
             });
         } catch (err) {
-            res.status(500).json({ error: err.message });
+            res.status(500).json({ error: (err as Error).message });
         }
     });
 
     // --- API health check ---
 
-    app.get('/api/health', requireAuth, async (req, res) => {
+    app.get('/api/health', requireAuth, async (_req: Request, res: Response) => {
         const apiKey = store.get('vertexAiApiKey');
         const project = store.get('gcpProject');
         if (!apiKey || !project) {
-            return res.json({ healthy: false, error: 'API not configured' });
+            res.json({ healthy: false, error: 'API not configured' });
+            return;
         }
         try {
             const start = Date.now();
@@ -415,7 +387,7 @@ export function startDashboard({ cache, cooldown, log, client, getStats }) {
                 res.json({ healthy: false, error: `${response.status}: ${err.slice(0, 200)}` });
             }
         } catch (err) {
-            res.json({ healthy: false, error: err.message });
+            res.json({ healthy: false, error: (err as Error).message });
         }
     });
 

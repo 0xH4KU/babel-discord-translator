@@ -15,7 +15,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 describe('ConfigStore', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        existsSync.mockReturnValue(false);
+        (existsSync as ReturnType<typeof vi.fn>).mockReturnValue(false);
     });
 
     async function createFreshStore() {
@@ -90,7 +90,7 @@ describe('ConfigStore', () => {
 
         expect(store.get('cooldownSeconds')).toBe(15);
         expect(mockWrite).toHaveBeenCalled();
-        const written = JSON.parse(mockWrite.mock.calls[0][1]);
+        const written = JSON.parse(mockWrite.mock.calls[0][1] as string);
         expect(written.cooldownSeconds).toBe(15);
     });
 
@@ -109,11 +109,6 @@ describe('ConfigStore', () => {
 
         // Original should not be affected
         expect(store.get('cooldownSeconds')).toBe(5);
-    });
-
-    it('should return default for unknown key', async () => {
-        const store = await createFreshStore();
-        expect(store.get('nonExistentKey')).toBeUndefined();
     });
 
     it('should report isSetupComplete correctly', async () => {

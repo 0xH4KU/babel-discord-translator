@@ -1,26 +1,22 @@
 /**
  * LRU Translation Cache.
  * Stores messageId → translation to avoid duplicate API calls.
- * @module cache
  */
 export class TranslationCache {
-    /**
-     * @param {number} [maxSize=2000] - Maximum number of cached entries.
-     */
-    constructor(maxSize = 2000) {
+    maxSize: number;
+    cache: Map<string, string>;
+    hits: number;
+    misses: number;
+
+    constructor(maxSize: number = 2000) {
         this.maxSize = maxSize;
-        /** @type {Map<string, string>} */
         this.cache = new Map();
         this.hits = 0;
         this.misses = 0;
     }
 
-    /**
-     * Retrieve a cached translation. Moves entry to most-recently-used.
-     * @param {string} messageId
-     * @returns {string|null} Cached translation or null on miss.
-     */
-    get(messageId) {
+    /** Retrieve a cached translation. Moves entry to most-recently-used. */
+    get(messageId: string): string | null {
         const result = this.cache.get(messageId);
         if (result) {
             this.hits++;
@@ -33,34 +29,29 @@ export class TranslationCache {
         return null;
     }
 
-    /**
-     * Store a translation in the cache. Evicts oldest entry if at capacity.
-     * @param {string} messageId
-     * @param {string} translation
-     */
-    set(messageId, translation) {
+    /** Store a translation in the cache. Evicts oldest entry if at capacity. */
+    set(messageId: string, translation: string): void {
         if (this.cache.has(messageId)) {
             this.cache.delete(messageId);
         } else if (this.cache.size >= this.maxSize) {
             // Evict oldest entry
             const oldest = this.cache.keys().next().value;
-            this.cache.delete(oldest);
+            if (oldest !== undefined) {
+                this.cache.delete(oldest);
+            }
         }
         this.cache.set(messageId, translation);
     }
 
     /** Clear all cached entries and reset statistics. */
-    clear() {
+    clear(): void {
         this.cache.clear();
         this.hits = 0;
         this.misses = 0;
     }
 
-    /**
-     * Get cache statistics.
-     * @returns {{ size: number, maxSize: number, hits: number, misses: number, hitRate: string }}
-     */
-    stats() {
+    /** Get cache statistics. */
+    stats(): { size: number; maxSize: number; hits: number; misses: number; hitRate: string } {
         const total = this.hits + this.misses;
         return {
             size: this.cache.size,

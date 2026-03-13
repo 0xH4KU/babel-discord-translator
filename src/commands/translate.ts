@@ -1,42 +1,47 @@
-import { MessageFlags } from 'discord.js';
+import { MessageFlags, type ChatInputCommandInteraction } from 'discord.js';
 import { store } from '../store.js';
 import { translate } from '../translate.js';
 import { localeToLang, isSameLanguage } from '../lang.js';
 import { usage } from '../usage.js';
 import { sanitizeError } from './shared.js';
 import crypto from 'crypto';
+import type { TranslateCommandDeps } from '../types.js';
+import type { TextChannel, GuildMember } from 'discord.js';
 
 /**
  * Handle /translate command — translate text and send publicly via webhook.
- * @param {import('discord.js').ChatInputCommandInteraction} interaction
- * @param {{ cache: import('../cache.js').TranslationCache, cooldown: import('../cooldown.js').CooldownManager, log: import('../log.js').TranslationLog, getOrCreateWebhook: Function, stats: { totalTranslations: number, apiCalls: number } }} deps
  */
-export async function handleTranslate(interaction, { cache, cooldown, log, getOrCreateWebhook, stats }) {
-    const text = interaction.options.getString('text');
+export async function handleTranslate(interaction: ChatInputCommandInteraction, { cache, cooldown, log, getOrCreateWebhook, stats }: TranslateCommandDeps): Promise<void> {
+    const text = interaction.options.getString('text')!;
     const targetOpt = interaction.options.getString('to');
 
     if (!store.isSetupComplete()) {
-        return interaction.reply({ content: 'Bot not configured yet.', flags: MessageFlags.Ephemeral });
+        await interaction.reply({ content: 'Bot not configured yet.', flags: MessageFlags.Ephemeral });
+        return;
     }
     const allowedGuilds = store.get('allowedGuildIds');
-    if (!allowedGuilds.includes(interaction.guildId)) {
-        return interaction.reply({ content: 'This server is not authorized.', flags: MessageFlags.Ephemeral });
+    if (!allowedGuilds.includes(interaction.guildId!)) {
+        await interaction.reply({ content: 'This server is not authorized.', flags: MessageFlags.Ephemeral });
+        return;
     }
     if (usage.isBudgetExceeded()) {
-        return interaction.reply({ content: 'Daily budget exceeded', flags: MessageFlags.Ephemeral });
+        await interaction.reply({ content: 'Daily budget exceeded', flags: MessageFlags.Ephemeral });
+        return;
     }
     const cd = cooldown.check(interaction.user.id);
     if (!cd.allowed) {
-        return interaction.reply({ content: `Please wait ${cd.remaining}s`, flags: MessageFlags.Ephemeral });
+        await interaction.reply({ content: `Please wait ${cd.remaining}s`, flags: MessageFlags.Ephemeral });
+        return;
     }
 
     // --- Text length limit ---
     const maxLen = store.get('maxInputLength') || 2000;
     if (text.length > maxLen) {
-        return interaction.reply({
+        await interaction.reply({
             content: `Text too long (${text.length}/${maxLen} chars)`,
             flags: MessageFlags.Ephemeral,
         });
+        return;
     }
 
     // Resolve target language
@@ -49,10 +54,11 @@ export async function handleTranslate(interaction, { cache, cooldown, log, getOr
 
     // --- Same-language check ---
     if (isSameLanguage(text, targetLanguage, interaction.locale)) {
-        return interaction.reply({
+        await interaction.reply({
             content: 'This text is already in your target language!',
             flags: MessageFlags.Ephemeral,
         });
+        return;
     }
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -74,21 +80,22 @@ export async function handleTranslate(interaction, { cache, cooldown, log, getOr
         }
 
         // --- Send via webhook with retry on stale cache ---
-        let webhook = await getOrCreateWebhook(interaction.channel);
-        const member = interaction.member;
+        let webhook = await getOrCreateWebhook(interaction.channel as TextChannel);
+        const member = interaction.member as GuildMember | null;
         const sendPayload = {
-            content: translated,
+            content: translated!,
             username: member?.displayName || interaction.user.displayName,
             avatarURL: interaction.user.displayAvatarURL({ size: 128 }),
         };
 
         try {
             await webhook.send(sendPayload);
-        } catch (webhookErr) {
+        } catch (webhookErr: unknown) {
+            const err = webhookErr as { code?: number; status?: number };
             // If webhook was deleted externally, clear cache and retry once
-            if (webhookErr.code === 10015 || webhookErr.status === 404) {
+            if (err.code === 10015 || err.status === 404) {
                 console.warn('[/translate] Webhook stale, retrying...');
-                webhook = await getOrCreateWebhook(interaction.channel, true);
+                webhook = await getOrCreateWebhook(interaction.channel as TextChannel, true);
                 await webhook.send(sendPayload);
             } else {
                 throw webhookErr;
@@ -110,15 +117,15 @@ export async function handleTranslate(interaction, { cache, cooldown, log, getOr
         // Dismiss the ephemeral "thinking" message
         await interaction.deleteReply();
     } catch (error) {
-        console.error('[/translate]', error.message);
+        console.error('[/translate]', (error as Error).message);
         log.addError({
             guildId: interaction.guildId,
             guildName: interaction.guild?.name,
             userId: interaction.user.id,
             userTag: interaction.user.tag,
-            error: error.message,
+            error: (error as Error).message,
             command: '/translate',
         });
-        await interaction.editReply({ content: `Translation failed: ${sanitizeError(error.message)}` });
+        await interaction.editReply({ content: `Translation failed: ${sanitizeError((error as Error).message)}` });
     }
 }

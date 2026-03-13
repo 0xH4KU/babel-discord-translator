@@ -3,7 +3,7 @@ import { localeToLang, detectScript, langToScript, isSameLanguage } from '../src
 
 describe('localeToLang', () => {
     it('should return null for null/undefined input', () => {
-        expect(localeToLang(null)).toBeNull();
+        expect(localeToLang(null as unknown as undefined)).toBeNull();
         expect(localeToLang(undefined)).toBeNull();
     });
 
@@ -86,7 +86,7 @@ describe('detectScript', () => {
 describe('langToScript', () => {
     it('should return null for null/undefined input', () => {
         expect(langToScript(null)).toBeNull();
-        expect(langToScript(undefined)).toBeNull();
+        expect(langToScript(undefined as unknown as null)).toBeNull();
     });
 
     it('should map Chinese locale codes to zh', () => {

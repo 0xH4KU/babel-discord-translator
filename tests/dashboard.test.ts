@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import http from 'http';
 
 // --- Mock dependencies ---
@@ -6,13 +6,14 @@ vi.mock('dotenv/config', () => ({}));
 
 vi.mock('../src/config.js', () => ({
     config: {
+        discordToken: 'test-token',
         dashboardPort: 0, // bind to random port
         dashboardPassword: 'test-pass-123',
     },
 }));
 
 vi.mock('../src/store.js', () => {
-    const data = {
+    const data: Record<string, unknown> = {
         vertexAiApiKey: 'sk-abcdef123456',
         gcpProject: 'test-project',
         gcpLocation: 'global',
@@ -24,9 +25,9 @@ vi.mock('../src/store.js', () => {
     };
     return {
         store: {
-            get: vi.fn((key) => data[key]),
-            set: vi.fn((key, val) => { data[key] = val; }),
-            update: vi.fn((obj) => Object.assign(data, obj)),
+            get: vi.fn((key: string) => data[key]),
+            set: vi.fn((key: string, val: unknown) => { data[key] = val; }),
+            update: vi.fn((obj: Record<string, unknown>) => Object.assign(data, obj)),
             getAll: vi.fn(() => ({ ...data })),
             isSetupComplete: vi.fn(() => data.setupComplete),
         },
@@ -53,7 +54,7 @@ vi.mock('../src/usage.js', () => ({
 }));
 
 vi.mock('../src/translate.js', () => ({
-    translate: vi.fn(async (text) => ({
+    translate: vi.fn(async (text: string) => ({
         text: `translated: ${text}`,
         inputTokens: 10,
         outputTokens: 5,
@@ -64,27 +65,35 @@ import { startDashboard } from '../src/dashboard.js';
 import { TranslationCache } from '../src/cache.js';
 import { CooldownManager } from '../src/cooldown.js';
 import { TranslationLog } from '../src/log.js';
+import type { Client } from 'discord.js';
+
+interface TestResponse {
+    status: number;
+    headers: http.IncomingHttpHeaders;
+    body: Record<string, unknown> | null;
+    rawHeaders: http.IncomingHttpHeaders;
+}
 
 // --- Helper: make HTTP requests to the test server ---
-function request(server, method, path, { body, cookie, csrf } = {}) {
+function request(server: http.Server, method: string, path: string, { body, cookie, csrf }: { body?: Record<string, unknown>; cookie?: string; csrf?: string } = {}): Promise<TestResponse> {
     return new Promise((resolve, reject) => {
-        const addr = server.address();
-        const options = {
+        const addr = server.address() as { port: number };
+        const options: http.RequestOptions = {
             hostname: '127.0.0.1',
             port: addr.port,
             path,
             method,
             headers: { 'Content-Type': 'application/json' },
         };
-        if (cookie) options.headers.Cookie = cookie;
-        if (csrf) options.headers['x-csrf-token'] = csrf;
+        if (cookie) (options.headers as Record<string, string>)['Cookie'] = cookie;
+        if (csrf) (options.headers as Record<string, string>)['x-csrf-token'] = csrf;
 
         const req = http.request(options, (res) => {
             let data = '';
-            res.on('data', (chunk) => { data += chunk; });
+            res.on('data', (chunk: Buffer) => { data += chunk; });
             res.on('end', () => {
                 resolve({
-                    status: res.statusCode,
+                    status: res.statusCode!,
                     headers: res.headers,
                     body: data ? JSON.parse(data) : null,
                     rawHeaders: res.headers,
@@ -99,9 +108,9 @@ function request(server, method, path, { body, cookie, csrf } = {}) {
 }
 
 describe('Dashboard API', () => {
-    let server;
-    let sessionCookie;
-    let csrfToken;
+    let server: http.Server;
+    let sessionCookie: string;
+    let csrfToken: string;
 
     beforeAll(async () => {
         const cache = new TranslationCache(100);
@@ -109,8 +118,8 @@ describe('Dashboard API', () => {
         const log = new TranslationLog(100);
         const mockClient = {
             user: { tag: 'Babel#1234', displayAvatarURL: () => 'https://example.com/avatar.png' },
-            guilds: { cache: { size: 3, map: (fn) => [] } },
-        };
+            guilds: { cache: { size: 3, map: (_fn: Function) => [] } },
+        } as unknown as Client;
 
         const app = startDashboard({
             cache,
@@ -135,7 +144,7 @@ describe('Dashboard API', () => {
             body: { password: 'wrong' },
         });
         expect(res.status).toBe(401);
-        expect(res.body.error).toBe('Wrong password');
+        expect(res.body!.error).toBe('Wrong password');
     });
 
     it('should accept login with correct password', async () => {
@@ -143,12 +152,12 @@ describe('Dashboard API', () => {
             body: { password: 'test-pass-123' },
         });
         expect(res.status).toBe(200);
-        expect(res.body.ok).toBe(true);
+        expect(res.body!.ok).toBe(true);
 
         // Extract session cookie for subsequent requests
         const setCookie = res.rawHeaders['set-cookie'];
         expect(setCookie).toBeDefined();
-        sessionCookie = setCookie[0].split(';')[0]; // 'session=xxx'
+        sessionCookie = setCookie![0].split(';')[0]; // 'session=xxx'
     });
 
     it('should report authenticated after login', async () => {
@@ -156,14 +165,14 @@ describe('Dashboard API', () => {
             cookie: sessionCookie,
         });
         expect(res.status).toBe(200);
-        expect(res.body.authenticated).toBe(true);
-        expect(res.body.csrfToken).toBeDefined();
-        csrfToken = res.body.csrfToken;
+        expect(res.body!.authenticated).toBe(true);
+        expect(res.body!.csrfToken).toBeDefined();
+        csrfToken = res.body!.csrfToken as string;
     });
 
     it('should report unauthenticated without cookie', async () => {
         const res = await request(server, 'GET', '/api/auth/check');
-        expect(res.body.authenticated).toBe(false);
+        expect(res.body!.authenticated).toBe(false);
     });
 
     // --- Protected route access ---
@@ -178,8 +187,8 @@ describe('Dashboard API', () => {
             cookie: sessionCookie,
         });
         expect(res.status).toBe(200);
-        expect(res.body.bot.name).toBe('Babel#1234');
-        expect(res.body.translations.total).toBe(42);
+        expect((res.body!.bot as Record<string, unknown>).name).toBe('Babel#1234');
+        expect((res.body!.translations as Record<string, unknown>).total).toBe(42);
     });
 
     // --- Config masking ---
@@ -189,10 +198,10 @@ describe('Dashboard API', () => {
             cookie: sessionCookie,
         });
         expect(res.status).toBe(200);
-        expect(res.body.vertexAiApiKey).toMatch(/^••••/);
-        expect(res.body.hasApiKey).toBe(true);
+        expect(res.body!.vertexAiApiKey as string).toMatch(/^••••/);
+        expect(res.body!.hasApiKey).toBe(true);
         // Should NOT expose the real key
-        expect(res.body.vertexAiApiKey).not.toContain('sk-abcdef');
+        expect(res.body!.vertexAiApiKey as string).not.toContain('sk-abcdef');
     });
 
     // --- CSRF protection ---
@@ -203,7 +212,7 @@ describe('Dashboard API', () => {
             body: { cooldownSeconds: 10 },
         });
         expect(res.status).toBe(403);
-        expect(res.body.error).toBe('Invalid CSRF token');
+        expect(res.body!.error).toBe('Invalid CSRF token');
     });
 
     // --- Config update protection ---
@@ -223,7 +232,7 @@ describe('Dashboard API', () => {
         expect(res.status).toBe(200);
 
         // store.update should have been called without the protected fields
-        const lastCall = store.update.mock.calls[store.update.mock.calls.length - 1][0];
+        const lastCall = (store.update as ReturnType<typeof vi.fn>).mock.calls[(store.update as ReturnType<typeof vi.fn>).mock.calls.length - 1][0];
         expect(lastCall).not.toHaveProperty('tokenUsage');
         expect(lastCall).not.toHaveProperty('usageHistory');
         expect(lastCall).not.toHaveProperty('userLanguagePrefs');
@@ -248,8 +257,8 @@ describe('Dashboard API', () => {
             body: { text: 'Hello', targetLanguage: 'ja' },
         });
         expect(res.status).toBe(200);
-        expect(res.body.ok).toBe(true);
-        expect(res.body.translation).toBe('translated: Hello');
+        expect(res.body!.ok).toBe(true);
+        expect(res.body!.translation).toBe('translated: Hello');
     });
 
     // --- Logs ---
@@ -269,7 +278,7 @@ describe('Dashboard API', () => {
             cookie: sessionCookie,
         });
         expect(res.status).toBe(200);
-        expect(res.body.ok).toBe(true);
+        expect(res.body!.ok).toBe(true);
 
         // Subsequent request should fail
         const check = await request(server, 'GET', '/api/stats', {
