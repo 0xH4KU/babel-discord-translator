@@ -5,7 +5,7 @@ const { getLanguageName, buildTargetedPrompt, fetchWithRetry, LOCALE_MAP, DEFAUL
 
 // --- Mock store ---
 vi.mock('../src/store.js', () => {
-    const data = {
+    const data: Record<string, unknown> = {
         geminiModel: 'gemini-2.5-flash-lite',
         gcpProject: 'test-project',
         gcpLocation: 'global',
@@ -14,8 +14,8 @@ vi.mock('../src/store.js', () => {
     };
     return {
         store: {
-            get: vi.fn((key) => data[key]),
-            _setMock: (key, val) => { data[key] = val; },
+            get: vi.fn((key: string) => data[key]),
+            _setMock: (key: string, val: unknown) => { data[key] = val; },
         },
     };
 });
@@ -24,7 +24,7 @@ vi.mock('../src/store.js', () => {
 import { store } from '../src/store.js';
 
 // --- Helper: build a valid Gemini response ---
-function geminiResponse(text, inputTokens = 10, outputTokens = 5) {
+function geminiResponse(text: string, inputTokens = 10, outputTokens = 5) {
     return {
         ok: true,
         status: 200,
@@ -75,7 +75,7 @@ describe('buildTargetedPrompt', () => {
 });
 
 describe('fetchWithRetry', () => {
-    let originalFetch;
+    let originalFetch: typeof globalThis.fetch;
 
     beforeEach(() => {
         originalFetch = globalThis.fetch;
@@ -86,7 +86,7 @@ describe('fetchWithRetry', () => {
     });
 
     it('should return immediately on success', async () => {
-        const mockResponse = { ok: true, status: 200 };
+        const mockResponse = { ok: true, status: 200 } as Response;
         globalThis.fetch = vi.fn().mockResolvedValue(mockResponse);
 
         const result = await fetchWithRetry('https://example.com', {}, 3);
@@ -95,7 +95,7 @@ describe('fetchWithRetry', () => {
     });
 
     it('should not retry on 400 (non-retryable status)', async () => {
-        const mockResponse = { ok: false, status: 400 };
+        const mockResponse = { ok: false, status: 400 } as Response;
         globalThis.fetch = vi.fn().mockResolvedValue(mockResponse);
 
         const result = await fetchWithRetry('https://example.com', {}, 3);
@@ -104,16 +104,14 @@ describe('fetchWithRetry', () => {
     });
 
     it('should retry on 429 and eventually succeed', async () => {
-        const fail = { ok: false, status: 429 };
-        const success = { ok: true, status: 200 };
+        const fail = { ok: false, status: 429 } as Response;
+        const success = { ok: true, status: 200 } as Response;
         globalThis.fetch = vi.fn()
             .mockResolvedValueOnce(fail)
             .mockResolvedValueOnce(success);
 
-        // Use 0 retries-worth of delay by mocking setTimeout
         vi.useFakeTimers();
         const promise = fetchWithRetry('https://example.com', {}, 3);
-        // Fast-forward past all delays
         await vi.runAllTimersAsync();
         const result = await promise;
         vi.useRealTimers();
@@ -123,7 +121,7 @@ describe('fetchWithRetry', () => {
     });
 
     it('should retry on network error and eventually succeed', async () => {
-        const success = { ok: true, status: 200 };
+        const success = { ok: true, status: 200 } as Response;
         globalThis.fetch = vi.fn()
             .mockRejectedValueOnce(new Error('Network error'))
             .mockResolvedValueOnce(success);
@@ -142,8 +140,7 @@ describe('fetchWithRetry', () => {
 
         vi.useFakeTimers();
         const promise = fetchWithRetry('https://example.com', {}, 1);
-        // Wrap in a catch handler early to prevent unhandled rejection warning
-        const caught = promise.catch((e) => e);
+        const caught = promise.catch((e: Error) => e);
         await vi.runAllTimersAsync();
         vi.useRealTimers();
 
@@ -154,16 +151,16 @@ describe('fetchWithRetry', () => {
 });
 
 describe('translate', () => {
-    let originalFetch;
+    let originalFetch: typeof globalThis.fetch;
+    const mockStore = store as unknown as { _setMock: (key: string, val: unknown) => void; get: ReturnType<typeof vi.fn> };
 
     beforeEach(() => {
         originalFetch = globalThis.fetch;
-        // Reset mock store data
-        store._setMock('gcpProject', 'test-project');
-        store._setMock('vertexAiApiKey', 'test-key');
-        store._setMock('gcpLocation', 'global');
-        store._setMock('geminiModel', 'gemini-2.5-flash-lite');
-        store._setMock('translationPrompt', '');
+        mockStore._setMock('gcpProject', 'test-project');
+        mockStore._setMock('vertexAiApiKey', 'test-key');
+        mockStore._setMock('gcpLocation', 'global');
+        mockStore._setMock('geminiModel', 'gemini-2.5-flash-lite');
+        mockStore._setMock('translationPrompt', '');
     });
 
     afterEach(() => {
@@ -180,8 +177,8 @@ describe('translate', () => {
     });
 
     it('should throw when API is not configured', async () => {
-        store._setMock('gcpProject', '');
-        store._setMock('vertexAiApiKey', '');
+        mockStore._setMock('gcpProject', '');
+        mockStore._setMock('vertexAiApiKey', '');
 
         await expect(translate('Hello')).rejects.toThrow('API not configured');
     });
@@ -206,12 +203,12 @@ describe('translate', () => {
     });
 
     it('should use custom prompt when set', async () => {
-        store._setMock('translationPrompt', 'Custom: translate to Pirate English');
+        mockStore._setMock('translationPrompt', 'Custom: translate to Pirate English');
         globalThis.fetch = vi.fn().mockResolvedValue(geminiResponse('Ahoy!'));
 
         await translate('Hello');
 
-        const body = JSON.parse(globalThis.fetch.mock.calls[0][1].body);
+        const body = JSON.parse((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
         expect(body.contents[0].parts[0].text).toContain('Custom: translate to Pirate English');
     });
 
@@ -220,7 +217,7 @@ describe('translate', () => {
 
         await translate('Hello', 'ja');
 
-        const body = JSON.parse(globalThis.fetch.mock.calls[0][1].body);
+        const body = JSON.parse((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
         expect(body.contents[0].parts[0].text).toContain('Japanese');
     });
 
@@ -229,27 +226,27 @@ describe('translate', () => {
 
         await translate('Hello', 'auto');
 
-        const body = JSON.parse(globalThis.fetch.mock.calls[0][1].body);
+        const body = JSON.parse((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
         expect(body.contents[0].parts[0].text).toContain('If the text is Chinese');
     });
 
     it('should use regional URL for non-global location', async () => {
-        store._setMock('gcpLocation', 'us-central1');
+        mockStore._setMock('gcpLocation', 'us-central1');
         globalThis.fetch = vi.fn().mockResolvedValue(geminiResponse('Hello'));
 
         await translate('你好');
 
-        const url = globalThis.fetch.mock.calls[0][0];
+        const url = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0];
         expect(url).toContain('us-central1-aiplatform.googleapis.com');
     });
 
     it('should use global URL for global location', async () => {
-        store._setMock('gcpLocation', 'global');
+        mockStore._setMock('gcpLocation', 'global');
         globalThis.fetch = vi.fn().mockResolvedValue(geminiResponse('Hello'));
 
         await translate('你好');
 
-        const url = globalThis.fetch.mock.calls[0][0];
+        const url = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0];
         expect(url).toContain('aiplatform.googleapis.com');
         expect(url).not.toContain('global-aiplatform');
     });

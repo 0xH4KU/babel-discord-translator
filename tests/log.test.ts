@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { TranslationLog } from '../src/log.js';
+import type { TranslationLogEntry, ErrorLogEntry } from '../src/types.js';
 
 describe('TranslationLog', () => {
     it('should add and retrieve entries', () => {
@@ -15,47 +16,47 @@ describe('TranslationLog', () => {
 
         const entries = log.getRecent(10);
         expect(entries).toHaveLength(1);
-        expect(entries[0].guildName).toBe('Test Server');
-        expect(entries[0].cached).toBe(false);
+        expect((entries[0] as TranslationLogEntry).guildName).toBe('Test Server');
+        expect((entries[0] as TranslationLogEntry).cached).toBe(false);
     });
 
     it('should return entries in newest-first order', () => {
         const log = new TranslationLog(10);
-        log.add({ guildId: 'g1', userId: 'u1', contentPreview: 'First', cached: false });
-        log.add({ guildId: 'g1', userId: 'u1', contentPreview: 'Second', cached: false });
+        log.add({ guildId: 'g1', userId: 'u1', userTag: 'u1', contentPreview: 'First', cached: false });
+        log.add({ guildId: 'g1', userId: 'u1', userTag: 'u1', contentPreview: 'Second', cached: false });
 
         const entries = log.getRecent(10);
-        expect(entries[0].contentPreview).toBe('Second');
-        expect(entries[1].contentPreview).toBe('First');
+        expect((entries[0] as TranslationLogEntry).contentPreview).toBe('Second');
+        expect((entries[1] as TranslationLogEntry).contentPreview).toBe('First');
     });
 
     it('should enforce max size (ring buffer)', () => {
         const log = new TranslationLog(3);
-        log.add({ guildId: 'g1', userId: 'u1', contentPreview: 'A', cached: false });
-        log.add({ guildId: 'g1', userId: 'u1', contentPreview: 'B', cached: false });
-        log.add({ guildId: 'g1', userId: 'u1', contentPreview: 'C', cached: false });
-        log.add({ guildId: 'g1', userId: 'u1', contentPreview: 'D', cached: false });
+        log.add({ guildId: 'g1', userId: 'u1', userTag: 'u1', contentPreview: 'A', cached: false });
+        log.add({ guildId: 'g1', userId: 'u1', userTag: 'u1', contentPreview: 'B', cached: false });
+        log.add({ guildId: 'g1', userId: 'u1', userTag: 'u1', contentPreview: 'C', cached: false });
+        log.add({ guildId: 'g1', userId: 'u1', userTag: 'u1', contentPreview: 'D', cached: false });
 
         expect(log.size).toBe(3);
         const entries = log.getRecent(10);
-        expect(entries[0].contentPreview).toBe('D');
+        expect((entries[0] as TranslationLogEntry).contentPreview).toBe('D');
         // 'A' should have been evicted
-        expect(entries.find((e) => e.contentPreview === 'A')).toBeUndefined();
+        expect(entries.find((e) => (e as TranslationLogEntry).contentPreview === 'A')).toBeUndefined();
     });
 
     it('should truncate content preview to 50 chars', () => {
         const log = new TranslationLog(10);
         const longText = 'A'.repeat(100);
-        log.add({ guildId: 'g1', userId: 'u1', contentPreview: longText, cached: false });
+        log.add({ guildId: 'g1', userId: 'u1', userTag: 'u1', contentPreview: longText, cached: false });
 
         const entries = log.getRecent(1);
-        expect(entries[0].contentPreview.length).toBe(50);
+        expect((entries[0] as TranslationLogEntry).contentPreview.length).toBe(50);
     });
 
     it('should limit getRecent count', () => {
         const log = new TranslationLog(100);
         for (let i = 0; i < 10; i++) {
-            log.add({ guildId: 'g1', userId: 'u1', contentPreview: `Msg ${i}`, cached: false });
+            log.add({ guildId: 'g1', userId: 'u1', userTag: 'u1', contentPreview: `Msg ${i}`, cached: false });
         }
 
         expect(log.getRecent(3)).toHaveLength(3);
@@ -63,7 +64,7 @@ describe('TranslationLog', () => {
 
     it('should auto-set timestamp', () => {
         const log = new TranslationLog(10);
-        log.add({ guildId: 'g1', userId: 'u1', contentPreview: 'Test', cached: false });
+        log.add({ guildId: 'g1', userId: 'u1', userTag: 'u1', contentPreview: 'Test', cached: false });
 
         const entries = log.getRecent(1);
         expect(entries[0].timestamp).toBeGreaterThan(0);
@@ -83,8 +84,8 @@ describe('TranslationLog', () => {
         const entries = log.getRecent(10);
         expect(entries).toHaveLength(1);
         expect(entries[0].type).toBe('error');
-        expect(entries[0].error).toBe('API timeout');
-        expect(entries[0].command).toBe('Babel');
+        expect((entries[0] as ErrorLogEntry).error).toBe('API timeout');
+        expect((entries[0] as ErrorLogEntry).command).toBe('Babel');
     });
 
     it('should truncate error message to 200 chars', () => {
@@ -93,14 +94,14 @@ describe('TranslationLog', () => {
         log.addError({ guildId: 'g1', userId: 'u1', error: longError, command: 'test' });
 
         const entries = log.getRecent(1);
-        expect(entries[0].error.length).toBe(200);
+        expect((entries[0] as ErrorLogEntry).error.length).toBe(200);
     });
 
     it('should filter by type "translation"', () => {
         const log = new TranslationLog(10);
-        log.add({ guildId: 'g1', userId: 'u1', contentPreview: 'Hello', cached: false });
+        log.add({ guildId: 'g1', userId: 'u1', userTag: 'u1', contentPreview: 'Hello', cached: false });
         log.addError({ guildId: 'g1', userId: 'u1', error: 'fail', command: 'test' });
-        log.add({ guildId: 'g1', userId: 'u1', contentPreview: 'World', cached: true });
+        log.add({ guildId: 'g1', userId: 'u1', userTag: 'u1', contentPreview: 'World', cached: true });
 
         const translations = log.getRecent(10, 'translation');
         expect(translations).toHaveLength(2);
@@ -109,7 +110,7 @@ describe('TranslationLog', () => {
 
     it('should filter by type "error"', () => {
         const log = new TranslationLog(10);
-        log.add({ guildId: 'g1', userId: 'u1', contentPreview: 'Hello', cached: false });
+        log.add({ guildId: 'g1', userId: 'u1', userTag: 'u1', contentPreview: 'Hello', cached: false });
         log.addError({ guildId: 'g1', userId: 'u1', error: 'fail1', command: 'test' });
         log.addError({ guildId: 'g1', userId: 'u1', error: 'fail2', command: 'test' });
 
@@ -120,7 +121,7 @@ describe('TranslationLog', () => {
 
     it('should count errors via errorCount getter', () => {
         const log = new TranslationLog(10);
-        log.add({ guildId: 'g1', userId: 'u1', contentPreview: 'Hello', cached: false });
+        log.add({ guildId: 'g1', userId: 'u1', userTag: 'u1', contentPreview: 'Hello', cached: false });
         log.addError({ guildId: 'g1', userId: 'u1', error: 'fail1', command: 'test' });
         log.addError({ guildId: 'g1', userId: 'u1', error: 'fail2', command: 'test' });
 
@@ -129,9 +130,9 @@ describe('TranslationLog', () => {
 
     it('should use default values for optional fields in add()', () => {
         const log = new TranslationLog(10);
-        log.add({ guildId: 'g1', userId: 'u1', cached: false });
+        log.add({ guildId: 'g1', userId: 'u1', userTag: 'u1', cached: false });
 
-        const entry = log.getRecent(1)[0];
+        const entry = log.getRecent(1)[0] as TranslationLogEntry;
         expect(entry.guildName).toBe('g1'); // defaults to guildId
         expect(entry.userTag).toBe('u1');   // defaults to userId
         expect(entry.contentPreview).toBe('');
@@ -143,7 +144,7 @@ describe('TranslationLog', () => {
         const log = new TranslationLog(10);
         log.addError({ error: 'oops' });
 
-        const entry = log.getRecent(1)[0];
+        const entry = log.getRecent(1)[0] as ErrorLogEntry;
         expect(entry.guildName).toBe('Unknown');
         expect(entry.userTag).toBe('Unknown');
         expect(entry.command).toBe('unknown');
@@ -151,15 +152,14 @@ describe('TranslationLog', () => {
 
     it('should enforce max size with mixed translation and error entries', () => {
         const log = new TranslationLog(3);
-        log.add({ guildId: 'g1', userId: 'u1', contentPreview: 'A', cached: false });
+        log.add({ guildId: 'g1', userId: 'u1', userTag: 'u1', contentPreview: 'A', cached: false });
         log.addError({ guildId: 'g1', userId: 'u1', error: 'err1', command: 'test' });
-        log.add({ guildId: 'g1', userId: 'u1', contentPreview: 'B', cached: false });
+        log.add({ guildId: 'g1', userId: 'u1', userTag: 'u1', contentPreview: 'B', cached: false });
         log.addError({ guildId: 'g1', userId: 'u1', error: 'err2', command: 'test' });
 
         expect(log.size).toBe(3);
         // 'A' should have been evicted
         const all = log.getRecent(10);
-        expect(all.find(e => e.contentPreview === 'A')).toBeUndefined();
+        expect(all.find(e => (e as TranslationLogEntry).contentPreview === 'A')).toBeUndefined();
     });
 });
-

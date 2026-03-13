@@ -1,4 +1,4 @@
-import { Client, Events, GatewayIntentBits } from 'discord.js';
+import { Client, Events, GatewayIntentBits, type TextChannel, type Webhook } from 'discord.js';
 import { config } from './config.js';
 import { store } from './store.js';
 import { TranslationCache } from './cache.js';
@@ -9,12 +9,13 @@ import { handleBabel } from './commands/babel.js';
 import { handleTranslate } from './commands/translate.js';
 import { handleSetlang, handleMylang } from './commands/setlang.js';
 import { handleHelp } from './commands/help.js';
+import type { BotStats } from './types.js';
 
 // --- State ---
 const cache = new TranslationCache(store.get('cacheMaxSize'));
 const cooldown = new CooldownManager(store.get('cooldownSeconds'));
 const log = new TranslationLog();
-const stats = { totalTranslations: 0, apiCalls: 0 };
+const stats: BotStats = { totalTranslations: 0, apiCalls: 0 };
 
 // --- Discord Client ---
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
@@ -31,16 +32,12 @@ client.once(Events.ClientReady, (c) => {
 });
 
 // --- Webhook management for /translate ---
-/** @type {Map<string, import('discord.js').Webhook>} channelId → Webhook */
-const webhookCache = new Map();
+const webhookCache = new Map<string, Webhook>();
 
 /**
  * Get or create a Babel webhook for a channel.
- * @param {import('discord.js').TextChannel} channel
- * @param {boolean} [forceRefresh=false] - Clear cached webhook and re-fetch
- * @returns {Promise<import('discord.js').Webhook>}
  */
-async function getOrCreateWebhook(channel, forceRefresh = false) {
+async function getOrCreateWebhook(channel: TextChannel, forceRefresh: boolean = false): Promise<Webhook> {
     if (forceRefresh) {
         webhookCache.delete(channel.id);
     }
@@ -83,7 +80,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 const cooldownInterval = setInterval(() => cooldown.cleanup(), 60_000);
 
 // --- Graceful shutdown ---
-async function shutdown(signal) {
+async function shutdown(signal: string): Promise<void> {
     console.log(`\n[Shutdown] Received ${signal}, shutting down gracefully...`);
     clearInterval(cooldownInterval);
     client.destroy();

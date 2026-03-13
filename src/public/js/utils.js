@@ -1,4 +1,3 @@
-/* eslint-disable no-unused-vars */
 
 /**
  * Shared utility functions used across all modules.

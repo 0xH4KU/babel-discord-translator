@@ -1,17 +1,16 @@
 /**
  * File-based configuration persistence with in-memory defaults.
- * @module store
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import type { StoreData } from './types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = join(__dirname, '..', 'data');
 const CONFIG_FILE = join(DATA_DIR, 'config.json');
 
-/** @type {Record<string, unknown>} */
-const DEFAULTS = {
+const DEFAULTS: StoreData = {
     vertexAiApiKey: '',
     gcpProject: '',
     gcpLocation: 'global',
@@ -42,75 +41,59 @@ const DEFAULTS = {
  * Merges file data with defaults on load. Auto-saves on every write.
  */
 class ConfigStore {
+    data: StoreData;
+
     constructor() {
-        /** @type {Record<string, unknown>} */
         this.data = { ...DEFAULTS };
         this.load();
     }
 
     /** Load config from disk, merging with defaults. */
-    load() {
+    load(): void {
         try {
             if (existsSync(CONFIG_FILE)) {
                 const raw = readFileSync(CONFIG_FILE, 'utf-8');
                 this.data = { ...DEFAULTS, ...JSON.parse(raw) };
             }
         } catch (err) {
-            console.error('[Store] Load error:', err.message);
+            console.error('[Store] Load error:', (err as Error).message);
         }
     }
 
     /** Persist current config to disk. */
-    save() {
+    save(): void {
         try {
             mkdirSync(DATA_DIR, { recursive: true });
             writeFileSync(CONFIG_FILE, JSON.stringify(this.data, null, 2));
         } catch (err) {
-            console.error('[Store] Save error:', err.message);
+            console.error('[Store] Save error:', (err as Error).message);
         }
     }
 
-    /**
-     * Get a config value by key.
-     * @param {string} key
-     * @returns {unknown}
-     */
-    get(key) {
+    /** Get a config value by key. */
+    get<K extends keyof StoreData>(key: K): StoreData[K] {
         return this.data[key] ?? DEFAULTS[key];
     }
 
-    /**
-     * Set a config value and persist to disk.
-     * @param {string} key
-     * @param {unknown} value
-     */
-    set(key, value) {
+    /** Set a config value and persist to disk. */
+    set<K extends keyof StoreData>(key: K, value: StoreData[K]): void {
         this.data[key] = value;
         this.save();
     }
 
-    /**
-     * Merge multiple values and persist to disk.
-     * @param {Record<string, unknown>} obj
-     */
-    update(obj) {
+    /** Merge multiple values and persist to disk. */
+    update(obj: Partial<StoreData>): void {
         Object.assign(this.data, obj);
         this.save();
     }
 
-    /**
-     * Get a shallow copy of all config data.
-     * @returns {Record<string, unknown>}
-     */
-    getAll() {
+    /** Get a shallow copy of all config data. */
+    getAll(): StoreData {
         return { ...this.data };
     }
 
-    /**
-     * Check if the initial setup wizard has been completed.
-     * @returns {boolean}
-     */
-    isSetupComplete() {
+    /** Check if the initial setup wizard has been completed. */
+    isSetupComplete(): boolean {
         return this.data.setupComplete === true;
     }
 }

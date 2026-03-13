@@ -1,11 +1,10 @@
 /**
  * Application configuration loaded from environment variables.
- * @module config
  */
 import 'dotenv/config';
+import type { AppConfig } from './types.js';
 
-/** @type {{ discordToken: string, dashboardPort: number, dashboardPassword: string }} */
-export const config = {
+export const config: AppConfig = {
     /** Discord bot token for authentication. */
     discordToken: process.env.DISCORD_TOKEN,
     /** Port for the web dashboard server. */

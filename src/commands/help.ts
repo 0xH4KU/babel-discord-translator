@@ -1,20 +1,25 @@
-import { MessageFlags } from 'discord.js';
+import { MessageFlags, type ChatInputCommandInteraction } from 'discord.js';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-/** @type {Record<string, object>} */
-const HELP_TEXTS = JSON.parse(
+interface HelpText {
+    title: string;
+    translate: [string, string];
+    quick: [string, string];
+    setlang: [string, string];
+    mylang: [string, string];
+    tips: [string, string];
+}
+
+const HELP_TEXTS: Record<string, HelpText> = JSON.parse(
     readFileSync(join(__dirname, '..', 'locales', 'help.json'), 'utf-8'),
 );
 
-/**
- * Handle /help command — show localized help text.
- * @param {import('discord.js').ChatInputCommandInteraction} interaction
- */
-export async function handleHelp(interaction) {
+/** Handle /help command — show localized help text. */
+export async function handleHelp(interaction: ChatInputCommandInteraction): Promise<void> {
     const locale = interaction.locale || 'en';
     const lang = locale.startsWith('zh') ? 'zh' : locale.split('-')[0];
     const t = HELP_TEXTS[lang] || HELP_TEXTS.en;
@@ -36,5 +41,5 @@ ${t.mylang[1]}
 **${t.tips[0]}**
 ${t.tips[1]}`;
 
-    return interaction.reply({ content: text, flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: text, flags: MessageFlags.Ephemeral });
 }

@@ -1,66 +1,71 @@
-import { MessageFlags } from 'discord.js';
+import { MessageFlags, type MessageContextMenuCommandInteraction } from 'discord.js';
 import { store } from '../store.js';
 import { translate } from '../translate.js';
 import { localeToLang, isSameLanguage } from '../lang.js';
 import { usage } from '../usage.js';
 import { sanitizeError } from './shared.js';
+import type { CommandDeps } from '../types.js';
 
 /**
  * Handle Babel context menu command — translate a right-clicked message.
- * @param {import('discord.js').MessageContextMenuCommandInteraction} interaction
- * @param {{ cache: import('../cache.js').TranslationCache, cooldown: import('../cooldown.js').CooldownManager, log: import('../log.js').TranslationLog, stats: { totalTranslations: number, apiCalls: number } }} deps
  */
-export async function handleBabel(interaction, { cache, cooldown, log, stats }) {
+export async function handleBabel(interaction: MessageContextMenuCommandInteraction, { cache, cooldown, log, stats }: CommandDeps): Promise<void> {
     // --- Setup check ---
     if (!store.isSetupComplete()) {
-        return interaction.reply({
+        await interaction.reply({
             content: 'Bot not configured yet. Please complete setup in the dashboard.',
             flags: MessageFlags.Ephemeral,
         });
+        return;
     }
 
     // --- Whitelist check ---
     const allowedGuilds = store.get('allowedGuildIds');
-    if (!allowedGuilds.includes(interaction.guildId)) {
-        return interaction.reply({
+    if (!allowedGuilds.includes(interaction.guildId!)) {
+        await interaction.reply({
             content: 'This server is not authorized.',
             flags: MessageFlags.Ephemeral,
         });
+        return;
     }
 
     // --- Budget check ---
     if (usage.isBudgetExceeded()) {
-        return interaction.reply({
+        await interaction.reply({
             content: 'Daily budget exceeded, try again tomorrow!',
             flags: MessageFlags.Ephemeral,
         });
+        return;
     }
 
     // --- Cooldown check ---
     const cd = cooldown.check(interaction.user.id);
     if (!cd.allowed) {
-        return interaction.reply({
+        await interaction.reply({
             content: `Please wait ${cd.remaining}s`,
             flags: MessageFlags.Ephemeral,
         });
+        return;
     }
 
     // --- No text content ---
     const content = interaction.targetMessage.content;
     if (!content?.trim()) {
-        return interaction.reply({
+        await interaction.reply({
             content: 'No text content',
             flags: MessageFlags.Ephemeral,
         });
+        return;
     }
 
     // --- Text length limit ---
     const maxLen = store.get('maxInputLength') || 2000;
     if (content.length > maxLen) {
-        return interaction.reply({
+        await interaction.reply({
             content: `Text too long (${content.length}/${maxLen} chars)`,
             flags: MessageFlags.Ephemeral,
         });
+        return;
     }
 
     // --- Resolve target language ---
@@ -74,10 +79,11 @@ export async function handleBabel(interaction, { cache, cooldown, log, stats }) 
     // --- Same-language check (skip redundant translations) ---
     if (isSameLanguage(content, targetLanguage, interaction.locale)) {
         console.log(`[Translate] Skipped: content already in target language`);
-        return interaction.reply({
+        await interaction.reply({
             content: 'This message is already in your language!',
             flags: MessageFlags.Ephemeral,
         });
+        return;
     }
 
     // --- Defer + translate ---
@@ -119,17 +125,17 @@ export async function handleBabel(interaction, { cache, cooldown, log, stats }) 
         const reply = `> ${original.replace(/\n/g, '\n> ')}\n\n${translated}`;
         await interaction.editReply({ content: reply });
     } catch (error) {
-        console.error('[Translate]', error.message);
+        console.error('[Translate]', (error as Error).message);
         log.addError({
             guildId: interaction.guildId,
             guildName: interaction.guild?.name,
             userId: interaction.user.id,
             userTag: interaction.user.tag,
-            error: error.message,
+            error: (error as Error).message,
             command: 'Babel (context menu)',
         });
         await interaction.editReply({
-            content: `Translation failed: ${sanitizeError(error.message)}`,
+            content: `Translation failed: ${sanitizeError((error as Error).message)}`,
         });
     }
 }

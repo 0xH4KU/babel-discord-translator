@@ -1,13 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // --- Mock store as an in-memory object ---
-// vi.hoisted ensures the data object is available when vi.mock runs (hoisted to top)
-const mockData = vi.hoisted(() => ({}));
+const mockData: Record<string, unknown> = vi.hoisted(() => ({}));
 
 vi.mock('../src/store.js', () => ({
     store: {
-        get: vi.fn((key) => mockData[key]),
-        set: vi.fn((key, val) => { mockData[key] = val; }),
+        get: vi.fn((key: string) => mockData[key]),
+        set: vi.fn((key: string, val: unknown) => { mockData[key] = val; }),
     },
 }));
 
@@ -27,7 +26,7 @@ describe('UsageTracker', () => {
     it('should record token usage', () => {
         usage.record(100, 50);
 
-        const data = mockData.tokenUsage;
+        const data = mockData.tokenUsage as { inputTokens: number; outputTokens: number; requests: number };
         expect(data.inputTokens).toBe(100);
         expect(data.outputTokens).toBe(50);
         expect(data.requests).toBe(1);
@@ -37,7 +36,7 @@ describe('UsageTracker', () => {
         usage.record(100, 50);
         usage.record(200, 100);
 
-        const data = mockData.tokenUsage;
+        const data = mockData.tokenUsage as { inputTokens: number; outputTokens: number; requests: number };
         expect(data.inputTokens).toBe(300);
         expect(data.outputTokens).toBe(150);
         expect(data.requests).toBe(2);
@@ -119,9 +118,10 @@ describe('UsageTracker', () => {
         // ensureToday() should detect date change and archive
         usage.ensureToday();
 
-        expect(mockData.usageHistory).toHaveLength(1);
-        expect(mockData.usageHistory[0].date).toBe('2025-01-01');
-        expect(mockData.usageHistory[0].inputTokens).toBe(500);
+        const history = mockData.usageHistory as Array<{ date: string; inputTokens: number }>;
+        expect(history).toHaveLength(1);
+        expect(history[0].date).toBe('2025-01-01');
+        expect(history[0].inputTokens).toBe(500);
     });
 
     it('should keep only 30 days of history', () => {
@@ -142,7 +142,7 @@ describe('UsageTracker', () => {
 
         usage.ensureToday();
 
-        expect(mockData.usageHistory.length).toBeLessThanOrEqual(30);
+        expect((mockData.usageHistory as unknown[]).length).toBeLessThanOrEqual(30);
     });
 
     it('should calculate history with costs', () => {
@@ -160,9 +160,9 @@ describe('UsageTracker', () => {
 
     it('should handle record with missing/zero values', () => {
         usage.record(0, 0);
-        usage.record(undefined, undefined);
+        usage.record(undefined as unknown as number, undefined as unknown as number);
 
-        const data = mockData.tokenUsage;
+        const data = mockData.tokenUsage as { inputTokens: number; outputTokens: number; requests: number };
         expect(data.inputTokens).toBe(0);
         expect(data.outputTokens).toBe(0);
         expect(data.requests).toBe(2);

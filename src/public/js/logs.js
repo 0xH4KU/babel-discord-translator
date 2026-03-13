@@ -1,4 +1,3 @@
-/* eslint-disable no-unused-vars */
 
 /**
  * Logs tab: translation log loading, filtering, and pagination.

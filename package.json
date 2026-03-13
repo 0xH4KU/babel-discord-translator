@@ -3,11 +3,13 @@
     "version": "1.0.0",
     "description": "Discord right-click translation bot powered by Vertex AI Gemini — with LRU cache, cost tracking, multilingual support, and web dashboard",
     "type": "module",
-    "main": "src/index.js",
+    "main": "src/index.ts",
     "scripts": {
-        "start": "node src/index.js",
-        "dev": "node --watch src/index.js",
-        "register": "node scripts/register.js",
+        "start": "node --import tsx src/index.ts",
+        "dev": "node --import tsx --watch src/index.ts",
+        "build": "tsc",
+        "typecheck": "tsc --noEmit",
+        "register": "node --import tsx scripts/register.ts",
         "test": "vitest run",
         "test:watch": "vitest",
         "lint": "eslint src/ tests/",
@@ -34,9 +36,14 @@
         "express-rate-limit": "^8.3.1"
     },
     "devDependencies": {
+        "@types/express": "^5.0.6",
+        "@types/node": "^25.5.0",
         "eslint": "^9.0.0",
         "globals": "^15.0.0",
         "prettier": "^3.0.0",
+        "tsx": "^4.21.0",
+        "typescript": "^5.9.3",
+        "typescript-eslint": "^8.57.0",
         "vitest": "^3.0.0"
     }
 }

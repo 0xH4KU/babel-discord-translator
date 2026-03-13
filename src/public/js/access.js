@@ -1,4 +1,3 @@
-/* eslint-disable no-unused-vars */
 
 /**
  * Access tab: guild whitelist management and user language preferences.

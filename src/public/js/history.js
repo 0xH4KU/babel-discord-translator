@@ -1,4 +1,3 @@
-/* eslint-disable no-unused-vars */
 
 /**
  * History tab: usage history chart, table, and pagination.

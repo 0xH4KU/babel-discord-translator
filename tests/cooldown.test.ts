@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { CooldownManager } from '../src/cooldown.js';
 
 describe('CooldownManager', () => {
@@ -13,8 +13,10 @@ describe('CooldownManager', () => {
 
         const result = cd.check('user1');
         expect(result.allowed).toBe(false);
-        expect(result.remaining).toBeGreaterThan(0);
-        expect(result.remaining).toBeLessThanOrEqual(5);
+        if (!result.allowed) {
+            expect(result.remaining).toBeGreaterThan(0);
+            expect(result.remaining).toBeLessThanOrEqual(5);
+        }
     });
 
     it('should allow after cooldown expires', () => {

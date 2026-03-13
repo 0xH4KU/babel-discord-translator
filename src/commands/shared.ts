@@ -5,10 +5,8 @@
 /**
  * Sanitize error messages before showing to Discord users.
  * Strips API keys, project IDs, and other sensitive info.
- * @param {string} message - Raw error message
- * @returns {string} Sanitized error message safe for user display
  */
-export function sanitizeError(message) {
+export function sanitizeError(message: string): string {
     if (!message) return 'Unknown error';
 
     // Strip anything that looks like an API key (long alphanumeric strings)

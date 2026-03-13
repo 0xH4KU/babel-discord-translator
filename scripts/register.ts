@@ -5,8 +5,28 @@
  * Uses bulk overwrite to register all commands at once.
  *
  * Usage:
- *   DISCORD_APP_ID=xxx DISCORD_BOT_TOKEN=xxx node scripts/register.js
+ *   DISCORD_APP_ID=xxx DISCORD_BOT_TOKEN=xxx node --import tsx scripts/register.ts
  */
+
+interface DiscordCommandChoice {
+    name: string;
+    value: string;
+}
+
+interface DiscordCommandOption {
+    name: string;
+    description: string;
+    type: number;
+    required?: boolean;
+    choices?: DiscordCommandChoice[];
+}
+
+interface DiscordCommand {
+    name: string;
+    type: number;
+    description?: string;
+    options?: DiscordCommandOption[];
+}
 
 const APP_ID = process.env.DISCORD_APP_ID;
 const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
@@ -14,12 +34,12 @@ const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 if (!APP_ID || !BOT_TOKEN) {
     console.error(
         '❌ Missing env vars. Usage:\n' +
-        '   DISCORD_APP_ID=xxx DISCORD_BOT_TOKEN=xxx node scripts/register.js',
+        '   DISCORD_APP_ID=xxx DISCORD_BOT_TOKEN=xxx node --import tsx scripts/register.ts',
     );
     process.exit(1);
 }
 
-const commands = [
+const commands: DiscordCommand[] = [
     {
         name: 'Babel',
         type: 3, // MESSAGE command (right-click context menu)
@@ -117,7 +137,7 @@ const response = await fetch(url, {
 });
 
 if (response.ok) {
-    const data = await response.json();
+    const data = (await response.json()) as Array<{ name: string; id: string }>;
     console.log(`✅ Registered ${data.length} commands:`);
     data.forEach((cmd) => console.log(`   - "${cmd.name}" (ID: ${cmd.id})`));
 } else {
