@@ -49,7 +49,7 @@ function safeCompare(a: string, b: string): boolean {
 function getSession(req: Request): string | null {
     const cookie = req.headers.cookie || '';
     const match = cookie.match(/session=([^;]+)/);
-    return match ? match[1] : null;
+    return match?.[1] ?? null;
 }
 
 /** Express middleware: reject unauthenticated requests. */

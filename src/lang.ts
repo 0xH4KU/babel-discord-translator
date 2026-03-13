@@ -13,7 +13,7 @@ export function localeToLang(locale: string | undefined): string | null {
     // If it's a Chinese or English locale, use auto-detect (default behavior)
     if (locale.startsWith('zh') || locale.startsWith('en')) return null;
     // For other locales, extract the base language code
-    return locale.split('-')[0];
+    return locale.split('-')[0]!;
 }
 
 /**
@@ -54,7 +54,7 @@ export function langToScript(lang: string | null): ScriptFamily {
         ja: 'ja', ko: 'ko', ru: 'ru',
         ar: 'ar', th: 'th', hi: 'hi',
     };
-    return map[lang] || map[lang.split('-')[0]] || null;
+    return map[lang] ?? map[lang.split('-')[0]!] ?? null;
 }
 
 /**

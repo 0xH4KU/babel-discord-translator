@@ -4,6 +4,8 @@
         "module": "Node16",
         "moduleResolution": "Node16",
         "strict": true,
+        "noUncheckedIndexedAccess": true,
+        "exactOptionalPropertyTypes": false,
         "esModuleInterop": true,
         "outDir": "dist",
         "rootDir": ".",
@@ -11,7 +13,10 @@
         "sourceMap": true,
         "skipLibCheck": true,
         "forceConsistentCasingInFileNames": true,
-        "resolveJsonModule": true
+        "resolveJsonModule": true,
+        "paths": {
+            "@/*": ["./src/*"]
+        }
     },
     "include": ["src/**/*.ts", "scripts/**/*.ts"],
     "exclude": ["node_modules", "dist"]

@@ -66,7 +66,7 @@ const LOCALE_MAP: Record<string, string> = {
 
 function getLanguageName(code: string | null | undefined): string | null {
     if (!code || code === 'auto') return null;
-    return LOCALE_MAP[code] || LOCALE_MAP[code.split('-')[0]] || code;
+    return LOCALE_MAP[code] ?? LOCALE_MAP[code.split('-')[0]!] ?? code;
 }
 
 const DEFAULT_PROMPT = `You are a translator. Detect the language of the following text and translate it.

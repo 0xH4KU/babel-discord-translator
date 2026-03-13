@@ -1,5 +1,6 @@
 node_modules
 data
+dist
 .env
 .git
 .github
@@ -7,4 +8,5 @@ tests
 *.md
 .prettierrc
 eslint.config.js
+tsconfig.json
 .wrangler

@@ -12,6 +12,7 @@
         "register": "node --import tsx scripts/register.ts",
         "test": "vitest run",
         "test:watch": "vitest",
+        "test:coverage": "vitest run --coverage",
         "lint": "eslint src/ tests/",
         "format": "prettier --write ."
     },

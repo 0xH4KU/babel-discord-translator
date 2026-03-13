@@ -10,6 +10,7 @@ Right-click any message → *Babel* → Get an ephemeral translation only you ca
 
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-20%2B-green.svg)](https://nodejs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
 [![discord.js](https://img.shields.io/badge/discord.js-v14-blue.svg)](https://discord.js.org)
 [![CI](https://github.com/0xH4KU/babel-discord-translator/actions/workflows/ci.yml/badge.svg)](https://github.com/0xH4KU/babel-discord-translator/actions)
 
@@ -135,22 +136,23 @@ All configuration is managed through the web dashboard. The `.env` file only nee
 
 ```
 src/
-├── index.js          # Entry point, client setup, graceful shutdown
-├── config.js         # Environment variable config
-├── lang.js           # Language detection & locale mapping
-├── translate.js      # Vertex AI Gemini API client with retry
-├── cache.js          # LRU translation cache
-├── cooldown.js       # Per-user rate limiter
-├── log.js            # In-memory ring buffer audit log
-├── store.js          # File-based config persistence
-├── usage.js          # Token usage tracking & budget enforcement
-├── dashboard.js      # Express dashboard with rate limiting & auth
+├── index.ts          # Entry point, client setup, graceful shutdown
+├── config.ts         # Environment validation (fail-fast)
+├── types.ts          # Shared TypeScript type definitions
+├── lang.ts           # Language detection & locale mapping
+├── translate.ts      # Vertex AI Gemini API client with retry
+├── cache.ts          # LRU translation cache
+├── cooldown.ts       # Per-user rate limiter
+├── log.ts            # In-memory ring buffer audit log
+├── store.ts          # File-based config persistence
+├── usage.ts          # Token usage tracking & budget enforcement
+├── dashboard.ts      # Express dashboard with rate limiting & auth
 ├── commands/         # Discord command handlers
-│   ├── babel.js      #   Context menu translation
-│   ├── translate.js  #   /translate (public via webhook)
-│   ├── setlang.js    #   /setlang & /mylang
-│   ├── help.js       #   /help (loads locales from JSON)
-│   └── shared.js     #   Error sanitization utilities
+│   ├── babel.ts      #   Context menu translation
+│   ├── translate.ts  #   /translate (public via webhook)
+│   ├── setlang.ts    #   /setlang & /mylang
+│   ├── help.ts       #   /help (loads locales from JSON)
+│   └── shared.ts     #   Error sanitization utilities
 ├── locales/
 │   └── help.json     # Help text in 16 languages
 └── public/           # Dashboard frontend assets
@@ -162,8 +164,14 @@ src/
 # Run in watch mode
 npm run dev
 
+# Type check (no emit)
+npm run typecheck
+
 # Run tests
 npm test
+
+# Run tests with coverage
+npm run test:coverage
 
 # Run tests in watch mode
 npm run test:watch
@@ -173,6 +181,9 @@ npm run lint
 
 # Format code
 npm run format
+
+# Build for production
+npm run build
 ```
 
 ### Test Coverage
@@ -181,14 +192,14 @@ npm run format
 
 | Suite | Tests | Covers |
 |---|---|---|
-| `cache.test.js` | 7 | LRU eviction, hit/miss stats |
-| `cooldown.test.js` | 6 | Rate limiting, cleanup, per-user isolation |
-| `log.test.js` | 14 | Ring buffer, addError, type filtering, defaults |
-| `lang.test.js` | 29 | Script detection (CJK/Cyrillic/Arabic/Thai/Hindi), locale mapping, same-language check |
-| `translate.test.js` | 20 | Retry logic, prompt building, API errors, URL routing |
-| `usage.test.js` | 12 | Cost calculation, budget enforcement, day rollover, history |
-| `store.test.js` | 8 | File persistence, defaults merging, corrupt JSON resilience |
-| `dashboard.test.js` | 12 | Auth flow, API key masking, config protection, translate endpoint |
+| `cache.test.ts` | 7 | LRU eviction, hit/miss stats |
+| `cooldown.test.ts` | 6 | Rate limiting, cleanup, per-user isolation |
+| `log.test.ts` | 14 | Ring buffer, addError, type filtering, defaults |
+| `lang.test.ts` | 29 | Script detection (CJK/Cyrillic/Arabic/Thai/Hindi), locale mapping, same-language check |
+| `translate.test.ts` | 20 | Retry logic, prompt building, API errors, URL routing |
+| `usage.test.ts` | 12 | Cost calculation, budget enforcement, day rollover, history |
+| `store.test.ts` | 7 | File persistence, defaults merging, corrupt JSON resilience |
+| `dashboard.test.ts` | 13 | Auth flow, API key masking, config protection, translate endpoint |
 
 ## Production Deployment
 
@@ -212,10 +223,12 @@ The Docker image includes a built-in `HEALTHCHECK` that pings `/healthz` every 3
 
 ## Tech Stack
 
+- [TypeScript](https://www.typescriptlang.org) 5.9 — Strict mode with `noUncheckedIndexedAccess`
 - [discord.js](https://discord.js.org) v14 — Discord gateway client
 - [Express](https://expressjs.com) + [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) — Dashboard & API security
 - [Vertex AI Gemini](https://cloud.google.com/vertex-ai) — Translation engine
-- [Vitest](https://vitest.dev) — Testing (108 tests, 8 suites)
+- [tsx](https://tsx.is) — TypeScript execution for development
+- [Vitest](https://vitest.dev) — Testing (108 tests, 8 suites, v8 coverage)
 - [ESLint](https://eslint.org) + [Prettier](https://prettier.io) — Code quality
 
 ## License

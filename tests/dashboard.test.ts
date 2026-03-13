@@ -6,6 +6,7 @@ vi.mock('dotenv/config', () => ({}));
 
 vi.mock('../src/config.js', () => ({
     config: {
+        discordToken: 'test-token',
         dashboardPort: 0, // bind to random port
         dashboardPassword: 'test-pass-123',
     },

@@ -6,6 +6,7 @@ import { usage } from '../usage.js';
 import { sanitizeError } from './shared.js';
 import crypto from 'crypto';
 import type { TranslateCommandDeps } from '../types.js';
+import type { TextChannel, GuildMember } from 'discord.js';
 
 /**
  * Handle /translate command — translate text and send publicly via webhook.
@@ -79,21 +80,22 @@ export async function handleTranslate(interaction: ChatInputCommandInteraction, 
         }
 
         // --- Send via webhook with retry on stale cache ---
-        let webhook = await getOrCreateWebhook(interaction.channel as any);
-        const member = interaction.member;
+        let webhook = await getOrCreateWebhook(interaction.channel as TextChannel);
+        const member = interaction.member as GuildMember | null;
         const sendPayload = {
             content: translated!,
-            username: (member as any)?.displayName || interaction.user.displayName,
+            username: member?.displayName || interaction.user.displayName,
             avatarURL: interaction.user.displayAvatarURL({ size: 128 }),
         };
 
         try {
             await webhook.send(sendPayload);
-        } catch (webhookErr: any) {
+        } catch (webhookErr: unknown) {
+            const err = webhookErr as { code?: number; status?: number };
             // If webhook was deleted externally, clear cache and retry once
-            if (webhookErr.code === 10015 || webhookErr.status === 404) {
+            if (err.code === 10015 || err.status === 404) {
                 console.warn('[/translate] Webhook stale, retrying...');
-                webhook = await getOrCreateWebhook(interaction.channel as any, true);
+                webhook = await getOrCreateWebhook(interaction.channel as TextChannel, true);
                 await webhook.send(sendPayload);
             } else {
                 throw webhookErr;

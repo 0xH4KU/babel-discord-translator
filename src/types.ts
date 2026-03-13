@@ -150,14 +150,6 @@ export interface UsageHistoryDay extends UsageHistoryEntry {
     cost: number;
 }
 
-// --- Config ---
-
-export interface AppConfig {
-    discordToken: string | undefined;
-    dashboardPort: number;
-    dashboardPassword: string;
-}
-
 // --- Script types ---
 
 export type ScriptFamily = 'zh' | 'ja' | 'ko' | 'ru' | 'ar' | 'th' | 'hi' | null;

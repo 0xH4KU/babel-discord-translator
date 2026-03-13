@@ -21,8 +21,8 @@ const HELP_TEXTS: Record<string, HelpText> = JSON.parse(
 /** Handle /help command — show localized help text. */
 export async function handleHelp(interaction: ChatInputCommandInteraction): Promise<void> {
     const locale = interaction.locale || 'en';
-    const lang = locale.startsWith('zh') ? 'zh' : locale.split('-')[0];
-    const t = HELP_TEXTS[lang] || HELP_TEXTS.en;
+    const lang = locale.startsWith('zh') ? 'zh' : locale.split('-')[0]!;
+    const t = HELP_TEXTS[lang] ?? HELP_TEXTS['en']!;
 
     const text = `## ${t.title}
 
