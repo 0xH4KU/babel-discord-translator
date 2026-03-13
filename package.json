@@ -7,7 +7,7 @@
     "scripts": {
         "start": "node --import tsx src/index.ts",
         "dev": "node --import tsx --watch src/index.ts",
-        "build": "tsc",
+        "build": "tsc && cp -r src/locales dist/src/locales && cp -r src/public dist/src/public",
         "typecheck": "tsc --noEmit",
         "register": "node --import tsx scripts/register.ts",
         "test": "vitest run",
