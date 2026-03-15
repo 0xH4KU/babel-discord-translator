@@ -131,7 +131,7 @@ All configuration is managed through the web dashboard. The `.env` file only nee
 |---|---|---|
 | `DISCORD_TOKEN` | Discord bot token | *required* |
 | `DASHBOARD_PORT` | Dashboard web server port | `3000` |
-| `DASHBOARD_PASSWORD` | Dashboard login password | `admin` |
+| `DASHBOARD_PASSWORD` | Dashboard login password | *required* |
 
 ## Project Structure
 

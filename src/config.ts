@@ -28,9 +28,11 @@ function validateEnv(): AppConfig {
         process.exit(1);
     }
 
-    const password = process.env.DASHBOARD_PASSWORD || 'admin';
-    if (password === 'admin') {
-        console.warn('⚠️  Using default dashboard password "admin" — change DASHBOARD_PASSWORD in .env for production');
+    const password = process.env.DASHBOARD_PASSWORD;
+    if (!password) {
+        console.error('❌ Missing required environment variable: DASHBOARD_PASSWORD');
+        console.error('   Create a .env file with: DASHBOARD_PASSWORD=your_strong_password');
+        process.exit(1);
     }
 
     return { discordToken: token, dashboardPort: port, dashboardPassword: password };
