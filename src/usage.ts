@@ -38,12 +38,13 @@ class UsageTracker {
 
         // --- Per-guild usage ---
         const guildUsage = store.get('guildTokenUsage') || {};
+        const guildHistory = store.get('guildUsageHistory') || {};
         let guildChanged = false;
+        let historyChanged = false;
         for (const guildId of Object.keys(guildUsage)) {
             const gu = guildUsage[guildId];
             if (gu && gu.date !== today) {
                 // Archive this guild's yesterday data
-                const guildHistory = store.get('guildUsageHistory') || {};
                 if (!guildHistory[guildId]) guildHistory[guildId] = [];
                 guildHistory[guildId].push({
                     date: gu.date,
@@ -52,7 +53,7 @@ class UsageTracker {
                     requests: gu.requests,
                 });
                 while (guildHistory[guildId].length > 30) guildHistory[guildId].shift();
-                store.set('guildUsageHistory', guildHistory);
+                historyChanged = true;
 
                 // Reset guild usage for today
                 guildUsage[guildId] = {
@@ -63,6 +64,9 @@ class UsageTracker {
                 };
                 guildChanged = true;
             }
+        }
+        if (historyChanged) {
+            store.set('guildUsageHistory', guildHistory);
         }
         if (guildChanged) {
             store.set('guildTokenUsage', guildUsage);
