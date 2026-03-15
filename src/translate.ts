@@ -2,6 +2,7 @@
  * Translate text using Vertex AI Gemini REST API.
  */
 import { store } from './store.js';
+import { getVertexAiUrl } from './vertex.js';
 import type { TranslationResult, VertexAIResponse } from './types.js';
 
 const RETRY_CODES = [429, 500, 502, 503];
@@ -107,12 +108,7 @@ export async function translate(text: string, targetLanguage: string = 'auto'): 
         throw new Error('API not configured. Please complete setup in the dashboard.');
     }
 
-    const baseUrl =
-        location === 'global'
-            ? 'https://aiplatform.googleapis.com'
-            : `https://${location}-aiplatform.googleapis.com`;
-
-    const url = `${baseUrl}/v1beta1/projects/${project}/locations/${location}/publishers/google/models/${model}:generateContent`;
+    const url = getVertexAiUrl(project, location, model);
 
     // Determine which prompt to use
     let systemPrompt: string;

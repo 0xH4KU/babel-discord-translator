@@ -5,6 +5,7 @@ import { config } from './config.js';
 import { store } from './store.js';
 import { usage } from './usage.js';
 import { translate } from './translate.js';
+import { getVertexAiUrl } from './vertex.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import type { SessionData, DashboardDeps, StoreData } from './types.js';
@@ -431,11 +432,7 @@ export function startDashboard({ cache, cooldown, log, client, getStats }: Dashb
             const start = Date.now();
             const location = store.get('gcpLocation') || 'global';
             const model = store.get('geminiModel');
-            const baseUrl =
-                location === 'global'
-                    ? 'https://aiplatform.googleapis.com'
-                    : `https://${location}-aiplatform.googleapis.com`;
-            const url = `${baseUrl}/v1beta1/projects/${project}/locations/${location}/publishers/google/models/${model}:generateContent`;
+            const url = getVertexAiUrl(project, location, model);
 
             const response = await fetch(url, {
                 method: 'POST',
