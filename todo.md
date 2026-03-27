@@ -293,19 +293,19 @@
 
 ### P1-10. Metrics 與 Health Model
 
-- [ ] 定義應用層 metrics
-- [ ] `translations_total`
-- [ ] `translation_api_calls_total`
-- [ ] `translation_cache_hits_total`
-- [ ] `translation_failures_total`
-- [ ] `budget_exceeded_total`
-- [ ] `webhook_recreate_total`
-- [ ] 區分 liveness 與 readiness
-- [ ] `/healthz` 不應只回傳 process 活著，應回傳基本依賴狀態策略
+- [x] 定義應用層 metrics
+- [x] `translations_total`
+- [x] `translation_api_calls_total`
+- [x] `translation_cache_hits_total`
+- [x] `translation_failures_total`
+- [x] `budget_exceeded_total`
+- [x] `webhook_recreate_total`
+- [x] 區分 liveness 與 readiness
+- [x] `/healthz` 不應只回傳 process 活著，應回傳基本依賴狀態策略
 
 完成標準
 
-- 可從 metrics 或 stats 看出容量、失敗率與 cache 效益
+- [x] 可從 metrics 或 stats 看出容量、失敗率與 cache 效益
 
 ### P1-11. Runtime 限流策略檢視
 

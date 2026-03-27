@@ -7,7 +7,10 @@ import type { TextChannel, GuildMember } from 'discord.js';
 /**
  * Handle /translate command — translate text and send publicly via webhook.
  */
-export async function handleTranslate(interaction: ChatInputCommandInteraction, { translationService, getOrCreateWebhook }: TranslateCommandDeps): Promise<void> {
+export async function handleTranslate(
+    interaction: ChatInputCommandInteraction,
+    { translationService, getOrCreateWebhook, metrics }: TranslateCommandDeps,
+): Promise<void> {
     const text = interaction.options.getString('text')!;
     const targetOpt = interaction.options.getString('to');
     const requestId = createRequestId();
@@ -65,6 +68,7 @@ export async function handleTranslate(interaction: ChatInputCommandInteraction, 
                     statusCode: err.status,
                     discordCode: err.code,
                 });
+                metrics?.recordWebhookRecreate();
                 webhook = await getOrCreateWebhook(interaction.channel as TextChannel, true);
                 await webhook.send(sendPayload);
             } else {

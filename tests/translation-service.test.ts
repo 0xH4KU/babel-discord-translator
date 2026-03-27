@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { AppMetrics } from '../src/app-metrics.js';
 import { TranslationCache } from '../src/cache.js';
 import { CooldownManager } from '../src/cooldown.js';
 import { TranslationLog } from '../src/log.js';
@@ -115,6 +116,7 @@ function createService({
     const cooldown = new CooldownManager(0);
     const log = new TranslationLog(100);
     const stats: BotStats = { totalTranslations: 0, apiCalls: 0 };
+    const metrics = new AppMetrics();
     const configStore = createStoreMock(storeOverrides);
     const userPreferenceStore = createUserPreferenceStoreMock(storeOverrides);
 
@@ -127,6 +129,7 @@ function createService({
         userPreferenceStore,
         usageTracker,
         translator,
+        metrics,
         logger: loggerState.logger as never,
     });
 
@@ -140,6 +143,7 @@ function createService({
         userPreferenceStore,
         usageTracker,
         translator,
+        metrics,
         loggerState,
     };
 }
@@ -147,7 +151,7 @@ function createService({
 describe('TranslationService', () => {
     it('should translate successfully and record usage through the shared service', async () => {
         const beforeTranslate = vi.fn(async () => undefined);
-        const { service, usageTracker, translator, log, stats, loggerState } = createService({
+        const { service, usageTracker, translator, log, stats, metrics, loggerState } = createService({
             storeOverrides: {
                 userLanguagePrefs: { user1: 'ja' },
             },
@@ -182,6 +186,12 @@ describe('TranslationService', () => {
         expect(log.size).toBe(1);
         expect(stats.totalTranslations).toBe(1);
         expect(stats.apiCalls).toBe(1);
+        expect(metrics.snapshot()).toMatchObject({
+            translationsTotal: 1,
+            translationApiCallsTotal: 1,
+            translationCacheHitsTotal: 0,
+            translationFailuresTotal: 0,
+        });
         expect(loggerState.entries).toEqual(expect.arrayContaining([
             expect.objectContaining({
                 level: 'info',
@@ -210,7 +220,7 @@ describe('TranslationService', () => {
             inputTokens: 20,
             outputTokens: 10,
         }));
-        const { service } = createService({ translator });
+        const { service, metrics } = createService({ translator });
 
         const first = await service.process({
             command: 'translate',
@@ -239,13 +249,19 @@ describe('TranslationService', () => {
         expect(second.status).toBe('success');
         expect(second.status === 'success' ? second.cached : false).toBe(true);
         expect(translator).toHaveBeenCalledTimes(1);
+        expect(metrics.snapshot()).toMatchObject({
+            translationsTotal: 2,
+            translationApiCallsTotal: 1,
+            translationCacheHitsTotal: 1,
+            translationCacheHitRate: 0.5,
+        });
     });
 
     it('should block requests when the guild budget is exceeded', async () => {
         const usageTracker = createUsageMock();
         usageTracker.isBudgetExceeded.mockReturnValue(true);
         const translator = vi.fn();
-        const { service } = createService({ usageTracker, translator });
+        const { service, metrics } = createService({ usageTracker, translator });
 
         const result = await service.process({
             command: 'translate',
@@ -263,13 +279,14 @@ describe('TranslationService', () => {
             message: 'Daily budget exceeded',
         });
         expect(translator).not.toHaveBeenCalled();
+        expect(metrics.snapshot().budgetExceededTotal).toBe(1);
     });
 
     it('should return a sanitized error result when translation fails', async () => {
         const translator = vi.fn(async () => {
             throw new Error('Vertex AI 500: https://example.com/projects/test-project/secret-token-value');
         });
-        const { service, log } = createService({ translator });
+        const { service, log, metrics } = createService({ translator });
 
         const result = await service.process({
             command: 'translate',
@@ -287,6 +304,11 @@ describe('TranslationService', () => {
         expect(result.status === 'error' ? result.message : '').toContain('Translation failed');
         expect(result.status === 'error' ? result.message : '').not.toContain('https://example.com');
         expect(log.errorCount).toBe(1);
+        expect(metrics.snapshot()).toMatchObject({
+            translationApiCallsTotal: 1,
+            translationFailuresTotal: 1,
+            translationFailureRate: 1,
+        });
     });
 
     it('should block same-language translations before deferring', async () => {

@@ -2,6 +2,7 @@ import { buildTranslationCacheKey, type TranslationCache } from '../cache.js';
 import type { CooldownManager } from '../cooldown.js';
 import type { TranslationLog } from '../log.js';
 import { isSameLanguage, localeToLang } from '../lang.js';
+import type { AppMetricsCollector } from '../app-metrics.js';
 import { configRepository, type RuntimeConfig } from '../repositories/config-repository.js';
 import { userPreferenceRepository } from '../repositories/user-preference-repository.js';
 import { usage } from '../usage.js';
@@ -71,6 +72,7 @@ export interface TranslationServiceDeps {
     userPreferenceStore?: UserPreferenceRepositoryLike;
     usageTracker?: UsageLike;
     translator?: Translator;
+    metrics?: AppMetricsCollector;
     logger?: StructuredLogger;
 }
 
@@ -108,6 +110,7 @@ export function createTranslationService({
     userPreferenceStore = userPreferenceRepository,
     usageTracker = usage,
     translator = translate,
+    metrics,
     logger = appLogger.child({ component: 'translation_service' }),
 }: TranslationServiceDeps): TranslationService {
     return {
@@ -139,6 +142,7 @@ export function createTranslationService({
             }
 
             if (usageTracker.isBudgetExceeded(request.guildId)) {
+                metrics?.recordBudgetExceeded();
                 requestLogger.warn('translation.request.blocked', { blockReason: 'budget_exceeded' });
                 return { status: 'blocked', message: messages.budgetExceeded };
             }
@@ -210,6 +214,8 @@ export function createTranslationService({
                 });
 
                 if (!translated) {
+                    stats.apiCalls++;
+                    metrics?.recordTranslationApiCall();
                     const result = await translator(originalText, targetLanguage, {
                         logContext: {
                             requestId,
@@ -221,9 +227,9 @@ export function createTranslationService({
                     translated = result.text;
                     cache.set(cacheKey, translated);
                     usageTracker.record(result.inputTokens, result.outputTokens, request.guildId);
-                    stats.apiCalls++;
                 }
 
+                metrics?.recordTranslationSuccess({ cached });
                 log.add({
                     guildId: request.guildId,
                     guildName: request.guildName,
@@ -252,6 +258,7 @@ export function createTranslationService({
                 };
             } catch (error) {
                 const message = (error as Error).message;
+                metrics?.recordTranslationFailure();
                 log.addError({
                     guildId: request.guildId,
                     guildName: request.guildName,

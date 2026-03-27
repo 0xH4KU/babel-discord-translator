@@ -34,10 +34,11 @@ Right-click any message → *Babel* → Get an ephemeral translation only you ca
 - **Repository Boundaries** — Commands, services, and dashboard routes talk to focused repositories instead of reaching into the raw JSON store directly
 - **SQLite Persistence** — Config, usage, preferences, guild budgets, and dashboard sessions are stored in a migrated SQLite database
 - **Structured Operational Logs** — JSON logs include request-scoped `requestId`, command, guild/user IDs, retry/error classification, and secret redaction
+- **Application Metrics** — In-memory counters expose translations, API calls, cache hits, failures, budget blocks, and webhook re-creates through `/api/stats`
 - **Web Dashboard** — Login-protected admin panel with setup wizard
 - **Modular Dashboard Auth** — Session, cookie, password, and CSRF handling live in dedicated auth modules instead of the route file
 - **Unified Config Runtime Effects** — Dashboard config changes flow through one hook that applies immediate runtime updates and cache invalidation rules
-- **API Health Check** — Dashboard shows API connectivity status
+- **API Health Check** — Dashboard shows translation readiness and Vertex AI probe status
 - **Translation Test** — Test translations directly from the dashboard
 - **User Preferences** — View and manage user language settings
 - **Input Length Limit** — Configurable max input characters to prevent token waste (default: 2000)
@@ -50,7 +51,8 @@ Right-click any message → *Babel* → Get an ephemeral translation only you ca
 - **Graceful Shutdown** — Clean `SIGTERM`/`SIGINT` handling for Docker & PM2
 - **Input Validation** — Config updates are sanitized and range-checked
 - **Error Sanitization** — API keys and URLs stripped from user-facing error messages
-- **Docker Health Check** — Built-in `/healthz` endpoint for container orchestration
+- **Health Model** — `/livez`, `/readyz`, and `/healthz` separate local process liveness from translation readiness
+- **Docker Health Check** — Built-in `/livez` endpoint for container orchestration
 - **Webhook Auto-Recovery** — Automatically re-creates webhooks if deleted externally
 
 ## Quick Start
@@ -124,6 +126,7 @@ After starting the bot, open `http://localhost:3000`:
 - **Translation Test** — Test API connectivity and translations
 - **User Preferences** — View and manage per-user language settings
 - **API Health** — Monitor API connectivity in real-time
+- **Metrics & Stats** — Track cache hit rate, failure rate, API call volume, budget blocks, and webhook recovery events
 
 ## Multi-language Support
 
@@ -168,9 +171,11 @@ Use `npm run db:migrate -- --force` only if you intentionally want to overwrite 
 
 ```
 src/
+├── app-metrics.ts   # In-memory application metrics and derived rates
 ├── index.ts          # Entry point, client setup, graceful shutdown
 ├── config.ts         # Environment validation (fail-fast)
 ├── types.ts          # Shared TypeScript type definitions
+├── health.ts         # Liveness/readiness/composite health model
 ├── lang.ts           # Language detection & locale mapping
 ├── translate.ts      # Vertex AI Gemini API client with retry
 ├── cache.ts          # LRU translation cache
@@ -251,24 +256,26 @@ npm start
 
 ### Test Coverage
 
-148 tests across 15 suites covering all modules:
+154 tests across 17 suites covering all modules:
 
 | Suite | Tests | Covers |
 |---|---|---|
 | `cache.test.ts` | 9 | LRU eviction, hit/miss stats, versioned cache keys |
 | `config-runtime-effects.test.ts` | 4 | Unified config side effects, cache invalidation, immediate runtime sync |
 | `cooldown.test.ts` | 6 | Rate limiting, cleanup, per-user isolation |
+| `app-metrics.test.ts` | 2 | Counter aggregation and derived success/failure/cache/api rates |
 | `log.test.ts` | 14 | Ring buffer, addError, type filtering, defaults |
 | `lang.test.ts` | 29 | Script detection (CJK/Cyrillic/Arabic/Thai/Hindi), locale mapping, same-language check |
 | `dashboard-auth.test.ts` | 4 | Standalone auth flow, CSRF enforcement, session expiry cleanup |
 | `translation-service.test.ts` | 7 | Shared workflow, cache hits, budget/error handling, language decisions |
+| `translate-command.test.ts` | 1 | Webhook stale recovery increments operational metrics |
 | `vertex-ai-client.test.ts` | 4 | Shared transport, timeout wiring, health checks, endpoint resolution |
 | `translate.test.ts` | 20 | Retry logic, prompt building, API errors, URL routing |
 | `usage.test.ts` | 23 | Cost calculation, per-server budget enforcement, global fallback, day rollover, guild history |
 | `store.test.ts` | 7 | SQLite persistence, legacy JSON import, defaults, copy safety |
 | `structured-logger.test.ts` | 2 | JSON shape, inherited request context, secret redaction |
 | `sqlite-session-repository.test.ts` | 2 | Persistent session storage, enumeration, delete/clear behavior |
-| `dashboard.test.ts` | 14 | Auth flow, API key masking, config protection, runtime cache invalidation |
+| `dashboard.test.ts` | 17 | Auth flow, health endpoints, stats metrics, config protection, runtime cache invalidation |
 | `shutdown.test.ts` | 3 | Shutdown order, timeout forcing, signal deduplication |
 
 ## Production Deployment
@@ -290,9 +297,15 @@ docker build -t babel .
 docker run -d --name babel --env-file .env -p 3000:3000 -v babel-data:/app/data babel
 ```
 
-The Docker image includes a built-in `HEALTHCHECK` that pings `/healthz` every 30 seconds.
+The Docker image includes a built-in `HEALTHCHECK` that pings `/livez` every 30 seconds.
 Both PM2 and Docker run the same built artifact as `npm start`: `dist/src/index.js`.
 Dashboard sessions now share the same SQLite data file as the rest of the application state, and graceful shutdown closes the database connection before exit.
+
+### Health Endpoints
+
+- `GET /livez` checks only local process health and the in-process config repository. This is the container liveness probe.
+- `GET /readyz` checks setup completeness plus a live Vertex AI probe before declaring the app ready for translation traffic.
+- `GET /healthz` returns both liveness and readiness with a degraded/ok status so operators can see dependency strategy without conflating restart policy and readiness policy.
 
 ## Tech Stack
 
@@ -302,7 +315,7 @@ Dashboard sessions now share the same SQLite data file as the rest of the applic
 - [Express](https://expressjs.com) + [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) — Dashboard & API security
 - [Vertex AI Gemini](https://cloud.google.com/vertex-ai) — Translation engine
 - [tsx](https://tsx.is) — TypeScript execution for development
-- [Vitest](https://vitest.dev) — Testing (148 tests, 15 suites, v8 coverage)
+- [Vitest](https://vitest.dev) — Testing (154 tests, 17 suites, v8 coverage)
 - [ESLint](https://eslint.org) + [Prettier](https://prettier.io) — Code quality
 
 ## License

@@ -1,4 +1,5 @@
 import { Client, Events, GatewayIntentBits, type TextChannel, type Webhook } from 'discord.js';
+import { AppMetrics } from './app-metrics.js';
 import { config } from './config.js';
 import { TranslationCache } from './cache.js';
 import { CooldownManager } from './cooldown.js';
@@ -22,7 +23,8 @@ const cache = new TranslationCache(runtimeConfig.cacheMaxSize);
 const cooldown = new CooldownManager(runtimeConfig.cooldownSeconds);
 const log = new TranslationLog();
 const stats: BotStats = { totalTranslations: 0, apiCalls: 0 };
-const translationService = createTranslationService({ cache, cooldown, log, stats });
+const metrics = new AppMetrics();
+const translationService = createTranslationService({ cache, cooldown, log, stats, metrics });
 const startupLogger = appLogger.child({ component: 'startup' });
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
@@ -42,6 +44,7 @@ client.once(Events.ClientReady, (c) => {
         log,
         client,
         getStats: () => stats,
+        metrics,
     });
     dashboardServer = startDashboardServer(dashboardApp, config.dashboardPort);
 });
@@ -73,7 +76,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             case 'setlang':
                 return handleSetlang(interaction);
             case 'translate':
-                return handleTranslate(interaction, { translationService, getOrCreateWebhook });
+                return handleTranslate(interaction, { translationService, getOrCreateWebhook, metrics });
             case 'help':
                 return handleHelp(interaction);
             case 'mylang':

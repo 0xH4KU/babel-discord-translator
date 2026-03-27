@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import http from 'http';
+import { AppMetrics } from '../src/app-metrics.js';
 
 // --- Mock dependencies ---
 vi.mock('dotenv/config', () => ({}));
@@ -123,12 +124,16 @@ function request(server: http.Server, method: string, path: string, { body, cook
 describe('Dashboard API', () => {
     let app: ReturnType<typeof createDashboardApp>;
     let cache: TranslationCache;
+    let metrics: AppMetrics;
     let server: http.Server;
     let sessionCookie: string;
     let csrfToken: string;
+    let healthCheck: ReturnType<typeof vi.fn>;
 
     beforeAll(async () => {
         cache = new TranslationCache(100);
+        metrics = new AppMetrics();
+        healthCheck = vi.fn().mockResolvedValue({ healthy: true, latencyMs: 24 });
         const cooldown = new CooldownManager(5);
         const log = new TranslationLog(100);
         const mockClient = {
@@ -142,6 +147,8 @@ describe('Dashboard API', () => {
             log,
             client: mockClient,
             getStats: () => ({ totalTranslations: 42, apiCalls: 30 }),
+            metrics,
+            healthCheck,
             sessionRepository: new InMemorySessionRepository(),
         });
 
@@ -198,13 +205,65 @@ describe('Dashboard API', () => {
         expect(res.status).toBe(401);
     });
 
+    it('should expose liveness, readiness, and composite health endpoints', async () => {
+        healthCheck.mockResolvedValue({ healthy: true, latencyMs: 18 });
+
+        const live = await request(server, 'GET', '/livez');
+        expect(live.status).toBe(200);
+        expect(live.body!.live).toBe(true);
+        expect(live.body!.status).toBe('ok');
+
+        const ready = await request(server, 'GET', '/readyz');
+        expect(ready.status).toBe(200);
+        expect(ready.body!.ready).toBe(true);
+        expect((ready.body!.checks as Record<string, unknown>).vertexAi).toBeDefined();
+
+        const health = await request(server, 'GET', '/healthz');
+        expect(health.status).toBe(200);
+        expect(health.body!.live).toBe(true);
+        expect(health.body!.ready).toBe(true);
+        expect(health.body!.strategy).toBeDefined();
+    });
+
+    it('should report degraded health when Vertex AI readiness fails', async () => {
+        healthCheck.mockResolvedValue({ healthy: false, error: 'upstream unavailable' });
+
+        const ready = await request(server, 'GET', '/readyz');
+        expect(ready.status).toBe(503);
+        expect(ready.body!.ready).toBe(false);
+
+        const health = await request(server, 'GET', '/healthz');
+        expect(health.status).toBe(200);
+        expect(health.body!.status).toBe('degraded');
+        expect((health.body!.checks as Record<string, Record<string, unknown>>).vertexAi.error).toBe('upstream unavailable');
+    });
+
     it('should return stats for authenticated user', async () => {
+        metrics.recordTranslationSuccess({ cached: true });
+        metrics.recordTranslationApiCall();
+        metrics.recordTranslationFailure();
+        metrics.recordBudgetExceeded();
+        metrics.recordWebhookRecreate();
         const res = await request(server, 'GET', '/api/stats', {
             cookie: sessionCookie,
         });
         expect(res.status).toBe(200);
         expect((res.body!.bot as Record<string, unknown>).name).toBe('Babel#1234');
         expect((res.body!.translations as Record<string, unknown>).total).toBe(42);
+        expect((res.body!.metrics as Record<string, unknown>).translationFailuresTotal).toBe(1);
+        expect((res.body!.translations as Record<string, unknown>).webhookRecreated).toBe(1);
+    });
+
+    it('should expose readiness details on the authenticated health endpoint', async () => {
+        healthCheck.mockResolvedValue({ healthy: true, latencyMs: 12 });
+
+        const res = await request(server, 'GET', '/api/health', {
+            cookie: sessionCookie,
+        });
+        expect(res.status).toBe(200);
+        expect(res.body!.healthy).toBe(true);
+        expect((res.body!.vertexAi as Record<string, unknown>).latencyMs).toBe(12);
+        expect((res.body!.checks as Record<string, unknown>).configuration).toBeDefined();
     });
 
     // --- Config masking ---

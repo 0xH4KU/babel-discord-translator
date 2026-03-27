@@ -1,7 +1,9 @@
 import express, { type Request, type Response } from 'express';
 import http from 'http';
 import rateLimit from 'express-rate-limit';
+import { createEmptyAppMetricsSnapshot } from './app-metrics.js';
 import { config } from './config.js';
+import { getHealthStatus, getLivenessStatus, getReadinessStatus } from './health.js';
 import { usage } from './usage.js';
 import { translate } from './translate.js';
 import { createDashboardAuth } from './auth/dashboard-auth.js';
@@ -97,6 +99,8 @@ export function createDashboardApp({
     log,
     client,
     getStats,
+    metrics,
+    healthCheck = checkVertexAiHealth,
     sessionRepository,
 }: DashboardDeps): express.Express {
     const app = express();
@@ -140,8 +144,20 @@ export function createDashboardApp({
         res.json({ ok: true });
     });
 
-    app.get('/healthz', (_req: Request, res: Response) => {
-        res.json({ status: 'ok' });
+    app.get('/livez', (_req: Request, res: Response) => {
+        const health = getLivenessStatus();
+        res.status(health.live ? 200 : 503).json(health);
+    });
+
+    app.get('/readyz', async (_req: Request, res: Response) => {
+        const health = await getReadinessStatus({ healthCheck });
+        res.status(health.ready ? 200 : 503).json(health);
+    });
+
+    app.get('/healthz', async (_req: Request, res: Response) => {
+        const metricsSnapshot = metrics?.snapshot() ?? createEmptyAppMetricsSnapshot();
+        const health = await getHealthStatus({ healthCheck }, metricsSnapshot);
+        res.status(health.live ? 200 : 503).json(health);
     });
 
     app.get('/api/setup-status', auth.requireAuth, (_req: Request, res: Response) => {
@@ -152,6 +168,7 @@ export function createDashboardApp({
         const stats = getStats();
         const cacheStats = cache.stats();
         const usageStats = usage.getStats();
+        const metricsSnapshot = metrics?.snapshot() ?? createEmptyAppMetricsSnapshot();
 
         const guildBudgetConfigs = guildBudgetRepository.listBudgets();
         const globalBudget = configRepository.getRuntimeConfig().dailyBudgetUsd || 0;
@@ -183,7 +200,14 @@ export function createDashboardApp({
                 total: stats.totalTranslations,
                 apiCalls: stats.apiCalls,
                 saved: cacheStats.hits,
+                failures: metricsSnapshot.translationFailuresTotal,
+                failureRate: metricsSnapshot.translationFailureRate,
+                cacheHits: metricsSnapshot.translationCacheHitsTotal,
+                cacheHitRate: metricsSnapshot.translationCacheHitRate,
+                budgetExceeded: metricsSnapshot.budgetExceededTotal,
+                webhookRecreated: metricsSnapshot.webhookRecreateTotal,
             },
+            metrics: metricsSnapshot,
             cache: cacheStats,
             usage: usageStats,
             guildBudgets: guildBudgetList,
@@ -328,7 +352,13 @@ export function createDashboardApp({
     });
 
     app.get('/api/health', auth.requireAuth, async (_req: Request, res: Response) => {
-        res.json(await checkVertexAiHealth());
+        const readiness = await getReadinessStatus({ healthCheck });
+        res.status(readiness.ready ? 200 : 503).json({
+            healthy: readiness.ready,
+            readiness: readiness.status,
+            vertexAi: readiness.checks.vertexAi,
+            checks: readiness.checks,
+        });
     });
 
     return app;
