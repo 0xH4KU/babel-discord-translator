@@ -295,7 +295,7 @@ npm start
 
 ### Test Coverage
 
-163 tests across 19 suites covering all modules:
+166 tests across 20 suites covering all modules:
 
 | Suite | Tests | Covers |
 |---|---|---|
