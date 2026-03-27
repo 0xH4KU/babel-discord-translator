@@ -382,9 +382,9 @@
 
 ### P2-5. i18n 與文案治理
 
-- [ ] 將 Discord reply 文案與 dashboard API error 文案系統化
-- [ ] 避免文案散落在 command / route handler
-- [ ] 為管理後台與 Discord 使用者訊息建立不同層級的 message catalog
+- [x] 將 Discord reply 文案與 dashboard API error 文案系統化
+- [x] 避免文案散落在 command / route handler
+- [x] 為管理後台與 Discord 使用者訊息建立不同層級的 message catalog
 
 ---
 

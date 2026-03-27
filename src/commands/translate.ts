@@ -1,5 +1,6 @@
 import { MessageFlags, type ChatInputCommandInteraction } from 'discord.js';
 import { sanitizeError } from './shared.js';
+import { discordMessages } from '../discord-messages.js';
 import { appLogger, createRequestId } from '../structured-logger.js';
 import type { TranslateCommandDeps } from '../types.js';
 import type { GuildMember } from 'discord.js';
@@ -66,7 +67,7 @@ export async function handleTranslate(
             error: (error as Error).message,
         });
         await interaction.editReply({
-            content: `Translation failed: ${sanitizeError((error as Error).message)}`,
+            content: discordMessages.translationFailed(sanitizeError((error as Error).message)),
         });
     }
 }

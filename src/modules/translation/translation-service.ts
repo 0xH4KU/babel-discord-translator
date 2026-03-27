@@ -10,6 +10,7 @@ import { usage } from '../usage/usage.js';
 import { translate, resolveSystemPrompt } from './translate.js';
 import { sanitizeError } from '../../commands/shared.js';
 import { appLogger, createRequestId, type StructuredLogger } from '../../shared/structured-logger.js';
+import { discordMessages, getDiscordTranslationCommandMessages } from '../../discord-messages.js';
 import type { BotStats, TranslationResult } from '../../types.js';
 
 type ServiceCommand = 'babel' | 'translate';
@@ -83,38 +84,15 @@ interface TargetLanguageDecision {
     langSource: LangSource;
 }
 
-const COMMAND_MESSAGES: Record<ServiceCommand, {
-    setupIncomplete: string;
-    emptyText: string;
-    sameLanguage: string;
-    budgetExceeded: string;
+interface QueueBusyMessages {
     userBusy: string;
     guildBusy: string;
     serviceBusy: string;
-}> = {
-    babel: {
-        setupIncomplete: 'Bot not configured yet. Please complete setup in the dashboard.',
-        emptyText: 'No text content',
-        sameLanguage: 'This message is already in your language!',
-        budgetExceeded: 'Daily budget exceeded, try again tomorrow!',
-        userBusy: 'You already have a translation in progress. Please wait a moment.',
-        guildBusy: 'This server is handling too many translations right now. Please try again shortly.',
-        serviceBusy: 'Translation service is busy right now. Please try again in a moment.',
-    },
-    translate: {
-        setupIncomplete: 'Bot not configured yet.',
-        emptyText: 'Text is required',
-        sameLanguage: 'This text is already in your target language!',
-        budgetExceeded: 'Daily budget exceeded',
-        userBusy: 'You already have a translation in progress. Please wait a moment.',
-        guildBusy: 'This server is handling too many translations right now. Please try again shortly.',
-        serviceBusy: 'Translation service is busy right now. Please try again in a moment.',
-    },
-};
+}
 
 function resolveQueueBusyMessage(
     reason: RuntimeLimitReason,
-    messages: Pick<typeof COMMAND_MESSAGES[ServiceCommand], 'userBusy' | 'guildBusy' | 'serviceBusy'>,
+    messages: QueueBusyMessages,
 ): string {
     switch (reason) {
         case 'user_queue_full':
@@ -141,7 +119,7 @@ export function createTranslationService({
 }: TranslationServiceDeps): TranslationService {
     return {
         async process(request: TranslationServiceRequest): Promise<TranslationServiceResult> {
-            const messages = COMMAND_MESSAGES[request.command];
+            const messages = getDiscordTranslationCommandMessages(request.command);
             const requestId = request.requestId ?? createRequestId();
             const requestLogger = logger.child({
                 requestId,
@@ -164,7 +142,7 @@ export function createTranslationService({
             const allowedGuilds = runtimeConfig.allowedGuildIds;
             if (!request.guildId || !allowedGuilds.includes(request.guildId)) {
                 requestLogger.warn('translation.request.blocked', { blockReason: 'guild_not_allowed' });
-                return { status: 'blocked', message: 'This server is not authorized.' };
+                return { status: 'blocked', message: discordMessages.unauthorizedGuild() };
             }
 
             if (usageTracker.isBudgetExceeded(request.guildId)) {
@@ -179,7 +157,7 @@ export function createTranslationService({
                     blockReason: 'cooldown_active',
                     cooldownRemainingSeconds: cooldownState.remaining,
                 });
-                return { status: 'blocked', message: `Please wait ${cooldownState.remaining}s` };
+                return { status: 'blocked', message: discordMessages.cooldownRemaining(cooldownState.remaining) };
             }
 
             const originalText = request.text;
@@ -197,7 +175,7 @@ export function createTranslationService({
                 });
                 return {
                     status: 'blocked',
-                    message: `Text too long (${originalText.length}/${maxInputLength} chars)`,
+                    message: discordMessages.textTooLong(originalText.length, maxInputLength),
                 };
             }
 
@@ -361,7 +339,7 @@ export function createTranslationService({
                 return {
                     status: 'error',
                     deferred,
-                    message: `Translation failed: ${sanitizeError(message)}`,
+                    message: discordMessages.translationFailed(sanitizeError(message)),
                 };
             }
         },

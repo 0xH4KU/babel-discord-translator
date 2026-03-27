@@ -15,6 +15,7 @@ import { guildBudgetRepository } from '../usage/guild-budget-repository.js';
 import { userPreferenceRepository } from '../translation/user-preference-repository.js';
 import { applyConfigUpdateEffects } from '../config/config-runtime-effects.js';
 import { appLogger } from '../../shared/structured-logger.js';
+import { dashboardMessages } from '../../dashboard-messages.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import type { DashboardDeps, StoreData } from '../../types.js';
@@ -44,49 +45,49 @@ function validateConfigUpdate(updates: Record<string, unknown>): { valid: boolea
     if (sanitized.cooldownSeconds !== undefined) {
         const v = parseInt(String(sanitized.cooldownSeconds));
         if (isNaN(v) || v < 1 || v > 300) {
-            return { valid: false, error: 'cooldownSeconds must be 1–300', sanitized: sanitized as Partial<StoreData> };
+            return { valid: false, error: dashboardMessages.validation.cooldownSeconds, sanitized: sanitized as Partial<StoreData> };
         }
         sanitized.cooldownSeconds = v;
     }
     if (sanitized.cacheMaxSize !== undefined) {
         const v = parseInt(String(sanitized.cacheMaxSize));
         if (isNaN(v) || v < 10 || v > 100000) {
-            return { valid: false, error: 'cacheMaxSize must be 10–100000', sanitized: sanitized as Partial<StoreData> };
+            return { valid: false, error: dashboardMessages.validation.cacheMaxSize, sanitized: sanitized as Partial<StoreData> };
         }
         sanitized.cacheMaxSize = v;
     }
     if (sanitized.maxInputLength !== undefined) {
         const v = parseInt(String(sanitized.maxInputLength));
         if (isNaN(v) || v < 100 || v > 10000) {
-            return { valid: false, error: 'maxInputLength must be 100–10000', sanitized: sanitized as Partial<StoreData> };
+            return { valid: false, error: dashboardMessages.validation.maxInputLength, sanitized: sanitized as Partial<StoreData> };
         }
         sanitized.maxInputLength = v;
     }
     if (sanitized.maxOutputTokens !== undefined) {
         const v = parseInt(String(sanitized.maxOutputTokens));
         if (isNaN(v) || v < 100 || v > 8192) {
-            return { valid: false, error: 'maxOutputTokens must be 100–8192', sanitized: sanitized as Partial<StoreData> };
+            return { valid: false, error: dashboardMessages.validation.maxOutputTokens, sanitized: sanitized as Partial<StoreData> };
         }
         sanitized.maxOutputTokens = v;
     }
     if (sanitized.dailyBudgetUsd !== undefined) {
         const v = parseFloat(String(sanitized.dailyBudgetUsd));
         if (isNaN(v) || v < 0) {
-            return { valid: false, error: 'dailyBudgetUsd must be >= 0', sanitized: sanitized as Partial<StoreData> };
+            return { valid: false, error: dashboardMessages.validation.dailyBudgetUsd, sanitized: sanitized as Partial<StoreData> };
         }
         sanitized.dailyBudgetUsd = v;
     }
     if (sanitized.inputPricePerMillion !== undefined) {
         const v = parseFloat(String(sanitized.inputPricePerMillion));
         if (isNaN(v) || v < 0) {
-            return { valid: false, error: 'inputPricePerMillion must be >= 0', sanitized: sanitized as Partial<StoreData> };
+            return { valid: false, error: dashboardMessages.validation.inputPricePerMillion, sanitized: sanitized as Partial<StoreData> };
         }
         sanitized.inputPricePerMillion = v;
     }
     if (sanitized.outputPricePerMillion !== undefined) {
         const v = parseFloat(String(sanitized.outputPricePerMillion));
         if (isNaN(v) || v < 0) {
-            return { valid: false, error: 'outputPricePerMillion must be >= 0', sanitized: sanitized as Partial<StoreData> };
+            return { valid: false, error: dashboardMessages.validation.outputPricePerMillion, sanitized: sanitized as Partial<StoreData> };
         }
         sanitized.outputPricePerMillion = v;
     }
@@ -121,7 +122,7 @@ export function createDashboardApp({
     const loginLimiter = rateLimit({
         windowMs: 15 * 60 * 1000,
         max: 5,
-        message: { error: 'Too many login attempts, please try again later' },
+        message: { error: dashboardMessages.auth.tooManyLoginAttempts },
         standardHeaders: true,
         legacyHeaders: false,
     });
@@ -129,7 +130,7 @@ export function createDashboardApp({
     app.post('/api/login', loginLimiter, (req: Request, res: Response) => {
         const result = auth.login(req.body.password, req);
         if (!result.ok) {
-            res.status(401).json({ error: 'Wrong password' });
+            res.status(401).json({ error: dashboardMessages.auth.wrongPassword });
             return;
         }
 
@@ -306,7 +307,7 @@ export function createDashboardApp({
 
         const v = parseFloat(String(dailyBudgetUsd));
         if (isNaN(v) || v < 0) {
-            res.status(400).json({ error: 'dailyBudgetUsd must be >= 0' });
+            res.status(400).json({ error: dashboardMessages.validation.dailyBudgetUsd });
             return;
         }
 
@@ -333,7 +334,7 @@ export function createDashboardApp({
         if (userPreferenceRepository.clearLanguage(userId)) {
             res.json({ ok: true, deleted: userId });
         } else {
-            res.status(404).json({ error: 'User not found' });
+            res.status(404).json({ error: dashboardMessages.userPreferences.notFound });
         }
     });
 
@@ -346,7 +347,7 @@ export function createDashboardApp({
     app.post('/api/translate/test', auth.requireAuth, auth.requireCsrf, async (req: Request, res: Response) => {
         const { text, targetLanguage } = req.body;
         if (!text?.trim()) {
-            res.status(400).json({ error: 'Text is required' });
+            res.status(400).json({ error: dashboardMessages.translationTest.textRequired });
             return;
         }
         try {

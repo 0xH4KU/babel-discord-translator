@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import type { NextFunction, Request, Response } from 'express';
 import type { SessionData } from '../../../types.js';
+import { dashboardMessages } from '../../../dashboard-messages.js';
 import { InMemorySessionRepository } from './in-memory-session-repository.js';
 import type { SessionRepository } from './session-repository.js';
 
@@ -133,7 +134,7 @@ export function createDashboardAuth({
         requireAuth(req: Request, res: Response, next: NextFunction): void {
             const state = getSessionState(req);
             if (!state) {
-                res.status(401).json({ error: 'Unauthorized' });
+                res.status(401).json({ error: dashboardMessages.auth.unauthorized });
                 return;
             }
 
@@ -143,7 +144,7 @@ export function createDashboardAuth({
         requireCsrf(req: Request, res: Response, next: NextFunction): void {
             const headerToken = req.headers['x-csrf-token'] as string | undefined;
             if (!headerToken || !req.csrfToken || !safeCompare(headerToken, req.csrfToken)) {
-                res.status(403).json({ error: 'Invalid CSRF token' });
+                res.status(403).json({ error: dashboardMessages.auth.invalidCsrfToken });
                 return;
             }
 

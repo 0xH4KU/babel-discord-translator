@@ -1,4 +1,5 @@
 import { MessageFlags, type MessageContextMenuCommandInteraction } from 'discord.js';
+import { discordMessages } from '../discord-messages.js';
 import { createRequestId } from '../structured-logger.js';
 import type { CommandDeps } from '../types.js';
 
@@ -37,7 +38,7 @@ export async function handleBabel(interaction: MessageContextMenuCommandInteract
         return;
     }
 
-    const original = result.originalText.length > 200 ? result.originalText.slice(0, 200) + '…' : result.originalText;
-    const reply = `> ${original.replace(/\n/g, '\n> ')}\n\n${result.translatedText}`;
-    await interaction.editReply({ content: reply });
+    await interaction.editReply({
+        content: discordMessages.quotedTranslation(result.originalText, result.translatedText),
+    });
 }

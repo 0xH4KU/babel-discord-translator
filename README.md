@@ -37,6 +37,7 @@ Right-click any message → *Babel* → Get an ephemeral translation only you ca
 - **Application Metrics** — In-memory counters expose translations, API calls, cache hits, failures, budget blocks, and webhook re-creates through `/api/stats`
 - **Runtime Translation Queue** — Cache misses flow through a bounded concurrency/queue limiter with per-user, per-guild, and global backpressure
 - **Dedicated Webhook Service** — `/translate` public output uses a dedicated webhook delivery service with stale-webhook recovery, error classification, and bounded LRU channel caching
+- **Governed Message Catalogs** — Discord user replies and dashboard/admin API errors are centralized into separate message catalogs instead of being scattered across handlers
 - **Web Dashboard** — Login-protected admin panel with setup wizard
 - **Modular Dashboard Auth** — Session, cookie, password, and CSRF handling live in dedicated auth modules instead of the route file
 - **Unified Config Runtime Effects** — Dashboard config changes flow through one hook that applies immediate runtime updates and cache invalidation rules
@@ -206,6 +207,7 @@ src/
 │   ├── app-metrics.ts       # In-memory application metrics and derived rates
 │   ├── health.ts            # Liveness/readiness/composite health model
 │   ├── log.ts               # In-memory ring buffer audit log
+│   ├── messages/            # Separate Discord and dashboard/admin message catalogs
 │   ├── shutdown.ts          # Graceful shutdown orchestration
 │   └── structured-logger.ts # JSON structured operational logging with request context
 ├── infra/

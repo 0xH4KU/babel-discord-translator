@@ -1,14 +1,7 @@
 import { MessageFlags, type ChatInputCommandInteraction } from 'discord.js';
+import { discordMessages, getDiscordLanguageName } from '../discord-messages.js';
 import { localeToLang } from '../lang.js';
 import { userPreferenceRepository } from '../repositories/user-preference-repository.js';
-
-const LANG_NAMES: Record<string, string> = {
-    'zh-TW': '繁體中文', 'zh-CN': '简体中文', en: 'English',
-    ja: '日本語', ko: '한국어', es: 'Español', fr: 'Français',
-    de: 'Deutsch', pt: 'Português', ru: 'Русский', it: 'Italiano',
-    vi: 'Tiếng Việt', th: 'ไทย', ar: 'العربية', hi: 'हिन्दी',
-    id: 'Bahasa Indonesia', tr: 'Türkçe',
-};
 
 /** Handle /setlang command — set user's preferred translation language. */
 export async function handleSetlang(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -17,7 +10,7 @@ export async function handleSetlang(interaction: ChatInputCommandInteraction): P
     if (lang === 'auto') {
         userPreferenceRepository.clearLanguage(interaction.user.id);
         await interaction.reply({
-            content: 'Language preference cleared. Will use your Discord locale automatically.',
+            content: discordMessages.languagePreferenceCleared(),
             flags: MessageFlags.Ephemeral,
         });
         return;
@@ -25,7 +18,7 @@ export async function handleSetlang(interaction: ChatInputCommandInteraction): P
 
     userPreferenceRepository.setLanguage(interaction.user.id, lang);
     await interaction.reply({
-        content: ` Translation target set to: **${lang}**`,
+        content: discordMessages.languageTargetSet(lang),
         flags: MessageFlags.Ephemeral,
     });
 }
@@ -37,17 +30,11 @@ export async function handleMylang(interaction: ChatInputCommandInteraction): Pr
 
     let reply: string;
     if (userPref) {
-        const name = LANG_NAMES[userPref] || userPref;
-        reply = `Your translation language: **${name}** (\`${userPref}\`), set via /setlang\n` +
-            `Use \`/setlang auto\` to reset to auto-detect.`;
+        reply = discordMessages.currentLanguageFromPreference(getDiscordLanguageName(userPref), userPref);
     } else if (localeLang) {
-        const name = LANG_NAMES[localeLang] || localeLang;
-        reply = `Your translation language: **${name}** (auto-detected from Discord locale: \`${interaction.locale}\`)\n` +
-            `Use \`/setlang\` to set a custom language.`;
+        reply = discordMessages.currentLanguageFromLocale(getDiscordLanguageName(localeLang), interaction.locale);
     } else {
-        reply = `Your translation language: **Auto** (Chinese ↔ English based on content)\n` +
-            `Discord locale: \`${interaction.locale}\`\n` +
-            `Use \`/setlang\` to set a specific target language.`;
+        reply = discordMessages.currentLanguageAuto(interaction.locale);
     }
 
     await interaction.reply({ content: reply, flags: MessageFlags.Ephemeral });
