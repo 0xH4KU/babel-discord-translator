@@ -1,3 +1,4 @@
+import { join } from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 describe('resolveDatabasePath', () => {
@@ -31,6 +32,6 @@ describe('resolveDatabasePath', () => {
 
         const { resolveDatabasePath } = await import('../src/persistence/sqlite-database.js');
 
-        expect(resolveDatabasePath()).toBe('/Users/HAKU/github/discord-translator/data/babel.sqlite');
+        expect(resolveDatabasePath()).toBe(join(process.cwd(), 'data', 'babel.sqlite'));
     });
 });
