@@ -321,6 +321,16 @@ Dashboard sessions now share the same SQLite data file as the rest of the applic
 - Vertex AI retry/backoff runs inside an already-acquired permit, which prevents retry storms from multiplying upstream concurrency during partial outages.
 - Runtime pressure is exposed in `/api/stats` and the dashboard overview as `running`, `queued`, and `shed` counts.
 
+## Process Separation
+
+As of March 27, 2026, the recommended deployment model is still a single Node.js process that hosts both the Discord gateway worker and the admin/dashboard HTTP server.
+
+- SQLite-backed config, usage, preferences, guild budgets, and dashboard sessions are now stable enough to support a future split.
+- Critical runtime state is still process-local: translation cache, cooldowns, runtime limiter, in-memory logs, metrics snapshots, and webhook cache ownership.
+- A formal evaluation is documented in `docs/architecture/bot-admin-process-separation.md`.
+
+Split the processes only when bot traffic and admin traffic need different scale, security boundaries, or SLA handling.
+
 ## Tech Stack
 
 - [TypeScript](https://www.typescriptlang.org) 5.9 — Strict mode with `noUncheckedIndexedAccess`

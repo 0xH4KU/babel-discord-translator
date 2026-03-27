@@ -349,9 +349,13 @@
 
 ### P2-2. Bot 與 Admin API 進程分離評估
 
-- [ ] 評估是否需要將 Discord gateway worker 與 dashboard/admin API 分開執行
-- [ ] 若分離，先確定共享資料層與 session 策略已穩定
-- [ ] 評估拆分帶來的部署與維運成本
+- [x] 評估是否需要將 Discord gateway worker 與 dashboard/admin API 分開執行
+- [x] 若分離，先確定共享資料層與 session 策略已穩定
+- [x] 評估拆分帶來的部署與維運成本
+
+結論
+
+- [x] 目前維持單一進程部署；待不同擴容需求、不同 SLA 或部署邊界需求出現時再拆分
 
 何時才值得做
 
