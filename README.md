@@ -39,6 +39,7 @@ Right-click any message → *Babel* → Get an ephemeral translation only you ca
 - **CSRF Protection** — All dashboard mutation endpoints require a CSRF token
 - **Login Rate Limiting** — Brute-force protection (5 attempts / 15 min per IP)
 - **Timing-Safe Auth** — SHA-256 hashed password comparison prevents timing attacks
+- **Decoupled Dashboard Bootstrap** — Express app creation and HTTP server startup are separated for cleaner tests and lifecycle control
 - **Graceful Shutdown** — Clean `SIGTERM`/`SIGINT` handling for Docker & PM2
 - **Input Validation** — Config updates are sanitized and range-checked
 - **Error Sanitization** — API keys and URLs stripped from user-facing error messages
@@ -147,7 +148,8 @@ src/
 ├── log.ts            # In-memory ring buffer audit log
 ├── store.ts          # File-based config persistence
 ├── usage.ts          # Token usage tracking & per-server budget enforcement
-├── dashboard.ts      # Express dashboard with rate limiting & auth
+├── dashboard.ts      # Dashboard app factory + HTTP server bootstrap
+├── shutdown.ts       # Graceful shutdown orchestration for Discord + HTTP
 ├── commands/         # Discord command handlers
 │   ├── babel.ts      #   Context menu translation
 │   ├── translate.ts  #   /translate (public via webhook)

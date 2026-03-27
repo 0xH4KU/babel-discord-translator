@@ -61,7 +61,7 @@ vi.mock('../src/translate.js', () => ({
     })),
 }));
 
-import { startDashboard } from '../src/dashboard.js';
+import { createDashboardApp, startDashboardServer, stopDashboardApp } from '../src/dashboard.js';
 import { TranslationCache } from '../src/cache.js';
 import { CooldownManager } from '../src/cooldown.js';
 import { TranslationLog } from '../src/log.js';
@@ -108,6 +108,7 @@ function request(server: http.Server, method: string, path: string, { body, cook
 }
 
 describe('Dashboard API', () => {
+    let app: ReturnType<typeof createDashboardApp>;
     let server: http.Server;
     let sessionCookie: string;
     let csrfToken: string;
@@ -121,7 +122,7 @@ describe('Dashboard API', () => {
             guilds: { cache: { size: 3, map: (_fn: Function) => [] } },
         } as unknown as Client;
 
-        const app = startDashboard({
+        app = createDashboardApp({
             cache,
             cooldown,
             log,
@@ -129,11 +130,11 @@ describe('Dashboard API', () => {
             getStats: () => ({ totalTranslations: 42, apiCalls: 30 }),
         });
 
-        // Start on a random port
-        server = app.listen(0);
+        server = startDashboardServer(app, 0);
     });
 
     afterAll(() => {
+        stopDashboardApp(app);
         server?.close();
     });
 

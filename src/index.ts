@@ -4,39 +4,41 @@ import { store } from './store.js';
 import { TranslationCache } from './cache.js';
 import { CooldownManager } from './cooldown.js';
 import { TranslationLog } from './log.js';
-import { startDashboard } from './dashboard.js';
+import { createDashboardApp, startDashboardServer } from './dashboard.js';
+import { createGracefulShutdownHandler } from './shutdown.js';
 import { handleBabel } from './commands/babel.js';
 import { handleTranslate } from './commands/translate.js';
 import { handleSetlang, handleMylang } from './commands/setlang.js';
 import { handleHelp } from './commands/help.js';
 import type { BotStats } from './types.js';
+import type express from 'express';
+import type http from 'http';
 
-// --- State ---
 const cache = new TranslationCache(store.get('cacheMaxSize'));
 const cooldown = new CooldownManager(store.get('cooldownSeconds'));
 const log = new TranslationLog();
 const stats: BotStats = { totalTranslations: 0, apiCalls: 0 };
 
-// --- Discord Client ---
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+
+let dashboardApp: express.Express | null = null;
+let dashboardServer: http.Server | null = null;
 
 client.once(Events.ClientReady, (c) => {
     console.log(` ${c.user.tag} is online`);
-    startDashboard({
+
+    dashboardApp = createDashboardApp({
         cache,
         cooldown,
         log,
         client,
         getStats: () => stats,
     });
+    dashboardServer = startDashboardServer(dashboardApp, config.dashboardPort);
 });
 
-// --- Webhook management for /translate ---
 const webhookCache = new Map<string, Webhook>();
 
-/**
- * Get or create a Babel webhook for a channel.
- */
 async function getOrCreateWebhook(channel: TextChannel, forceRefresh: boolean = false): Promise<Webhook> {
     if (forceRefresh) {
         webhookCache.delete(channel.id);
@@ -46,7 +48,7 @@ async function getOrCreateWebhook(channel: TextChannel, forceRefresh: boolean = 
     if (cached) return cached;
 
     const webhooks = await channel.fetchWebhooks();
-    let webhook = webhooks.find(w => w.name === 'Babel' && w.owner?.id === channel.client.user.id);
+    let webhook = webhooks.find((w) => w.name === 'Babel' && w.owner?.id === channel.client.user.id);
 
     if (!webhook) {
         webhook = await channel.createWebhook({ name: 'Babel', reason: 'Babel /translate public output' });
@@ -56,7 +58,6 @@ async function getOrCreateWebhook(channel: TextChannel, forceRefresh: boolean = 
     return webhook;
 }
 
-// --- Interaction handler ---
 client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isChatInputCommand()) {
         switch (interaction.commandName) {
@@ -76,20 +77,24 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 });
 
-// Cleanup expired cooldowns every minute
 const cooldownInterval = setInterval(() => cooldown.cleanup(), 60_000);
 
-// --- Graceful shutdown ---
-async function shutdown(signal: string): Promise<void> {
-    console.log(`\n[Shutdown] Received ${signal}, shutting down gracefully...`);
-    clearInterval(cooldownInterval);
-    client.destroy();
-    console.log('[Shutdown] Discord client destroyed');
-    process.exit(0);
-}
+const shutdown = createGracefulShutdownHandler({
+    client,
+    getDashboardApp: () => dashboardApp,
+    getDashboardServer: () => dashboardServer,
+    timers: [cooldownInterval],
+});
 
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => {
+    void shutdown('SIGTERM');
+});
 
-// --- Start ---
-client.login(config.discordToken);
+process.on('SIGINT', () => {
+    void shutdown('SIGINT');
+});
+
+client.login(config.discordToken).catch((error) => {
+    console.error('[Startup] Failed to login to Discord:', error);
+    process.exit(1);
+});
