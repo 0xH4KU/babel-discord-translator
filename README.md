@@ -378,6 +378,13 @@ As of March 27, 2026, the recommended deployment model is still a single Node.js
 
 Split the processes only when bot traffic and admin traffic need different scale, security boundaries, or SLA handling.
 
+## Architecture Decision Records
+
+- `docs/adr/0001-json-store-to-sqlite.md`
+- `docs/adr/0002-separate-dashboard-app-from-server-bootstrap.md`
+- `docs/adr/0003-translation-cache-key-and-invalidation.md`
+- `docs/adr/0004-keep-monolith-over-microservices-for-now.md`
+
 ## Tech Stack
 
 - [TypeScript](https://www.typescriptlang.org) 5.9 — Strict mode with `noUncheckedIndexedAccess`

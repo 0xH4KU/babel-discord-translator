@@ -398,12 +398,12 @@
 
 ### DOC-2. ADR
 
-- [ ] 建立 `docs/adr/` 目錄
-- [ ] 先寫以下 ADR
-- [ ] 為何從 JSON store 遷移到 SQLite
-- [ ] 為何將 dashboard app 與 server 分離
-- [ ] 快取 key 設計與 invalidation 策略
-- [ ] 是否維持單體架構而非微服務
+- [x] 建立 `docs/adr/` 目錄
+- [x] 先寫以下 ADR
+- [x] 為何從 JSON store 遷移到 SQLite
+- [x] 為何將 dashboard app 與 server 分離
+- [x] 快取 key 設計與 invalidation 策略
+- [x] 是否維持單體架構而非微服務
 
 ### GOV-1. License 一致性修正
 
