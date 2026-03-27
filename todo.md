@@ -442,24 +442,24 @@
 
 ### Milestone 5
 
-- [ ] P2 系列擴充性工作
-- [ ] ADR 與 README 補齊
-- [ ] License 治理收斂
+- [x] P2 系列擴充性工作
+- [x] ADR 與 README 補齊
+- [x] License 治理收斂
 
 ---
 
 ## 驗收清單
 
-- [ ] `npm run lint` 通過
-- [ ] `npm run typecheck` 通過
-- [ ] `npm test` 通過
-- [ ] `npm run build` 通過
+- [x] `npm run lint` 通過
+- [x] `npm run typecheck` 通過
+- [x] `npm test` 通過
+- [x] `npm run build` 通過
 - [ ] Docker image 可正常啟動
 - [ ] PM2 production mode 可正常啟動
 - [ ] 修改 prompt/model 後 cache 不會回傳舊結果
 - [ ] shutdown 不會留下未關閉的 server / timer
 - [ ] 資料遷移後舊資料可正確讀取
-- [ ] README、部署方式、實作狀態一致
+- [x] README、部署方式、實作狀態一致
 
 ## 備註
 
