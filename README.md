@@ -33,6 +33,7 @@ Right-click any message → *Babel* → Get an ephemeral translation only you ca
 - **Shared Vertex AI Client** — Translation and API health checks use one centralized client with unified timeout and retry handling
 - **Web Dashboard** — Login-protected admin panel with setup wizard
 - **Modular Dashboard Auth** — Session, cookie, password, and CSRF handling live in dedicated auth modules instead of the route file
+- **Unified Config Runtime Effects** — Dashboard config changes flow through one hook that applies immediate runtime updates and cache invalidation rules
 - **API Health Check** — Dashboard shows API connectivity status
 - **Translation Test** — Test translations directly from the dashboard
 - **User Preferences** — View and manage user language settings
@@ -167,6 +168,7 @@ src/
 ├── infra/
 │   └── vertex-ai-client.ts     # Shared Vertex AI transport, retry, timeout, health
 ├── services/
+│   ├── config-runtime-effects.ts  # Centralized runtime reactions to config changes
 │   └── translation-service.ts  # Shared translation application workflow
 ├── commands/         # Discord command handlers
 │   ├── babel.ts      #   Context menu translation
@@ -212,11 +214,12 @@ npm start
 
 ### Test Coverage
 
-140 tests across 12 suites covering all modules:
+144 tests across 13 suites covering all modules:
 
 | Suite | Tests | Covers |
 |---|---|---|
 | `cache.test.ts` | 9 | LRU eviction, hit/miss stats, versioned cache keys |
+| `config-runtime-effects.test.ts` | 4 | Unified config side effects, cache invalidation, immediate runtime sync |
 | `cooldown.test.ts` | 6 | Rate limiting, cleanup, per-user isolation |
 | `log.test.ts` | 14 | Ring buffer, addError, type filtering, defaults |
 | `lang.test.ts` | 29 | Script detection (CJK/Cyrillic/Arabic/Thai/Hindi), locale mapping, same-language check |
@@ -259,7 +262,7 @@ Dashboard sessions currently use the in-memory `InMemorySessionRepository`, so p
 - [Express](https://expressjs.com) + [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) — Dashboard & API security
 - [Vertex AI Gemini](https://cloud.google.com/vertex-ai) — Translation engine
 - [tsx](https://tsx.is) — TypeScript execution for development
-- [Vitest](https://vitest.dev) — Testing (140 tests, 12 suites, v8 coverage)
+- [Vitest](https://vitest.dev) — Testing (144 tests, 13 suites, v8 coverage)
 - [ESLint](https://eslint.org) + [Prettier](https://prettier.io) — Code quality
 
 ## License

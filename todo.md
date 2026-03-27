@@ -223,21 +223,21 @@
 
 ### P1-5. 補齊設定變更的副作用管理
 
-- [ ] 盤點所有會影響 runtime 行為的設定
-- [ ] `cooldownSeconds`
-- [ ] `cacheMaxSize`
-- [ ] `geminiModel`
-- [ ] `translationPrompt`
-- [ ] `maxInputLength`
-- [ ] `maxOutputTokens`
-- [ ] `dailyBudgetUsd`
-- [ ] 對每種設定定義「更新後要即時套用什麼」
-- [ ] 建立統一的 config update hook 或 domain event
+- [x] 盤點所有會影響 runtime 行為的設定
+- [x] `cooldownSeconds`
+- [x] `cacheMaxSize`
+- [x] `geminiModel`
+- [x] `translationPrompt`
+- [x] `maxInputLength`
+- [x] `maxOutputTokens`
+- [x] `dailyBudgetUsd`
+- [x] 對每種設定定義「更新後要即時套用什麼」
+- [x] 建立統一的 config update hook 或 domain event
 
 完成標準
 
-- 設定變更不再散落於 route handler 中手動同步
-- runtime state 與 persisted config 不會漂移
+- [x] 設定變更不再散落於 route handler 中手動同步
+- [x] runtime state 與 persisted config 不會漂移
 
 ---
 

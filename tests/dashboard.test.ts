@@ -253,6 +253,7 @@ describe('Dashboard API', () => {
 
         expect(res.status).toBe(200);
         expect(res.body!.cacheCleared).toBe(true);
+        expect(res.body!.changedKeys).toContain('geminiModel');
         expect(clearSpy).toHaveBeenCalledTimes(1);
     });
 

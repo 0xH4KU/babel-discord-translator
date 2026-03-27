@@ -7,6 +7,7 @@ import { usage } from './usage.js';
 import { translate } from './translate.js';
 import { createDashboardAuth } from './auth/dashboard-auth.js';
 import { checkVertexAiHealth } from './infra/vertex-ai-client.js';
+import { applyConfigUpdateEffects } from './services/config-runtime-effects.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import type { DashboardDeps, StoreData } from './types.js';
@@ -195,25 +196,16 @@ export function createDashboardApp({ cache, cooldown, log, client, getStats }: D
         }
 
         const currentConfig = store.getAll();
-        const shouldInvalidateTranslationCache = (
-            (sanitized.geminiModel !== undefined && sanitized.geminiModel !== currentConfig.geminiModel) ||
-            (sanitized.translationPrompt !== undefined && sanitized.translationPrompt !== currentConfig.translationPrompt) ||
-            (sanitized.maxOutputTokens !== undefined && sanitized.maxOutputTokens !== currentConfig.maxOutputTokens)
-        );
+        const effects = applyConfigUpdateEffects(currentConfig, sanitized, { cache, cooldown });
 
         store.update(sanitized);
 
-        if (sanitized.cooldownSeconds !== undefined) {
-            cooldown.seconds = sanitized.cooldownSeconds;
-        }
-        if (sanitized.cacheMaxSize !== undefined) {
-            cache.maxSize = sanitized.cacheMaxSize;
-        }
-        if (shouldInvalidateTranslationCache) {
-            cache.clear();
-        }
-
-        res.json({ ok: true, cacheCleared: shouldInvalidateTranslationCache });
+        res.json({
+            ok: true,
+            cacheCleared: effects.cacheCleared,
+            changedKeys: effects.changedKeys,
+            immediateEffects: effects.immediateEffects,
+        });
     });
 
     app.get('/api/guilds', auth.requireAuth, (_req: Request, res: Response) => {
