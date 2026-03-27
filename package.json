@@ -7,7 +7,7 @@
     "scripts": {
         "start": "node dist/src/index.js",
         "dev": "tsx watch src/index.ts",
-        "build": "tsc && cp -r src/locales dist/src/locales && cp -r src/public dist/src/public",
+        "build": "tsc && rm -rf dist/src/locales dist/src/public && cp -r src/locales dist/src/locales && cp -r src/public dist/src/public",
         "typecheck": "tsc --noEmit",
         "register": "tsx scripts/register.ts",
         "db:migrate": "tsx scripts/migrate-json-to-sqlite.ts",

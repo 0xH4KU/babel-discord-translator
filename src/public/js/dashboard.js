@@ -79,51 +79,17 @@ async function loadStats() {
         // Stats cards
         document.getElementById('stat-total').textContent = d.translations.total;
         document.getElementById('stat-total-detail').textContent =
-            d.translations.apiCalls +
-            ' API calls · ' +
-            formatRatio(d.translations.failureRate) +
-            ' failure · ' +
-            d.translations.budgetExceeded +
-            ' budget blocks';
+            d.translations.apiCalls + ' API calls';
         document.getElementById('stat-hitrate').textContent = formatRatio(
             d.translations.cacheHitRate,
         );
         document.getElementById('stat-saved').textContent =
-            d.cache.size +
-            ' / ' +
-            d.cache.maxSize +
-            ' cached' +
-            (d.metrics.translationCacheHitsTotal > 0
-                ? ' · ' + d.metrics.translationCacheHitsTotal + ' hits'
-                : '') +
-            (d.translations.webhookRecreated > 0
-                ? ' · ' + d.translations.webhookRecreated + ' webhook resets'
-                : '');
+            d.cache.size + ' / ' + d.cache.maxSize + ' cached';
         document.getElementById('stat-uptime').textContent = formatUptime(d.bot.uptime);
         const memory = d.bot.memory || {};
         const rssMB = memory.rssMB || d.bot.memoryMB || '?';
-        const heapUsedMB = memory.heapUsedMB || '?';
-        const externalMB = memory.externalMB || '?';
         document.getElementById('stat-memory').textContent =
-            'RSS ' +
-            rssMB +
-            ' MB · ' +
-            'heap ' +
-            heapUsedMB +
-            ' MB · ' +
-            'ext ' +
-            externalMB +
-            ' MB · ' +
-            d.bot.guilds +
-            ' servers · ' +
-            d.runtime.inflight +
-            '/' +
-            d.runtime.limits.maxConcurrent +
-            ' running · ' +
-            d.runtime.queued +
-            ' queued · ' +
-            d.runtime.rejectedTotal +
-            ' shed';
+            'RSS ' + rssMB + ' MB · ' + d.bot.guilds + ' servers';
     } catch {}
 }
 
