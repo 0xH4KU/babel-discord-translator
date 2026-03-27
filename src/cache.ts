@@ -1,6 +1,40 @@
+import crypto from 'crypto';
+
+export const TRANSLATION_CACHE_SCHEMA_VERSION = 'v2';
+
+export interface TranslationCacheKeyInput {
+    sourceText: string;
+    targetLanguage: string;
+    geminiModel: string;
+    prompt: string;
+    maxOutputTokens: number;
+}
+
+function hashCachePart(value: string): string {
+    return crypto.createHash('sha256').update(value).digest('hex').slice(0, 16);
+}
+
+export function buildTranslationCacheKey({
+    sourceText,
+    targetLanguage,
+    geminiModel,
+    prompt,
+    maxOutputTokens,
+}: TranslationCacheKeyInput): string {
+    return [
+        'translation',
+        TRANSLATION_CACHE_SCHEMA_VERSION,
+        hashCachePart(sourceText),
+        targetLanguage,
+        geminiModel,
+        maxOutputTokens,
+        hashCachePart(prompt),
+    ].join(':');
+}
+
 /**
  * LRU Translation Cache.
- * Stores messageId → translation to avoid duplicate API calls.
+ * Stores versioned translation keys → translation to avoid duplicate API calls.
  */
 export class TranslationCache {
     maxSize: number;

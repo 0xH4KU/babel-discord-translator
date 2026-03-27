@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { TranslationCache } from '../src/cache.js';
+import { buildTranslationCacheKey, TranslationCache } from '../src/cache.js';
 
 describe('TranslationCache', () => {
     it('should return null for cache miss', () => {
@@ -69,5 +69,60 @@ describe('TranslationCache', () => {
 
         expect(cache.get('a')).toBe('new');
         expect(cache.stats().size).toBe(1);
+    });
+
+    it('should build stable versioned cache keys for the same translation inputs', () => {
+        const first = buildTranslationCacheKey({
+            sourceText: 'Hello world',
+            targetLanguage: 'ja',
+            geminiModel: 'gemini-2.5-flash-lite',
+            prompt: 'Translate to Japanese',
+            maxOutputTokens: 1000,
+        });
+        const second = buildTranslationCacheKey({
+            sourceText: 'Hello world',
+            targetLanguage: 'ja',
+            geminiModel: 'gemini-2.5-flash-lite',
+            prompt: 'Translate to Japanese',
+            maxOutputTokens: 1000,
+        });
+
+        expect(first).toBe(second);
+    });
+
+    it('should change the cache key when model, prompt, or source content changes', () => {
+        const base = buildTranslationCacheKey({
+            sourceText: 'Hello world',
+            targetLanguage: 'ja',
+            geminiModel: 'gemini-2.5-flash-lite',
+            prompt: 'Translate to Japanese',
+            maxOutputTokens: 1000,
+        });
+
+        const differentModel = buildTranslationCacheKey({
+            sourceText: 'Hello world',
+            targetLanguage: 'ja',
+            geminiModel: 'gemini-2.5-pro',
+            prompt: 'Translate to Japanese',
+            maxOutputTokens: 1000,
+        });
+        const differentPrompt = buildTranslationCacheKey({
+            sourceText: 'Hello world',
+            targetLanguage: 'ja',
+            geminiModel: 'gemini-2.5-flash-lite',
+            prompt: 'Translate to Korean',
+            maxOutputTokens: 1000,
+        });
+        const differentSource = buildTranslationCacheKey({
+            sourceText: 'Hello world!',
+            targetLanguage: 'ja',
+            geminiModel: 'gemini-2.5-flash-lite',
+            prompt: 'Translate to Japanese',
+            maxOutputTokens: 1000,
+        });
+
+        expect(base).not.toBe(differentModel);
+        expect(base).not.toBe(differentPrompt);
+        expect(base).not.toBe(differentSource);
     });
 });

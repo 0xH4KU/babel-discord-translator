@@ -92,6 +92,25 @@ Rules:
 - Preserve the original formatting (line breaks, punctuation, etc.)`;
 }
 
+export function resolveSystemPrompt(targetLanguage: string = 'auto', customPrompt?: string | null): string {
+    if (customPrompt?.trim()) {
+        return customPrompt.trim();
+    }
+
+    if (targetLanguage && targetLanguage !== 'auto') {
+        return buildTargetedPrompt(targetLanguage);
+    }
+
+    return DEFAULT_PROMPT;
+}
+
+export function buildTranslationPrompt(text: string, targetLanguage: string = 'auto', customPrompt?: string | null): string {
+    return `${resolveSystemPrompt(targetLanguage, customPrompt)}
+
+Text:
+${text}`;
+}
+
 /**
  * Translate text using Vertex AI Gemini REST API.
  * @param text - Text to translate.
@@ -114,25 +133,8 @@ export async function translate(text: string, targetLanguage: string = 'auto'): 
 
     const url = `${baseUrl}/v1beta1/projects/${project}/locations/${location}/publishers/google/models/${model}:generateContent`;
 
-    // Determine which prompt to use
-    let systemPrompt: string;
     const customPrompt = store.get('translationPrompt');
-
-    if (customPrompt?.trim()) {
-        // User-defined custom prompt always takes priority
-        systemPrompt = customPrompt.trim();
-    } else if (targetLanguage && targetLanguage !== 'auto') {
-        // Dynamic target language prompt
-        systemPrompt = buildTargetedPrompt(targetLanguage);
-    } else {
-        // Default auto-detect prompt
-        systemPrompt = DEFAULT_PROMPT;
-    }
-
-    const prompt = `${systemPrompt}
-
-Text:
-${text}`;
+    const prompt = buildTranslationPrompt(text, targetLanguage, customPrompt);
 
     const response = await fetchWithRetry(url, {
         method: 'POST',
@@ -170,5 +172,12 @@ ${text}`;
     };
 }
 
-// Exports for testing internals
-export const _test = { getLanguageName, buildTargetedPrompt, fetchWithRetry, LOCALE_MAP, DEFAULT_PROMPT };
+export const _test = {
+    getLanguageName,
+    buildTargetedPrompt,
+    fetchWithRetry,
+    LOCALE_MAP,
+    DEFAULT_PROMPT,
+    resolveSystemPrompt,
+    buildTranslationPrompt,
+};

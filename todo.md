@@ -64,25 +64,25 @@
 
 ### P0-2. 抽出 Translation Application Service
 
-- [ ] 建立單一翻譯服務，例如 `src/services/translation-service.ts`
-- [ ] 把以下流程集中到 service
-- [ ] setup complete 檢查
-- [ ] guild whitelist 檢查
-- [ ] budget 檢查
-- [ ] cooldown 檢查
-- [ ] input length 檢查
-- [ ] target language 決策
-- [ ] same-language 檢查
-- [ ] cache lookup / write
-- [ ] usage 記錄
-- [ ] log 記錄
-- [ ] Discord command handler 改為 transport adapter，只處理 interaction 與回覆格式
+- [x] 建立單一翻譯服務，例如 `src/services/translation-service.ts`
+- [x] 把以下流程集中到 service
+- [x] setup complete 檢查
+- [x] guild whitelist 檢查
+- [x] budget 檢查
+- [x] cooldown 檢查
+- [x] input length 檢查
+- [x] target language 決策
+- [x] same-language 檢查
+- [x] cache lookup / write
+- [x] usage 記錄
+- [x] log 記錄
+- [x] Discord command handler 改為 transport adapter，只處理 interaction 與回覆格式
 
 完成標準
 
-- `handleBabel` 與 `handleTranslate` 不再各自重複核心商業邏輯
-- 翻譯規則只存在一份來源
-- 新增單元測試覆蓋 service 的成功、快取、預算、錯誤與語言決策分支
+- [x] `handleBabel` 與 `handleTranslate` 不再各自重複核心商業邏輯
+- [x] 翻譯規則只存在一份來源
+- [x] 新增單元測試覆蓋 service 的成功、快取、預算、錯誤與語言決策分支
 
 影響檔案候選
 
@@ -95,19 +95,19 @@
 
 ### P0-3. 快取 key 版本化
 
-- [ ] 為翻譯快取補上版本維度
-- [ ] key 至少包含 `sourceContentHash`
-- [ ] key 至少包含 `targetLanguage`
-- [ ] key 至少包含 `geminiModel`
-- [ ] key 至少包含 `promptVersion` 或 `translationPrompt` hash
-- [ ] `Babel` 不能只用 `message.id` 作為來源鍵
-- [ ] Dashboard 更新 prompt、model、token 設定後，要清 cache 或 bump cache version
+- [x] 為翻譯快取補上版本維度
+- [x] key 至少包含 `sourceContentHash`
+- [x] key 至少包含 `targetLanguage`
+- [x] key 至少包含 `geminiModel`
+- [x] key 至少包含 `promptVersion` 或 `translationPrompt` hash
+- [x] `Babel` 不能只用 `message.id` 作為來源鍵
+- [x] Dashboard 更新 prompt、model、token 設定後，要清 cache 或 bump cache version
 
 完成標準
 
-- 修改 prompt/model 後，不會命中舊翻譯結果
-- 訊息內容變更後，不會沿用舊 cache
-- 快取命中率統計仍然可正常運作
+- [x] 修改 prompt/model 後，不會命中舊翻譯結果
+- [x] 訊息內容變更後，不會沿用舊 cache
+- [x] 快取命中率統計仍然可正常運作
 
 影響檔案候選
 

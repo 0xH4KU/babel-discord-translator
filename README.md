@@ -23,6 +23,7 @@ Right-click any message → *Babel* → Get an ephemeral translation only you ca
 - **Multi-language Support** — Auto-detects your Discord locale, or use `/setlang` to choose
 - **Check Your Language** — Use `/mylang` to see your current translation language
 - **LRU Cache** — Same message translated by 50 users = 1 API call (both context menu and `/translate`)
+- **Versioned Cache Keys** — Cache entries are keyed by source content hash, target language, Gemini model, prompt fingerprint, and output token settings
 - **Auto-Retry** — Exponential backoff for transient API errors (429, 503)
 - **Per-User Cooldown** — Configurable rate limiting
 - **Server Whitelist** — Control which servers can use the bot
@@ -150,6 +151,8 @@ src/
 ├── usage.ts          # Token usage tracking & per-server budget enforcement
 ├── dashboard.ts      # Dashboard app factory + HTTP server bootstrap
 ├── shutdown.ts       # Graceful shutdown orchestration for Discord + HTTP
+├── services/
+│   └── translation-service.ts  # Shared translation application workflow
 ├── commands/         # Discord command handlers
 │   ├── babel.ts      #   Context menu translation
 │   ├── translate.ts  #   /translate (public via webhook)

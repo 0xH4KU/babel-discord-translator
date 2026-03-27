@@ -6,6 +6,7 @@ import { CooldownManager } from './cooldown.js';
 import { TranslationLog } from './log.js';
 import { createDashboardApp, startDashboardServer } from './dashboard.js';
 import { createGracefulShutdownHandler } from './shutdown.js';
+import { createTranslationService } from './services/translation-service.js';
 import { handleBabel } from './commands/babel.js';
 import { handleTranslate } from './commands/translate.js';
 import { handleSetlang, handleMylang } from './commands/setlang.js';
@@ -18,6 +19,7 @@ const cache = new TranslationCache(store.get('cacheMaxSize'));
 const cooldown = new CooldownManager(store.get('cooldownSeconds'));
 const log = new TranslationLog();
 const stats: BotStats = { totalTranslations: 0, apiCalls: 0 };
+const translationService = createTranslationService({ cache, cooldown, log, stats });
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
@@ -64,7 +66,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             case 'setlang':
                 return handleSetlang(interaction);
             case 'translate':
-                return handleTranslate(interaction, { cache, cooldown, log, getOrCreateWebhook, stats });
+                return handleTranslate(interaction, { translationService, getOrCreateWebhook });
             case 'help':
                 return handleHelp(interaction);
             case 'mylang':
@@ -73,7 +75,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     if (interaction.isMessageContextMenuCommand() && interaction.commandName === 'Babel') {
-        return handleBabel(interaction, { cache, cooldown, log, stats });
+        return handleBabel(interaction, { translationService });
     }
 });
 

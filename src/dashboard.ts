@@ -319,6 +319,13 @@ export function createDashboardApp({ cache, cooldown, log, client, getStats }: D
             return;
         }
 
+        const currentConfig = store.getAll();
+        const shouldInvalidateTranslationCache = (
+            (sanitized.geminiModel !== undefined && sanitized.geminiModel !== currentConfig.geminiModel) ||
+            (sanitized.translationPrompt !== undefined && sanitized.translationPrompt !== currentConfig.translationPrompt) ||
+            (sanitized.maxOutputTokens !== undefined && sanitized.maxOutputTokens !== currentConfig.maxOutputTokens)
+        );
+
         store.update(sanitized);
 
         if (sanitized.cooldownSeconds !== undefined) {
@@ -327,8 +334,11 @@ export function createDashboardApp({ cache, cooldown, log, client, getStats }: D
         if (sanitized.cacheMaxSize !== undefined) {
             cache.maxSize = sanitized.cacheMaxSize;
         }
+        if (shouldInvalidateTranslationCache) {
+            cache.clear();
+        }
 
-        res.json({ ok: true });
+        res.json({ ok: true, cacheCleared: shouldInvalidateTranslationCache });
     });
 
     app.get('/api/guilds', sessionManager.requireAuth, (_req: Request, res: Response) => {

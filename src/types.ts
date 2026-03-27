@@ -9,6 +9,7 @@ import type {
 import type { TranslationCache } from './cache.js';
 import type { CooldownManager } from './cooldown.js';
 import type { TranslationLog } from './log.js';
+import type { TranslationService } from './services/translation-service.js';
 
 // --- Store ---
 
@@ -82,10 +83,7 @@ export interface BotStats {
 }
 
 export interface CommandDeps {
-    cache: TranslationCache;
-    cooldown: CooldownManager;
-    log: TranslationLog;
-    stats: BotStats;
+    translationService: TranslationService;
 }
 
 export interface TranslateCommandDeps extends CommandDeps {

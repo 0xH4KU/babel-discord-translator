@@ -109,12 +109,13 @@ function request(server: http.Server, method: string, path: string, { body, cook
 
 describe('Dashboard API', () => {
     let app: ReturnType<typeof createDashboardApp>;
+    let cache: TranslationCache;
     let server: http.Server;
     let sessionCookie: string;
     let csrfToken: string;
 
     beforeAll(async () => {
-        const cache = new TranslationCache(100);
+        cache = new TranslationCache(100);
         const cooldown = new CooldownManager(5);
         const log = new TranslationLog(100);
         const mockClient = {
@@ -238,6 +239,21 @@ describe('Dashboard API', () => {
         expect(lastCall).not.toHaveProperty('usageHistory');
         expect(lastCall).not.toHaveProperty('userLanguagePrefs');
         expect(lastCall.cooldownSeconds).toBe(10);
+    });
+
+    it('should clear the translation cache when prompt, model, or output token settings change', async () => {
+        const clearSpy = vi.spyOn(cache, 'clear');
+        const res = await request(server, 'POST', '/api/config', {
+            cookie: sessionCookie,
+            csrf: csrfToken,
+            body: {
+                geminiModel: 'gemini-2.5-pro',
+            },
+        });
+
+        expect(res.status).toBe(200);
+        expect(res.body!.cacheCleared).toBe(true);
+        expect(clearSpy).toHaveBeenCalledTimes(1);
     });
 
     // --- Translate test endpoint ---
