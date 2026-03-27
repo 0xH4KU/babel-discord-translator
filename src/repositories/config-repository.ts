@@ -29,22 +29,21 @@ export interface ConfigRepository {
 
 class StoreBackedConfigRepository implements ConfigRepository {
     getRuntimeConfig(): RuntimeConfig {
-        const config = normalizeStoreData(store.getAll() as Partial<StoreData>);
         return {
-            vertexAiApiKey: config.vertexAiApiKey,
-            gcpProject: config.gcpProject,
-            gcpLocation: config.gcpLocation,
-            geminiModel: config.geminiModel,
-            allowedGuildIds: [...config.allowedGuildIds],
-            cooldownSeconds: config.cooldownSeconds,
-            cacheMaxSize: config.cacheMaxSize,
-            setupComplete: config.setupComplete,
-            inputPricePerMillion: config.inputPricePerMillion,
-            outputPricePerMillion: config.outputPricePerMillion,
-            dailyBudgetUsd: config.dailyBudgetUsd,
-            translationPrompt: config.translationPrompt,
-            maxInputLength: config.maxInputLength,
-            maxOutputTokens: config.maxOutputTokens,
+            vertexAiApiKey: store.get('vertexAiApiKey'),
+            gcpProject: store.get('gcpProject'),
+            gcpLocation: store.get('gcpLocation'),
+            geminiModel: store.get('geminiModel'),
+            allowedGuildIds: [...store.get('allowedGuildIds')],
+            cooldownSeconds: store.get('cooldownSeconds'),
+            cacheMaxSize: store.get('cacheMaxSize'),
+            setupComplete: store.get('setupComplete'),
+            inputPricePerMillion: store.get('inputPricePerMillion'),
+            outputPricePerMillion: store.get('outputPricePerMillion'),
+            dailyBudgetUsd: store.get('dailyBudgetUsd'),
+            translationPrompt: store.get('translationPrompt'),
+            maxInputLength: store.get('maxInputLength'),
+            maxOutputTokens: store.get('maxOutputTokens'),
         };
     }
 

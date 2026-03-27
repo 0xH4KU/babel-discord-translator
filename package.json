@@ -10,6 +10,8 @@
         "build": "tsc && cp -r src/locales dist/src/locales && cp -r src/public dist/src/public",
         "typecheck": "tsc --noEmit",
         "register": "tsx scripts/register.ts",
+        "db:migrate": "tsx scripts/migrate-json-to-sqlite.ts",
+        "db:export:json": "tsx scripts/export-sqlite-to-json.ts",
         "test": "vitest run",
         "test:watch": "vitest",
         "test:coverage": "vitest run --coverage",
@@ -29,6 +31,9 @@
     "repository": {
         "type": "git",
         "url": "https://github.com/0xH4KU/babel-discord-translator"
+    },
+    "engines": {
+        "node": ">=22.5.0"
     },
     "dependencies": {
         "discord.js": "^14.18.0",

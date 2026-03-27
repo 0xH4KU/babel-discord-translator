@@ -10,6 +10,7 @@ import type { TranslationCache } from './cache.js';
 import type { CooldownManager } from './cooldown.js';
 import type { TranslationLog } from './log.js';
 import type { TranslationService } from './services/translation-service.js';
+import type { SessionRepository } from './auth/session-repository.js';
 
 // --- Store ---
 
@@ -131,6 +132,7 @@ export interface DashboardDeps {
     log: TranslationLog;
     client: Client;
     getStats: () => BotStats;
+    sessionRepository?: SessionRepository;
 }
 
 // --- Usage ---

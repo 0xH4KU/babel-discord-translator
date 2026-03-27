@@ -9,7 +9,7 @@
 Right-click any message → *Babel* → Get an ephemeral translation only you can see.
 
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
-[![Node.js](https://img.shields.io/badge/Node.js-20%2B-green.svg)](https://nodejs.org)
+[![Node.js](https://img.shields.io/badge/Node.js-22.5%2B-green.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
 [![discord.js](https://img.shields.io/badge/discord.js-v14-blue.svg)](https://discord.js.org)
 [![CI](https://github.com/0xH4KU/babel-discord-translator/actions/workflows/ci.yml/badge.svg)](https://github.com/0xH4KU/babel-discord-translator/actions)
@@ -32,6 +32,7 @@ Right-click any message → *Babel* → Get an ephemeral translation only you ca
 - **Custom Prompt** — Customize the translation prompt from the dashboard
 - **Shared Vertex AI Client** — Translation and API health checks use one centralized client with unified timeout and retry handling
 - **Repository Boundaries** — Commands, services, and dashboard routes talk to focused repositories instead of reaching into the raw JSON store directly
+- **SQLite Persistence** — Config, usage, preferences, guild budgets, and dashboard sessions are stored in a migrated SQLite database
 - **Web Dashboard** — Login-protected admin panel with setup wizard
 - **Modular Dashboard Auth** — Session, cookie, password, and CSRF handling live in dedicated auth modules instead of the route file
 - **Unified Config Runtime Effects** — Dashboard config changes flow through one hook that applies immediate runtime updates and cache invalidation rules
@@ -80,6 +81,7 @@ npm start
 ```
 
 Open `http://localhost:3000` → Login → Complete the setup wizard.
+On first boot, Babel creates `data/babel.sqlite` and auto-imports `data/config.json` if a legacy JSON store exists.
 
 ## Setup
 
@@ -138,13 +140,28 @@ Babel automatically translates to the language that makes sense for you:
 
 ## Configuration
 
-All configuration is managed through the web dashboard. The `.env` file only needs three values:
+All configuration is managed through the web dashboard. The `.env` file only needs three required/runtime values, plus one optional data-path override:
 
 | Variable | Description | Default |
 |---|---|---|
 | `DISCORD_TOKEN` | Discord bot token | *required* |
 | `DASHBOARD_PORT` | Dashboard web server port | `3000` |
 | `DASHBOARD_PASSWORD` | Dashboard login password | `admin` |
+| `BABEL_DB_PATH` | Optional SQLite database path | `data/babel.sqlite` |
+
+### Migration And Rollback
+
+If you are upgrading from the old JSON store manually, Babel will auto-import `data/config.json` into SQLite on first startup. You can also run the scripts directly:
+
+```bash
+# Import legacy data/config.json into SQLite
+npm run db:migrate
+
+# Export the current SQLite state back to data/config.json
+npm run db:export:json
+```
+
+Use `npm run db:migrate -- --force` only if you intentionally want to overwrite an existing SQLite file.
 
 ## Project Structure
 
@@ -158,9 +175,9 @@ src/
 ├── cache.ts          # LRU translation cache
 ├── cooldown.ts       # Per-user rate limiter
 ├── log.ts            # In-memory ring buffer audit log
-├── store.ts          # File-based config persistence
+├── store.ts          # SQLite-backed store facade kept for repository compatibility
 ├── repositories/
-│   ├── config-repository.ts      # Runtime/dashboard config boundary over the JSON store
+│   ├── config-repository.ts      # Runtime/dashboard config boundary over SQLite-backed persistence
 │   ├── guild-budget-repository.ts # Per-guild budget persistence boundary
 │   ├── store-data-normalizer.ts  # Repository-side normalization and defensive cloning
 │   ├── usage-repository.ts       # Daily usage and history persistence boundary
@@ -170,10 +187,15 @@ src/
 ├── shutdown.ts       # Graceful shutdown orchestration for Discord + HTTP
 ├── auth/
 │   ├── dashboard-auth.ts       # Dashboard auth flow, cookie, CSRF, session middleware
-│   ├── in-memory-session-repository.ts  # Single-instance session storage
+│   ├── in-memory-session-repository.ts  # Lightweight in-memory session store for isolated tests
+│   ├── sqlite-session-repository.ts  # Persistent dashboard sessions stored in SQLite
 │   └── session-repository.ts   # Session persistence interface
 ├── infra/
 │   └── vertex-ai-client.ts     # Shared Vertex AI transport, retry, timeout, health
+├── persistence/
+│   ├── legacy-json-store.ts    # Legacy config.json import/export helpers
+│   ├── sqlite-database.ts      # Shared SQLite connection + migrations
+│   └── store-defaults.ts       # Canonical default StoreData values
 ├── services/
 │   ├── config-runtime-effects.ts  # Centralized runtime reactions to config changes
 │   └── translation-service.ts  # Shared translation application workflow
@@ -196,6 +218,12 @@ npm run dev
 
 # Type check (no emit)
 npm run typecheck
+
+# Import legacy JSON into SQLite
+npm run db:migrate
+
+# Export SQLite state back to config.json for rollback
+npm run db:export:json
 
 # Run tests
 npm test
@@ -221,7 +249,7 @@ npm start
 
 ### Test Coverage
 
-144 tests across 13 suites covering all modules:
+146 tests across 14 suites covering all modules:
 
 | Suite | Tests | Covers |
 |---|---|---|
@@ -235,7 +263,8 @@ npm start
 | `vertex-ai-client.test.ts` | 4 | Shared transport, timeout wiring, health checks, endpoint resolution |
 | `translate.test.ts` | 20 | Retry logic, prompt building, API errors, URL routing |
 | `usage.test.ts` | 23 | Cost calculation, per-server budget enforcement, global fallback, day rollover, guild history |
-| `store.test.ts` | 7 | File persistence, defaults merging, corrupt JSON resilience |
+| `store.test.ts` | 7 | SQLite persistence, legacy JSON import, defaults, copy safety |
+| `sqlite-session-repository.test.ts` | 2 | Persistent session storage, enumeration, delete/clear behavior |
 | `dashboard.test.ts` | 14 | Auth flow, API key masking, config protection, runtime cache invalidation |
 | `shutdown.test.ts` | 3 | Shutdown order, timeout forcing, signal deduplication |
 
@@ -260,16 +289,17 @@ docker run -d --name babel --env-file .env -p 3000:3000 -v babel-data:/app/data 
 
 The Docker image includes a built-in `HEALTHCHECK` that pings `/healthz` every 30 seconds.
 Both PM2 and Docker run the same built artifact as `npm start`: `dist/src/index.js`.
-Dashboard sessions currently use the in-memory `InMemorySessionRepository`, so production deployments are single-instance only until that repository is replaced with a shared SQLite or Redis-backed implementation.
+Dashboard sessions now share the same SQLite data file as the rest of the application state, and graceful shutdown closes the database connection before exit.
 
 ## Tech Stack
 
 - [TypeScript](https://www.typescriptlang.org) 5.9 — Strict mode with `noUncheckedIndexedAccess`
+- [node:sqlite](https://nodejs.org/api/sqlite.html) — Built-in SQLite engine, migrations, and persistent session/config storage
 - [discord.js](https://discord.js.org) v14 — Discord gateway client
 - [Express](https://expressjs.com) + [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) — Dashboard & API security
 - [Vertex AI Gemini](https://cloud.google.com/vertex-ai) — Translation engine
 - [tsx](https://tsx.is) — TypeScript execution for development
-- [Vitest](https://vitest.dev) — Testing (144 tests, 13 suites, v8 coverage)
+- [Vitest](https://vitest.dev) — Testing (146 tests, 14 suites, v8 coverage)
 - [ESLint](https://eslint.org) + [Prettier](https://prettier.io) — Code quality
 
 ## License

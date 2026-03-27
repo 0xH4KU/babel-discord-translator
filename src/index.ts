@@ -11,6 +11,7 @@ import { handleBabel } from './commands/babel.js';
 import { handleTranslate } from './commands/translate.js';
 import { handleSetlang, handleMylang } from './commands/setlang.js';
 import { handleHelp } from './commands/help.js';
+import { closeSqliteDatabase } from './persistence/sqlite-database.js';
 import type { BotStats } from './types.js';
 import type express from 'express';
 import type http from 'http';
@@ -87,6 +88,7 @@ const shutdown = createGracefulShutdownHandler({
     getDashboardApp: () => dashboardApp,
     getDashboardServer: () => dashboardServer,
     timers: [cooldownInterval],
+    cleanupTasks: [closeSqliteDatabase],
 });
 
 process.on('SIGTERM', () => {

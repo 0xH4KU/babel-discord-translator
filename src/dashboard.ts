@@ -5,6 +5,7 @@ import { config } from './config.js';
 import { usage } from './usage.js';
 import { translate } from './translate.js';
 import { createDashboardAuth } from './auth/dashboard-auth.js';
+import { SQLiteSessionRepository } from './auth/sqlite-session-repository.js';
 import { checkVertexAiHealth } from './infra/vertex-ai-client.js';
 import { configRepository } from './repositories/config-repository.js';
 import { guildBudgetRepository } from './repositories/guild-budget-repository.js';
@@ -89,9 +90,19 @@ function validateConfigUpdate(updates: Record<string, unknown>): { valid: boolea
     return { valid: true, sanitized: sanitized as Partial<StoreData> };
 }
 
-export function createDashboardApp({ cache, cooldown, log, client, getStats }: DashboardDeps): express.Express {
+export function createDashboardApp({
+    cache,
+    cooldown,
+    log,
+    client,
+    getStats,
+    sessionRepository,
+}: DashboardDeps): express.Express {
     const app = express();
-    const auth = createDashboardAuth({ password: config.dashboardPassword });
+    const auth = createDashboardAuth({
+        password: config.dashboardPassword,
+        sessionRepository: sessionRepository ?? new SQLiteSessionRepository(),
+    });
 
     app.locals.disposeDashboardApp = () => {
         auth.dispose();

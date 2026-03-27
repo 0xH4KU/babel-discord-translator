@@ -18,10 +18,22 @@ vi.mock('../src/store.js', () => {
         gcpProject: 'test-project',
         gcpLocation: 'global',
         geminiModel: 'gemini-2.5-flash-lite',
+        allowedGuildIds: [],
         cooldownSeconds: 5,
         cacheMaxSize: 2000,
         setupComplete: true,
+        inputPricePerMillion: 0,
+        outputPricePerMillion: 0,
+        dailyBudgetUsd: 0,
+        translationPrompt: '',
         userLanguagePrefs: { user1: 'ja', user2: 'ko' },
+        maxInputLength: 2000,
+        maxOutputTokens: 1000,
+        tokenUsage: null,
+        usageHistory: [],
+        guildBudgets: {},
+        guildTokenUsage: {},
+        guildUsageHistory: {},
     };
     return {
         store: {
@@ -62,6 +74,7 @@ vi.mock('../src/translate.js', () => ({
 }));
 
 import { createDashboardApp, startDashboardServer, stopDashboardApp } from '../src/dashboard.js';
+import { InMemorySessionRepository } from '../src/auth/in-memory-session-repository.js';
 import { TranslationCache } from '../src/cache.js';
 import { CooldownManager } from '../src/cooldown.js';
 import { TranslationLog } from '../src/log.js';
@@ -129,6 +142,7 @@ describe('Dashboard API', () => {
             log,
             client: mockClient,
             getStats: () => ({ totalTranslations: 42, apiCalls: 30 }),
+            sessionRepository: new InMemorySessionRepository(),
         });
 
         server = startDashboardServer(app, 0);

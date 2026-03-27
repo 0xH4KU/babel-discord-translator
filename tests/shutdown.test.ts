@@ -48,6 +48,9 @@ describe('createGracefulShutdownHandler', () => {
                 },
             }),
             timers: [timer],
+            cleanupTasks: [() => {
+                order.push('cleanup.db');
+            }],
             logger,
             exit: vi.fn(),
         });
@@ -58,8 +61,10 @@ describe('createGracefulShutdownHandler', () => {
         expect(order).toContain('dashboard.dispose');
         expect(order).toContain('server.close');
         expect(order).toContain('client.destroy');
+        expect(order).toContain('cleanup.db');
         expect(order.indexOf('dashboard.dispose')).toBeLessThan(order.indexOf('server.close'));
         expect(order.indexOf('server.close')).toBeLessThan(order.indexOf('client.destroy'));
+        expect(order.indexOf('client.destroy')).toBeLessThan(order.indexOf('cleanup.db'));
         expect(process.exitCode).toBe(0);
     });
 

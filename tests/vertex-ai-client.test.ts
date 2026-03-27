@@ -7,6 +7,16 @@ vi.mock('../src/store.js', () => {
         gcpProject: 'test-project',
         gcpLocation: 'global',
         vertexAiApiKey: 'test-api-key',
+        allowedGuildIds: [],
+        cooldownSeconds: 5,
+        cacheMaxSize: 2000,
+        setupComplete: true,
+        inputPricePerMillion: 0,
+        outputPricePerMillion: 0,
+        dailyBudgetUsd: 0,
+        translationPrompt: '',
+        maxInputLength: 2000,
+        maxOutputTokens: 1000,
     };
 
     return {

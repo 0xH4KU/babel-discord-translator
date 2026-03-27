@@ -144,7 +144,7 @@
 - [x] shutdown 時關閉 Discord client
 - [x] shutdown 時關閉 HTTP server
 - [x] 清理 interval / timer
-- [ ] 若未來有 DB 連線，也要在此處關閉
+- [x] 若未來有 DB 連線，也要在此處關閉
 - [x] 為 shutdown 增加 timeout 與錯誤保護，避免 process 卡死
 
 完成標準
@@ -174,27 +174,27 @@
 
 ### P1-2. 將資料持久化從 JSON 升級到 SQLite
 
-- [ ] 引入 SQLite 作為單機正式資料層
-- [ ] 設計 migration 機制
-- [ ] 提供從現有 `data/config.json` 遷移的腳本
-- [ ] 保留 rollback 策略
+- [x] 引入 SQLite 作為單機正式資料層
+- [x] 設計 migration 機制
+- [x] 提供從現有 `data/config.json` 遷移的腳本
+- [x] 保留 rollback 策略
 
 建議資料表
 
-- [ ] `app_config`
-- [ ] `user_language_preferences`
-- [ ] `guild_budgets`
-- [ ] `daily_usage`
-- [ ] `guild_daily_usage`
-- [ ] `usage_history`
-- [ ] `sessions`
-- [ ] `cache_metadata` 或 `translation_cache`（若決定持久化）
+- [x] `app_config`
+- [x] `user_language_preferences`
+- [x] `guild_budgets`
+- [x] `daily_usage`
+- [x] `guild_daily_usage`
+- [x] `usage_history`
+- [x] `sessions`
+- [x] `cache_metadata` 或 `translation_cache`（若決定持久化）
 
 完成標準
 
-- 設定、偏好、usage 不再依賴同步檔案寫入
-- 重啟後資料一致
-- 資料結構變更可透過 migration 管理
+- [x] 設定、偏好、usage 不再依賴同步檔案寫入
+- [x] 重啟後資料一致
+- [x] 資料結構變更可透過 migration 管理
 
 ### P1-3. Session 與 Auth 模組化
 
@@ -407,22 +407,22 @@
 
 ### Milestone 1
 
-- [ ] P0-1 Dashboard App / Server 拆分
-- [ ] P0-5 Graceful Shutdown
-- [ ] P0-4 統一 production artifact
+- [x] P0-1 Dashboard App / Server 拆分
+- [x] P0-5 Graceful Shutdown
+- [x] P0-4 統一 production artifact
 
 ### Milestone 2
 
-- [ ] P0-2 Translation Service
-- [ ] P0-3 Cache key 版本化
+- [x] P0-2 Translation Service
+- [x] P0-3 Cache key 版本化
 - [ ] P1-7 回歸測試補齊
 
 ### Milestone 3
 
-- [ ] P1-1 Repository 邊界
-- [ ] P1-2 SQLite 遷移
-- [ ] P1-3 Session/Auth 模組化
-- [ ] P1-4 外部 API client 正規化
+- [x] P1-1 Repository 邊界
+- [x] P1-2 SQLite 遷移
+- [x] P1-3 Session/Auth 模組化
+- [x] P1-4 外部 API client 正規化
 
 ### Milestone 4
 

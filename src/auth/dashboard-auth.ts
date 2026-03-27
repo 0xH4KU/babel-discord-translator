@@ -151,7 +151,6 @@ export function createDashboardAuth({
         },
         dispose(): void {
             clearInterval(sessionCleanupInterval);
-            sessionRepository.clear();
         },
     };
 }

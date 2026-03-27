@@ -13,6 +13,7 @@ export interface GracefulShutdownDeps {
     getDashboardApp?: () => express.Express | null;
     getDashboardServer?: () => Pick<Server, 'close' | 'listening'> | null;
     timers?: Array<NodeJS.Timeout | null | undefined>;
+    cleanupTasks?: Array<(() => void | Promise<void>) | null | undefined>;
     timeoutMs?: number;
     logger?: ShutdownLogger;
     exit?: (code: number) => void;
@@ -50,6 +51,7 @@ export function createGracefulShutdownHandler({
     getDashboardApp,
     getDashboardServer,
     timers = [],
+    cleanupTasks = [],
     timeoutMs = 10_000,
     logger = console,
     exit = (code: number) => {
@@ -104,6 +106,19 @@ export function createGracefulShutdownHandler({
                 } catch (error) {
                     errors.push(error as Error);
                     logger.error(`[Shutdown] Discord client destroy failed: ${(error as Error).message}`);
+                }
+
+                for (const cleanupTask of cleanupTasks) {
+                    if (!cleanupTask) {
+                        continue;
+                    }
+
+                    try {
+                        await cleanupTask();
+                    } catch (error) {
+                        errors.push(error as Error);
+                        logger.error(`[Shutdown] Cleanup task failed: ${(error as Error).message}`);
+                    }
                 }
 
                 process.exitCode = errors.length === 0 ? 0 : 1;
