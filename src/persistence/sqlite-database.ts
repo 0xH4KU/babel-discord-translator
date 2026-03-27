@@ -1,10 +1,8 @@
 import { mkdirSync } from 'fs';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
+import { join, dirname } from 'path';
 import { DatabaseSync } from 'node:sqlite';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_DATA_DIR = join(__dirname, '..', '..', 'data');
+const DEFAULT_DATA_DIR = join(process.cwd(), 'data');
 const DEFAULT_DATABASE_PATH = join(DEFAULT_DATA_DIR, 'babel.sqlite');
 
 interface Migration {

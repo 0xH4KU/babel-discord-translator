@@ -393,7 +393,7 @@ Split the processes only when bot traffic and admin traffic need different scale
 - [Express](https://expressjs.com) + [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) — Dashboard & API security
 - [Vertex AI Gemini](https://cloud.google.com/vertex-ai) — Translation engine
 - [tsx](https://tsx.is) — TypeScript execution for development
-- [Vitest](https://vitest.dev) — Testing (163 tests, 19 suites, v8 coverage)
+- [Vitest](https://vitest.dev) — Testing (166 tests, 20 suites, v8 coverage)
 - [ESLint](https://eslint.org) + [Prettier](https://prettier.io) — Code quality
 
 ## License
