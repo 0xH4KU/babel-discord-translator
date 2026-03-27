@@ -8,7 +8,7 @@
 
 Right-click any message → *Babel* → Get an ephemeral translation only you can see.
 
-[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
+[![License: GPL-3.0-only](https://img.shields.io/badge/License-GPL--3.0--only-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-22.5%2B-green.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
 [![discord.js](https://img.shields.io/badge/discord.js-v14-blue.svg)](https://discord.js.org)
@@ -393,9 +393,11 @@ Split the processes only when bot traffic and admin traffic need different scale
 - [Express](https://expressjs.com) + [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) — Dashboard & API security
 - [Vertex AI Gemini](https://cloud.google.com/vertex-ai) — Translation engine
 - [tsx](https://tsx.is) — TypeScript execution for development
-- [Vitest](https://vitest.dev) — Testing (159 tests, 18 suites, v8 coverage)
+- [Vitest](https://vitest.dev) — Testing (163 tests, 19 suites, v8 coverage)
 - [ESLint](https://eslint.org) + [Prettier](https://prettier.io) — Code quality
 
 ## License
 
-[GPL-3.0](LICENSE)
+This repository is licensed under [GPL-3.0-only](LICENSE). The package metadata now matches the committed license text.
+
+No Git tags or release markers exist in the local repository history, so there is no separate historical release remediation note to attach here.

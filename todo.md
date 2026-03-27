@@ -407,9 +407,9 @@
 
 ### GOV-1. License 一致性修正
 
-- [ ] 確認專案真正授權條款
-- [ ] 對齊 `package.json`、`README.md`、`LICENSE`
-- [ ] 若有歷史發布版本，補上變更說明
+- [x] 確認專案真正授權條款
+- [x] 對齊 `package.json`、`README.md`、`LICENSE`
+- [x] 若有歷史發布版本，補上變更說明
 
 ---
 
