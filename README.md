@@ -62,9 +62,16 @@ Edit `.env` with your Discord bot token:
 nano .env
 ```
 
-Start the bot:
+Run in development:
 
 ```bash
+npm run dev
+```
+
+For a production-like local run:
+
+```bash
+npm run build
 npm start
 ```
 
@@ -190,22 +197,27 @@ npm run format
 
 # Build for production
 npm run build
+
+# Run the production artifact locally
+npm start
 ```
 
 ### Test Coverage
 
-119 tests across 8 suites covering all modules:
+132 tests across 10 suites covering all modules:
 
 | Suite | Tests | Covers |
 |---|---|---|
-| `cache.test.ts` | 7 | LRU eviction, hit/miss stats |
+| `cache.test.ts` | 9 | LRU eviction, hit/miss stats, versioned cache keys |
 | `cooldown.test.ts` | 6 | Rate limiting, cleanup, per-user isolation |
 | `log.test.ts` | 14 | Ring buffer, addError, type filtering, defaults |
 | `lang.test.ts` | 29 | Script detection (CJK/Cyrillic/Arabic/Thai/Hindi), locale mapping, same-language check |
+| `translation-service.test.ts` | 7 | Shared workflow, cache hits, budget/error handling, language decisions |
 | `translate.test.ts` | 20 | Retry logic, prompt building, API errors, URL routing |
 | `usage.test.ts` | 23 | Cost calculation, per-server budget enforcement, global fallback, day rollover, guild history |
 | `store.test.ts` | 7 | File persistence, defaults merging, corrupt JSON resilience |
-| `dashboard.test.ts` | 13 | Auth flow, API key masking, config protection, translate endpoint |
+| `dashboard.test.ts` | 14 | Auth flow, API key masking, config protection, runtime cache invalidation |
+| `shutdown.test.ts` | 3 | Shutdown order, timeout forcing, signal deduplication |
 
 ## Production Deployment
 
@@ -213,6 +225,7 @@ npm run build
 
 ```bash
 npm install -g pm2
+npm run build
 pm2 start ecosystem.config.cjs
 pm2 save
 pm2 startup
@@ -226,6 +239,7 @@ docker run -d --name babel --env-file .env -p 3000:3000 -v babel-data:/app/data 
 ```
 
 The Docker image includes a built-in `HEALTHCHECK` that pings `/healthz` every 30 seconds.
+Both PM2 and Docker run the same built artifact as `npm start`: `dist/src/index.js`.
 
 ## Tech Stack
 
@@ -234,7 +248,7 @@ The Docker image includes a built-in `HEALTHCHECK` that pings `/healthz` every 3
 - [Express](https://expressjs.com) + [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) — Dashboard & API security
 - [Vertex AI Gemini](https://cloud.google.com/vertex-ai) — Translation engine
 - [tsx](https://tsx.is) — TypeScript execution for development
-- [Vitest](https://vitest.dev) — Testing (119 tests, 8 suites, v8 coverage)
+- [Vitest](https://vitest.dev) — Testing (132 tests, 10 suites, v8 coverage)
 - [ESLint](https://eslint.org) + [Prettier](https://prettier.io) — Code quality
 
 ## License

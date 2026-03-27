@@ -2,9 +2,7 @@ module.exports = {
     apps: [
         {
             name: 'babel',
-            script: 'src/index.ts',
-            interpreter: 'node',
-            interpreter_args: '--import tsx',
+            script: 'dist/src/index.js',
             env: {
                 NODE_ENV: 'production',
             },

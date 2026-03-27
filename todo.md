@@ -119,18 +119,18 @@
 
 ### P0-4. 統一 production artifact 與啟動方式
 
-- [ ] 明確區分 `dev` 與 `prod`
-- [ ] `dev` 使用 `tsx`
-- [ ] `prod` 一律執行 `dist`
-- [ ] 調整 `package.json` 的 `start` / `build` script
-- [ ] 調整 `ecosystem.config.cjs` 改跑 build artifact
-- [ ] 驗證 Docker、PM2、本機 production 啟動行為一致
+- [x] 明確區分 `dev` 與 `prod`
+- [x] `dev` 使用 `tsx`
+- [x] `prod` 一律執行 `dist`
+- [x] 調整 `package.json` 的 `start` / `build` script
+- [x] 調整 `ecosystem.config.cjs` 改跑 build artifact
+- [x] 驗證 Docker、PM2、本機 production 啟動行為一致
 
 完成標準
 
-- production 不再直接執行 `src/index.ts`
-- 所有部署方式都以同一套 build artifact 為準
-- README 的部署指令與實際執行模型一致
+- [x] production 不再直接執行 `src/index.ts`
+- [x] 所有部署方式都以同一套 build artifact 為準
+- [x] README 的部署指令與實際執行模型一致
 
 影響檔案候選
 

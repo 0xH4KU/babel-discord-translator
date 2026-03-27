@@ -5,7 +5,7 @@ COPY package.json package-lock.json tsconfig.json ./
 RUN npm ci
 COPY src/ ./src/
 COPY scripts/ ./scripts/
-RUN npx tsc
+RUN npm run build
 
 # ---- Runtime Stage ----
 FROM node:20-alpine
@@ -16,8 +16,6 @@ RUN addgroup -S babel && adduser -S babel -G babel
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json ./
-COPY src/public ./dist/src/public
-COPY src/locales ./dist/src/locales
 
 RUN mkdir -p data && chown babel:babel data
 
