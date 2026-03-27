@@ -376,9 +376,9 @@
 
 ### P2-4. Webhook 管理獨立化
 
-- [ ] 將 `getOrCreateWebhook` 抽成 webhook service
-- [ ] 增加 stale webhook 偵測、metrics 與錯誤分類
-- [ ] 明確定義 cache eviction 策略
+- [x] 將 `getOrCreateWebhook` 抽成 webhook service
+- [x] 增加 stale webhook 偵測、metrics 與錯誤分類
+- [x] 明確定義 cache eviction 策略
 
 ### P2-5. i18n 與文案治理
 

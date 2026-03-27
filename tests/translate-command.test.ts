@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AppMetrics } from '../src/app-metrics.js';
 import { handleTranslate } from '../src/commands/translate.js';
 
 function createInteraction() {
@@ -32,17 +31,10 @@ function createInteraction() {
 }
 
 describe('handleTranslate', () => {
-    it('should record webhook recreation when a stale webhook is recovered', async () => {
-        const metrics = new AppMetrics();
-        const firstWebhook = {
-            send: vi.fn().mockRejectedValue({ code: 10015, status: 404 }),
+    it('should delegate webhook delivery to the webhook service and delete the deferred reply', async () => {
+        const webhookService = {
+            sendTranslation: vi.fn().mockResolvedValue(undefined),
         };
-        const secondWebhook = {
-            send: vi.fn().mockResolvedValue(undefined),
-        };
-        const getOrCreateWebhook = vi.fn()
-            .mockResolvedValueOnce(firstWebhook)
-            .mockResolvedValueOnce(secondWebhook);
         const translationService = {
             process: vi.fn().mockResolvedValue({
                 status: 'success',
@@ -58,16 +50,15 @@ describe('handleTranslate', () => {
 
         await handleTranslate(interaction as never, {
             translationService: translationService as never,
-            getOrCreateWebhook: getOrCreateWebhook as never,
-            metrics,
+            webhookService: webhookService as never,
         });
 
-        expect(getOrCreateWebhook).toHaveBeenNthCalledWith(1, interaction.channel);
-        expect(getOrCreateWebhook).toHaveBeenNthCalledWith(2, interaction.channel, true);
-        expect(secondWebhook.send).toHaveBeenCalledWith(expect.objectContaining({
+        expect(webhookService.sendTranslation).toHaveBeenCalledWith(expect.objectContaining({
+            channel: interaction.channel,
             content: 'Hola mundo',
+            username: 'Guild Tester',
+            userId: 'user-1',
         }));
         expect(interaction.deleteReply).toHaveBeenCalledTimes(1);
-        expect(metrics.snapshot().webhookRecreateTotal).toBe(1);
     });
 });

@@ -3,8 +3,6 @@
  */
 import type {
     Client,
-    TextChannel,
-    Webhook,
 } from 'discord.js';
 import type { TranslationCache } from './cache.js';
 import type { CooldownManager } from './cooldown.js';
@@ -14,6 +12,7 @@ import type { VertexAiHealthStatus } from './infra/vertex-ai-client.js';
 import type { TranslationService } from './services/translation-service.js';
 import type { SessionRepository } from './auth/session-repository.js';
 import type { TranslationRuntimeLimiter } from './translation-runtime-limiter.js';
+import type { TranslationWebhookService } from './webhook-service.js';
 
 // --- Store ---
 
@@ -91,8 +90,7 @@ export interface CommandDeps {
 }
 
 export interface TranslateCommandDeps extends CommandDeps {
-    getOrCreateWebhook: (channel: TextChannel, forceRefresh?: boolean) => Promise<Webhook>;
-    metrics?: AppMetricsCollector;
+    webhookService: TranslationWebhookService;
 }
 
 // --- Logging ---

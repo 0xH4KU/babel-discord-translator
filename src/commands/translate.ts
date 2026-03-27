@@ -2,14 +2,14 @@ import { MessageFlags, type ChatInputCommandInteraction } from 'discord.js';
 import { sanitizeError } from './shared.js';
 import { appLogger, createRequestId } from '../structured-logger.js';
 import type { TranslateCommandDeps } from '../types.js';
-import type { TextChannel, GuildMember } from 'discord.js';
+import type { GuildMember } from 'discord.js';
 
 /**
  * Handle /translate command — translate text and send publicly via webhook.
  */
 export async function handleTranslate(
     interaction: ChatInputCommandInteraction,
-    { translationService, getOrCreateWebhook, metrics }: TranslateCommandDeps,
+    { translationService, webhookService }: TranslateCommandDeps,
 ): Promise<void> {
     const text = interaction.options.getString('text')!;
     const targetOpt = interaction.options.getString('to');
@@ -50,33 +50,16 @@ export async function handleTranslate(
     }
 
     try {
-        logger.info('translate.webhook.send.started');
-        let webhook = await getOrCreateWebhook(interaction.channel as TextChannel);
         const member = interaction.member as GuildMember | null;
-        const sendPayload = {
+        await webhookService.sendTranslation({
+            channel: interaction.channel as never,
             content: result.translatedText,
             username: member?.displayName || interaction.user.displayName,
             avatarURL: interaction.user.displayAvatarURL({ size: 128 }),
-        };
-
-        try {
-            await webhook.send(sendPayload);
-        } catch (webhookErr: unknown) {
-            const err = webhookErr as { code?: number; status?: number };
-            if (err.code === 10015 || err.status === 404) {
-                logger.warn('translate.webhook.stale', {
-                    statusCode: err.status,
-                    discordCode: err.code,
-                });
-                metrics?.recordWebhookRecreate();
-                webhook = await getOrCreateWebhook(interaction.channel as TextChannel, true);
-                await webhook.send(sendPayload);
-            } else {
-                throw webhookErr;
-            }
-        }
-
-        logger.info('translate.webhook.send.completed');
+            requestId,
+            guildId: interaction.guildId,
+            userId: interaction.user.id,
+        });
         await interaction.deleteReply();
     } catch (error) {
         logger.error('translate.webhook.send.failed', {

@@ -1,4 +1,4 @@
-import { Client, Events, GatewayIntentBits, type TextChannel, type Webhook } from 'discord.js';
+import { Client, Events, GatewayIntentBits } from 'discord.js';
 import { AppMetrics } from './shared/app-metrics.js';
 import { config } from './modules/config/config.js';
 import { TranslationCache } from './modules/translation/cache.js';
@@ -15,6 +15,7 @@ import { handleHelp } from './commands/help.js';
 import { closeSqliteDatabase } from './persistence/sqlite-database.js';
 import { appLogger } from './shared/structured-logger.js';
 import { TranslationRuntimeLimiter } from './modules/translation/translation-runtime-limiter.js';
+import { createWebhookService } from './modules/translation/webhook-service.js';
 import type { BotStats } from './types.js';
 import type express from 'express';
 import type http from 'http';
@@ -27,6 +28,7 @@ const stats: BotStats = { totalTranslations: 0, apiCalls: 0 };
 const metrics = new AppMetrics();
 const runtimeLimiter = new TranslationRuntimeLimiter();
 const translationService = createTranslationService({ cache, cooldown, log, stats, metrics, runtimeLimiter });
+const webhookService = createWebhookService({ metrics });
 const startupLogger = appLogger.child({ component: 'startup' });
 
 startupLogger.info('translation.runtime_limits.configured', {
@@ -56,34 +58,13 @@ client.once(Events.ClientReady, (c) => {
     dashboardServer = startDashboardServer(dashboardApp, config.dashboardPort);
 });
 
-const webhookCache = new Map<string, Webhook>();
-
-async function getOrCreateWebhook(channel: TextChannel, forceRefresh: boolean = false): Promise<Webhook> {
-    if (forceRefresh) {
-        webhookCache.delete(channel.id);
-    }
-
-    const cached = webhookCache.get(channel.id);
-    if (cached) return cached;
-
-    const webhooks = await channel.fetchWebhooks();
-    let webhook = webhooks.find((w) => w.name === 'Babel' && w.owner?.id === channel.client.user.id);
-
-    if (!webhook) {
-        webhook = await channel.createWebhook({ name: 'Babel', reason: 'Babel /translate public output' });
-    }
-
-    webhookCache.set(channel.id, webhook);
-    return webhook;
-}
-
 client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isChatInputCommand()) {
         switch (interaction.commandName) {
             case 'setlang':
                 return handleSetlang(interaction);
             case 'translate':
-                return handleTranslate(interaction, { translationService, getOrCreateWebhook, metrics });
+                return handleTranslate(interaction, { translationService, webhookService });
             case 'help':
                 return handleHelp(interaction);
             case 'mylang':
