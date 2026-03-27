@@ -60,6 +60,8 @@ Right-click any message → *Babel* → Get an ephemeral translation only you ca
 
 ## Quick Start
 
+Prerequisites: Node.js `22.5+`, npm, a Discord bot token, and a Vertex AI project you can configure from the dashboard.
+
 ```bash
 git clone https://github.com/0xH4KU/babel-discord-translator.git
 cd babel-discord-translator
@@ -170,6 +172,35 @@ npm run db:export:json
 
 Use `npm run db:migrate -- --force` only if you intentionally want to overwrite an existing SQLite file.
 
+## Persistence And Single-Process Limits
+
+Persistent state lives in SQLite:
+
+- Runtime/dashboard config
+- Usage totals and usage history
+- User language preferences
+- Per-guild budget overrides
+- Dashboard sessions
+
+Process-local state does not survive process restarts and is not shared across multiple bot workers:
+
+- Translation cache entries
+- Cooldown windows
+- Runtime limiter queues and counters
+- In-memory logs and in-memory metrics snapshots
+- `/translate` webhook channel cache
+
+As of March 27, 2026, the recommended deployment model is still one Node.js process per SQLite data file. If you want multiple bot workers, you should first externalize the cache and other process-local coordination state instead of pointing several workers at the same machine-local runtime assumptions.
+
+## Runtime Architecture
+
+- `src/index.ts` wires one process that hosts both the Discord gateway client and the admin/dashboard HTTP server.
+- `src/modules/translation/` owns translation workflow, cache, cooldowns, runtime backpressure, language preferences, and `/translate` webhook delivery.
+- `src/modules/config/` owns validated environment/runtime config plus immediate in-memory effects after dashboard edits.
+- `src/modules/usage/` owns token accounting, daily budgets, and usage history aggregation.
+- `src/modules/dashboard/` owns the Express app, auth/session flow, and admin API surface.
+- `src/shared/` owns cross-cutting operational concerns such as structured logs, health modeling, graceful shutdown, and centralized message catalogs.
+
 ## Project Structure
 
 The runtime code now follows a module-oriented layout. The old top-level paths remain as thin compatibility re-exports while the real implementations live under `src/modules/` and `src/shared/`.
@@ -264,7 +295,7 @@ npm start
 
 ### Test Coverage
 
-159 tests across 18 suites covering all modules:
+163 tests across 19 suites covering all modules:
 
 | Suite | Tests | Covers |
 |---|---|---|
@@ -277,7 +308,8 @@ npm start
 | `dashboard-auth.test.ts` | 4 | Standalone auth flow, CSRF enforcement, session expiry cleanup |
 | `translation-runtime-limiter.test.ts` | 3 | FIFO queueing, per-user outstanding cap, per-guild/global queue shedding |
 | `translation-service.test.ts` | 9 | Shared workflow, cache hits, runtime shedding, budget/error handling, language decisions |
-| `translate-command.test.ts` | 1 | Webhook stale recovery increments operational metrics |
+| `translate-command.test.ts` | 1 | `/translate` delegates delivery to the webhook service after a successful translation |
+| `webhook-service.test.ts` | 4 | Stale webhook recovery, error classification, and bounded LRU webhook cache eviction |
 | `vertex-ai-client.test.ts` | 4 | Shared transport, timeout wiring, health checks, endpoint resolution |
 | `translate.test.ts` | 20 | Retry logic, prompt building, API errors, URL routing |
 | `usage.test.ts` | 23 | Cost calculation, per-server budget enforcement, global fallback, day rollover, guild history |
@@ -306,7 +338,7 @@ docker build -t babel .
 docker run -d --name babel --env-file .env -p 3000:3000 -v babel-data:/app/data babel
 ```
 
-The Docker image includes a built-in `HEALTHCHECK` that pings `/livez` every 30 seconds.
+The committed `Dockerfile` uses a multi-stage Node.js `22-alpine` build, persists SQLite data under `/app/data`, and includes a built-in `HEALTHCHECK` that pings `/livez` every 30 seconds.
 Both PM2 and Docker run the same built artifact as `npm start`: `dist/src/index.js`.
 Dashboard sessions now share the same SQLite data file as the rest of the application state, and graceful shutdown closes the database connection before exit.
 
