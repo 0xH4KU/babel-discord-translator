@@ -6,6 +6,7 @@ import { config } from './config.js';
 import { store } from './store.js';
 import { usage } from './usage.js';
 import { translate } from './translate.js';
+import { checkVertexAiHealth } from './infra/vertex-ai-client.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import type { SessionData, DashboardDeps, StoreData } from './types.js';
@@ -454,44 +455,7 @@ export function createDashboardApp({ cache, cooldown, log, client, getStats }: D
     });
 
     app.get('/api/health', sessionManager.requireAuth, async (_req: Request, res: Response) => {
-        const apiKey = store.get('vertexAiApiKey');
-        const project = store.get('gcpProject');
-        if (!apiKey || !project) {
-            res.json({ healthy: false, error: 'API not configured' });
-            return;
-        }
-        try {
-            const start = Date.now();
-            const location = store.get('gcpLocation') || 'global';
-            const model = store.get('geminiModel');
-            const baseUrl =
-                location === 'global'
-                    ? 'https://aiplatform.googleapis.com'
-                    : `https://${location}-aiplatform.googleapis.com`;
-            const url = `${baseUrl}/v1beta1/projects/${project}/locations/${location}/publishers/google/models/${model}:generateContent`;
-
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-goog-api-key': apiKey,
-                },
-                body: JSON.stringify({
-                    contents: [{ role: 'user', parts: [{ text: 'hi' }] }],
-                    generationConfig: { maxOutputTokens: 5 },
-                }),
-                signal: AbortSignal.timeout(10000),
-            });
-
-            if (response.ok) {
-                res.json({ healthy: true, latencyMs: Date.now() - start });
-            } else {
-                const err = await response.text();
-                res.json({ healthy: false, error: `${response.status}: ${err.slice(0, 200)}` });
-            }
-        } catch (err) {
-            res.json({ healthy: false, error: (err as Error).message });
-        }
+        res.json(await checkVertexAiHealth());
     });
 
     return app;

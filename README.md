@@ -30,6 +30,7 @@ Right-click any message → *Babel* → Get an ephemeral translation only you ca
 - **Cost Tracking** — Real-time token usage with per-server budgets + 30-day history chart
 - **Translation & Error Logs** — In-memory audit log with filter tabs
 - **Custom Prompt** — Customize the translation prompt from the dashboard
+- **Shared Vertex AI Client** — Translation and API health checks use one centralized client with unified timeout and retry handling
 - **Web Dashboard** — Login-protected admin panel with setup wizard
 - **API Health Check** — Dashboard shows API connectivity status
 - **Translation Test** — Test translations directly from the dashboard
@@ -158,6 +159,8 @@ src/
 ├── usage.ts          # Token usage tracking & per-server budget enforcement
 ├── dashboard.ts      # Dashboard app factory + HTTP server bootstrap
 ├── shutdown.ts       # Graceful shutdown orchestration for Discord + HTTP
+├── infra/
+│   └── vertex-ai-client.ts     # Shared Vertex AI transport, retry, timeout, health
 ├── services/
 │   └── translation-service.ts  # Shared translation application workflow
 ├── commands/         # Discord command handlers
@@ -204,7 +207,7 @@ npm start
 
 ### Test Coverage
 
-132 tests across 10 suites covering all modules:
+136 tests across 11 suites covering all modules:
 
 | Suite | Tests | Covers |
 |---|---|---|
@@ -213,6 +216,7 @@ npm start
 | `log.test.ts` | 14 | Ring buffer, addError, type filtering, defaults |
 | `lang.test.ts` | 29 | Script detection (CJK/Cyrillic/Arabic/Thai/Hindi), locale mapping, same-language check |
 | `translation-service.test.ts` | 7 | Shared workflow, cache hits, budget/error handling, language decisions |
+| `vertex-ai-client.test.ts` | 4 | Shared transport, timeout wiring, health checks, endpoint resolution |
 | `translate.test.ts` | 20 | Retry logic, prompt building, API errors, URL routing |
 | `usage.test.ts` | 23 | Cost calculation, per-server budget enforcement, global fallback, day rollover, guild history |
 | `store.test.ts` | 7 | File persistence, defaults merging, corrupt JSON resilience |
@@ -248,7 +252,7 @@ Both PM2 and Docker run the same built artifact as `npm start`: `dist/src/index.
 - [Express](https://expressjs.com) + [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) — Dashboard & API security
 - [Vertex AI Gemini](https://cloud.google.com/vertex-ai) — Translation engine
 - [tsx](https://tsx.is) — TypeScript execution for development
-- [Vitest](https://vitest.dev) — Testing (132 tests, 10 suites, v8 coverage)
+- [Vitest](https://vitest.dev) — Testing (136 tests, 11 suites, v8 coverage)
 - [ESLint](https://eslint.org) + [Prettier](https://prettier.io) — Code quality
 
 ## License

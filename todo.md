@@ -211,15 +211,15 @@
 
 ### P1-4. 外部 API Client 正規化
 
-- [ ] 為 Vertex AI 建立獨立 client 模組，例如 `src/infra/vertex-ai-client.ts`
-- [ ] 所有外部請求統一加上 timeout
-- [ ] retry、錯誤分類、response parse、sanitization 集中處理
-- [ ] health check 與 translate 共用同一個 client
+- [x] 為 Vertex AI 建立獨立 client 模組，例如 `src/infra/vertex-ai-client.ts`
+- [x] 所有外部請求統一加上 timeout
+- [x] retry、錯誤分類、response parse、sanitization 集中處理
+- [x] health check 與 translate 共用同一個 client
 
 完成標準
 
-- 外部 API 呼叫策略只有一份
-- 不再有一個地方有 timeout、另一個地方沒有 timeout 的情況
+- [x] 外部 API 呼叫策略只有一份
+- [x] 不再有一個地方有 timeout、另一個地方沒有 timeout 的情況
 
 ### P1-5. 補齊設定變更的副作用管理
 
