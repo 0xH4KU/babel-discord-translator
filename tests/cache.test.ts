@@ -71,6 +71,19 @@ describe('TranslationCache', () => {
         expect(cache.stats().size).toBe(1);
     });
 
+    it('should trim cached entries immediately when capacity is reduced', () => {
+        const cache = new TranslationCache(3);
+        cache.set('a', '1');
+        cache.set('b', '2');
+        cache.set('c', '3');
+
+        cache.setMaxSize(2);
+
+        expect(cache.stats().maxSize).toBe(2);
+        expect(cache.stats().size).toBe(2);
+        expect(cache.get('a')).toBeNull();
+    });
+
     it('should build stable versioned cache keys for the same translation inputs', () => {
         const first = buildTranslationCacheKey({
             sourceText: 'Hello world',

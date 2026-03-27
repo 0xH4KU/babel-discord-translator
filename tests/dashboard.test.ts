@@ -39,7 +39,9 @@ vi.mock('../src/store.js', () => {
     return {
         store: {
             get: vi.fn((key: string) => data[key]),
-            set: vi.fn((key: string, val: unknown) => { data[key] = val; }),
+            set: vi.fn((key: string, val: unknown) => {
+                data[key] = val;
+            }),
             update: vi.fn((obj: Record<string, unknown>) => Object.assign(data, obj)),
             getAll: vi.fn(() => ({ ...data })),
             isSetupComplete: vi.fn(() => data.setupComplete),
@@ -90,7 +92,12 @@ interface TestResponse {
 }
 
 // --- Helper: make HTTP requests to the test server ---
-function request(server: http.Server, method: string, path: string, { body, cookie, csrf }: { body?: Record<string, unknown>; cookie?: string; csrf?: string } = {}): Promise<TestResponse> {
+function request(
+    server: http.Server,
+    method: string,
+    path: string,
+    { body, cookie, csrf }: { body?: Record<string, unknown>; cookie?: string; csrf?: string } = {},
+): Promise<TestResponse> {
     return new Promise((resolve, reject) => {
         const addr = server.address() as { port: number };
         const options: http.RequestOptions = {
@@ -105,7 +112,9 @@ function request(server: http.Server, method: string, path: string, { body, cook
 
         const req = http.request(options, (res) => {
             let data = '';
-            res.on('data', (chunk: Buffer) => { data += chunk; });
+            res.on('data', (chunk: Buffer) => {
+                data += chunk;
+            });
             res.on('end', () => {
                 resolve({
                     status: res.statusCode!,
@@ -244,7 +253,9 @@ describe('Dashboard API', () => {
         const health = await request(server, 'GET', '/healthz');
         expect(health.status).toBe(200);
         expect(health.body!.status).toBe('degraded');
-        expect((health.body!.checks as Record<string, Record<string, unknown>>).vertexAi.error).toBe('upstream unavailable');
+        expect(
+            (health.body!.checks as Record<string, Record<string, unknown>>).vertexAi.error,
+        ).toBe('upstream unavailable');
     });
 
     it('should return stats for authenticated user', async () => {
@@ -261,7 +272,10 @@ describe('Dashboard API', () => {
         expect((res.body!.translations as Record<string, unknown>).total).toBe(42);
         expect((res.body!.metrics as Record<string, unknown>).translationFailuresTotal).toBe(1);
         expect((res.body!.translations as Record<string, unknown>).webhookRecreated).toBe(1);
-        expect((res.body!.runtime as Record<string, Record<string, unknown>>).limits.maxConcurrent).toBe(2);
+        expect(
+            (res.body!.runtime as Record<string, Record<string, unknown>>).limits.maxConcurrent,
+        ).toBe(2);
+        expect((res.body!.bot as Record<string, unknown>).memory).toBeDefined();
     });
 
     it('should expose readiness details on the authenticated health endpoint', async () => {
@@ -317,7 +331,9 @@ describe('Dashboard API', () => {
         expect(res.status).toBe(200);
 
         // store.update should have been called without the protected fields
-        const lastCall = (store.update as ReturnType<typeof vi.fn>).mock.calls[(store.update as ReturnType<typeof vi.fn>).mock.calls.length - 1][0];
+        const lastCall = (store.update as ReturnType<typeof vi.fn>).mock.calls[
+            (store.update as ReturnType<typeof vi.fn>).mock.calls.length - 1
+        ][0];
         expect(lastCall).not.toHaveProperty('tokenUsage');
         expect(lastCall).not.toHaveProperty('usageHistory');
         expect(lastCall).not.toHaveProperty('userLanguagePrefs');

@@ -68,13 +68,18 @@ export class TranslationCache {
         if (this.cache.has(messageId)) {
             this.cache.delete(messageId);
         } else if (this.cache.size >= this.maxSize) {
-            // Evict oldest entry
-            const oldest = this.cache.keys().next().value;
-            if (oldest !== undefined) {
-                this.cache.delete(oldest);
-            }
+            this.evictOldest();
         }
         this.cache.set(messageId, translation);
+    }
+
+    /** Update cache capacity and evict immediately if the cache is over the new limit. */
+    setMaxSize(maxSize: number): void {
+        this.maxSize = Math.max(Math.floor(maxSize), 1);
+
+        while (this.cache.size > this.maxSize) {
+            this.evictOldest();
+        }
     }
 
     /** Clear all cached entries and reset statistics. */
@@ -94,5 +99,12 @@ export class TranslationCache {
             misses: this.misses,
             hitRate: total > 0 ? ((this.hits / total) * 100).toFixed(1) + '%' : 'N/A',
         };
+    }
+
+    private evictOldest(): void {
+        const oldest = this.cache.keys().next().value;
+        if (oldest !== undefined) {
+            this.cache.delete(oldest);
+        }
     }
 }

@@ -12,7 +12,7 @@ export const MANAGED_RUNTIME_CONFIG_KEYS = [
     'dailyBudgetUsd',
 ] as const;
 
-export type ManagedRuntimeConfigKey = typeof MANAGED_RUNTIME_CONFIG_KEYS[number];
+export type ManagedRuntimeConfigKey = (typeof MANAGED_RUNTIME_CONFIG_KEYS)[number];
 
 export interface ConfigRuntimeDependencies {
     cache: TranslationCache;
@@ -29,12 +29,16 @@ type RuntimeConfigUpdate = Partial<Pick<StoreData, ManagedRuntimeConfigKey>>;
 
 const CONFIG_EFFECT_DESCRIPTIONS: Record<ManagedRuntimeConfigKey, string> = {
     cooldownSeconds: 'Update the in-memory cooldown window immediately.',
-    cacheMaxSize: 'Update the in-memory translation cache capacity immediately.',
+    cacheMaxSize:
+        'Update the in-memory translation cache capacity immediately and trim overflow entries.',
     geminiModel: 'Clear the translation cache so future requests use the new model.',
     translationPrompt: 'Clear the translation cache so future requests use the new prompt.',
-    maxInputLength: 'No in-memory sync required; request validation reads the persisted value on each call.',
-    maxOutputTokens: 'Clear the translation cache so future requests use the new output token limit.',
-    dailyBudgetUsd: 'No in-memory sync required; budget checks read the persisted value on each call.',
+    maxInputLength:
+        'No in-memory sync required; request validation reads the persisted value on each call.',
+    maxOutputTokens:
+        'Clear the translation cache so future requests use the new output token limit.',
+    dailyBudgetUsd:
+        'No in-memory sync required; budget checks read the persisted value on each call.',
 };
 
 export function applyConfigUpdateEffects(
@@ -42,7 +46,9 @@ export function applyConfigUpdateEffects(
     updates: RuntimeConfigUpdate,
     { cache, cooldown }: ConfigRuntimeDependencies,
 ): ConfigUpdateEffectsResult {
-    const changedKeys = MANAGED_RUNTIME_CONFIG_KEYS.filter((key) => updates[key] !== undefined && updates[key] !== currentConfig[key]);
+    const changedKeys = MANAGED_RUNTIME_CONFIG_KEYS.filter(
+        (key) => updates[key] !== undefined && updates[key] !== currentConfig[key],
+    );
     let cacheCleared = false;
 
     for (const key of changedKeys) {
@@ -51,7 +57,7 @@ export function applyConfigUpdateEffects(
                 cooldown.seconds = updates.cooldownSeconds!;
                 break;
             case 'cacheMaxSize':
-                cache.maxSize = updates.cacheMaxSize!;
+                cache.setMaxSize(updates.cacheMaxSize!);
                 break;
             case 'geminiModel':
             case 'translationPrompt':

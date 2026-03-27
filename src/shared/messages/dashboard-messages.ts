@@ -15,7 +15,7 @@ export const dashboardMessages = {
     },
     validation: {
         cooldownSeconds: rangeMessage('cooldownSeconds', 1, 300),
-        cacheMaxSize: rangeMessage('cacheMaxSize', 10, 100000),
+        cacheMaxSize: rangeMessage('cacheMaxSize', 10, 2000),
         maxInputLength: rangeMessage('maxInputLength', 100, 10000),
         maxOutputTokens: rangeMessage('maxOutputTokens', 100, 8192),
         dailyBudgetUsd: nonNegativeMessage('dailyBudgetUsd'),

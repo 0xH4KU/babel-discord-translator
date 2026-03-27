@@ -1,359 +1,418 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-Hant">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Babel — Dashboard</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+            rel="stylesheet"
+        />
+        <!-- CSS Modules -->
+        <link rel="stylesheet" href="css/variables.css" />
+        <link rel="stylesheet" href="css/components.css" />
+        <link rel="stylesheet" href="css/login.css" />
+        <link rel="stylesheet" href="css/wizard.css" />
+        <link rel="stylesheet" href="css/dashboard.css" />
+        <link rel="stylesheet" href="css/settings.css" />
+        <link rel="stylesheet" href="css/responsive.css" />
+    </head>
 
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Babel — Dashboard</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <!-- CSS Modules -->
-  <link rel="stylesheet" href="css/variables.css">
-  <link rel="stylesheet" href="css/components.css">
-  <link rel="stylesheet" href="css/login.css">
-  <link rel="stylesheet" href="css/wizard.css">
-  <link rel="stylesheet" href="css/dashboard.css">
-  <link rel="stylesheet" href="css/settings.css">
-  <link rel="stylesheet" href="css/responsive.css">
-</head>
+    <body>
+        <!-- ===== LOGIN ===== -->
+        <div id="login-view" class="view">
+            <div class="login-card">
+                <h1>Babel</h1>
+                <div class="subtitle">Translation Bot Dashboard</div>
+                <div class="input-group">
+                    <label>Password</label>
+                    <input type="password" id="login-pw" placeholder="Enter password" autofocus />
+                </div>
+                <button class="btn btn-primary w-full" onclick="doLogin()">Login</button>
+                <div class="error-msg" id="login-error"></div>
+            </div>
+        </div>
 
-<body>
+        <!-- ===== WIZARD ===== -->
+        <div id="wizard-view" class="view">
+            <div class="wizard-card">
+                <div class="wizard-steps">
+                    <div class="step-dot active" id="dot-0"></div>
+                    <div class="step-dot" id="dot-1"></div>
+                    <div class="step-dot" id="dot-2"></div>
+                </div>
 
-  <!-- ===== LOGIN ===== -->
-  <div id="login-view" class="view">
-    <div class="login-card">
-      <h1>Babel</h1>
-      <div class="subtitle">Translation Bot Dashboard</div>
-      <div class="input-group">
-        <label>Password</label>
-        <input type="password" id="login-pw" placeholder="Enter password" autofocus>
-      </div>
-      <button class="btn btn-primary w-full" onclick="doLogin()">Login</button>
-      <div class="error-msg" id="login-error"></div>
-    </div>
-  </div>
+                <div class="wizard-step active" id="wiz-0">
+                    <h2>API Connection</h2>
+                    <div class="step-desc">Connect to Vertex AI Gemini for translation.</div>
+                    <div class="input-group">
+                        <label>Vertex AI API Key</label>
+                        <input type="password" id="wiz-apikey" placeholder="AQ.Ab8R..." />
+                    </div>
+                    <div class="input-group">
+                        <label>GCP Project ID</label>
+                        <input type="text" id="wiz-project" placeholder="gen-lang-client-xxxxxx" />
+                    </div>
+                    <div class="input-group">
+                        <label>GCP Location</label>
+                        <input type="text" id="wiz-location" value="global" />
+                    </div>
+                    <div class="wizard-nav">
+                        <div></div>
+                        <button class="btn btn-primary" onclick="wizNext()">Next →</button>
+                    </div>
+                </div>
 
-  <!-- ===== WIZARD ===== -->
-  <div id="wizard-view" class="view">
-    <div class="wizard-card">
-      <div class="wizard-steps">
-        <div class="step-dot active" id="dot-0"></div>
-        <div class="step-dot" id="dot-1"></div>
-        <div class="step-dot" id="dot-2"></div>
-      </div>
+                <div class="wizard-step" id="wiz-1">
+                    <h2>Model Selection</h2>
+                    <div class="step-desc">Choose which Gemini model to use for translations.</div>
+                    <div class="input-group">
+                        <label>Model Name</label>
+                        <input type="text" id="wiz-model" value="gemini-2.5-flash-lite" />
+                    </div>
+                    <div class="wizard-nav">
+                        <button class="btn btn-secondary" onclick="wizPrev()">← Back</button>
+                        <button class="btn btn-primary" onclick="wizNext()">Next →</button>
+                    </div>
+                </div>
 
-      <div class="wizard-step active" id="wiz-0">
-        <h2>API Connection</h2>
-        <div class="step-desc">Connect to Vertex AI Gemini for translation.</div>
-        <div class="input-group">
-          <label>Vertex AI API Key</label>
-          <input type="password" id="wiz-apikey" placeholder="AQ.Ab8R...">
+                <div class="wizard-step" id="wiz-2">
+                    <h2>Bot Settings</h2>
+                    <div class="step-desc">Configure rate limiting and caching.</div>
+                    <div class="input-group">
+                        <label>Cooldown (seconds per user)</label>
+                        <input type="number" id="wiz-cooldown" value="5" min="1" max="60" />
+                    </div>
+                    <div class="input-group">
+                        <label>Cache Max Size (messages)</label>
+                        <input type="number" id="wiz-cache" value="2000" min="100" max="2000" />
+                    </div>
+                    <div class="wizard-nav">
+                        <button class="btn btn-secondary" onclick="wizPrev()">← Back</button>
+                        <button class="btn btn-primary" onclick="wizFinish()">
+                            Complete Setup ✓
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="input-group">
-          <label>GCP Project ID</label>
-          <input type="text" id="wiz-project" placeholder="gen-lang-client-xxxxxx">
-        </div>
-        <div class="input-group">
-          <label>GCP Location</label>
-          <input type="text" id="wiz-location" value="global">
-        </div>
-        <div class="wizard-nav">
-          <div></div>
-          <button class="btn btn-primary" onclick="wizNext()">Next →</button>
-        </div>
-      </div>
 
-      <div class="wizard-step" id="wiz-1">
-        <h2>Model Selection</h2>
-        <div class="step-desc">Choose which Gemini model to use for translations.</div>
-        <div class="input-group">
-          <label>Model Name</label>
-          <input type="text" id="wiz-model" value="gemini-2.5-flash-lite">
-        </div>
-        <div class="wizard-nav">
-          <button class="btn btn-secondary" onclick="wizPrev()">← Back</button>
-          <button class="btn btn-primary" onclick="wizNext()">Next →</button>
-        </div>
-      </div>
+        <!-- ===== DASHBOARD ===== -->
+        <div id="dashboard-view" class="view">
+            <div class="header">
+                <img id="bot-avatar" src="" alt="" />
+                <div>
+                    <h1 id="bot-name">Loading...</h1>
+                    <span class="tag" id="bot-tag"></span>
+                </div>
+                <div class="status">Online</div>
+                <span class="health-badge checking" id="api-health">API</span>
+                <button class="btn-logout" onclick="doLogout()">Logout</button>
+            </div>
 
-      <div class="wizard-step" id="wiz-2">
-        <h2>Bot Settings</h2>
-        <div class="step-desc">Configure rate limiting and caching.</div>
-        <div class="input-group">
-          <label>Cooldown (seconds per user)</label>
-          <input type="number" id="wiz-cooldown" value="5" min="1" max="60">
-        </div>
-        <div class="input-group">
-          <label>Cache Max Size (messages)</label>
-          <input type="number" id="wiz-cache" value="2000" min="100" max="10000">
-        </div>
-        <div class="wizard-nav">
-          <button class="btn btn-secondary" onclick="wizPrev()">← Back</button>
-          <button class="btn btn-primary" onclick="wizFinish()">Complete Setup ✓</button>
-        </div>
-      </div>
-    </div>
-  </div>
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab('overview')">Overview</button>
+                <button class="tab-btn" onclick="switchTab('history')">History</button>
+                <button class="tab-btn" onclick="switchTab('logs')">Logs</button>
+                <button class="tab-btn" onclick="switchTab('access')">Access</button>
+                <button class="tab-btn" onclick="switchTab('settings')">Settings</button>
+            </div>
 
-  <!-- ===== DASHBOARD ===== -->
-  <div id="dashboard-view" class="view">
-    <div class="header">
-      <img id="bot-avatar" src="" alt="">
-      <div>
-        <h1 id="bot-name">Loading...</h1>
-        <span class="tag" id="bot-tag"></span>
-      </div>
-      <div class="status">Online</div>
-      <span class="health-badge checking" id="api-health">API</span>
-      <button class="btn-logout" onclick="doLogout()">Logout</button>
-    </div>
+            <!-- Overview Tab -->
+            <div class="tab-content active" id="tab-overview">
+                <div class="budget-card" id="budget-card">
+                    <div class="budget-header">
+                        <span class="label">Server Budgets</span>
+                        <span class="amount" id="budget-amount">-</span>
+                    </div>
+                    <div id="guild-budget-overview"></div>
+                </div>
 
-    <div class="tabs">
-      <button class="tab-btn active" onclick="switchTab('overview')">Overview</button>
-      <button class="tab-btn" onclick="switchTab('history')">History</button>
-      <button class="tab-btn" onclick="switchTab('logs')">Logs</button>
-      <button class="tab-btn" onclick="switchTab('access')">Access</button>
-      <button class="tab-btn" onclick="switchTab('settings')">Settings</button>
-    </div>
+                <div class="grid">
+                    <div class="card">
+                        <div class="label">Today's Cost</div>
+                        <div class="value" id="stat-cost">-</div>
+                        <div class="sub" id="stat-cost-breakdown"></div>
+                    </div>
+                    <div class="card">
+                        <div class="label">Total Translations</div>
+                        <div class="value" id="stat-total">-</div>
+                        <div class="sub" id="stat-total-detail"></div>
+                    </div>
+                    <div class="card">
+                        <div class="label">Cache Hit Rate</div>
+                        <div class="value" id="stat-hitrate">-</div>
+                        <div class="sub" id="stat-saved"></div>
+                    </div>
+                    <div class="card">
+                        <div class="label">Uptime</div>
+                        <div class="value" id="stat-uptime">-</div>
+                        <div class="sub" id="stat-memory"></div>
+                    </div>
+                </div>
 
-    <!-- Overview Tab -->
-    <div class="tab-content active" id="tab-overview">
-      <div class="budget-card" id="budget-card">
-        <div class="budget-header">
-          <span class="label">Server Budgets</span>
-          <span class="amount" id="budget-amount">-</span>
-        </div>
-        <div id="guild-budget-overview"></div>
-      </div>
+                <div class="refresh-note">Auto-refresh every 5s</div>
+            </div>
 
-      <div class="grid">
-        <div class="card">
-          <div class="label">Today's Cost</div>
-          <div class="value" id="stat-cost">-</div>
-          <div class="sub" id="stat-cost-breakdown"></div>
-        </div>
-        <div class="card">
-          <div class="label">Total Translations</div>
-          <div class="value" id="stat-total">-</div>
-          <div class="sub" id="stat-total-detail"></div>
-        </div>
-        <div class="card">
-          <div class="label">Cache Hit Rate</div>
-          <div class="value" id="stat-hitrate">-</div>
-          <div class="sub" id="stat-saved"></div>
-        </div>
-        <div class="card">
-          <div class="label">Uptime</div>
-          <div class="value" id="stat-uptime">-</div>
-          <div class="sub" id="stat-memory"></div>
-        </div>
-      </div>
+            <!-- History Tab -->
+            <div class="tab-content" id="tab-history">
+                <div class="table-card">
+                    <div class="table-header">
+                        <h3>Usage History (Last 30 Days)</h3>
+                        <span class="sub-info" id="history-summary"></span>
+                    </div>
+                    <div class="bar-chart" id="history-chart"></div>
+                    <div id="history-table-container">
+                        <div class="empty-state">No history data yet. Usage is archived daily.</div>
+                    </div>
+                    <div id="history-pagination"></div>
+                </div>
+            </div>
 
-      <div class="refresh-note">Auto-refresh every 5s</div>
-    </div>
+            <!-- Logs Tab -->
+            <div class="tab-content" id="tab-logs">
+                <div class="table-card">
+                    <div class="table-header">
+                        <h3>Translation Log</h3>
+                        <span class="sub-info" id="log-count"></span>
+                    </div>
+                    <div class="log-filters">
+                        <button class="log-filter-btn active" onclick="setLogFilter(undefined)">
+                            All
+                        </button>
+                        <button class="log-filter-btn" onclick="setLogFilter('translation')">
+                            Translations
+                        </button>
+                        <button class="log-filter-btn" onclick="setLogFilter('error')">
+                            Errors
+                        </button>
+                    </div>
+                    <div id="log-table-container">
+                        <div class="empty-state">
+                            No translations logged yet. Logs are stored in memory only.
+                        </div>
+                    </div>
+                    <div id="log-pagination"></div>
+                </div>
+                <div class="refresh-note mt-sm">Logs are in-memory only — cleared on restart</div>
+            </div>
 
-    <!-- History Tab -->
-    <div class="tab-content" id="tab-history">
-      <div class="table-card">
-        <div class="table-header">
-          <h3>Usage History (Last 30 Days)</h3>
-          <span class="sub-info" id="history-summary"></span>
-        </div>
-        <div class="bar-chart" id="history-chart"></div>
-        <div id="history-table-container">
-          <div class="empty-state">No history data yet. Usage is archived daily.</div>
-        </div>
-        <div id="history-pagination"></div>
-      </div>
-    </div>
+            <!-- Access Tab -->
+            <div class="tab-content" id="tab-access">
+                <div class="settings-section">
+                    <h3>Server Whitelist</h3>
+                    <div class="desc-text">
+                        Only <strong>enabled</strong> servers can use translation. New servers are
+                        disabled by default.
+                    </div>
+                    <div class="save-bar save-bar-inline">
+                        <span class="save-status" data-access-save-status
+                            >No unsaved whitelist changes</span
+                        >
+                        <button
+                            class="btn btn-primary"
+                            data-access-save-button
+                            onclick="saveGuildWhitelist()"
+                            disabled
+                        >
+                            Save Changes
+                        </button>
+                    </div>
+                    <div id="guild-list" class="guild-list">
+                        <div class="no-guilds">Loading servers...</div>
+                    </div>
+                    <div id="guild-pagination"></div>
+                    <div class="add-guild-row">
+                        <input
+                            type="text"
+                            id="add-guild-input"
+                            placeholder="Paste a Guild ID to add manually"
+                        />
+                        <button class="btn btn-primary btn-sm" onclick="addManualGuild()">
+                            Add
+                        </button>
+                    </div>
+                </div>
 
-    <!-- Logs Tab -->
-    <div class="tab-content" id="tab-logs">
-      <div class="table-card">
-        <div class="table-header">
-          <h3>Translation Log</h3>
-          <span class="sub-info" id="log-count"></span>
-        </div>
-        <div class="log-filters">
-          <button class="log-filter-btn active" onclick="setLogFilter(undefined)">All</button>
-          <button class="log-filter-btn" onclick="setLogFilter('translation')">Translations</button>
-          <button class="log-filter-btn" onclick="setLogFilter('error')">Errors</button>
-        </div>
-        <div id="log-table-container">
-          <div class="empty-state">No translations logged yet. Logs are stored in memory only.</div>
-        </div>
-        <div id="log-pagination"></div>
-      </div>
-      <div class="refresh-note mt-sm">Logs are in-memory only — cleared on restart</div>
-    </div>
+                <div class="settings-section">
+                    <h3>User Language Preferences</h3>
+                    <div class="prefs-count" id="prefs-count">Loading...</div>
+                    <div id="user-prefs-container">
+                        <div class="empty-state">Loading user preferences...</div>
+                    </div>
+                    <div id="prefs-pagination"></div>
+                </div>
+            </div>
 
-    <!-- Access Tab -->
-    <div class="tab-content" id="tab-access">
-      <div class="settings-section">
-        <h3>Server Whitelist</h3>
-        <div class="desc-text">
-          Only <strong>enabled</strong> servers can use translation. New servers are disabled
-          by default.
-        </div>
-        <div id="guild-list" class="guild-list">
-          <div class="no-guilds">Loading servers...</div>
-        </div>
-        <div id="guild-pagination"></div>
-        <div class="add-guild-row">
-          <input type="text" id="add-guild-input" placeholder="Paste a Guild ID to add manually">
-          <button class="btn btn-primary btn-sm" onclick="addManualGuild()">Add</button>
-        </div>
-      </div>
+            <!-- Settings Tab -->
+            <div class="tab-content" id="tab-settings">
+                <div class="settings-section">
+                    <h3>Vertex AI API</h3>
+                    <div class="settings-row">
+                        <div class="input-group">
+                            <label>API Key</label>
+                            <input
+                                type="password"
+                                id="cfg-apikey"
+                                placeholder="Enter new key to change"
+                            />
+                        </div>
+                    </div>
+                    <div class="settings-row">
+                        <div class="input-group">
+                            <label>GCP Project</label>
+                            <input type="text" id="cfg-project" />
+                        </div>
+                        <div class="input-group">
+                            <label>Location</label>
+                            <input type="text" id="cfg-location" />
+                        </div>
+                    </div>
+                    <div class="settings-row">
+                        <div class="input-group">
+                            <label>Model</label>
+                            <input type="text" id="cfg-model" />
+                        </div>
+                    </div>
+                </div>
 
-      <div class="settings-section">
-        <h3>User Language Preferences</h3>
-        <div class="prefs-count" id="prefs-count">Loading...</div>
-        <div id="user-prefs-container">
-          <div class="empty-state">Loading user preferences...</div>
-        </div>
-        <div id="prefs-pagination"></div>
-      </div>
+                <div class="settings-section">
+                    <h3>Pricing &amp; Budget</h3>
+                    <div class="settings-row">
+                        <div class="input-group">
+                            <label>Input Price ($ per 1M tokens)</label>
+                            <input type="number" id="cfg-input-price" min="0" step="0.01" />
+                            <div class="hint">e.g. Gemini 2.5 Flash Lite: $0.10</div>
+                        </div>
+                        <div class="input-group">
+                            <label>Output Price ($ per 1M tokens)</label>
+                            <input type="number" id="cfg-output-price" min="0" step="0.01" />
+                            <div class="hint">e.g. Gemini 2.5 Flash Lite: $0.40</div>
+                        </div>
+                    </div>
+                    <div class="settings-row">
+                        <div class="input-group">
+                            <label>Global Daily Budget (USD, 0 = unlimited)</label>
+                            <input type="number" id="cfg-budget" min="0" step="0.1" />
+                            <div class="hint">
+                                Default for servers without custom budgets. Set per-server budgets
+                                in Access tab.
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
-      <div class="save-bar">
-        <button class="btn btn-primary" onclick="saveGuildWhitelist()">Save Changes</button>
-      </div>
-    </div>
+                <div class="settings-section">
+                    <h3>Bot Settings</h3>
+                    <div class="settings-row">
+                        <div class="input-group">
+                            <label>Cooldown (seconds)</label>
+                            <input type="number" id="cfg-cooldown" min="1" max="60" />
+                        </div>
+                        <div class="input-group">
+                            <label>Cache Max Size</label>
+                            <input type="number" id="cfg-cache" min="100" max="2000" />
+                            <div class="hint">Recommended ceiling for small instances: 2000</div>
+                        </div>
+                        <div class="input-group inline-action">
+                            <button class="btn btn-secondary btn-sm" onclick="clearCache()">
+                                Clear Cache
+                            </button>
+                        </div>
+                    </div>
+                    <div class="settings-row">
+                        <div class="input-group">
+                            <label>Max Input Length (chars)</label>
+                            <input type="number" id="cfg-max-input" min="100" max="10000" />
+                            <div class="hint">
+                                Max characters per translation request (default: 2000)
+                            </div>
+                        </div>
+                        <div class="input-group">
+                            <label>Max Output Tokens</label>
+                            <input type="number" id="cfg-max-output" min="100" max="8192" />
+                            <div class="hint">Gemini response token limit (default: 1000)</div>
+                        </div>
+                    </div>
+                </div>
 
-    <!-- Settings Tab -->
-    <div class="tab-content" id="tab-settings">
-      <div class="settings-section">
-        <h3>Vertex AI API</h3>
-        <div class="settings-row">
-          <div class="input-group">
-            <label>API Key</label>
-            <input type="password" id="cfg-apikey" placeholder="Enter new key to change">
-          </div>
-        </div>
-        <div class="settings-row">
-          <div class="input-group">
-            <label>GCP Project</label>
-            <input type="text" id="cfg-project">
-          </div>
-          <div class="input-group">
-            <label>Location</label>
-            <input type="text" id="cfg-location">
-          </div>
-        </div>
-        <div class="settings-row">
-          <div class="input-group">
-            <label>Model</label>
-            <input type="text" id="cfg-model">
-          </div>
-        </div>
-      </div>
+                <div class="settings-section">
+                    <h3>Translation Prompt</h3>
+                    <div class="desc-text">
+                        Customize the system prompt used for translations. Leave empty to use the
+                        default.
+                    </div>
+                    <div class="prompt-editor">
+                        <textarea
+                            id="cfg-prompt"
+                            placeholder="Leave empty to use default prompt..."
+                        ></textarea>
+                        <div class="prompt-actions">
+                            <span class="prompt-hint"
+                                >Use <code>${text}</code> is automatically appended. Only edit the
+                                instructions above it.</span
+                            >
+                            <button
+                                class="btn btn-secondary btn-sm"
+                                onclick="restoreDefaultPrompt()"
+                            >
+                                Restore Default
+                            </button>
+                        </div>
+                    </div>
+                </div>
 
-      <div class="settings-section">
-        <h3>Pricing &amp; Budget</h3>
-        <div class="settings-row">
-          <div class="input-group">
-            <label>Input Price ($ per 1M tokens)</label>
-            <input type="number" id="cfg-input-price" min="0" step="0.01">
-            <div class="hint">e.g. Gemini 2.5 Flash Lite: $0.10</div>
-          </div>
-          <div class="input-group">
-            <label>Output Price ($ per 1M tokens)</label>
-            <input type="number" id="cfg-output-price" min="0" step="0.01">
-            <div class="hint">e.g. Gemini 2.5 Flash Lite: $0.40</div>
-          </div>
-        </div>
-        <div class="settings-row">
-          <div class="input-group">
-            <label>Global Daily Budget (USD, 0 = unlimited)</label>
-            <input type="number" id="cfg-budget" min="0" step="0.1">
-            <div class="hint">Default for servers without custom budgets. Set per-server budgets in Access tab.</div>
-          </div>
-        </div>
-      </div>
+                <div class="settings-section">
+                    <h3>Translation Test</h3>
+                    <div class="desc-text">
+                        Test the translation API directly. This uses real tokens.
+                    </div>
+                    <div class="test-widget">
+                        <input
+                            type="text"
+                            id="test-text"
+                            placeholder="Enter text to translate..."
+                        />
+                        <select id="test-lang" class="test-select">
+                            <option value="auto">Auto</option>
+                            <option value="zh-TW">繁體中文</option>
+                            <option value="zh-CN">简体中文</option>
+                            <option value="en">English</option>
+                            <option value="ja">日本語</option>
+                            <option value="ko">한국어</option>
+                        </select>
+                        <button
+                            class="btn btn-primary btn-sm"
+                            id="test-btn"
+                            onclick="testTranslate()"
+                        >
+                            Test
+                        </button>
+                    </div>
+                    <div class="test-result" id="test-result">
+                        <div id="test-output"></div>
+                        <div class="meta" id="test-meta"></div>
+                    </div>
+                </div>
 
-      <div class="settings-section">
-        <h3>Bot Settings</h3>
-        <div class="settings-row">
-          <div class="input-group">
-            <label>Cooldown (seconds)</label>
-            <input type="number" id="cfg-cooldown" min="1" max="60">
-          </div>
-          <div class="input-group">
-            <label>Cache Max Size</label>
-            <input type="number" id="cfg-cache" min="100" max="10000">
-          </div>
-          <div class="input-group inline-action">
-            <button class="btn btn-secondary btn-sm" onclick="clearCache()">Clear Cache</button>
-          </div>
+                <div class="save-bar">
+                    <button class="btn btn-primary" onclick="saveSettings()">Save Changes</button>
+                </div>
+            </div>
         </div>
-        <div class="settings-row">
-          <div class="input-group">
-            <label>Max Input Length (chars)</label>
-            <input type="number" id="cfg-max-input" min="100" max="10000">
-            <div class="hint">Max characters per translation request (default: 2000)</div>
-          </div>
-          <div class="input-group">
-            <label>Max Output Tokens</label>
-            <input type="number" id="cfg-max-output" min="100" max="8192">
-            <div class="hint">Gemini response token limit (default: 1000)</div>
-          </div>
-        </div>
-      </div>
 
-      <div class="settings-section">
-        <h3>Translation Prompt</h3>
-        <div class="desc-text">
-          Customize the system prompt used for translations. Leave empty to use the default.
-        </div>
-        <div class="prompt-editor">
-          <textarea id="cfg-prompt" placeholder="Leave empty to use default prompt..."></textarea>
-          <div class="prompt-actions">
-            <span class="prompt-hint">Use <code>${text}</code> is automatically appended. Only edit the instructions above it.</span>
-            <button class="btn btn-secondary btn-sm" onclick="restoreDefaultPrompt()">Restore Default</button>
-          </div>
-        </div>
-      </div>
+        <div class="toast" id="toast"></div>
 
-      <div class="settings-section">
-        <h3>Translation Test</h3>
-        <div class="desc-text">
-          Test the translation API directly. This uses real tokens.
-        </div>
-        <div class="test-widget">
-          <input type="text" id="test-text" placeholder="Enter text to translate...">
-          <select id="test-lang" class="test-select">
-            <option value="auto">Auto</option>
-            <option value="zh-TW">繁體中文</option>
-            <option value="zh-CN">简体中文</option>
-            <option value="en">English</option>
-            <option value="ja">日本語</option>
-            <option value="ko">한국어</option>
-          </select>
-          <button class="btn btn-primary btn-sm" id="test-btn" onclick="testTranslate()">Test</button>
-        </div>
-        <div class="test-result" id="test-result">
-          <div id="test-output"></div>
-          <div class="meta" id="test-meta"></div>
-        </div>
-      </div>
-
-      <div class="save-bar">
-        <button class="btn btn-primary" onclick="saveSettings()">Save Changes</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="toast" id="toast"></div>
-
-  <!-- JS Modules (dependency order) -->
-  <script src="js/utils.js"></script>
-  <script src="js/auth.js"></script>
-  <script src="js/wizard.js"></script>
-  <script src="js/dashboard.js"></script>
-  <script src="js/settings.js"></script>
-  <script src="js/access.js"></script>
-  <script src="js/history.js"></script>
-  <script src="js/logs.js"></script>
-  <script src="js/app.js"></script>
-</body>
-
+        <!-- JS Modules (dependency order) -->
+        <script src="js/utils.js"></script>
+        <script src="js/auth.js"></script>
+        <script src="js/wizard.js"></script>
+        <script src="js/dashboard.js"></script>
+        <script src="js/settings.js"></script>
+        <script src="js/access.js"></script>
+        <script src="js/history.js"></script>
+        <script src="js/logs.js"></script>
+        <script src="js/app.js"></script>
+    </body>
 </html>

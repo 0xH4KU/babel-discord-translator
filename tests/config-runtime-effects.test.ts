@@ -35,14 +35,22 @@ describe('applyConfigUpdateEffects', () => {
         const cache = new TranslationCache(100);
         const cooldown = new CooldownManager(5);
         const currentConfig = createConfig();
+        cache.set('a', '1');
+        cache.set('b', '2');
+        cache.set('c', '3');
 
-        const result = applyConfigUpdateEffects(currentConfig, {
-            cooldownSeconds: 15,
-            cacheMaxSize: 500,
-        }, { cache, cooldown });
+        const result = applyConfigUpdateEffects(
+            currentConfig,
+            {
+                cooldownSeconds: 15,
+                cacheMaxSize: 2,
+            },
+            { cache, cooldown },
+        );
 
         expect(cooldown.seconds).toBe(15);
-        expect(cache.maxSize).toBe(500);
+        expect(cache.maxSize).toBe(2);
+        expect(cache.stats().size).toBe(2);
         expect(result.cacheCleared).toBe(false);
         expect(result.changedKeys).toEqual(['cooldownSeconds', 'cacheMaxSize']);
     });
@@ -52,11 +60,15 @@ describe('applyConfigUpdateEffects', () => {
         const cooldown = new CooldownManager(5);
         const clearSpy = vi.spyOn(cache, 'clear');
 
-        const result = applyConfigUpdateEffects(createConfig(), {
-            geminiModel: 'gemini-2.5-pro',
-            translationPrompt: 'Translate politely',
-            maxOutputTokens: 1500,
-        }, { cache, cooldown });
+        const result = applyConfigUpdateEffects(
+            createConfig(),
+            {
+                geminiModel: 'gemini-2.5-pro',
+                translationPrompt: 'Translate politely',
+                maxOutputTokens: 1500,
+            },
+            { cache, cooldown },
+        );
 
         expect(result.cacheCleared).toBe(true);
         expect(clearSpy).toHaveBeenCalledTimes(1);
@@ -67,10 +79,14 @@ describe('applyConfigUpdateEffects', () => {
         const cooldown = new CooldownManager(5);
         const clearSpy = vi.spyOn(cache, 'clear');
 
-        const result = applyConfigUpdateEffects(createConfig(), {
-            maxInputLength: 4000,
-            dailyBudgetUsd: 12.5,
-        }, { cache, cooldown });
+        const result = applyConfigUpdateEffects(
+            createConfig(),
+            {
+                maxInputLength: 4000,
+                dailyBudgetUsd: 12.5,
+            },
+            { cache, cooldown },
+        );
 
         expect(result.cacheCleared).toBe(false);
         expect(clearSpy).not.toHaveBeenCalled();
@@ -86,10 +102,14 @@ describe('applyConfigUpdateEffects', () => {
         const currentConfig = createConfig();
         const clearSpy = vi.spyOn(cache, 'clear');
 
-        const result = applyConfigUpdateEffects(currentConfig, {
-            cooldownSeconds: currentConfig.cooldownSeconds,
-            geminiModel: currentConfig.geminiModel,
-        }, { cache, cooldown });
+        const result = applyConfigUpdateEffects(
+            currentConfig,
+            {
+                cooldownSeconds: currentConfig.cooldownSeconds,
+                geminiModel: currentConfig.geminiModel,
+            },
+            { cache, cooldown },
+        );
 
         expect(result.changedKeys).toEqual([]);
         expect(result.immediateEffects).toEqual([]);

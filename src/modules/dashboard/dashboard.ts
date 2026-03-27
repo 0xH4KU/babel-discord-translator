@@ -21,6 +21,8 @@ import { dirname, join } from 'path';
 import type { DashboardDeps, StoreData } from '../../types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const MAX_CACHE_SIZE = 2000;
+const BYTES_PER_MB = 1024 * 1024;
 
 declare module 'express-serve-static-core' {
     interface Locals {
@@ -28,7 +30,11 @@ declare module 'express-serve-static-core' {
     }
 }
 
-function validateConfigUpdate(updates: Record<string, unknown>): { valid: boolean; error?: string; sanitized: Partial<StoreData> } {
+function validateConfigUpdate(updates: Record<string, unknown>): {
+    valid: boolean;
+    error?: string;
+    sanitized: Partial<StoreData>;
+} {
     const sanitized: Record<string, unknown> = { ...updates };
 
     if (!sanitized.vertexAiApiKey || String(sanitized.vertexAiApiKey).startsWith('••••')) {
@@ -45,49 +51,77 @@ function validateConfigUpdate(updates: Record<string, unknown>): { valid: boolea
     if (sanitized.cooldownSeconds !== undefined) {
         const v = parseInt(String(sanitized.cooldownSeconds));
         if (isNaN(v) || v < 1 || v > 300) {
-            return { valid: false, error: dashboardMessages.validation.cooldownSeconds, sanitized: sanitized as Partial<StoreData> };
+            return {
+                valid: false,
+                error: dashboardMessages.validation.cooldownSeconds,
+                sanitized: sanitized as Partial<StoreData>,
+            };
         }
         sanitized.cooldownSeconds = v;
     }
     if (sanitized.cacheMaxSize !== undefined) {
         const v = parseInt(String(sanitized.cacheMaxSize));
-        if (isNaN(v) || v < 10 || v > 100000) {
-            return { valid: false, error: dashboardMessages.validation.cacheMaxSize, sanitized: sanitized as Partial<StoreData> };
+        if (isNaN(v) || v < 10 || v > MAX_CACHE_SIZE) {
+            return {
+                valid: false,
+                error: dashboardMessages.validation.cacheMaxSize,
+                sanitized: sanitized as Partial<StoreData>,
+            };
         }
         sanitized.cacheMaxSize = v;
     }
     if (sanitized.maxInputLength !== undefined) {
         const v = parseInt(String(sanitized.maxInputLength));
         if (isNaN(v) || v < 100 || v > 10000) {
-            return { valid: false, error: dashboardMessages.validation.maxInputLength, sanitized: sanitized as Partial<StoreData> };
+            return {
+                valid: false,
+                error: dashboardMessages.validation.maxInputLength,
+                sanitized: sanitized as Partial<StoreData>,
+            };
         }
         sanitized.maxInputLength = v;
     }
     if (sanitized.maxOutputTokens !== undefined) {
         const v = parseInt(String(sanitized.maxOutputTokens));
         if (isNaN(v) || v < 100 || v > 8192) {
-            return { valid: false, error: dashboardMessages.validation.maxOutputTokens, sanitized: sanitized as Partial<StoreData> };
+            return {
+                valid: false,
+                error: dashboardMessages.validation.maxOutputTokens,
+                sanitized: sanitized as Partial<StoreData>,
+            };
         }
         sanitized.maxOutputTokens = v;
     }
     if (sanitized.dailyBudgetUsd !== undefined) {
         const v = parseFloat(String(sanitized.dailyBudgetUsd));
         if (isNaN(v) || v < 0) {
-            return { valid: false, error: dashboardMessages.validation.dailyBudgetUsd, sanitized: sanitized as Partial<StoreData> };
+            return {
+                valid: false,
+                error: dashboardMessages.validation.dailyBudgetUsd,
+                sanitized: sanitized as Partial<StoreData>,
+            };
         }
         sanitized.dailyBudgetUsd = v;
     }
     if (sanitized.inputPricePerMillion !== undefined) {
         const v = parseFloat(String(sanitized.inputPricePerMillion));
         if (isNaN(v) || v < 0) {
-            return { valid: false, error: dashboardMessages.validation.inputPricePerMillion, sanitized: sanitized as Partial<StoreData> };
+            return {
+                valid: false,
+                error: dashboardMessages.validation.inputPricePerMillion,
+                sanitized: sanitized as Partial<StoreData>,
+            };
         }
         sanitized.inputPricePerMillion = v;
     }
     if (sanitized.outputPricePerMillion !== undefined) {
         const v = parseFloat(String(sanitized.outputPricePerMillion));
         if (isNaN(v) || v < 0) {
-            return { valid: false, error: dashboardMessages.validation.outputPricePerMillion, sanitized: sanitized as Partial<StoreData> };
+            return {
+                valid: false,
+                error: dashboardMessages.validation.outputPricePerMillion,
+                sanitized: sanitized as Partial<StoreData>,
+            };
         }
         sanitized.outputPricePerMillion = v;
     }
@@ -172,6 +206,10 @@ export function createDashboardApp({
         const cacheStats = cache.stats();
         const usageStats = usage.getStats();
         const metricsSnapshot = metrics?.snapshot() ?? createEmptyAppMetricsSnapshot();
+        const memoryUsage = process.memoryUsage();
+        const rssMB = (memoryUsage.rss / BYTES_PER_MB).toFixed(1);
+        const heapUsedMB = (memoryUsage.heapUsed / BYTES_PER_MB).toFixed(1);
+        const externalMB = (memoryUsage.external / BYTES_PER_MB).toFixed(1);
         const runtimeSnapshot = runtimeLimiter?.snapshot() ?? {
             inflight: 0,
             queued: 0,
@@ -207,7 +245,12 @@ export function createDashboardApp({
                 name: client.user?.tag || 'Unknown',
                 avatar: client.user?.displayAvatarURL({ size: 64 }) || '',
                 uptime: Math.floor(process.uptime()),
-                memoryMB: (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(1),
+                memoryMB: rssMB,
+                memory: {
+                    rssMB,
+                    heapUsedMB,
+                    externalMB,
+                },
                 guilds: client.guilds.cache.size,
             },
             translations: {
@@ -234,9 +277,7 @@ export function createDashboardApp({
         const cfg = configRepository.getDashboardConfig();
         res.json({
             ...cfg,
-            vertexAiApiKey: cfg.vertexAiApiKey
-                ? '••••' + cfg.vertexAiApiKey.slice(-6)
-                : '',
+            vertexAiApiKey: cfg.vertexAiApiKey ? '••••' + cfg.vertexAiApiKey.slice(-6) : '',
             hasApiKey: !!cfg.vertexAiApiKey,
         });
     });
@@ -283,7 +324,10 @@ export function createDashboardApp({
     app.get('/api/guild-budgets', auth.requireAuth, (_req: Request, res: Response) => {
         const guildBudgets = guildBudgetRepository.listBudgets();
         const guilds = client.guilds.cache;
-        const result: Record<string, { name: string; budget: number; usage: ReturnType<typeof usage.getGuildStats> }> = {};
+        const result: Record<
+            string,
+            { name: string; budget: number; usage: ReturnType<typeof usage.getGuildStats> }
+        > = {};
 
         for (const [id, guild] of guilds) {
             result[id] = {
@@ -295,25 +339,30 @@ export function createDashboardApp({
         res.json(result);
     });
 
-    app.post('/api/guild-budgets/:guildId', auth.requireAuth, auth.requireCsrf, (req: Request, res: Response) => {
-        const guildId = req.params.guildId as string;
-        const { dailyBudgetUsd } = req.body;
+    app.post(
+        '/api/guild-budgets/:guildId',
+        auth.requireAuth,
+        auth.requireCsrf,
+        (req: Request, res: Response) => {
+            const guildId = req.params.guildId as string;
+            const { dailyBudgetUsd } = req.body;
 
-        if (dailyBudgetUsd === null || dailyBudgetUsd === undefined) {
-            guildBudgetRepository.clearBudget(guildId);
-            res.json({ ok: true, mode: 'global' });
-            return;
-        }
+            if (dailyBudgetUsd === null || dailyBudgetUsd === undefined) {
+                guildBudgetRepository.clearBudget(guildId);
+                res.json({ ok: true, mode: 'global' });
+                return;
+            }
 
-        const v = parseFloat(String(dailyBudgetUsd));
-        if (isNaN(v) || v < 0) {
-            res.status(400).json({ error: dashboardMessages.validation.dailyBudgetUsd });
-            return;
-        }
+            const v = parseFloat(String(dailyBudgetUsd));
+            if (isNaN(v) || v < 0) {
+                res.status(400).json({ error: dashboardMessages.validation.dailyBudgetUsd });
+                return;
+            }
 
-        guildBudgetRepository.setBudget(guildId, v);
-        res.json({ ok: true, budget: v });
-    });
+            guildBudgetRepository.setBudget(guildId, v);
+            res.json({ ok: true, budget: v });
+        },
+    );
 
     app.get('/api/logs', auth.requireAuth, (req: Request, res: Response) => {
         const count = Math.min(parseInt(req.query.count as string) || 50, 200);
@@ -329,42 +378,57 @@ export function createDashboardApp({
         });
     });
 
-    app.delete('/api/user-prefs/:userId', auth.requireAuth, auth.requireCsrf, (req: Request, res: Response) => {
-        const userId = req.params.userId as string;
-        if (userPreferenceRepository.clearLanguage(userId)) {
-            res.json({ ok: true, deleted: userId });
-        } else {
-            res.status(404).json({ error: dashboardMessages.userPreferences.notFound });
-        }
-    });
+    app.delete(
+        '/api/user-prefs/:userId',
+        auth.requireAuth,
+        auth.requireCsrf,
+        (req: Request, res: Response) => {
+            const userId = req.params.userId as string;
+            if (userPreferenceRepository.clearLanguage(userId)) {
+                res.json({ ok: true, deleted: userId });
+            } else {
+                res.status(404).json({ error: dashboardMessages.userPreferences.notFound });
+            }
+        },
+    );
 
-    app.post('/api/cache/clear', auth.requireAuth, auth.requireCsrf, (_req: Request, res: Response) => {
-        const before = cache.stats();
-        cache.clear();
-        res.json({ ok: true, cleared: before.size });
-    });
+    app.post(
+        '/api/cache/clear',
+        auth.requireAuth,
+        auth.requireCsrf,
+        (_req: Request, res: Response) => {
+            const before = cache.stats();
+            cache.clear();
+            res.json({ ok: true, cleared: before.size });
+        },
+    );
 
-    app.post('/api/translate/test', auth.requireAuth, auth.requireCsrf, async (req: Request, res: Response) => {
-        const { text, targetLanguage } = req.body;
-        if (!text?.trim()) {
-            res.status(400).json({ error: dashboardMessages.translationTest.textRequired });
-            return;
-        }
-        try {
-            const start = Date.now();
-            const result = await translate(text, targetLanguage || 'auto');
-            usage.record(result.inputTokens, result.outputTokens);
-            res.json({
-                ok: true,
-                translation: result.text,
-                inputTokens: result.inputTokens,
-                outputTokens: result.outputTokens,
-                latencyMs: Date.now() - start,
-            });
-        } catch (err) {
-            res.status(500).json({ error: (err as Error).message });
-        }
-    });
+    app.post(
+        '/api/translate/test',
+        auth.requireAuth,
+        auth.requireCsrf,
+        async (req: Request, res: Response) => {
+            const { text, targetLanguage } = req.body;
+            if (!text?.trim()) {
+                res.status(400).json({ error: dashboardMessages.translationTest.textRequired });
+                return;
+            }
+            try {
+                const start = Date.now();
+                const result = await translate(text, targetLanguage || 'auto');
+                usage.record(result.inputTokens, result.outputTokens);
+                res.json({
+                    ok: true,
+                    translation: result.text,
+                    inputTokens: result.inputTokens,
+                    outputTokens: result.outputTokens,
+                    latencyMs: Date.now() - start,
+                });
+            } catch (err) {
+                res.status(500).json({ error: (err as Error).message });
+            }
+        },
+    );
 
     app.get('/api/health', auth.requireAuth, async (_req: Request, res: Response) => {
         const readiness = await getReadinessStatus({ healthCheck });
