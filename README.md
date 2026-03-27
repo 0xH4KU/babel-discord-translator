@@ -33,6 +33,7 @@ Right-click any message → *Babel* → Get an ephemeral translation only you ca
 - **Shared Vertex AI Client** — Translation and API health checks use one centralized client with unified timeout and retry handling
 - **Repository Boundaries** — Commands, services, and dashboard routes talk to focused repositories instead of reaching into the raw JSON store directly
 - **SQLite Persistence** — Config, usage, preferences, guild budgets, and dashboard sessions are stored in a migrated SQLite database
+- **Structured Operational Logs** — JSON logs include request-scoped `requestId`, command, guild/user IDs, retry/error classification, and secret redaction
 - **Web Dashboard** — Login-protected admin panel with setup wizard
 - **Modular Dashboard Auth** — Session, cookie, password, and CSRF handling live in dedicated auth modules instead of the route file
 - **Unified Config Runtime Effects** — Dashboard config changes flow through one hook that applies immediate runtime updates and cache invalidation rules
@@ -175,6 +176,7 @@ src/
 ├── cache.ts          # LRU translation cache
 ├── cooldown.ts       # Per-user rate limiter
 ├── log.ts            # In-memory ring buffer audit log
+├── structured-logger.ts # JSON structured operational logging with request context
 ├── store.ts          # SQLite-backed store facade kept for repository compatibility
 ├── repositories/
 │   ├── config-repository.ts      # Runtime/dashboard config boundary over SQLite-backed persistence
@@ -249,7 +251,7 @@ npm start
 
 ### Test Coverage
 
-146 tests across 14 suites covering all modules:
+148 tests across 15 suites covering all modules:
 
 | Suite | Tests | Covers |
 |---|---|---|
@@ -264,6 +266,7 @@ npm start
 | `translate.test.ts` | 20 | Retry logic, prompt building, API errors, URL routing |
 | `usage.test.ts` | 23 | Cost calculation, per-server budget enforcement, global fallback, day rollover, guild history |
 | `store.test.ts` | 7 | SQLite persistence, legacy JSON import, defaults, copy safety |
+| `structured-logger.test.ts` | 2 | JSON shape, inherited request context, secret redaction |
 | `sqlite-session-repository.test.ts` | 2 | Persistent session storage, enumeration, delete/clear behavior |
 | `dashboard.test.ts` | 14 | Auth flow, API key masking, config protection, runtime cache invalidation |
 | `shutdown.test.ts` | 3 | Shutdown order, timeout forcing, signal deduplication |
@@ -299,7 +302,7 @@ Dashboard sessions now share the same SQLite data file as the rest of the applic
 - [Express](https://expressjs.com) + [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) — Dashboard & API security
 - [Vertex AI Gemini](https://cloud.google.com/vertex-ai) — Translation engine
 - [tsx](https://tsx.is) — TypeScript execution for development
-- [Vitest](https://vitest.dev) — Testing (146 tests, 14 suites, v8 coverage)
+- [Vitest](https://vitest.dev) — Testing (148 tests, 15 suites, v8 coverage)
 - [ESLint](https://eslint.org) + [Prettier](https://prettier.io) — Code quality
 
 ## License

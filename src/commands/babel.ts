@@ -1,10 +1,12 @@
 import { MessageFlags, type MessageContextMenuCommandInteraction } from 'discord.js';
+import { createRequestId } from '../structured-logger.js';
 import type { CommandDeps } from '../types.js';
 
 /**
  * Handle Babel context menu command — translate a right-clicked message.
  */
 export async function handleBabel(interaction: MessageContextMenuCommandInteraction, { translationService }: CommandDeps): Promise<void> {
+    const requestId = createRequestId();
     const result = await translationService.process({
         command: 'babel',
         commandLabel: 'Babel (context menu)',
@@ -14,6 +16,7 @@ export async function handleBabel(interaction: MessageContextMenuCommandInteract
         userTag: interaction.user.tag,
         locale: interaction.locale,
         text: interaction.targetMessage.content,
+        requestId,
         beforeTranslate: () => interaction.deferReply({ flags: MessageFlags.Ephemeral }),
     });
 

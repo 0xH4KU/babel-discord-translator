@@ -124,7 +124,7 @@ describe('ConfigStore', () => {
     it('should fall back to defaults when legacy JSON is corrupt', async () => {
         writeFileSync(legacyConfigPath, 'not json at all {{{');
         const logger = {
-            log: vi.fn(),
+            info: vi.fn(),
             error: vi.fn(),
         };
 

@@ -1,5 +1,6 @@
 import { MessageFlags, type ChatInputCommandInteraction } from 'discord.js';
 import { sanitizeError } from './shared.js';
+import { appLogger, createRequestId } from '../structured-logger.js';
 import type { TranslateCommandDeps } from '../types.js';
 import type { TextChannel, GuildMember } from 'discord.js';
 
@@ -9,6 +10,14 @@ import type { TextChannel, GuildMember } from 'discord.js';
 export async function handleTranslate(interaction: ChatInputCommandInteraction, { translationService, getOrCreateWebhook }: TranslateCommandDeps): Promise<void> {
     const text = interaction.options.getString('text')!;
     const targetOpt = interaction.options.getString('to');
+    const requestId = createRequestId();
+    const logger = appLogger.child({
+        component: 'translate_command',
+        requestId,
+        guildId: interaction.guildId ?? null,
+        userId: interaction.user.id,
+        command: 'translate',
+    });
     const result = await translationService.process({
         command: 'translate',
         commandLabel: '/translate',
@@ -19,6 +28,7 @@ export async function handleTranslate(interaction: ChatInputCommandInteraction, 
         locale: interaction.locale,
         text,
         targetLanguageOption: targetOpt,
+        requestId,
         beforeTranslate: () => interaction.deferReply({ flags: MessageFlags.Ephemeral }),
     });
 
@@ -37,6 +47,7 @@ export async function handleTranslate(interaction: ChatInputCommandInteraction, 
     }
 
     try {
+        logger.info('translate.webhook.send.started');
         let webhook = await getOrCreateWebhook(interaction.channel as TextChannel);
         const member = interaction.member as GuildMember | null;
         const sendPayload = {
@@ -50,7 +61,10 @@ export async function handleTranslate(interaction: ChatInputCommandInteraction, 
         } catch (webhookErr: unknown) {
             const err = webhookErr as { code?: number; status?: number };
             if (err.code === 10015 || err.status === 404) {
-                console.warn('[/translate] Webhook stale, retrying...');
+                logger.warn('translate.webhook.stale', {
+                    statusCode: err.status,
+                    discordCode: err.code,
+                });
                 webhook = await getOrCreateWebhook(interaction.channel as TextChannel, true);
                 await webhook.send(sendPayload);
             } else {
@@ -58,8 +72,12 @@ export async function handleTranslate(interaction: ChatInputCommandInteraction, 
             }
         }
 
+        logger.info('translate.webhook.send.completed');
         await interaction.deleteReply();
     } catch (error) {
+        logger.error('translate.webhook.send.failed', {
+            error: (error as Error).message,
+        });
         await interaction.editReply({
             content: `Translation failed: ${sanitizeError((error as Error).message)}`,
         });

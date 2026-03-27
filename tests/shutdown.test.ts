@@ -17,8 +17,8 @@ describe('createGracefulShutdownHandler', () => {
     it('should stop timers, close the HTTP server, and destroy the Discord client', async () => {
         const order: string[] = [];
         const logger = {
-            log: vi.fn((message: string) => {
-                order.push(`log:${message}`);
+            info: vi.fn((event: string) => {
+                order.push(`info:${event}`);
             }),
             warn: vi.fn(),
             error: vi.fn(),
@@ -80,7 +80,7 @@ describe('createGracefulShutdownHandler', () => {
             }),
             timeoutMs: 250,
             logger: {
-                log: vi.fn(),
+                info: vi.fn(),
                 warn: vi.fn(),
                 error: vi.fn(),
             },
@@ -107,7 +107,7 @@ describe('createGracefulShutdownHandler', () => {
                 close,
             }),
             logger: {
-                log: vi.fn(),
+                info: vi.fn(),
                 warn,
                 error: vi.fn(),
             },

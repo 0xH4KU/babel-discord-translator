@@ -282,14 +282,14 @@
 
 ### P1-9. Structured Logging
 
-- [ ] 將目前 `console.log/warn/error` 收斂為統一 logger
-- [ ] log 至少包含 level、event、requestId、guildId、userId、command
-- [ ] 對外部 API 錯誤分類打點
-- [ ] 避免把敏感資訊寫入 log
+- [x] 將目前 `console.log/warn/error` 收斂為統一 logger
+- [x] log 至少包含 level、event、requestId、guildId、userId、command
+- [x] 對外部 API 錯誤分類打點
+- [x] 避免把敏感資訊寫入 log
 
 完成標準
 
-- 能從 log 還原一次翻譯請求的主要生命週期
+- [x] 能從 log 還原一次翻譯請求的主要生命週期
 
 ### P1-10. Metrics 與 Health Model
 
@@ -426,7 +426,7 @@
 
 ### Milestone 4
 
-- [ ] P1-9 Structured Logging
+- [x] P1-9 Structured Logging
 - [ ] P1-10 Metrics / Health
 - [ ] P1-11 併發與限流策略
 

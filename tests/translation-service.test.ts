@@ -5,6 +5,30 @@ import { TranslationLog } from '../src/log.js';
 import { createTranslationService, _test } from '../src/services/translation-service.js';
 import type { BotStats, StoreData, TranslationResult } from '../src/types.js';
 
+function createStructuredLoggerMock(base: Record<string, unknown> = {}) {
+    const entries: Array<Record<string, unknown>> = [];
+
+    const build = (context: Record<string, unknown>) => ({
+        info: vi.fn((event: string, fields: Record<string, unknown> = {}) => {
+            entries.push({ level: 'info', event, ...context, ...fields });
+        }),
+        warn: vi.fn((event: string, fields: Record<string, unknown> = {}) => {
+            entries.push({ level: 'warn', event, ...context, ...fields });
+        }),
+        error: vi.fn((event: string, fields: Record<string, unknown> = {}) => {
+            entries.push({ level: 'error', event, ...context, ...fields });
+        }),
+        child(fields: Record<string, unknown> = {}) {
+            return build({ ...context, ...fields });
+        },
+    });
+
+    return {
+        logger: build(base),
+        entries,
+    };
+}
+
 function createStoreMock(overrides: Partial<StoreData> = {}) {
     const data: StoreData = {
         vertexAiApiKey: 'test-key',
@@ -80,10 +104,12 @@ function createService({
         outputTokens: 6,
     })),
     usageTracker = createUsageMock(),
+    loggerState = createStructuredLoggerMock(),
 }: {
     storeOverrides?: Partial<StoreData>;
     translator?: ReturnType<typeof vi.fn>;
     usageTracker?: ReturnType<typeof createUsageMock>;
+    loggerState?: ReturnType<typeof createStructuredLoggerMock>;
 } = {}) {
     const cache = new TranslationCache(100);
     const cooldown = new CooldownManager(0);
@@ -101,15 +127,27 @@ function createService({
         userPreferenceStore,
         usageTracker,
         translator,
+        logger: loggerState.logger as never,
     });
 
-    return { service, cache, cooldown, log, stats, configStore, userPreferenceStore, usageTracker, translator };
+    return {
+        service,
+        cache,
+        cooldown,
+        log,
+        stats,
+        configStore,
+        userPreferenceStore,
+        usageTracker,
+        translator,
+        loggerState,
+    };
 }
 
 describe('TranslationService', () => {
     it('should translate successfully and record usage through the shared service', async () => {
         const beforeTranslate = vi.fn(async () => undefined);
-        const { service, usageTracker, translator, log, stats } = createService({
+        const { service, usageTracker, translator, log, stats, loggerState } = createService({
             storeOverrides: {
                 userLanguagePrefs: { user1: 'ja' },
             },
@@ -124,6 +162,7 @@ describe('TranslationService', () => {
             userTag: 'user#0001',
             locale: 'en-US',
             text: 'Hello world',
+            requestId: 'req-1',
             beforeTranslate,
         });
 
@@ -131,11 +170,38 @@ describe('TranslationService', () => {
         expect(result.status === 'success' ? result.targetLanguage : '').toBe('ja');
         expect(result.status === 'success' ? result.langSource : '').toBe('setlang');
         expect(beforeTranslate).toHaveBeenCalledTimes(1);
-        expect(translator).toHaveBeenCalledWith('Hello world', 'ja');
+        expect(translator).toHaveBeenCalledWith('Hello world', 'ja', {
+            logContext: {
+                requestId: 'req-1',
+                guildId: 'guild-1',
+                userId: 'user1',
+                command: 'babel',
+            },
+        });
         expect(usageTracker.record).toHaveBeenCalledWith(12, 6, 'guild-1');
         expect(log.size).toBe(1);
         expect(stats.totalTranslations).toBe(1);
         expect(stats.apiCalls).toBe(1);
+        expect(loggerState.entries).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                level: 'info',
+                event: 'translation.request.started',
+                requestId: 'req-1',
+                guildId: 'guild-1',
+                userId: 'user1',
+                command: 'babel',
+            }),
+            expect.objectContaining({
+                level: 'info',
+                event: 'translation.request.completed',
+                requestId: 'req-1',
+                guildId: 'guild-1',
+                userId: 'user1',
+                command: 'babel',
+                cached: false,
+                targetLanguage: 'ja',
+            }),
+        ]));
     });
 
     it('should reuse the same cached translation for identical requests', async () => {

@@ -3,6 +3,7 @@
  */
 import { fetchWithRetry, generateTranslationContent } from './infra/vertex-ai-client.js';
 import { configRepository } from './repositories/config-repository.js';
+import type { StructuredLogFields } from './structured-logger.js';
 import type { TranslationResult } from './types.js';
 
 /** Map Discord locale code to a human-readable language name for the prompt. */
@@ -84,12 +85,16 @@ ${text}`;
  * @param text - Text to translate.
  * @param targetLanguage - Target language code (e.g. 'ja', 'zh-TW') or 'auto'.
  */
-export async function translate(text: string, targetLanguage: string = 'auto'): Promise<TranslationResult> {
+export async function translate(
+    text: string,
+    targetLanguage: string = 'auto',
+    options?: { logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'> },
+): Promise<TranslationResult> {
     const config = configRepository.getRuntimeConfig();
     const customPrompt = config.translationPrompt;
     const prompt = buildTranslationPrompt(text, targetLanguage, customPrompt);
     const maxOutputTokens = config.maxOutputTokens || 1000;
-    return generateTranslationContent(prompt, maxOutputTokens);
+    return generateTranslationContent(prompt, maxOutputTokens, options);
 }
 
 export const _test = {

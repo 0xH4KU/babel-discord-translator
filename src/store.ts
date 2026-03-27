@@ -7,6 +7,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { createSqliteDatabase, getSqliteDatabase, inTransaction, isSqliteStoreEmpty } from './persistence/sqlite-database.js';
 import { readLegacyStoreData, resolveLegacyConfigPath } from './persistence/legacy-json-store.js';
 import { CONFIG_VALUE_KEYS, DEFAULT_STORE_DATA, type ConfigValueKey } from './persistence/store-defaults.js';
+import { appLogger, type StructuredLogger } from './structured-logger.js';
 import type { GuildBudgetConfig, StoreData, TokenUsage, UsageHistoryEntry } from './types.js';
 
 interface ConfigStoreOptions {
@@ -14,7 +15,7 @@ interface ConfigStoreOptions {
     dbPath?: string;
     autoImportLegacyJson?: boolean;
     legacyConfigPath?: string;
-    logger?: Pick<Console, 'log' | 'error'>;
+    logger?: StructuredLogger;
 }
 
 const CONFIG_KEYS = new Set<keyof StoreData>(CONFIG_VALUE_KEYS);
@@ -50,14 +51,14 @@ export class ConfigStore {
 
     private readonly ownsDatabase: boolean;
 
-    private readonly logger: Pick<Console, 'log' | 'error'>;
+    private readonly logger: StructuredLogger;
 
     constructor({
         db,
         dbPath,
         autoImportLegacyJson = true,
         legacyConfigPath = resolveLegacyConfigPath(),
-        logger = console,
+        logger = appLogger.child({ component: 'store' }),
     }: ConfigStoreOptions = {}) {
         this.ownsDatabase = !db && !!dbPath;
         this.db = db ?? (dbPath ? createSqliteDatabase(dbPath) : getSqliteDatabase());
@@ -68,10 +69,15 @@ export class ConfigStore {
                 const legacyData = readLegacyStoreData(legacyConfigPath);
                 if (legacyData) {
                     this.update(legacyData);
-                    this.logger.log(`[Store] Imported legacy JSON data from ${legacyConfigPath}`);
+                    this.logger.info('store.legacy_import.completed', {
+                        legacyConfigPath,
+                    });
                 }
             } catch (error) {
-                this.logger.error(`[Store] Legacy JSON import failed: ${(error as Error).message}`);
+                this.logger.error('store.legacy_import.failed', {
+                    legacyConfigPath,
+                    error: (error as Error).message,
+                });
             }
         }
     }

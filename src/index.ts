@@ -12,6 +12,7 @@ import { handleTranslate } from './commands/translate.js';
 import { handleSetlang, handleMylang } from './commands/setlang.js';
 import { handleHelp } from './commands/help.js';
 import { closeSqliteDatabase } from './persistence/sqlite-database.js';
+import { appLogger } from './structured-logger.js';
 import type { BotStats } from './types.js';
 import type express from 'express';
 import type http from 'http';
@@ -22,6 +23,7 @@ const cooldown = new CooldownManager(runtimeConfig.cooldownSeconds);
 const log = new TranslationLog();
 const stats: BotStats = { totalTranslations: 0, apiCalls: 0 };
 const translationService = createTranslationService({ cache, cooldown, log, stats });
+const startupLogger = appLogger.child({ component: 'startup' });
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
@@ -29,7 +31,10 @@ let dashboardApp: express.Express | null = null;
 let dashboardServer: http.Server | null = null;
 
 client.once(Events.ClientReady, (c) => {
-    console.log(` ${c.user.tag} is online`);
+    startupLogger.info('discord.client.ready', {
+        botTag: c.user.tag,
+        botUserId: c.user.id,
+    });
 
     dashboardApp = createDashboardApp({
         cache,
@@ -100,6 +105,8 @@ process.on('SIGINT', () => {
 });
 
 client.login(config.discordToken).catch((error) => {
-    console.error('[Startup] Failed to login to Discord:', error);
+    startupLogger.error('discord.login.failed', {
+        error: (error as Error).message,
+    });
     process.exit(1);
 });

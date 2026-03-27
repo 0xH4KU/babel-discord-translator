@@ -11,6 +11,7 @@ import { configRepository } from './repositories/config-repository.js';
 import { guildBudgetRepository } from './repositories/guild-budget-repository.js';
 import { userPreferenceRepository } from './repositories/user-preference-repository.js';
 import { applyConfigUpdateEffects } from './services/config-runtime-effects.js';
+import { appLogger } from './structured-logger.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import type { DashboardDeps, StoreData } from './types.js';
@@ -334,10 +335,11 @@ export function createDashboardApp({
 }
 
 export function startDashboardServer(app: express.Express, port: number): http.Server {
+    const logger = appLogger.child({ component: 'dashboard' });
     const server = app.listen(port, () => {
         const address = server.address();
         const actualPort = typeof address === 'object' && address ? address.port : port;
-        console.log(`📊 Dashboard: http://localhost:${actualPort}`);
+        logger.info('dashboard.server.started', { port: actualPort });
     });
 
     return server;
