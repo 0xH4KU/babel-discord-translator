@@ -323,27 +323,29 @@
 
 ### P2-1. 模組目錄重整
 
-- [ ] 以分層或 bounded context 重整目錄
+- [x] 以分層或 bounded context 重整目錄
+
+採用方向 B
 
 建議方向 A
 
 - [ ] `src/app`
 - [ ] `src/domain`
-- [ ] `src/infra`
+- [x] `src/infra`
 - [ ] `src/interfaces/discord`
 - [ ] `src/interfaces/http`
 
 建議方向 B
 
-- [ ] `src/modules/translation`
-- [ ] `src/modules/dashboard`
-- [ ] `src/modules/config`
-- [ ] `src/modules/usage`
-- [ ] `src/shared`
+- [x] `src/modules/translation`
+- [x] `src/modules/dashboard`
+- [x] `src/modules/config`
+- [x] `src/modules/usage`
+- [x] `src/shared`
 
 完成標準
 
-- 新成員能在 10 分鐘內理解責任分布
+- [x] 新成員能在 10 分鐘內理解責任分布
 
 ### P2-2. Bot 與 Admin API 進程分離評估
 
@@ -427,8 +429,8 @@
 ### Milestone 4
 
 - [x] P1-9 Structured Logging
-- [ ] P1-10 Metrics / Health
-- [ ] P1-11 併發與限流策略
+- [x] P1-10 Metrics / Health
+- [x] P1-11 併發與限流策略
 
 ### Milestone 5
 

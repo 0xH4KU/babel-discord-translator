@@ -170,50 +170,52 @@ Use `npm run db:migrate -- --force` only if you intentionally want to overwrite 
 
 ## Project Structure
 
+The runtime code now follows a module-oriented layout. The old top-level paths remain as thin compatibility re-exports while the real implementations live under `src/modules/` and `src/shared/`.
+
 ```
 src/
-├── app-metrics.ts   # In-memory application metrics and derived rates
-├── index.ts          # Entry point, client setup, graceful shutdown
-├── config.ts         # Environment validation (fail-fast)
-├── types.ts          # Shared TypeScript type definitions
-├── health.ts         # Liveness/readiness/composite health model
-├── lang.ts           # Language detection & locale mapping
-├── translate.ts      # Vertex AI Gemini API client with retry
-├── translation-runtime-limiter.ts # Global/guild/user translation concurrency and queue shedding
-├── cache.ts          # LRU translation cache
-├── cooldown.ts       # Per-user rate limiter
-├── log.ts            # In-memory ring buffer audit log
-├── structured-logger.ts # JSON structured operational logging with request context
-├── store.ts          # SQLite-backed store facade kept for repository compatibility
-├── repositories/
-│   ├── config-repository.ts      # Runtime/dashboard config boundary over SQLite-backed persistence
-│   ├── guild-budget-repository.ts # Per-guild budget persistence boundary
-│   ├── store-data-normalizer.ts  # Repository-side normalization and defensive cloning
-│   ├── usage-repository.ts       # Daily usage and history persistence boundary
-│   └── user-preference-repository.ts # User language preference persistence boundary
-├── usage.ts          # Token usage tracking & per-server budget enforcement
-├── dashboard.ts      # Dashboard app factory + HTTP server bootstrap
-├── shutdown.ts       # Graceful shutdown orchestration for Discord + HTTP
-├── auth/
-│   ├── dashboard-auth.ts       # Dashboard auth flow, cookie, CSRF, session middleware
-│   ├── in-memory-session-repository.ts  # Lightweight in-memory session store for isolated tests
-│   ├── sqlite-session-repository.ts  # Persistent dashboard sessions stored in SQLite
-│   └── session-repository.ts   # Session persistence interface
+├── index.ts                # Entry point wiring Discord, dashboard, metrics, and shutdown
+├── commands/               # Discord command handlers and small command-specific helpers
+├── modules/
+│   ├── config/
+│   │   ├── config.ts               # Environment validation and app-level env config
+│   │   ├── config-repository.ts    # Runtime/dashboard config boundary over persistence
+│   │   └── config-runtime-effects.ts # Immediate in-memory reactions to config edits
+│   ├── dashboard/
+│   │   ├── dashboard.ts            # Dashboard app factory + HTTP server bootstrap
+│   │   └── auth/
+│   │       ├── dashboard-auth.ts   # Cookie, session, and CSRF flow
+│   │       ├── in-memory-session-repository.ts
+│   │       ├── sqlite-session-repository.ts
+│   │       └── session-repository.ts
+│   ├── translation/
+│   │   ├── cache.ts                # LRU translation cache
+│   │   ├── cooldown.ts             # Per-user cooldown manager
+│   │   ├── lang.ts                 # Locale/language detection helpers
+│   │   ├── translate.ts            # Prompt assembly + translation entrypoint
+│   │   ├── translation-runtime-limiter.ts # Global/guild/user backpressure policy
+│   │   ├── translation-service.ts  # Shared translation application workflow
+│   │   └── user-preference-repository.ts
+│   └── usage/
+│       ├── usage.ts                # Token cost, budget, and history tracker
+│       ├── guild-budget-repository.ts
+│       └── usage-repository.ts
+├── shared/
+│   ├── app-metrics.ts       # In-memory application metrics and derived rates
+│   ├── health.ts            # Liveness/readiness/composite health model
+│   ├── log.ts               # In-memory ring buffer audit log
+│   ├── shutdown.ts          # Graceful shutdown orchestration
+│   └── structured-logger.ts # JSON structured operational logging with request context
 ├── infra/
 │   └── vertex-ai-client.ts     # Shared Vertex AI transport, retry, timeout, health
 ├── persistence/
 │   ├── legacy-json-store.ts    # Legacy config.json import/export helpers
 │   ├── sqlite-database.ts      # Shared SQLite connection + migrations
 │   └── store-defaults.ts       # Canonical default StoreData values
-├── services/
-│   ├── config-runtime-effects.ts  # Centralized runtime reactions to config changes
-│   └── translation-service.ts  # Shared translation application workflow
-├── commands/         # Discord command handlers
-│   ├── babel.ts      #   Context menu translation
-│   ├── translate.ts  #   /translate (public via webhook)
-│   ├── setlang.ts    #   /setlang & /mylang
-│   ├── help.ts       #   /help (loads locales from JSON)
-│   └── shared.ts     #   Error sanitization utilities
+├── repositories/
+│   └── store-data-normalizer.ts # Shared normalization helpers for SQLite-backed store data
+├── store.ts                # SQLite-backed store facade kept for repository compatibility
+├── types.ts                # Shared TypeScript type definitions
 ├── locales/
 │   └── help.json     # Help text in 16 languages
 └── public/           # Dashboard frontend assets
