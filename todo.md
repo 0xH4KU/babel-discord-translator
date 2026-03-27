@@ -198,16 +198,16 @@
 
 ### P1-3. Session 與 Auth 模組化
 
-- [ ] 將 session 管理從 `dashboard.ts` 抽成獨立模組
-- [ ] 將 password 驗證、cookie 組裝、csrf 驗證分層
-- [ ] 規劃 session persistence 策略
-- [ ] 若仍採記憶體 session，需明確標註單機限制
-- [ ] 若要支援多實例，改為 SQLite 或 Redis session store
+- [x] 將 session 管理從 `dashboard.ts` 抽成獨立模組
+- [x] 將 password 驗證、cookie 組裝、csrf 驗證分層
+- [x] 規劃 session persistence 策略
+- [x] 若仍採記憶體 session，需明確標註單機限制
+- [x] 若要支援多實例，改為 SQLite 或 Redis session store
 
 完成標準
 
-- `dashboard.ts` 不再同時承擔認證實作細節
-- session 行為可獨立測試
+- [x] `dashboard.ts` 不再同時承擔認證實作細節
+- [x] session 行為可獨立測試
 
 ### P1-4. 外部 API Client 正規化
 

@@ -32,6 +32,7 @@ Right-click any message → *Babel* → Get an ephemeral translation only you ca
 - **Custom Prompt** — Customize the translation prompt from the dashboard
 - **Shared Vertex AI Client** — Translation and API health checks use one centralized client with unified timeout and retry handling
 - **Web Dashboard** — Login-protected admin panel with setup wizard
+- **Modular Dashboard Auth** — Session, cookie, password, and CSRF handling live in dedicated auth modules instead of the route file
 - **API Health Check** — Dashboard shows API connectivity status
 - **Translation Test** — Test translations directly from the dashboard
 - **User Preferences** — View and manage user language settings
@@ -159,6 +160,10 @@ src/
 ├── usage.ts          # Token usage tracking & per-server budget enforcement
 ├── dashboard.ts      # Dashboard app factory + HTTP server bootstrap
 ├── shutdown.ts       # Graceful shutdown orchestration for Discord + HTTP
+├── auth/
+│   ├── dashboard-auth.ts       # Dashboard auth flow, cookie, CSRF, session middleware
+│   ├── in-memory-session-repository.ts  # Single-instance session storage
+│   └── session-repository.ts   # Session persistence interface
 ├── infra/
 │   └── vertex-ai-client.ts     # Shared Vertex AI transport, retry, timeout, health
 ├── services/
@@ -207,7 +212,7 @@ npm start
 
 ### Test Coverage
 
-136 tests across 11 suites covering all modules:
+140 tests across 12 suites covering all modules:
 
 | Suite | Tests | Covers |
 |---|---|---|
@@ -215,6 +220,7 @@ npm start
 | `cooldown.test.ts` | 6 | Rate limiting, cleanup, per-user isolation |
 | `log.test.ts` | 14 | Ring buffer, addError, type filtering, defaults |
 | `lang.test.ts` | 29 | Script detection (CJK/Cyrillic/Arabic/Thai/Hindi), locale mapping, same-language check |
+| `dashboard-auth.test.ts` | 4 | Standalone auth flow, CSRF enforcement, session expiry cleanup |
 | `translation-service.test.ts` | 7 | Shared workflow, cache hits, budget/error handling, language decisions |
 | `vertex-ai-client.test.ts` | 4 | Shared transport, timeout wiring, health checks, endpoint resolution |
 | `translate.test.ts` | 20 | Retry logic, prompt building, API errors, URL routing |
@@ -244,6 +250,7 @@ docker run -d --name babel --env-file .env -p 3000:3000 -v babel-data:/app/data 
 
 The Docker image includes a built-in `HEALTHCHECK` that pings `/healthz` every 30 seconds.
 Both PM2 and Docker run the same built artifact as `npm start`: `dist/src/index.js`.
+Dashboard sessions currently use the in-memory `InMemorySessionRepository`, so production deployments are single-instance only until that repository is replaced with a shared SQLite or Redis-backed implementation.
 
 ## Tech Stack
 
@@ -252,7 +259,7 @@ Both PM2 and Docker run the same built artifact as `npm start`: `dist/src/index.
 - [Express](https://expressjs.com) + [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) — Dashboard & API security
 - [Vertex AI Gemini](https://cloud.google.com/vertex-ai) — Translation engine
 - [tsx](https://tsx.is) — TypeScript execution for development
-- [Vitest](https://vitest.dev) — Testing (136 tests, 11 suites, v8 coverage)
+- [Vitest](https://vitest.dev) — Testing (140 tests, 12 suites, v8 coverage)
 - [ESLint](https://eslint.org) + [Prettier](https://prettier.io) — Code quality
 
 ## License
