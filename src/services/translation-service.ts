@@ -5,6 +5,7 @@ import { isSameLanguage, localeToLang } from '../lang.js';
 import type { AppMetricsCollector } from '../app-metrics.js';
 import { configRepository, type RuntimeConfig } from '../repositories/config-repository.js';
 import { userPreferenceRepository } from '../repositories/user-preference-repository.js';
+import type { RuntimeLimitReason, TranslationRuntimeLimiter, TranslationRuntimeReservation } from '../translation-runtime-limiter.js';
 import { usage } from '../usage.js';
 import { translate, resolveSystemPrompt } from '../translate.js';
 import { sanitizeError } from '../commands/shared.js';
@@ -73,6 +74,7 @@ export interface TranslationServiceDeps {
     usageTracker?: UsageLike;
     translator?: Translator;
     metrics?: AppMetricsCollector;
+    runtimeLimiter?: TranslationRuntimeLimiter;
     logger?: StructuredLogger;
 }
 
@@ -86,20 +88,43 @@ const COMMAND_MESSAGES: Record<ServiceCommand, {
     emptyText: string;
     sameLanguage: string;
     budgetExceeded: string;
+    userBusy: string;
+    guildBusy: string;
+    serviceBusy: string;
 }> = {
     babel: {
         setupIncomplete: 'Bot not configured yet. Please complete setup in the dashboard.',
         emptyText: 'No text content',
         sameLanguage: 'This message is already in your language!',
         budgetExceeded: 'Daily budget exceeded, try again tomorrow!',
+        userBusy: 'You already have a translation in progress. Please wait a moment.',
+        guildBusy: 'This server is handling too many translations right now. Please try again shortly.',
+        serviceBusy: 'Translation service is busy right now. Please try again in a moment.',
     },
     translate: {
         setupIncomplete: 'Bot not configured yet.',
         emptyText: 'Text is required',
         sameLanguage: 'This text is already in your target language!',
         budgetExceeded: 'Daily budget exceeded',
+        userBusy: 'You already have a translation in progress. Please wait a moment.',
+        guildBusy: 'This server is handling too many translations right now. Please try again shortly.',
+        serviceBusy: 'Translation service is busy right now. Please try again in a moment.',
     },
 };
+
+function resolveQueueBusyMessage(
+    reason: RuntimeLimitReason,
+    messages: Pick<typeof COMMAND_MESSAGES[ServiceCommand], 'userBusy' | 'guildBusy' | 'serviceBusy'>,
+): string {
+    switch (reason) {
+        case 'user_queue_full':
+            return messages.userBusy;
+        case 'guild_queue_full':
+            return messages.guildBusy;
+        case 'global_queue_full':
+            return messages.serviceBusy;
+    }
+}
 
 export function createTranslationService({
     cache,
@@ -111,6 +136,7 @@ export function createTranslationService({
     usageTracker = usage,
     translator = translate,
     metrics,
+    runtimeLimiter,
     logger = appLogger.child({ component: 'translation_service' }),
 }: TranslationServiceDeps): TranslationService {
     return {
@@ -195,8 +221,39 @@ export function createTranslationService({
             });
 
             let deferred = false;
+            let reservation: TranslationRuntimeReservation | null = null;
 
             try {
+                let translated = cache.get(cacheKey);
+                let cached = translated !== null;
+                requestLogger.info(cached ? 'translation.cache.hit' : 'translation.cache.miss', {
+                    targetLanguage,
+                    langSource,
+                });
+
+                if (!cached && runtimeLimiter) {
+                    const admission = runtimeLimiter.acquire({
+                        guildId: request.guildId ?? null,
+                        userId: request.userId,
+                    });
+
+                    if (!admission.accepted) {
+                        requestLogger.warn('translation.request.blocked', {
+                            blockReason: admission.reason,
+                            runtime: admission.snapshot,
+                        });
+                        return {
+                            status: 'blocked',
+                            message: resolveQueueBusyMessage(admission.reason, messages),
+                        };
+                    }
+
+                    reservation = admission.reservation;
+                    requestLogger.info(reservation.queued ? 'translation.queue.enqueued' : 'translation.queue.acquired', {
+                        runtime: runtimeLimiter.snapshot(),
+                    });
+                }
+
                 if (request.beforeTranslate) {
                     await request.beforeTranslate();
                     deferred = true;
@@ -206,27 +263,56 @@ export function createTranslationService({
                 cooldown.set(request.userId);
                 stats.totalTranslations++;
 
-                let translated = cache.get(cacheKey);
-                const cached = translated !== null;
-                requestLogger.info(cached ? 'translation.cache.hit' : 'translation.cache.miss', {
-                    targetLanguage,
-                    langSource,
-                });
-
                 if (!translated) {
-                    stats.apiCalls++;
-                    metrics?.recordTranslationApiCall();
-                    const result = await translator(originalText, targetLanguage, {
-                        logContext: {
-                            requestId,
-                            guildId: request.guildId ?? null,
-                            userId: request.userId,
-                            command: request.command,
-                        },
-                    });
-                    translated = result.text;
-                    cache.set(cacheKey, translated);
-                    usageTracker.record(result.inputTokens, result.outputTokens, request.guildId);
+                    if (reservation) {
+                        translated = await reservation.run(async (meta) => {
+                            if (meta.queued) {
+                                requestLogger.info('translation.queue.started', {
+                                    waitMs: meta.waitMs,
+                                    runtime: meta.snapshot,
+                                });
+                            }
+
+                            const queuedCached = cache.get(cacheKey);
+                            if (queuedCached) {
+                                requestLogger.info('translation.cache.hit_after_queue', {
+                                    targetLanguage,
+                                    langSource,
+                                    waitMs: meta.waitMs,
+                                });
+                                cached = true;
+                                return queuedCached;
+                            }
+
+                            stats.apiCalls++;
+                            metrics?.recordTranslationApiCall();
+                            const result = await translator(originalText, targetLanguage, {
+                                logContext: {
+                                    requestId,
+                                    guildId: request.guildId ?? null,
+                                    userId: request.userId,
+                                    command: request.command,
+                                },
+                            });
+                            cache.set(cacheKey, result.text);
+                            usageTracker.record(result.inputTokens, result.outputTokens, request.guildId);
+                            return result.text;
+                        });
+                    } else {
+                        stats.apiCalls++;
+                        metrics?.recordTranslationApiCall();
+                        const result = await translator(originalText, targetLanguage, {
+                            logContext: {
+                                requestId,
+                                guildId: request.guildId ?? null,
+                                userId: request.userId,
+                                command: request.command,
+                            },
+                        });
+                        translated = result.text;
+                        cache.set(cacheKey, translated);
+                        usageTracker.record(result.inputTokens, result.outputTokens, request.guildId);
+                    }
                 }
 
                 metrics?.recordTranslationSuccess({ cached });
@@ -257,6 +343,7 @@ export function createTranslationService({
                     langSource,
                 };
             } catch (error) {
+                reservation?.cancel();
                 const message = (error as Error).message;
                 metrics?.recordTranslationFailure();
                 log.addError({
@@ -315,4 +402,4 @@ function resolveTargetLanguage(
     };
 }
 
-export const _test = { resolveTargetLanguage };
+export const _test = { resolveTargetLanguage, resolveQueueBusyMessage };

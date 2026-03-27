@@ -35,6 +35,7 @@ Right-click any message → *Babel* → Get an ephemeral translation only you ca
 - **SQLite Persistence** — Config, usage, preferences, guild budgets, and dashboard sessions are stored in a migrated SQLite database
 - **Structured Operational Logs** — JSON logs include request-scoped `requestId`, command, guild/user IDs, retry/error classification, and secret redaction
 - **Application Metrics** — In-memory counters expose translations, API calls, cache hits, failures, budget blocks, and webhook re-creates through `/api/stats`
+- **Runtime Translation Queue** — Cache misses flow through a bounded concurrency/queue limiter with per-user, per-guild, and global backpressure
 - **Web Dashboard** — Login-protected admin panel with setup wizard
 - **Modular Dashboard Auth** — Session, cookie, password, and CSRF handling live in dedicated auth modules instead of the route file
 - **Unified Config Runtime Effects** — Dashboard config changes flow through one hook that applies immediate runtime updates and cache invalidation rules
@@ -178,6 +179,7 @@ src/
 ├── health.ts         # Liveness/readiness/composite health model
 ├── lang.ts           # Language detection & locale mapping
 ├── translate.ts      # Vertex AI Gemini API client with retry
+├── translation-runtime-limiter.ts # Global/guild/user translation concurrency and queue shedding
 ├── cache.ts          # LRU translation cache
 ├── cooldown.ts       # Per-user rate limiter
 ├── log.ts            # In-memory ring buffer audit log
@@ -256,7 +258,7 @@ npm start
 
 ### Test Coverage
 
-154 tests across 17 suites covering all modules:
+159 tests across 18 suites covering all modules:
 
 | Suite | Tests | Covers |
 |---|---|---|
@@ -267,7 +269,8 @@ npm start
 | `log.test.ts` | 14 | Ring buffer, addError, type filtering, defaults |
 | `lang.test.ts` | 29 | Script detection (CJK/Cyrillic/Arabic/Thai/Hindi), locale mapping, same-language check |
 | `dashboard-auth.test.ts` | 4 | Standalone auth flow, CSRF enforcement, session expiry cleanup |
-| `translation-service.test.ts` | 7 | Shared workflow, cache hits, budget/error handling, language decisions |
+| `translation-runtime-limiter.test.ts` | 3 | FIFO queueing, per-user outstanding cap, per-guild/global queue shedding |
+| `translation-service.test.ts` | 9 | Shared workflow, cache hits, runtime shedding, budget/error handling, language decisions |
 | `translate-command.test.ts` | 1 | Webhook stale recovery increments operational metrics |
 | `vertex-ai-client.test.ts` | 4 | Shared transport, timeout wiring, health checks, endpoint resolution |
 | `translate.test.ts` | 20 | Retry logic, prompt building, API errors, URL routing |
@@ -307,6 +310,15 @@ Dashboard sessions now share the same SQLite data file as the rest of the applic
 - `GET /readyz` checks setup completeness plus a live Vertex AI probe before declaring the app ready for translation traffic.
 - `GET /healthz` returns both liveness and readiness with a degraded/ok status so operators can see dependency strategy without conflating restart policy and readiness policy.
 
+## Runtime Limiting Model
+
+- Discord translation commands still enforce the per-user cooldown first, so repeat taps are rejected before they consume queue capacity.
+- Dashboard login uses a separate `express-rate-limit` policy and does not share the translation queue, so admin access spikes do not steal translation permits.
+- Cache hits bypass the runtime queue entirely; only cache misses compete for translation capacity.
+- Cache misses are bounded by a shared runtime limiter with conservative defaults: `4` concurrent upstream translations, `25` queued globally, `5` queued per guild, and `1` outstanding miss per user.
+- Vertex AI retry/backoff runs inside an already-acquired permit, which prevents retry storms from multiplying upstream concurrency during partial outages.
+- Runtime pressure is exposed in `/api/stats` and the dashboard overview as `running`, `queued`, and `shed` counts.
+
 ## Tech Stack
 
 - [TypeScript](https://www.typescriptlang.org) 5.9 — Strict mode with `noUncheckedIndexedAccess`
@@ -315,7 +327,7 @@ Dashboard sessions now share the same SQLite data file as the rest of the applic
 - [Express](https://expressjs.com) + [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) — Dashboard & API security
 - [Vertex AI Gemini](https://cloud.google.com/vertex-ai) — Translation engine
 - [tsx](https://tsx.is) — TypeScript execution for development
-- [Vitest](https://vitest.dev) — Testing (154 tests, 17 suites, v8 coverage)
+- [Vitest](https://vitest.dev) — Testing (159 tests, 18 suites, v8 coverage)
 - [ESLint](https://eslint.org) + [Prettier](https://prettier.io) — Code quality
 
 ## License

@@ -13,6 +13,7 @@ import type { AppMetricsCollector } from './app-metrics.js';
 import type { VertexAiHealthStatus } from './infra/vertex-ai-client.js';
 import type { TranslationService } from './services/translation-service.js';
 import type { SessionRepository } from './auth/session-repository.js';
+import type { TranslationRuntimeLimiter } from './translation-runtime-limiter.js';
 
 // --- Store ---
 
@@ -136,6 +137,7 @@ export interface DashboardDeps {
     client: Client;
     getStats: () => BotStats;
     metrics?: AppMetricsCollector;
+    runtimeLimiter?: TranslationRuntimeLimiter;
     healthCheck?: () => Promise<VertexAiHealthStatus>;
     sessionRepository?: SessionRepository;
 }

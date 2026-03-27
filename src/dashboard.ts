@@ -5,6 +5,7 @@ import { createEmptyAppMetricsSnapshot } from './app-metrics.js';
 import { config } from './config.js';
 import { getHealthStatus, getLivenessStatus, getReadinessStatus } from './health.js';
 import { usage } from './usage.js';
+import { DEFAULT_TRANSLATION_RUNTIME_LIMITS } from './translation-runtime-limiter.js';
 import { translate } from './translate.js';
 import { createDashboardAuth } from './auth/dashboard-auth.js';
 import { SQLiteSessionRepository } from './auth/sqlite-session-repository.js';
@@ -100,6 +101,7 @@ export function createDashboardApp({
     client,
     getStats,
     metrics,
+    runtimeLimiter,
     healthCheck = checkVertexAiHealth,
     sessionRepository,
 }: DashboardDeps): express.Express {
@@ -169,6 +171,17 @@ export function createDashboardApp({
         const cacheStats = cache.stats();
         const usageStats = usage.getStats();
         const metricsSnapshot = metrics?.snapshot() ?? createEmptyAppMetricsSnapshot();
+        const runtimeSnapshot = runtimeLimiter?.snapshot() ?? {
+            inflight: 0,
+            queued: 0,
+            rejectedTotal: 0,
+            rejectionCounts: {
+                user_queue_full: 0,
+                guild_queue_full: 0,
+                global_queue_full: 0,
+            },
+            limits: DEFAULT_TRANSLATION_RUNTIME_LIMITS,
+        };
 
         const guildBudgetConfigs = guildBudgetRepository.listBudgets();
         const globalBudget = configRepository.getRuntimeConfig().dailyBudgetUsd || 0;
@@ -208,6 +221,7 @@ export function createDashboardApp({
                 webhookRecreated: metricsSnapshot.webhookRecreateTotal,
             },
             metrics: metricsSnapshot,
+            runtime: runtimeSnapshot,
             cache: cacheStats,
             usage: usageStats,
             guildBudgets: guildBudgetList,

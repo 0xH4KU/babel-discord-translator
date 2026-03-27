@@ -14,6 +14,7 @@ import { handleSetlang, handleMylang } from './commands/setlang.js';
 import { handleHelp } from './commands/help.js';
 import { closeSqliteDatabase } from './persistence/sqlite-database.js';
 import { appLogger } from './structured-logger.js';
+import { TranslationRuntimeLimiter } from './translation-runtime-limiter.js';
 import type { BotStats } from './types.js';
 import type express from 'express';
 import type http from 'http';
@@ -24,8 +25,13 @@ const cooldown = new CooldownManager(runtimeConfig.cooldownSeconds);
 const log = new TranslationLog();
 const stats: BotStats = { totalTranslations: 0, apiCalls: 0 };
 const metrics = new AppMetrics();
-const translationService = createTranslationService({ cache, cooldown, log, stats, metrics });
+const runtimeLimiter = new TranslationRuntimeLimiter();
+const translationService = createTranslationService({ cache, cooldown, log, stats, metrics, runtimeLimiter });
 const startupLogger = appLogger.child({ component: 'startup' });
+
+startupLogger.info('translation.runtime_limits.configured', {
+    runtime: runtimeLimiter.snapshot(),
+});
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
@@ -45,6 +51,7 @@ client.once(Events.ClientReady, (c) => {
         client,
         getStats: () => stats,
         metrics,
+        runtimeLimiter,
     });
     dashboardServer = startDashboardServer(dashboardApp, config.dashboardPort);
 });

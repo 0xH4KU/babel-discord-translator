@@ -309,13 +309,13 @@
 
 ### P1-11. Runtime 限流策略檢視
 
-- [ ] 盤點 Discord 使用者 cooldown、login limiter、外部 API retry 的交互作用
-- [ ] 規劃全域併發限制，避免瞬時大量翻譯打爆 Vertex AI
-- [ ] 規劃 per-guild / per-user / global queue 策略
+- [x] 盤點 Discord 使用者 cooldown、login limiter、外部 API retry 的交互作用
+- [x] 規劃全域併發限制，避免瞬時大量翻譯打爆 Vertex AI
+- [x] 規劃 per-guild / per-user / global queue 策略
 
 完成標準
 
-- 高峰請求下系統會降級，而不是直接失控
+- [x] 高峰請求下系統會降級，而不是直接失控
 
 ---
 

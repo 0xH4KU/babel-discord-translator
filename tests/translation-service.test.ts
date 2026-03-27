@@ -4,6 +4,7 @@ import { TranslationCache } from '../src/cache.js';
 import { CooldownManager } from '../src/cooldown.js';
 import { TranslationLog } from '../src/log.js';
 import { createTranslationService, _test } from '../src/services/translation-service.js';
+import { TranslationRuntimeLimiter } from '../src/translation-runtime-limiter.js';
 import type { BotStats, StoreData, TranslationResult } from '../src/types.js';
 
 function createStructuredLoggerMock(base: Record<string, unknown> = {}) {
@@ -106,11 +107,13 @@ function createService({
     })),
     usageTracker = createUsageMock(),
     loggerState = createStructuredLoggerMock(),
+    runtimeLimiter,
 }: {
     storeOverrides?: Partial<StoreData>;
     translator?: ReturnType<typeof vi.fn>;
     usageTracker?: ReturnType<typeof createUsageMock>;
     loggerState?: ReturnType<typeof createStructuredLoggerMock>;
+    runtimeLimiter?: TranslationRuntimeLimiter;
 } = {}) {
     const cache = new TranslationCache(100);
     const cooldown = new CooldownManager(0);
@@ -130,6 +133,7 @@ function createService({
         usageTracker,
         translator,
         metrics,
+        runtimeLimiter,
         logger: loggerState.logger as never,
     });
 
@@ -311,6 +315,65 @@ describe('TranslationService', () => {
         });
     });
 
+    it('should shed load when the same user already has a runtime-limited translation in flight', async () => {
+        let releaseTranslator!: () => void;
+        const translator = vi.fn(async (): Promise<TranslationResult> => {
+            await new Promise<void>((resolve) => {
+                releaseTranslator = resolve;
+            });
+
+            return {
+                text: 'hola',
+                inputTokens: 8,
+                outputTokens: 4,
+            };
+        });
+        const runtimeLimiter = new TranslationRuntimeLimiter({
+            maxConcurrent: 1,
+            maxGlobalQueue: 1,
+            maxGuildQueue: 1,
+            maxUserOutstanding: 1,
+        });
+        const { service } = createService({ translator, runtimeLimiter });
+
+        const first = service.process({
+            command: 'translate',
+            commandLabel: '/translate',
+            guildId: 'guild-1',
+            guildName: 'Test Guild',
+            userId: 'user1',
+            userTag: 'user#0001',
+            locale: 'en-US',
+            text: 'Hello world',
+            targetLanguageOption: 'es',
+            beforeTranslate: async () => undefined,
+        });
+
+        await Promise.resolve();
+
+        const second = await service.process({
+            command: 'translate',
+            commandLabel: '/translate',
+            guildId: 'guild-1',
+            guildName: 'Test Guild',
+            userId: 'user1',
+            userTag: 'user#0001',
+            locale: 'en-US',
+            text: 'Another message',
+            targetLanguageOption: 'es',
+        });
+
+        expect(second).toEqual({
+            status: 'blocked',
+            message: 'You already have a translation in progress. Please wait a moment.',
+        });
+
+        releaseTranslator();
+        await expect(first).resolves.toMatchObject({
+            status: 'success',
+        });
+    });
+
     it('should block same-language translations before deferring', async () => {
         const beforeTranslate = vi.fn(async () => undefined);
         const { service } = createService({
@@ -340,7 +403,7 @@ describe('TranslationService', () => {
 });
 
 describe('resolveTargetLanguage', () => {
-    const { resolveTargetLanguage } = _test;
+    const { resolveTargetLanguage, resolveQueueBusyMessage } = _test;
 
     it('should prioritize explicit target option over preferences and locale', () => {
         const preferenceStore = createUserPreferenceStoreMock({
@@ -383,5 +446,23 @@ describe('resolveTargetLanguage', () => {
             targetLanguage: 'auto',
             langSource: 'auto',
         });
+    });
+
+    it('should map runtime queue rejection reasons to user-facing messages', () => {
+        expect(resolveQueueBusyMessage('user_queue_full', {
+            userBusy: 'user',
+            guildBusy: 'guild',
+            serviceBusy: 'service',
+        })).toBe('user');
+        expect(resolveQueueBusyMessage('guild_queue_full', {
+            userBusy: 'user',
+            guildBusy: 'guild',
+            serviceBusy: 'service',
+        })).toBe('guild');
+        expect(resolveQueueBusyMessage('global_queue_full', {
+            userBusy: 'user',
+            guildBusy: 'guild',
+            serviceBusy: 'service',
+        })).toBe('service');
     });
 });

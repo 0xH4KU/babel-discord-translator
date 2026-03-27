@@ -80,13 +80,18 @@ async function loadStats() {
       d.translations.apiCalls + ' API calls · ' +
       formatRatio(d.translations.failureRate) + ' failure · ' +
       d.translations.budgetExceeded + ' budget blocks';
-    document.getElementById('stat-hitrate').textContent = d.cache.hitRate;
+    document.getElementById('stat-hitrate').textContent = formatRatio(d.translations.cacheHitRate);
     document.getElementById('stat-saved').textContent =
       d.cache.size + ' / ' + d.cache.maxSize + ' cached' +
       (d.metrics.translationCacheHitsTotal > 0 ? ' · ' + d.metrics.translationCacheHitsTotal + ' hits' : '') +
       (d.translations.webhookRecreated > 0 ? ' · ' + d.translations.webhookRecreated + ' webhook resets' : '');
     document.getElementById('stat-uptime').textContent = formatUptime(d.bot.uptime);
-    document.getElementById('stat-memory').textContent = d.bot.memoryMB + ' MB · ' + d.bot.guilds + ' servers';
+    document.getElementById('stat-memory').textContent =
+      d.bot.memoryMB + ' MB · ' +
+      d.bot.guilds + ' servers · ' +
+      d.runtime.inflight + '/' + d.runtime.limits.maxConcurrent + ' running · ' +
+      d.runtime.queued + ' queued · ' +
+      d.runtime.rejectedTotal + ' shed';
   } catch { }
 }
 

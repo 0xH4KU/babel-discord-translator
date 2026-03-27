@@ -79,6 +79,7 @@ import { InMemorySessionRepository } from '../src/auth/in-memory-session-reposit
 import { TranslationCache } from '../src/cache.js';
 import { CooldownManager } from '../src/cooldown.js';
 import { TranslationLog } from '../src/log.js';
+import { TranslationRuntimeLimiter } from '../src/translation-runtime-limiter.js';
 import type { Client } from 'discord.js';
 
 interface TestResponse {
@@ -129,10 +130,17 @@ describe('Dashboard API', () => {
     let sessionCookie: string;
     let csrfToken: string;
     let healthCheck: ReturnType<typeof vi.fn>;
+    let runtimeLimiter: TranslationRuntimeLimiter;
 
     beforeAll(async () => {
         cache = new TranslationCache(100);
         metrics = new AppMetrics();
+        runtimeLimiter = new TranslationRuntimeLimiter({
+            maxConcurrent: 2,
+            maxGlobalQueue: 6,
+            maxGuildQueue: 3,
+            maxUserOutstanding: 1,
+        });
         healthCheck = vi.fn().mockResolvedValue({ healthy: true, latencyMs: 24 });
         const cooldown = new CooldownManager(5);
         const log = new TranslationLog(100);
@@ -148,6 +156,7 @@ describe('Dashboard API', () => {
             client: mockClient,
             getStats: () => ({ totalTranslations: 42, apiCalls: 30 }),
             metrics,
+            runtimeLimiter,
             healthCheck,
             sessionRepository: new InMemorySessionRepository(),
         });
@@ -252,6 +261,7 @@ describe('Dashboard API', () => {
         expect((res.body!.translations as Record<string, unknown>).total).toBe(42);
         expect((res.body!.metrics as Record<string, unknown>).translationFailuresTotal).toBe(1);
         expect((res.body!.translations as Record<string, unknown>).webhookRecreated).toBe(1);
+        expect((res.body!.runtime as Record<string, Record<string, unknown>>).limits.maxConcurrent).toBe(2);
     });
 
     it('should expose readiness details on the authenticated health endpoint', async () => {
