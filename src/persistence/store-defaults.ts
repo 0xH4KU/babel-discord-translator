@@ -1,0 +1,43 @@
+import type { StoreData } from '../types.js';
+
+export const DEFAULT_STORE_DATA: StoreData = {
+    vertexAiApiKey: '',
+    gcpProject: '',
+    gcpLocation: 'global',
+    geminiModel: 'gemini-2.5-flash-lite',
+    allowedGuildIds: [],
+    cooldownSeconds: 5,
+    cacheMaxSize: 2000,
+    setupComplete: false,
+    inputPricePerMillion: 0,
+    outputPricePerMillion: 0,
+    dailyBudgetUsd: 0,
+    tokenUsage: null,
+    usageHistory: [],
+    translationPrompt: '',
+    userLanguagePrefs: {},
+    maxInputLength: 2000,
+    maxOutputTokens: 1000,
+    guildBudgets: {},
+    guildTokenUsage: {},
+    guildUsageHistory: {},
+};
+
+export const CONFIG_VALUE_KEYS = [
+    'vertexAiApiKey',
+    'gcpProject',
+    'gcpLocation',
+    'geminiModel',
+    'allowedGuildIds',
+    'cooldownSeconds',
+    'cacheMaxSize',
+    'setupComplete',
+    'inputPricePerMillion',
+    'outputPricePerMillion',
+    'dailyBudgetUsd',
+    'translationPrompt',
+    'maxInputLength',
+    'maxOutputTokens',
+] as const satisfies readonly (keyof StoreData)[];
+
+export type ConfigValueKey = (typeof CONFIG_VALUE_KEYS)[number];

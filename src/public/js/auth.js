@@ -12,7 +12,14 @@ async function doLogin() {
   if (res.ok) {
     await checkSetup();
   } else {
-    document.getElementById('login-error').textContent = 'Wrong password';
+    let message = res.statusText || 'Login failed';
+    try {
+      const data = await res.json();
+      message = data.error || message;
+    } catch (_error) {
+      // Ignore JSON parse errors and keep the HTTP status text fallback.
+    }
+    document.getElementById('login-error').textContent = message;
   }
 }
 

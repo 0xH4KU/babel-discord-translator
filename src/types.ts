@@ -3,12 +3,16 @@
  */
 import type {
     Client,
-    TextChannel,
-    Webhook,
 } from 'discord.js';
 import type { TranslationCache } from './cache.js';
 import type { CooldownManager } from './cooldown.js';
 import type { TranslationLog } from './log.js';
+import type { AppMetricsCollector } from './app-metrics.js';
+import type { VertexAiHealthStatus } from './infra/vertex-ai-client.js';
+import type { TranslationService } from './services/translation-service.js';
+import type { SessionRepository } from './auth/session-repository.js';
+import type { TranslationRuntimeLimiter } from './translation-runtime-limiter.js';
+import type { TranslationWebhookService } from './webhook-service.js';
 
 // --- Store ---
 
@@ -82,14 +86,11 @@ export interface BotStats {
 }
 
 export interface CommandDeps {
-    cache: TranslationCache;
-    cooldown: CooldownManager;
-    log: TranslationLog;
-    stats: BotStats;
+    translationService: TranslationService;
 }
 
 export interface TranslateCommandDeps extends CommandDeps {
-    getOrCreateWebhook: (channel: TextChannel, forceRefresh?: boolean) => Promise<Webhook>;
+    webhookService: TranslationWebhookService;
 }
 
 // --- Logging ---
@@ -133,6 +134,10 @@ export interface DashboardDeps {
     log: TranslationLog;
     client: Client;
     getStats: () => BotStats;
+    metrics?: AppMetricsCollector;
+    runtimeLimiter?: TranslationRuntimeLimiter;
+    healthCheck?: () => Promise<VertexAiHealthStatus>;
+    sessionRepository?: SessionRepository;
 }
 
 // --- Usage ---

@@ -3,13 +3,15 @@
     "version": "1.0.0",
     "description": "Discord right-click translation bot powered by Vertex AI Gemini — with LRU cache, cost tracking, multilingual support, and web dashboard",
     "type": "module",
-    "main": "src/index.ts",
+    "main": "dist/src/index.js",
     "scripts": {
-        "start": "node --import tsx src/index.ts",
-        "dev": "node --import tsx --watch src/index.ts",
+        "start": "node dist/src/index.js",
+        "dev": "tsx watch src/index.ts",
         "build": "tsc && cp -r src/locales dist/src/locales && cp -r src/public dist/src/public",
         "typecheck": "tsc --noEmit",
-        "register": "node --import tsx scripts/register.ts",
+        "register": "tsx scripts/register.ts",
+        "db:migrate": "tsx scripts/migrate-json-to-sqlite.ts",
+        "db:export:json": "tsx scripts/export-sqlite-to-json.ts",
         "test": "vitest run",
         "test:watch": "vitest",
         "test:coverage": "vitest run --coverage",
@@ -25,10 +27,13 @@
         "discord.js",
         "multilingual"
     ],
-    "license": "MIT",
+    "license": "GPL-3.0-only",
     "repository": {
         "type": "git",
         "url": "https://github.com/0xH4KU/babel-discord-translator"
+    },
+    "engines": {
+        "node": ">=22.5.0"
     },
     "dependencies": {
         "discord.js": "^14.18.0",

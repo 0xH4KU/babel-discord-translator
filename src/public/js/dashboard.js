@@ -5,6 +5,10 @@
 
 let refreshTimer;
 
+function formatRatio(value) {
+  return (Number(value || 0) * 100).toFixed(1) + '%';
+}
+
 function switchTab(name) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
@@ -72,12 +76,22 @@ async function loadStats() {
 
     // Stats cards
     document.getElementById('stat-total').textContent = d.translations.total;
-    document.getElementById('stat-hitrate').textContent = d.cache.hitRate;
+    document.getElementById('stat-total-detail').textContent =
+      d.translations.apiCalls + ' API calls · ' +
+      formatRatio(d.translations.failureRate) + ' failure · ' +
+      d.translations.budgetExceeded + ' budget blocks';
+    document.getElementById('stat-hitrate').textContent = formatRatio(d.translations.cacheHitRate);
     document.getElementById('stat-saved').textContent =
       d.cache.size + ' / ' + d.cache.maxSize + ' cached' +
-      (d.cache.hits > 0 ? ' · ' + d.cache.hits + ' hits' : '');
+      (d.metrics.translationCacheHitsTotal > 0 ? ' · ' + d.metrics.translationCacheHitsTotal + ' hits' : '') +
+      (d.translations.webhookRecreated > 0 ? ' · ' + d.translations.webhookRecreated + ' webhook resets' : '');
     document.getElementById('stat-uptime').textContent = formatUptime(d.bot.uptime);
-    document.getElementById('stat-memory').textContent = d.bot.memoryMB + ' MB · ' + d.bot.guilds + ' servers';
+    document.getElementById('stat-memory').textContent =
+      d.bot.memoryMB + ' MB · ' +
+      d.bot.guilds + ' servers · ' +
+      d.runtime.inflight + '/' + d.runtime.limits.maxConcurrent + ' running · ' +
+      d.runtime.queued + ' queued · ' +
+      d.runtime.rejectedTotal + ' shed';
   } catch { }
 }
 
@@ -92,11 +106,11 @@ async function checkApiHealth() {
     if (data.healthy) {
       badge.className = 'health-badge ok';
       badge.textContent = 'API';
-      badge.title = 'Healthy · ' + data.latencyMs + 'ms';
+      badge.title = 'Ready · ' + (data.vertexAi.latencyMs ?? '?') + 'ms';
     } else {
       badge.className = 'health-badge fail';
       badge.textContent = 'API';
-      badge.title = data.error || 'Unknown error';
+      badge.title = data.vertexAi.error || data.checks.configuration.detail || 'Unknown error';
     }
   } catch {
     badge.className = 'health-badge fail';

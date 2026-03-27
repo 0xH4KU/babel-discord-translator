@@ -6,6 +6,7 @@ const mockData: Record<string, unknown> = vi.hoisted(() => ({}));
 vi.mock('../src/store.js', () => ({
     store: {
         get: vi.fn((key: string) => mockData[key]),
+        getAll: vi.fn(() => ({ ...mockData })),
         set: vi.fn((key: string, val: unknown) => { mockData[key] = val; }),
     },
 }));
@@ -21,6 +22,13 @@ describe('UsageTracker', () => {
         mockData.inputPricePerMillion = 0;
         mockData.outputPricePerMillion = 0;
         mockData.dailyBudgetUsd = 0;
+        mockData.allowedGuildIds = [];
+        mockData.cooldownSeconds = 5;
+        mockData.cacheMaxSize = 2000;
+        mockData.setupComplete = true;
+        mockData.translationPrompt = '';
+        mockData.maxInputLength = 2000;
+        mockData.maxOutputTokens = 1000;
         mockData.guildBudgets = {};
         mockData.guildTokenUsage = {};
         mockData.guildUsageHistory = {};

@@ -1,121 +1,138 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-// --- Mock fs and dotenv ---
-vi.mock('fs', () => ({
-    readFileSync: vi.fn(),
-    writeFileSync: vi.fn(),
-    mkdirSync: vi.fn(),
-    existsSync: vi.fn(() => false),
-}));
-
-vi.mock('dotenv/config', () => ({}));
-
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('ConfigStore', () => {
+    let tempDir: string;
+    let dbPath: string;
+    let legacyConfigPath: string;
+
     beforeEach(() => {
-        vi.clearAllMocks();
-        (existsSync as ReturnType<typeof vi.fn>).mockReturnValue(false);
+        tempDir = mkdtempSync(join(tmpdir(), 'babel-store-'));
+        dbPath = join(tempDir, 'babel.sqlite');
+        legacyConfigPath = join(tempDir, 'config.json');
     });
 
-    async function createFreshStore() {
-        // Clear module cache to get fresh instance
+    afterEach(async () => {
+        delete process.env.BABEL_DB_PATH;
+        delete process.env.BABEL_LEGACY_CONFIG_PATH;
+
         vi.resetModules();
+        const { closeSqliteDatabase } = await import('../src/persistence/sqlite-database.js');
+        closeSqliteDatabase();
 
-        // Re-mock after reset
-        vi.doMock('fs', () => ({
-            readFileSync: vi.fn(),
-            writeFileSync: vi.fn(),
-            mkdirSync: vi.fn(),
-            existsSync: vi.fn(() => false),
-        }));
-        vi.doMock('dotenv/config', () => ({}));
+        rmSync(tempDir, { recursive: true, force: true });
+    });
 
-        const { store } = await import('../src/store.js');
-        return store;
+    async function importStoreModule() {
+        vi.resetModules();
+        process.env.BABEL_DB_PATH = dbPath;
+        process.env.BABEL_LEGACY_CONFIG_PATH = legacyConfigPath;
+        return import('../src/store.js');
     }
 
-    it('should initialize with defaults when no config file exists', async () => {
-        const store = await createFreshStore();
+    it('should initialize with defaults when no database rows exist', async () => {
+        const { ConfigStore } = await importStoreModule();
+        const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+
         expect(store.get('cooldownSeconds')).toBe(5);
         expect(store.get('cacheMaxSize')).toBe(2000);
         expect(store.get('setupComplete')).toBe(false);
+
+        store.close();
     });
 
-    it('should load and merge config from file', async () => {
-        vi.resetModules();
-        vi.doMock('fs', () => ({
-            readFileSync: vi.fn(() => JSON.stringify({ cooldownSeconds: 10, setupComplete: true })),
-            writeFileSync: vi.fn(),
-            mkdirSync: vi.fn(),
-            existsSync: vi.fn(() => true),
-        }));
-        vi.doMock('dotenv/config', () => ({}));
+    it('should persist values across store instances', async () => {
+        const { ConfigStore } = await importStoreModule();
 
-        const { store } = await import('../src/store.js');
-        expect(store.get('cooldownSeconds')).toBe(10);
-        expect(store.get('setupComplete')).toBe(true);
-        // Non-overridden defaults remain
-        expect(store.get('cacheMaxSize')).toBe(2000);
-    });
+        const first = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+        first.set('cooldownSeconds', 15);
+        first.set('userLanguagePrefs', { user1: 'ja' });
+        first.set('tokenUsage', {
+            date: '2026-03-27',
+            inputTokens: 100,
+            outputTokens: 50,
+            requests: 1,
+        });
+        first.close();
 
-    it('should handle corrupt JSON gracefully', async () => {
-        vi.resetModules();
-        vi.doMock('fs', () => ({
-            readFileSync: vi.fn(() => 'not json at all {{{'),
-            writeFileSync: vi.fn(),
-            mkdirSync: vi.fn(),
-            existsSync: vi.fn(() => true),
-        }));
-        vi.doMock('dotenv/config', () => ({}));
-
-        // Should not throw — falls back to defaults
-        const { store } = await import('../src/store.js');
-        expect(store.get('cooldownSeconds')).toBe(5);
-    });
-
-    it('should set value and persist to disk', async () => {
-        vi.resetModules();
-        const mockWrite = vi.fn();
-        vi.doMock('fs', () => ({
-            readFileSync: vi.fn(),
-            writeFileSync: mockWrite,
-            mkdirSync: vi.fn(),
-            existsSync: vi.fn(() => false),
-        }));
-        vi.doMock('dotenv/config', () => ({}));
-
-        const { store } = await import('../src/store.js');
-        store.set('cooldownSeconds', 15);
-
-        expect(store.get('cooldownSeconds')).toBe(15);
-        expect(mockWrite).toHaveBeenCalled();
-        const written = JSON.parse(mockWrite.mock.calls[0][1] as string);
-        expect(written.cooldownSeconds).toBe(15);
+        const second = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+        expect(second.get('cooldownSeconds')).toBe(15);
+        expect(second.get('userLanguagePrefs')).toEqual({ user1: 'ja' });
+        expect(second.get('tokenUsage')).toEqual({
+            date: '2026-03-27',
+            inputTokens: 100,
+            outputTokens: 50,
+            requests: 1,
+        });
+        second.close();
     });
 
     it('should update multiple values at once', async () => {
-        const store = await createFreshStore();
-        store.update({ cooldownSeconds: 20, cacheMaxSize: 500 });
+        const { ConfigStore } = await importStoreModule();
+        const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+
+        store.update({ cooldownSeconds: 20, cacheMaxSize: 500, setupComplete: true });
 
         expect(store.get('cooldownSeconds')).toBe(20);
         expect(store.get('cacheMaxSize')).toBe(500);
+        expect(store.get('setupComplete')).toBe(true);
+        store.close();
     });
 
     it('should return a copy from getAll()', async () => {
-        const store = await createFreshStore();
+        const { ConfigStore } = await importStoreModule();
+        const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+
         const all = store.getAll();
         all.cooldownSeconds = 999;
+        all.allowedGuildIds.push('guild-1');
 
-        // Original should not be affected
         expect(store.get('cooldownSeconds')).toBe(5);
+        expect(store.get('allowedGuildIds')).toEqual([]);
+        store.close();
     });
 
     it('should report isSetupComplete correctly', async () => {
-        const store = await createFreshStore();
+        const { ConfigStore } = await importStoreModule();
+        const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+
         expect(store.isSetupComplete()).toBe(false);
 
         store.set('setupComplete', true);
         expect(store.isSetupComplete()).toBe(true);
+        store.close();
+    });
+
+    it('should import legacy JSON data into a fresh SQLite database', async () => {
+        writeFileSync(legacyConfigPath, JSON.stringify({
+            cooldownSeconds: 10,
+            setupComplete: true,
+            userLanguagePrefs: { user2: 'ko' },
+        }));
+
+        const { ConfigStore } = await importStoreModule();
+        const store = new ConfigStore({ dbPath, legacyConfigPath });
+
+        expect(store.get('cooldownSeconds')).toBe(10);
+        expect(store.get('setupComplete')).toBe(true);
+        expect(store.get('userLanguagePrefs')).toEqual({ user2: 'ko' });
+        store.close();
+    });
+
+    it('should fall back to defaults when legacy JSON is corrupt', async () => {
+        writeFileSync(legacyConfigPath, 'not json at all {{{');
+        const logger = {
+            info: vi.fn(),
+            error: vi.fn(),
+        };
+
+        const { ConfigStore } = await importStoreModule();
+        const store = new ConfigStore({ dbPath, legacyConfigPath, logger });
+
+        expect(store.get('cooldownSeconds')).toBe(5);
+        expect(logger.error).toHaveBeenCalledOnce();
+        store.close();
     });
 });
