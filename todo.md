@@ -365,10 +365,14 @@
 
 ### P2-3. Cache 升級路線
 
-- [ ] 評估是否保留記憶體 LRU
-- [ ] 若需要跨實例共享，改為 Redis
-- [ ] 若只要單機重啟可恢復，可考慮 SQLite cache
-- [ ] 加入 TTL 與 cache invalidation policy
+- [x] 評估是否保留記憶體 LRU
+- [x] 若需要跨實例共享，改為 Redis
+- [x] 若只要單機重啟可恢復，可考慮 SQLite cache
+- [x] 加入 TTL 與 cache invalidation policy
+
+結論
+
+- [x] 目前維持記憶體 LRU；若需跨實例共享時升 Redis；SQLite cache 僅作為單機重啟暖啟動的候選方案
 
 ### P2-4. Webhook 管理獨立化
 

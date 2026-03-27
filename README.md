@@ -321,6 +321,17 @@ Dashboard sessions now share the same SQLite data file as the rest of the applic
 - Vertex AI retry/backoff runs inside an already-acquired permit, which prevents retry storms from multiplying upstream concurrency during partial outages.
 - Runtime pressure is exposed in `/api/stats` and the dashboard overview as `running`, `queued`, and `shed` counts.
 
+## Cache Roadmap
+
+As of March 27, 2026, the recommended cache strategy is:
+
+- Keep the current in-memory LRU for the default single-process deployment.
+- Move to Redis, not SQLite, when multiple bot workers need to share translation cache state.
+- Consider SQLite cache only as a narrow single-host warm-start optimization if restart cold-cache pain becomes material.
+- Use explicit semantic invalidation, not TTL alone, for model/prompt/output-token changes.
+
+The full evaluation is documented in `docs/architecture/cache-evolution-roadmap.md`.
+
 ## Process Separation
 
 As of March 27, 2026, the recommended deployment model is still a single Node.js process that hosts both the Discord gateway worker and the admin/dashboard HTTP server.
