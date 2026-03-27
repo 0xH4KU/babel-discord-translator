@@ -1,10 +1,10 @@
 import { Client, Events, GatewayIntentBits, type TextChannel, type Webhook } from 'discord.js';
 import { config } from './config.js';
-import { store } from './store.js';
 import { TranslationCache } from './cache.js';
 import { CooldownManager } from './cooldown.js';
 import { TranslationLog } from './log.js';
 import { createDashboardApp, startDashboardServer } from './dashboard.js';
+import { configRepository } from './repositories/config-repository.js';
 import { createGracefulShutdownHandler } from './shutdown.js';
 import { createTranslationService } from './services/translation-service.js';
 import { handleBabel } from './commands/babel.js';
@@ -15,8 +15,9 @@ import type { BotStats } from './types.js';
 import type express from 'express';
 import type http from 'http';
 
-const cache = new TranslationCache(store.get('cacheMaxSize'));
-const cooldown = new CooldownManager(store.get('cooldownSeconds'));
+const runtimeConfig = configRepository.getRuntimeConfig();
+const cache = new TranslationCache(runtimeConfig.cacheMaxSize);
+const cooldown = new CooldownManager(runtimeConfig.cooldownSeconds);
 const log = new TranslationLog();
 const stats: BotStats = { totalTranslations: 0, apiCalls: 0 };
 const translationService = createTranslationService({ cache, cooldown, log, stats });

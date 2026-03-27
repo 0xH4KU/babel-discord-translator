@@ -32,11 +32,35 @@ function createStoreMock(overrides: Partial<StoreData> = {}) {
 
     return {
         data,
-        get<K extends keyof StoreData>(key: K): StoreData[K] {
-            return data[key];
+        getRuntimeConfig() {
+            return {
+                vertexAiApiKey: data.vertexAiApiKey,
+                gcpProject: data.gcpProject,
+                gcpLocation: data.gcpLocation,
+                geminiModel: data.geminiModel,
+                allowedGuildIds: [...data.allowedGuildIds],
+                cooldownSeconds: data.cooldownSeconds,
+                cacheMaxSize: data.cacheMaxSize,
+                setupComplete: data.setupComplete,
+                inputPricePerMillion: data.inputPricePerMillion,
+                outputPricePerMillion: data.outputPricePerMillion,
+                dailyBudgetUsd: data.dailyBudgetUsd,
+                translationPrompt: data.translationPrompt,
+                maxInputLength: data.maxInputLength,
+                maxOutputTokens: data.maxOutputTokens,
+            };
         },
         isSetupComplete(): boolean {
             return data.setupComplete;
+        },
+    };
+}
+
+function createUserPreferenceStoreMock(overrides: Partial<StoreData> = {}) {
+    const configStore = createStoreMock(overrides);
+    return {
+        getLanguage(userId: string): string | null {
+            return configStore.data.userLanguagePrefs[userId] ?? null;
         },
     };
 }
@@ -66,6 +90,7 @@ function createService({
     const log = new TranslationLog(100);
     const stats: BotStats = { totalTranslations: 0, apiCalls: 0 };
     const configStore = createStoreMock(storeOverrides);
+    const userPreferenceStore = createUserPreferenceStoreMock(storeOverrides);
 
     const service = createTranslationService({
         cache,
@@ -73,11 +98,12 @@ function createService({
         log,
         stats,
         configStore,
+        userPreferenceStore,
         usageTracker,
         translator,
     });
 
-    return { service, cache, cooldown, log, stats, configStore, usageTracker, translator };
+    return { service, cache, cooldown, log, stats, configStore, userPreferenceStore, usageTracker, translator };
 }
 
 describe('TranslationService', () => {
@@ -229,7 +255,7 @@ describe('resolveTargetLanguage', () => {
     const { resolveTargetLanguage } = _test;
 
     it('should prioritize explicit target option over preferences and locale', () => {
-        const store = createStoreMock({
+        const preferenceStore = createUserPreferenceStoreMock({
             userLanguagePrefs: { user1: 'ja' },
         });
 
@@ -237,35 +263,35 @@ describe('resolveTargetLanguage', () => {
             userId: 'user1',
             locale: 'ko',
             targetLanguageOption: 'fr',
-        }, store)).toEqual({
+        }, preferenceStore)).toEqual({
             targetLanguage: 'fr',
             langSource: 'option',
         });
     });
 
     it('should fall back from user preference to locale and then auto', () => {
-        const store = createStoreMock({
+        const preferenceStore = createUserPreferenceStoreMock({
             userLanguagePrefs: { user1: 'ja' },
         });
 
         expect(resolveTargetLanguage({
             userId: 'user1',
             locale: 'ko',
-        }, store)).toEqual({
+        }, preferenceStore)).toEqual({
             targetLanguage: 'ja',
             langSource: 'setlang',
         });
         expect(resolveTargetLanguage({
             userId: 'user2',
             locale: 'ko',
-        }, store)).toEqual({
+        }, preferenceStore)).toEqual({
             targetLanguage: 'ko',
             langSource: 'locale',
         });
         expect(resolveTargetLanguage({
             userId: 'user2',
             locale: 'en-US',
-        }, store)).toEqual({
+        }, preferenceStore)).toEqual({
             targetLanguage: 'auto',
             langSource: 'auto',
         });

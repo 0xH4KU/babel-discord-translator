@@ -1,6 +1,6 @@
 import { MessageFlags, type ChatInputCommandInteraction } from 'discord.js';
-import { store } from '../store.js';
 import { localeToLang } from '../lang.js';
+import { userPreferenceRepository } from '../repositories/user-preference-repository.js';
 
 const LANG_NAMES: Record<string, string> = {
     'zh-TW': '繁體中文', 'zh-CN': '简体中文', en: 'English',
@@ -13,11 +13,9 @@ const LANG_NAMES: Record<string, string> = {
 /** Handle /setlang command — set user's preferred translation language. */
 export async function handleSetlang(interaction: ChatInputCommandInteraction): Promise<void> {
     const lang = interaction.options.getString('language')!;
-    const prefs = store.get('userLanguagePrefs') || {};
 
     if (lang === 'auto') {
-        delete prefs[interaction.user.id];
-        store.set('userLanguagePrefs', prefs);
+        userPreferenceRepository.clearLanguage(interaction.user.id);
         await interaction.reply({
             content: 'Language preference cleared. Will use your Discord locale automatically.',
             flags: MessageFlags.Ephemeral,
@@ -25,8 +23,7 @@ export async function handleSetlang(interaction: ChatInputCommandInteraction): P
         return;
     }
 
-    prefs[interaction.user.id] = lang;
-    store.set('userLanguagePrefs', prefs);
+    userPreferenceRepository.setLanguage(interaction.user.id, lang);
     await interaction.reply({
         content: ` Translation target set to: **${lang}**`,
         flags: MessageFlags.Ephemeral,
@@ -35,8 +32,7 @@ export async function handleSetlang(interaction: ChatInputCommandInteraction): P
 
 /** Handle /mylang command — show user's current translation language. */
 export async function handleMylang(interaction: ChatInputCommandInteraction): Promise<void> {
-    const prefs = store.get('userLanguagePrefs') || {};
-    const userPref = prefs[interaction.user.id];
+    const userPref = userPreferenceRepository.getLanguage(interaction.user.id);
     const localeLang = localeToLang(interaction.locale);
 
     let reply: string;

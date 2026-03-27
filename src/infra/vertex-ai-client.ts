@@ -1,4 +1,4 @@
-import { store } from '../store.js';
+import { configRepository } from '../repositories/config-repository.js';
 import type { TranslationResult, VertexAIResponse } from '../types.js';
 
 const RETRY_CODES = [429, 500, 502, 503];
@@ -29,8 +29,9 @@ function sleep(ms: number): Promise<void> {
 }
 
 function getVertexAiConfig(): VertexAiConfig {
-    const project = store.get('gcpProject');
-    const apiKey = store.get('vertexAiApiKey');
+    const config = configRepository.getRuntimeConfig();
+    const project = config.gcpProject;
+    const apiKey = config.vertexAiApiKey;
 
     if (!project || !apiKey) {
         throw new Error('API not configured. Please complete setup in the dashboard.');
@@ -39,8 +40,8 @@ function getVertexAiConfig(): VertexAiConfig {
     return {
         apiKey,
         project,
-        location: store.get('gcpLocation') || 'global',
-        model: store.get('geminiModel'),
+        location: config.gcpLocation || 'global',
+        model: config.geminiModel,
     };
 }
 

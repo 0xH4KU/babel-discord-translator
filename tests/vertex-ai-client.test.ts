@@ -12,6 +12,7 @@ vi.mock('../src/store.js', () => {
     return {
         store: {
             get: vi.fn((key: string) => data[key]),
+            getAll: vi.fn(() => ({ ...data })),
             _setMock: (key: string, value: unknown) => {
                 data[key] = value;
             },

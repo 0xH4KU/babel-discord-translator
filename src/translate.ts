@@ -1,8 +1,8 @@
 /**
  * Translate text using Vertex AI Gemini REST API.
  */
-import { store } from './store.js';
 import { fetchWithRetry, generateTranslationContent } from './infra/vertex-ai-client.js';
+import { configRepository } from './repositories/config-repository.js';
 import type { TranslationResult } from './types.js';
 
 /** Map Discord locale code to a human-readable language name for the prompt. */
@@ -85,9 +85,10 @@ ${text}`;
  * @param targetLanguage - Target language code (e.g. 'ja', 'zh-TW') or 'auto'.
  */
 export async function translate(text: string, targetLanguage: string = 'auto'): Promise<TranslationResult> {
-    const customPrompt = store.get('translationPrompt');
+    const config = configRepository.getRuntimeConfig();
+    const customPrompt = config.translationPrompt;
     const prompt = buildTranslationPrompt(text, targetLanguage, customPrompt);
-    const maxOutputTokens = store.get('maxOutputTokens') || 1000;
+    const maxOutputTokens = config.maxOutputTokens || 1000;
     return generateTranslationContent(prompt, maxOutputTokens);
 }
 

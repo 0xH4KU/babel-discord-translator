@@ -2,8 +2,10 @@
  * Daily token usage tracker with cost calculation, budget enforcement,
  * and 30-day history archiving. Supports both global and per-guild tracking.
  */
-import { store } from './store.js';
-import type { UsageCost, UsageStats, UsageHistoryDay, TokenUsage } from './types.js';
+import { configRepository } from './repositories/config-repository.js';
+import { guildBudgetRepository } from './repositories/guild-budget-repository.js';
+import { usageRepository } from './repositories/usage-repository.js';
+import type { UsageCost, UsageStats, UsageHistoryDay, TokenUsage, UsageHistoryEntry } from './types.js';
 
 class UsageTracker {
     constructor() {
@@ -12,60 +14,44 @@ class UsageTracker {
 
     /** Reset counters if the date has changed, archiving previous day. */
     ensureToday(): void {
-        const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+        const today = new Date().toISOString().slice(0, 10);
 
-        // --- Global usage ---
-        const usage = store.get('tokenUsage');
+        const usage = usageRepository.getDailyUsage();
         if (!usage || usage.date !== today) {
             if (usage && usage.date) {
-                const history = store.get('usageHistory') || [];
-                history.push({
-                    date: usage.date,
-                    inputTokens: usage.inputTokens,
-                    outputTokens: usage.outputTokens,
-                    requests: usage.requests,
-                });
+                const history = usageRepository.getUsageHistory();
+                history.push(toHistoryEntry(usage));
                 while (history.length > 30) history.shift();
-                store.set('usageHistory', history);
+                usageRepository.saveUsageHistory(history);
             }
-            store.set('tokenUsage', {
-                date: today,
-                inputTokens: 0,
-                outputTokens: 0,
-                requests: 0,
-            });
+
+            usageRepository.saveDailyUsage(createEmptyUsage(today));
         }
 
-        // --- Per-guild usage ---
-        const guildUsage = store.get('guildTokenUsage') || {};
-        let guildChanged = false;
+        const guildUsage = usageRepository.getAllGuildDailyUsage();
+        const guildHistory = usageRepository.getAllGuildUsageHistory();
+        let guildUsageChanged = false;
+        let guildHistoryChanged = false;
+
         for (const guildId of Object.keys(guildUsage)) {
-            const gu = guildUsage[guildId];
-            if (gu && gu.date !== today) {
-                // Archive this guild's yesterday data
-                const guildHistory = store.get('guildUsageHistory') || {};
-                if (!guildHistory[guildId]) guildHistory[guildId] = [];
-                guildHistory[guildId].push({
-                    date: gu.date,
-                    inputTokens: gu.inputTokens,
-                    outputTokens: gu.outputTokens,
-                    requests: gu.requests,
-                });
-                while (guildHistory[guildId].length > 30) guildHistory[guildId].shift();
-                store.set('guildUsageHistory', guildHistory);
-
-                // Reset guild usage for today
-                guildUsage[guildId] = {
-                    date: today,
-                    inputTokens: 0,
-                    outputTokens: 0,
-                    requests: 0,
-                };
-                guildChanged = true;
+            const usageEntry = guildUsage[guildId];
+            if (usageEntry && usageEntry.date !== today) {
+                const history = guildHistory[guildId] ?? [];
+                history.push(toHistoryEntry(usageEntry));
+                while (history.length > 30) history.shift();
+                guildHistory[guildId] = history;
+                guildUsage[guildId] = createEmptyUsage(today);
+                guildHistoryChanged = true;
+                guildUsageChanged = true;
             }
         }
-        if (guildChanged) {
-            store.set('guildTokenUsage', guildUsage);
+
+        if (guildHistoryChanged) {
+            usageRepository.saveAllGuildUsageHistory(guildHistory);
+        }
+
+        if (guildUsageChanged) {
+            usageRepository.saveAllGuildDailyUsage(guildUsage);
         }
     }
 
@@ -73,66 +59,47 @@ class UsageTracker {
     record(inputTokens: number, outputTokens: number, guildId?: string | null): void {
         this.ensureToday();
 
-        // Global
-        const usage = store.get('tokenUsage')!;
+        const usage = usageRepository.getDailyUsage() ?? createEmptyUsage(today());
         usage.inputTokens += inputTokens || 0;
         usage.outputTokens += outputTokens || 0;
         usage.requests += 1;
-        store.set('tokenUsage', usage);
+        usageRepository.saveDailyUsage(usage);
 
-        // Per-guild
         if (guildId) {
-            const today = new Date().toISOString().slice(0, 10);
-            const guildUsage = store.get('guildTokenUsage') || {};
-            if (!guildUsage[guildId] || guildUsage[guildId].date !== today) {
-                guildUsage[guildId] = { date: today, inputTokens: 0, outputTokens: 0, requests: 0 };
-            }
-            guildUsage[guildId].inputTokens += inputTokens || 0;
-            guildUsage[guildId].outputTokens += outputTokens || 0;
-            guildUsage[guildId].requests += 1;
-            store.set('guildTokenUsage', guildUsage);
+            const todayValue = today();
+            const guildUsage = usageRepository.getAllGuildDailyUsage();
+            const entry = guildUsage[guildId]?.date === todayValue
+                ? guildUsage[guildId]
+                : createEmptyUsage(todayValue);
+
+            entry.inputTokens += inputTokens || 0;
+            entry.outputTokens += outputTokens || 0;
+            entry.requests += 1;
+            guildUsage[guildId] = entry;
+            usageRepository.saveAllGuildDailyUsage(guildUsage);
         }
     }
 
     /** Calculate today's cost in USD (global). */
     getCost(): UsageCost {
         this.ensureToday();
-        const usage = store.get('tokenUsage')!;
-        const inputPrice = store.get('inputPricePerMillion') || 0;
-        const outputPrice = store.get('outputPricePerMillion') || 0;
+        const usage = usageRepository.getDailyUsage() ?? createEmptyUsage(today());
+        const config = configRepository.getRuntimeConfig();
 
-        const inputCost = (usage.inputTokens / 1_000_000) * inputPrice;
-        const outputCost = (usage.outputTokens / 1_000_000) * outputPrice;
-
-        return {
-            ...usage,
-            inputCost,
-            outputCost,
-            totalCost: inputCost + outputCost,
-        };
+        return withCost(usage, config.inputPricePerMillion || 0, config.outputPricePerMillion || 0);
     }
 
     /** Calculate today's cost for a specific guild. */
     getGuildCost(guildId: string): UsageCost {
         this.ensureToday();
-        const today = new Date().toISOString().slice(0, 10);
-        const guildUsage = store.get('guildTokenUsage') || {};
-        const usage: TokenUsage = guildUsage[guildId] && guildUsage[guildId].date === today
+        const todayValue = today();
+        const guildUsage = usageRepository.getAllGuildDailyUsage();
+        const usage = guildUsage[guildId] && guildUsage[guildId].date === todayValue
             ? guildUsage[guildId]
-            : { date: today, inputTokens: 0, outputTokens: 0, requests: 0 };
+            : createEmptyUsage(todayValue);
+        const config = configRepository.getRuntimeConfig();
 
-        const inputPrice = store.get('inputPricePerMillion') || 0;
-        const outputPrice = store.get('outputPricePerMillion') || 0;
-
-        const inputCost = (usage.inputTokens / 1_000_000) * inputPrice;
-        const outputCost = (usage.outputTokens / 1_000_000) * outputPrice;
-
-        return {
-            ...usage,
-            inputCost,
-            outputCost,
-            totalCost: inputCost + outputCost,
-        };
+        return withCost(usage, config.inputPricePerMillion || 0, config.outputPricePerMillion || 0);
     }
 
     /**
@@ -141,45 +108,30 @@ class UsageTracker {
      * then falls back to the global budget.
      */
     isBudgetExceeded(guildId?: string | null): boolean {
-        // Determine the effective budget
         let budget: number;
         let cost: UsageCost;
 
         if (guildId) {
-            const guildBudgets = store.get('guildBudgets') || {};
-            const guildBudget = guildBudgets[guildId];
-
-            if (guildBudget && guildBudget.dailyBudgetUsd !== undefined) {
-                // Guild has its own budget setting
-                budget = guildBudget.dailyBudgetUsd;
-                cost = this.getGuildCost(guildId);
-            } else {
-                // Fallback to global budget, but check against guild cost
-                budget = store.get('dailyBudgetUsd') || 0;
-                cost = this.getGuildCost(guildId);
-            }
+            const guildBudget = guildBudgetRepository.getBudget(guildId);
+            budget = guildBudget?.dailyBudgetUsd ?? (configRepository.getRuntimeConfig().dailyBudgetUsd || 0);
+            cost = this.getGuildCost(guildId);
         } else {
-            budget = store.get('dailyBudgetUsd') || 0;
+            budget = configRepository.getRuntimeConfig().dailyBudgetUsd || 0;
             cost = this.getCost();
         }
 
-        if (budget <= 0) return false; // 0 = unlimited
+        if (budget <= 0) return false;
         return cost.totalCost >= budget;
     }
 
     /** Get stats for dashboard display (global). */
     getStats(): UsageStats {
+        const config = configRepository.getRuntimeConfig();
         const cost = this.getCost();
-        const budget = store.get('dailyBudgetUsd') || 0;
+        const budget = config.dailyBudgetUsd || 0;
 
         return {
-            date: cost.date,
-            inputTokens: cost.inputTokens,
-            outputTokens: cost.outputTokens,
-            requests: cost.requests,
-            inputCost: cost.inputCost,
-            outputCost: cost.outputCost,
-            totalCost: cost.totalCost,
+            ...cost,
             dailyBudget: budget,
             budgetUsedPercent: budget > 0 ? Math.min((cost.totalCost / budget) * 100, 100) : 0,
             budgetExceeded: budget > 0 && cost.totalCost >= budget,
@@ -189,18 +141,11 @@ class UsageTracker {
     /** Get stats for a specific guild. */
     getGuildStats(guildId: string): UsageStats {
         const cost = this.getGuildCost(guildId);
-        const guildBudgets = store.get('guildBudgets') || {};
-        const guildBudget = guildBudgets[guildId];
-        const budget = guildBudget?.dailyBudgetUsd ?? (store.get('dailyBudgetUsd') || 0);
+        const budget = guildBudgetRepository.getBudget(guildId)?.dailyBudgetUsd
+            ?? (configRepository.getRuntimeConfig().dailyBudgetUsd || 0);
 
         return {
-            date: cost.date,
-            inputTokens: cost.inputTokens,
-            outputTokens: cost.outputTokens,
-            requests: cost.requests,
-            inputCost: cost.inputCost,
-            outputCost: cost.outputCost,
-            totalCost: cost.totalCost,
+            ...cost,
             dailyBudget: budget,
             budgetUsedPercent: budget > 0 ? Math.min((cost.totalCost / budget) * 100, 100) : 0,
             budgetExceeded: budget > 0 && cost.totalCost >= budget,
@@ -210,31 +155,64 @@ class UsageTracker {
     /** Get global usage history (last 30 days) with cost calculations. */
     getHistory(): UsageHistoryDay[] {
         this.ensureToday();
-        const history = store.get('usageHistory') || [];
-        const inputPrice = store.get('inputPricePerMillion') || 0;
-        const outputPrice = store.get('outputPricePerMillion') || 0;
+        const history = usageRepository.getUsageHistory();
+        const config = configRepository.getRuntimeConfig();
 
         return history.map((day) => ({
             ...day,
             totalTokens: day.inputTokens + day.outputTokens,
-            cost: (day.inputTokens / 1_000_000) * inputPrice + (day.outputTokens / 1_000_000) * outputPrice,
+            cost: (day.inputTokens / 1_000_000) * (config.inputPricePerMillion || 0)
+                + (day.outputTokens / 1_000_000) * (config.outputPricePerMillion || 0),
         }));
     }
 
     /** Get usage history for a specific guild (last 30 days). */
     getGuildHistory(guildId: string): UsageHistoryDay[] {
         this.ensureToday();
-        const guildHistory = store.get('guildUsageHistory') || {};
-        const history = guildHistory[guildId] || [];
-        const inputPrice = store.get('inputPricePerMillion') || 0;
-        const outputPrice = store.get('outputPricePerMillion') || 0;
+        const history = usageRepository.getAllGuildUsageHistory()[guildId] || [];
+        const config = configRepository.getRuntimeConfig();
 
         return history.map((day) => ({
             ...day,
             totalTokens: day.inputTokens + day.outputTokens,
-            cost: (day.inputTokens / 1_000_000) * inputPrice + (day.outputTokens / 1_000_000) * outputPrice,
+            cost: (day.inputTokens / 1_000_000) * (config.inputPricePerMillion || 0)
+                + (day.outputTokens / 1_000_000) * (config.outputPricePerMillion || 0),
         }));
     }
+}
+
+function today(): string {
+    return new Date().toISOString().slice(0, 10);
+}
+
+function createEmptyUsage(date: string): TokenUsage {
+    return {
+        date,
+        inputTokens: 0,
+        outputTokens: 0,
+        requests: 0,
+    };
+}
+
+function toHistoryEntry(usage: TokenUsage): UsageHistoryEntry {
+    return {
+        date: usage.date,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        requests: usage.requests,
+    };
+}
+
+function withCost(usage: TokenUsage, inputPrice: number, outputPrice: number): UsageCost {
+    const inputCost = (usage.inputTokens / 1_000_000) * inputPrice;
+    const outputCost = (usage.outputTokens / 1_000_000) * outputPrice;
+
+    return {
+        ...usage,
+        inputCost,
+        outputCost,
+        totalCost: inputCost + outputCost,
+    };
 }
 
 export const usage = new UsageTracker();

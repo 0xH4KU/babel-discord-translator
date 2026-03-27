@@ -2,11 +2,13 @@ import express, { type Request, type Response } from 'express';
 import http from 'http';
 import rateLimit from 'express-rate-limit';
 import { config } from './config.js';
-import { store } from './store.js';
 import { usage } from './usage.js';
 import { translate } from './translate.js';
 import { createDashboardAuth } from './auth/dashboard-auth.js';
 import { checkVertexAiHealth } from './infra/vertex-ai-client.js';
+import { configRepository } from './repositories/config-repository.js';
+import { guildBudgetRepository } from './repositories/guild-budget-repository.js';
+import { userPreferenceRepository } from './repositories/user-preference-repository.js';
 import { applyConfigUpdateEffects } from './services/config-runtime-effects.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -131,7 +133,7 @@ export function createDashboardApp({ cache, cooldown, log, client, getStats }: D
     });
 
     app.get('/api/setup-status', auth.requireAuth, (_req: Request, res: Response) => {
-        res.json({ complete: store.isSetupComplete() });
+        res.json({ complete: configRepository.isSetupComplete() });
     });
 
     app.get('/api/stats', auth.requireAuth, (_req: Request, res: Response) => {
@@ -139,8 +141,8 @@ export function createDashboardApp({ cache, cooldown, log, client, getStats }: D
         const cacheStats = cache.stats();
         const usageStats = usage.getStats();
 
-        const guildBudgetConfigs = store.get('guildBudgets') || {};
-        const globalBudget = store.get('dailyBudgetUsd') || 0;
+        const guildBudgetConfigs = guildBudgetRepository.listBudgets();
+        const globalBudget = configRepository.getRuntimeConfig().dailyBudgetUsd || 0;
         const guildBudgetList = client.guilds.cache.map((guild) => {
             const guildCfg = guildBudgetConfigs[guild.id];
             const hasCustom = guildCfg && guildCfg.dailyBudgetUsd !== undefined;
@@ -178,7 +180,7 @@ export function createDashboardApp({ cache, cooldown, log, client, getStats }: D
     });
 
     app.get('/api/config', auth.requireAuth, (_req: Request, res: Response) => {
-        const cfg = store.getAll();
+        const cfg = configRepository.getDashboardConfig();
         res.json({
             ...cfg,
             vertexAiApiKey: cfg.vertexAiApiKey
@@ -195,10 +197,10 @@ export function createDashboardApp({ cache, cooldown, log, client, getStats }: D
             return;
         }
 
-        const currentConfig = store.getAll();
+        const currentConfig = configRepository.getDashboardConfig();
         const effects = applyConfigUpdateEffects(currentConfig, sanitized, { cache, cooldown });
 
-        store.update(sanitized);
+        configRepository.updateConfig(sanitized);
 
         res.json({
             ok: true,
@@ -228,7 +230,7 @@ export function createDashboardApp({ cache, cooldown, log, client, getStats }: D
     });
 
     app.get('/api/guild-budgets', auth.requireAuth, (_req: Request, res: Response) => {
-        const guildBudgets = store.get('guildBudgets') || {};
+        const guildBudgets = guildBudgetRepository.listBudgets();
         const guilds = client.guilds.cache;
         const result: Record<string, { name: string; budget: number; usage: ReturnType<typeof usage.getGuildStats> }> = {};
 
@@ -247,9 +249,7 @@ export function createDashboardApp({ cache, cooldown, log, client, getStats }: D
         const { dailyBudgetUsd } = req.body;
 
         if (dailyBudgetUsd === null || dailyBudgetUsd === undefined) {
-            const guildBudgets = store.get('guildBudgets') || {};
-            delete guildBudgets[guildId];
-            store.set('guildBudgets', guildBudgets);
+            guildBudgetRepository.clearBudget(guildId);
             res.json({ ok: true, mode: 'global' });
             return;
         }
@@ -260,9 +260,7 @@ export function createDashboardApp({ cache, cooldown, log, client, getStats }: D
             return;
         }
 
-        const guildBudgets = store.get('guildBudgets') || {};
-        guildBudgets[guildId] = { dailyBudgetUsd: v };
-        store.set('guildBudgets', guildBudgets);
+        guildBudgetRepository.setBudget(guildId, v);
         res.json({ ok: true, budget: v });
     });
 
@@ -273,7 +271,7 @@ export function createDashboardApp({ cache, cooldown, log, client, getStats }: D
     });
 
     app.get('/api/user-prefs', auth.requireAuth, (_req: Request, res: Response) => {
-        const prefs = store.get('userLanguagePrefs') || {};
+        const prefs = userPreferenceRepository.listPreferences();
         res.json({
             prefs,
             count: Object.keys(prefs).length,
@@ -281,11 +279,8 @@ export function createDashboardApp({ cache, cooldown, log, client, getStats }: D
     });
 
     app.delete('/api/user-prefs/:userId', auth.requireAuth, auth.requireCsrf, (req: Request, res: Response) => {
-        const prefs = store.get('userLanguagePrefs') || {};
         const userId = req.params.userId as string;
-        if (prefs[userId]) {
-            delete prefs[userId];
-            store.set('userLanguagePrefs', prefs);
+        if (userPreferenceRepository.clearLanguage(userId)) {
             res.json({ ok: true, deleted: userId });
         } else {
             res.status(404).json({ error: 'User not found' });

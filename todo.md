@@ -158,19 +158,19 @@
 
 ### P1-1. 將單一 JSON Store 拆分為明確的 Repository 邊界
 
-- [ ] 定義 repository 介面，而不是在各模組直接使用 `store.get/set/update`
-- [ ] 至少拆出以下邊界
-- [ ] `ConfigRepository`
-- [ ] `UsageRepository`
-- [ ] `UserPreferenceRepository`
-- [ ] `SessionRepository`
-- [ ] `GuildBudgetRepository`
-- [ ] 禁止 command / route 直接操作原始資料結構
+- [x] 定義 repository 介面，而不是在各模組直接使用 `store.get/set/update`
+- [x] 至少拆出以下邊界
+- [x] `ConfigRepository`
+- [x] `UsageRepository`
+- [x] `UserPreferenceRepository`
+- [x] `SessionRepository`
+- [x] `GuildBudgetRepository`
+- [x] 禁止 command / route 直接操作原始資料結構
 
 完成標準
 
-- `store` 不再是整個系統的共享全域資料入口
-- domain logic 依賴介面，不依賴具體 JSON 格式
+- [x] `store` 不再是整個系統的共享全域資料入口
+- [x] domain logic 依賴介面，不依賴具體 JSON 格式
 
 ### P1-2. 將資料持久化從 JSON 升級到 SQLite
 

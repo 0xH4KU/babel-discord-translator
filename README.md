@@ -31,6 +31,7 @@ Right-click any message → *Babel* → Get an ephemeral translation only you ca
 - **Translation & Error Logs** — In-memory audit log with filter tabs
 - **Custom Prompt** — Customize the translation prompt from the dashboard
 - **Shared Vertex AI Client** — Translation and API health checks use one centralized client with unified timeout and retry handling
+- **Repository Boundaries** — Commands, services, and dashboard routes talk to focused repositories instead of reaching into the raw JSON store directly
 - **Web Dashboard** — Login-protected admin panel with setup wizard
 - **Modular Dashboard Auth** — Session, cookie, password, and CSRF handling live in dedicated auth modules instead of the route file
 - **Unified Config Runtime Effects** — Dashboard config changes flow through one hook that applies immediate runtime updates and cache invalidation rules
@@ -158,6 +159,12 @@ src/
 ├── cooldown.ts       # Per-user rate limiter
 ├── log.ts            # In-memory ring buffer audit log
 ├── store.ts          # File-based config persistence
+├── repositories/
+│   ├── config-repository.ts      # Runtime/dashboard config boundary over the JSON store
+│   ├── guild-budget-repository.ts # Per-guild budget persistence boundary
+│   ├── store-data-normalizer.ts  # Repository-side normalization and defensive cloning
+│   ├── usage-repository.ts       # Daily usage and history persistence boundary
+│   └── user-preference-repository.ts # User language preference persistence boundary
 ├── usage.ts          # Token usage tracking & per-server budget enforcement
 ├── dashboard.ts      # Dashboard app factory + HTTP server bootstrap
 ├── shutdown.ts       # Graceful shutdown orchestration for Discord + HTTP

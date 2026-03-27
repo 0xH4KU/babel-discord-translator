@@ -2,18 +2,23 @@ import { buildTranslationCacheKey, type TranslationCache } from '../cache.js';
 import type { CooldownManager } from '../cooldown.js';
 import type { TranslationLog } from '../log.js';
 import { isSameLanguage, localeToLang } from '../lang.js';
-import { store } from '../store.js';
+import { configRepository, type RuntimeConfig } from '../repositories/config-repository.js';
+import { userPreferenceRepository } from '../repositories/user-preference-repository.js';
 import { usage } from '../usage.js';
 import { translate, resolveSystemPrompt } from '../translate.js';
 import { sanitizeError } from '../commands/shared.js';
-import type { BotStats, StoreData, TranslationResult } from '../types.js';
+import type { BotStats, TranslationResult } from '../types.js';
 
 type ServiceCommand = 'babel' | 'translate';
 type LangSource = 'option' | 'setlang' | 'locale' | 'auto';
 
-interface StoreLike {
-    get<K extends keyof StoreData>(key: K): StoreData[K];
+interface ConfigRepositoryLike {
+    getRuntimeConfig(): RuntimeConfig;
     isSetupComplete(): boolean;
+}
+
+interface UserPreferenceRepositoryLike {
+    getLanguage(userId: string): string | null;
 }
 
 interface UsageLike {
@@ -60,7 +65,8 @@ export interface TranslationServiceDeps {
     cooldown: CooldownManager;
     log: TranslationLog;
     stats: BotStats;
-    configStore?: StoreLike;
+    configStore?: ConfigRepositoryLike;
+    userPreferenceStore?: UserPreferenceRepositoryLike;
     usageTracker?: UsageLike;
     translator?: Translator;
 }
@@ -95,7 +101,8 @@ export function createTranslationService({
     cooldown,
     log,
     stats,
-    configStore = store,
+    configStore = configRepository,
+    userPreferenceStore = userPreferenceRepository,
     usageTracker = usage,
     translator = translate,
 }: TranslationServiceDeps): TranslationService {
@@ -107,7 +114,8 @@ export function createTranslationService({
                 return { status: 'blocked', message: messages.setupIncomplete };
             }
 
-            const allowedGuilds = configStore.get('allowedGuildIds');
+            const runtimeConfig = configStore.getRuntimeConfig();
+            const allowedGuilds = runtimeConfig.allowedGuildIds;
             if (!request.guildId || !allowedGuilds.includes(request.guildId)) {
                 return { status: 'blocked', message: 'This server is not authorized.' };
             }
@@ -126,7 +134,7 @@ export function createTranslationService({
                 return { status: 'blocked', message: messages.emptyText };
             }
 
-            const maxInputLength = configStore.get('maxInputLength') || 2000;
+            const maxInputLength = runtimeConfig.maxInputLength || 2000;
             if (originalText.length > maxInputLength) {
                 return {
                     status: 'blocked',
@@ -134,21 +142,18 @@ export function createTranslationService({
                 };
             }
 
-            const { targetLanguage, langSource } = resolveTargetLanguage(request, configStore);
+            const { targetLanguage, langSource } = resolveTargetLanguage(request, userPreferenceStore);
             if (isSameLanguage(originalText, targetLanguage, request.locale)) {
                 return { status: 'blocked', message: messages.sameLanguage };
             }
 
-            const geminiModel = configStore.get('geminiModel');
-            const translationPrompt = configStore.get('translationPrompt');
-            const maxOutputTokens = configStore.get('maxOutputTokens') || 1000;
-            const prompt = resolveSystemPrompt(targetLanguage, translationPrompt);
+            const prompt = resolveSystemPrompt(targetLanguage, runtimeConfig.translationPrompt);
             const cacheKey = buildTranslationCacheKey({
                 sourceText: originalText,
                 targetLanguage,
-                geminiModel,
+                geminiModel: runtimeConfig.geminiModel,
                 prompt,
-                maxOutputTokens,
+                maxOutputTokens: runtimeConfig.maxOutputTokens || 1000,
             });
 
             let deferred = false;
@@ -214,9 +219,11 @@ export function createTranslationService({
     };
 }
 
-function resolveTargetLanguage(request: Pick<TranslationServiceRequest, 'locale' | 'targetLanguageOption' | 'userId'>, configStore: StoreLike): TargetLanguageDecision {
-    const userPrefs = configStore.get('userLanguagePrefs') || {};
-    const userPreference = userPrefs[request.userId];
+function resolveTargetLanguage(
+    request: Pick<TranslationServiceRequest, 'locale' | 'targetLanguageOption' | 'userId'>,
+    preferenceStore: UserPreferenceRepositoryLike,
+): TargetLanguageDecision {
+    const userPreference = preferenceStore.getLanguage(request.userId);
     const localeLanguage = localeToLang(request.locale);
 
     if (request.targetLanguageOption && request.targetLanguageOption !== 'auto') {

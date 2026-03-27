@@ -11,10 +11,12 @@ vi.mock('../src/store.js', () => {
         gcpLocation: 'global',
         vertexAiApiKey: 'test-api-key',
         translationPrompt: '',
+        maxOutputTokens: 1000,
     };
     return {
         store: {
             get: vi.fn((key: string) => data[key]),
+            getAll: vi.fn(() => ({ ...data })),
             _setMock: (key: string, val: unknown) => { data[key] = val; },
         },
     };

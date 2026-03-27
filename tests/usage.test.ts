@@ -6,6 +6,7 @@ const mockData: Record<string, unknown> = vi.hoisted(() => ({}));
 vi.mock('../src/store.js', () => ({
     store: {
         get: vi.fn((key: string) => mockData[key]),
+        getAll: vi.fn(() => ({ ...mockData })),
         set: vi.fn((key: string, val: unknown) => { mockData[key] = val; }),
     },
 }));
