@@ -25,7 +25,17 @@ vi.mock('../src/store.js', () => {
         store: {
             get: vi.fn((key: string) => data[key]),
             getAll: vi.fn(() => ({ ...data })),
-            _setMock: (key: string, val: unknown) => { data[key] = val; },
+            getConfigValues: vi.fn((keys: readonly string[]) =>
+                Object.fromEntries(
+                    keys.map((key) => {
+                        const value = data[key];
+                        return [key, Array.isArray(value) ? [...value] : value];
+                    }),
+                ),
+            ),
+            _setMock: (key: string, val: unknown) => {
+                data[key] = val;
+            },
         },
     };
 });
@@ -38,10 +48,14 @@ function geminiResponse(text: string, inputTokens = 10, outputTokens = 5) {
     return {
         ok: true,
         status: 200,
-        json: () => Promise.resolve({
-            candidates: [{ content: { parts: [{ text }] } }],
-            usageMetadata: { promptTokenCount: inputTokens, candidatesTokenCount: outputTokens },
-        }),
+        json: () =>
+            Promise.resolve({
+                candidates: [{ content: { parts: [{ text }] } }],
+                usageMetadata: {
+                    promptTokenCount: inputTokens,
+                    candidatesTokenCount: outputTokens,
+                },
+            }),
         text: () => Promise.resolve(''),
     };
 }
@@ -116,9 +130,7 @@ describe('fetchWithRetry', () => {
     it('should retry on 429 and eventually succeed', async () => {
         const fail = { ok: false, status: 429 } as Response;
         const success = { ok: true, status: 200 } as Response;
-        globalThis.fetch = vi.fn()
-            .mockResolvedValueOnce(fail)
-            .mockResolvedValueOnce(success);
+        globalThis.fetch = vi.fn().mockResolvedValueOnce(fail).mockResolvedValueOnce(success);
 
         vi.useFakeTimers();
         const promise = fetchWithRetry('https://example.com', {}, 3);
@@ -132,7 +144,8 @@ describe('fetchWithRetry', () => {
 
     it('should retry on network error and eventually succeed', async () => {
         const success = { ok: true, status: 200 } as Response;
-        globalThis.fetch = vi.fn()
+        globalThis.fetch = vi
+            .fn()
             .mockRejectedValueOnce(new Error('Network error'))
             .mockResolvedValueOnce(success);
 
@@ -162,7 +175,10 @@ describe('fetchWithRetry', () => {
 
 describe('translate', () => {
     let originalFetch: typeof globalThis.fetch;
-    const mockStore = store as unknown as { _setMock: (key: string, val: unknown) => void; get: ReturnType<typeof vi.fn> };
+    const mockStore = store as unknown as {
+        _setMock: (key: string, val: unknown) => void;
+        get: ReturnType<typeof vi.fn>;
+    };
 
     beforeEach(() => {
         originalFetch = globalThis.fetch;
@@ -218,7 +234,9 @@ describe('translate', () => {
 
         await translate('Hello');
 
-        const body = JSON.parse((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
+        const body = JSON.parse(
+            (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body,
+        );
         expect(body.contents[0].parts[0].text).toContain('Custom: translate to Pirate English');
     });
 
@@ -227,7 +245,9 @@ describe('translate', () => {
 
         await translate('Hello', 'ja');
 
-        const body = JSON.parse((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
+        const body = JSON.parse(
+            (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body,
+        );
         expect(body.contents[0].parts[0].text).toContain('Japanese');
     });
 
@@ -236,7 +256,9 @@ describe('translate', () => {
 
         await translate('Hello', 'auto');
 
-        const body = JSON.parse((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
+        const body = JSON.parse(
+            (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body,
+        );
         expect(body.contents[0].parts[0].text).toContain('If the text is Chinese');
     });
 

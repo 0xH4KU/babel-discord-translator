@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { checkVertexAiHealth, generateTranslationContent, _test } from '../src/infra/vertex-ai-client.js';
+import {
+    checkVertexAiHealth,
+    generateTranslationContent,
+    _test,
+} from '../src/infra/vertex-ai-client.js';
 
 vi.mock('../src/store.js', () => {
     const data: Record<string, unknown> = {
@@ -23,6 +27,14 @@ vi.mock('../src/store.js', () => {
         store: {
             get: vi.fn((key: string) => data[key]),
             getAll: vi.fn(() => ({ ...data })),
+            getConfigValues: vi.fn((keys: readonly string[]) =>
+                Object.fromEntries(
+                    keys.map((key) => {
+                        const value = data[key];
+                        return [key, Array.isArray(value) ? [...value] : value];
+                    }),
+                ),
+            ),
             _setMock: (key: string, value: unknown) => {
                 data[key] = value;
             },
@@ -36,10 +48,14 @@ function geminiResponse(text: string, inputTokens = 10, outputTokens = 5) {
     return {
         ok: true,
         status: 200,
-        json: () => Promise.resolve({
-            candidates: [{ content: { parts: [{ text }] } }],
-            usageMetadata: { promptTokenCount: inputTokens, candidatesTokenCount: outputTokens },
-        }),
+        json: () =>
+            Promise.resolve({
+                candidates: [{ content: { parts: [{ text }] } }],
+                usageMetadata: {
+                    promptTokenCount: inputTokens,
+                    candidatesTokenCount: outputTokens,
+                },
+            }),
         text: () => Promise.resolve(''),
     };
 }
@@ -103,11 +119,13 @@ describe('vertex-ai-client', () => {
     it('should build the correct regional endpoint URL', () => {
         const { buildGenerateContentUrl } = _test;
 
-        expect(buildGenerateContentUrl({
-            apiKey: 'key',
-            project: 'project-1',
-            location: 'us-central1',
-            model: 'gemini-2.5-flash-lite',
-        })).toContain('https://us-central1-aiplatform.googleapis.com');
+        expect(
+            buildGenerateContentUrl({
+                apiKey: 'key',
+                project: 'project-1',
+                location: 'us-central1',
+                model: 'gemini-2.5-flash-lite',
+            }),
+        ).toContain('https://us-central1-aiplatform.googleapis.com');
     });
 });

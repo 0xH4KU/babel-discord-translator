@@ -59,6 +59,10 @@ function cloneGuildUsageHistory(
     );
 }
 
+function cloneConfigValue<K extends ConfigValueKey>(value: StoreData[K]): StoreData[K] {
+    return Array.isArray(value) ? ([...value] as StoreData[K]) : value;
+}
+
 export class ConfigStore {
     private readonly db: DatabaseSync;
 
@@ -134,25 +138,43 @@ export class ConfigStore {
         });
     }
 
+    getConfigValues<K extends ConfigValueKey>(keys: readonly K[]): Pick<StoreData, K> {
+        if (keys.length === 0) {
+            return {} as Pick<StoreData, K>;
+        }
+
+        const placeholders = keys.map(() => '?').join(', ');
+        const rows = this.db
+            .prepare(
+                `
+            SELECT key, value_json
+            FROM app_config
+            WHERE key IN (${placeholders})
+        `,
+            )
+            .all(...keys) as Array<{ key: K; value_json: string }>;
+
+        const valuesByKey = new Map(rows.map((row) => [row.key, row.value_json]));
+        const result = {} as Pick<StoreData, K>;
+
+        for (const key of keys) {
+            const valueJson = valuesByKey.get(key);
+            const value =
+                valueJson === undefined
+                    ? structuredClone(DEFAULT_STORE_DATA[key])
+                    : (JSON.parse(valueJson) as StoreData[K]);
+            result[key] = cloneConfigValue(value);
+        }
+
+        return result;
+    }
+
     getAll(): StoreData {
         return {
-            vertexAiApiKey: this.getConfigValue('vertexAiApiKey'),
-            gcpProject: this.getConfigValue('gcpProject'),
-            gcpLocation: this.getConfigValue('gcpLocation'),
-            geminiModel: this.getConfigValue('geminiModel'),
-            allowedGuildIds: [...this.getConfigValue('allowedGuildIds')],
-            cooldownSeconds: this.getConfigValue('cooldownSeconds'),
-            cacheMaxSize: this.getConfigValue('cacheMaxSize'),
-            setupComplete: this.getConfigValue('setupComplete'),
-            inputPricePerMillion: this.getConfigValue('inputPricePerMillion'),
-            outputPricePerMillion: this.getConfigValue('outputPricePerMillion'),
-            dailyBudgetUsd: this.getConfigValue('dailyBudgetUsd'),
+            ...this.getConfigValues(CONFIG_VALUE_KEYS),
             tokenUsage: cloneTokenUsage(this.getDailyUsage()),
             usageHistory: cloneUsageHistory(this.getUsageHistory()),
-            translationPrompt: this.getConfigValue('translationPrompt'),
             userLanguagePrefs: { ...this.getUserLanguagePrefs() },
-            maxInputLength: this.getConfigValue('maxInputLength'),
-            maxOutputTokens: this.getConfigValue('maxOutputTokens'),
             guildBudgets: cloneGuildBudgets(this.getGuildBudgets()),
             guildTokenUsage: cloneGuildUsage(this.getGuildTokenUsage()),
             guildUsageHistory: cloneGuildUsageHistory(this.getGuildUsageHistory()),

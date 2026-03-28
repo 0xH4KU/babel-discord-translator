@@ -7,7 +7,17 @@ vi.mock('../src/store.js', () => ({
     store: {
         get: vi.fn((key: string) => mockData[key]),
         getAll: vi.fn(() => ({ ...mockData })),
-        set: vi.fn((key: string, val: unknown) => { mockData[key] = val; }),
+        getConfigValues: vi.fn((keys: readonly string[]) =>
+            Object.fromEntries(
+                keys.map((key) => {
+                    const value = mockData[key];
+                    return [key, Array.isArray(value) ? [...value] : value];
+                }),
+            ),
+        ),
+        set: vi.fn((key: string, val: unknown) => {
+            mockData[key] = val;
+        }),
     },
 }));
 
@@ -37,7 +47,11 @@ describe('UsageTracker', () => {
     it('should record token usage', () => {
         usage.record(100, 50);
 
-        const data = mockData.tokenUsage as { inputTokens: number; outputTokens: number; requests: number };
+        const data = mockData.tokenUsage as {
+            inputTokens: number;
+            outputTokens: number;
+            requests: number;
+        };
         expect(data.inputTokens).toBe(100);
         expect(data.outputTokens).toBe(50);
         expect(data.requests).toBe(1);
@@ -47,14 +61,18 @@ describe('UsageTracker', () => {
         usage.record(100, 50);
         usage.record(200, 100);
 
-        const data = mockData.tokenUsage as { inputTokens: number; outputTokens: number; requests: number };
+        const data = mockData.tokenUsage as {
+            inputTokens: number;
+            outputTokens: number;
+            requests: number;
+        };
         expect(data.inputTokens).toBe(300);
         expect(data.outputTokens).toBe(150);
         expect(data.requests).toBe(2);
     });
 
     it('should calculate cost correctly', () => {
-        mockData.inputPricePerMillion = 1.0;  // $1/M input tokens
+        mockData.inputPricePerMillion = 1.0; // $1/M input tokens
         mockData.outputPricePerMillion = 2.0; // $2/M output tokens
 
         usage.record(1_000_000, 500_000);
@@ -173,7 +191,11 @@ describe('UsageTracker', () => {
         usage.record(0, 0);
         usage.record(undefined as unknown as number, undefined as unknown as number);
 
-        const data = mockData.tokenUsage as { inputTokens: number; outputTokens: number; requests: number };
+        const data = mockData.tokenUsage as {
+            inputTokens: number;
+            outputTokens: number;
+            requests: number;
+        };
         expect(data.inputTokens).toBe(0);
         expect(data.outputTokens).toBe(0);
         expect(data.requests).toBe(2);
@@ -189,7 +211,10 @@ describe('UsageTracker', () => {
             expect(global.inputTokens).toBe(100);
             expect(global.requests).toBe(1);
 
-            const guildUsage = mockData.guildTokenUsage as Record<string, { inputTokens: number; requests: number }>;
+            const guildUsage = mockData.guildTokenUsage as Record<
+                string,
+                { inputTokens: number; requests: number }
+            >;
             expect(guildUsage['guild-123'].inputTokens).toBe(100);
             expect(guildUsage['guild-123'].requests).toBe(1);
         });
@@ -199,7 +224,10 @@ describe('UsageTracker', () => {
             usage.record(200, 100, 'guild-B');
             usage.record(50, 25, 'guild-A');
 
-            const guildUsage = mockData.guildTokenUsage as Record<string, { inputTokens: number; outputTokens: number; requests: number }>;
+            const guildUsage = mockData.guildTokenUsage as Record<
+                string,
+                { inputTokens: number; outputTokens: number; requests: number }
+            >;
             expect(guildUsage['guild-A'].inputTokens).toBe(150);
             expect(guildUsage['guild-A'].outputTokens).toBe(75);
             expect(guildUsage['guild-A'].requests).toBe(2);
@@ -285,13 +313,19 @@ describe('UsageTracker', () => {
 
             usage.ensureToday();
 
-            const guildHistory = mockData.guildUsageHistory as Record<string, Array<{ date: string; inputTokens: number }>>;
+            const guildHistory = mockData.guildUsageHistory as Record<
+                string,
+                Array<{ date: string; inputTokens: number }>
+            >;
             expect(guildHistory['guild-A']).toHaveLength(1);
             expect(guildHistory['guild-A'][0].date).toBe('2025-01-01');
             expect(guildHistory['guild-A'][0].inputTokens).toBe(300);
 
             // Current usage should be reset
-            const guildUsage = mockData.guildTokenUsage as Record<string, { date: string; inputTokens: number }>;
+            const guildUsage = mockData.guildTokenUsage as Record<
+                string,
+                { date: string; inputTokens: number }
+            >;
             expect(guildUsage['guild-A'].date).toBe(today);
             expect(guildUsage['guild-A'].inputTokens).toBe(0);
         });
@@ -301,7 +335,12 @@ describe('UsageTracker', () => {
             mockData.outputPricePerMillion = 2.0;
             mockData.guildUsageHistory = {
                 'guild-Y': [
-                    { date: '2025-01-01', inputTokens: 1_000_000, outputTokens: 500_000, requests: 5 },
+                    {
+                        date: '2025-01-01',
+                        inputTokens: 1_000_000,
+                        outputTokens: 500_000,
+                        requests: 5,
+                    },
                 ],
             };
 

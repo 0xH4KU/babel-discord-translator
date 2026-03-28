@@ -45,19 +45,8 @@ export interface ConfigRepository {
 }
 
 class StoreBackedConfigRepository implements ConfigRepository {
-    /**
-     * Get runtime configuration in a single batch read from the store.
-     * Uses store.getAll() instead of N individual store.get() calls.
-     */
     getRuntimeConfig(): RuntimeConfig {
-        const all = store.getAll();
-        const result = {} as Record<string, unknown>;
-        for (const key of RUNTIME_CONFIG_KEYS) {
-            const value = all[key];
-            // Deep copy arrays to prevent mutation of store state
-            result[key] = Array.isArray(value) ? [...value] : value;
-        }
-        return result as RuntimeConfig;
+        return store.getConfigValues(RUNTIME_CONFIG_KEYS) as RuntimeConfig;
     }
 
     getDashboardConfig(): StoreData {

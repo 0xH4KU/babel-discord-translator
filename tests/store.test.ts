@@ -94,6 +94,30 @@ describe('ConfigStore', () => {
         store.close();
     });
 
+    it('should return only requested config keys and preserve defensive copies', async () => {
+        const { ConfigStore } = await importStoreModule();
+        const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+
+        store.update({
+            cooldownSeconds: 12,
+            allowedGuildIds: ['guild-1'],
+            userLanguagePrefs: { user1: 'ja' },
+        });
+
+        const runtimeConfig = store.getConfigValues(['cooldownSeconds', 'allowedGuildIds']);
+        runtimeConfig.allowedGuildIds.push('guild-2');
+
+        expect(runtimeConfig).toEqual({
+            cooldownSeconds: 12,
+            allowedGuildIds: ['guild-1', 'guild-2'],
+        });
+        expect(Object.keys(runtimeConfig).sort()).toEqual(['allowedGuildIds', 'cooldownSeconds']);
+        expect(store.get('cooldownSeconds')).toBe(12);
+        expect(store.get('allowedGuildIds')).toEqual(['guild-1']);
+        expect(store.get('userLanguagePrefs')).toEqual({ user1: 'ja' });
+        store.close();
+    });
+
     it('should report isSetupComplete correctly', async () => {
         const { ConfigStore } = await importStoreModule();
         const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
@@ -106,11 +130,14 @@ describe('ConfigStore', () => {
     });
 
     it('should import legacy JSON data into a fresh SQLite database', async () => {
-        writeFileSync(legacyConfigPath, JSON.stringify({
-            cooldownSeconds: 10,
-            setupComplete: true,
-            userLanguagePrefs: { user2: 'ko' },
-        }));
+        writeFileSync(
+            legacyConfigPath,
+            JSON.stringify({
+                cooldownSeconds: 10,
+                setupComplete: true,
+                userLanguagePrefs: { user2: 'ko' },
+            }),
+        );
 
         const { ConfigStore } = await importStoreModule();
         const store = new ConfigStore({ dbPath, legacyConfigPath });

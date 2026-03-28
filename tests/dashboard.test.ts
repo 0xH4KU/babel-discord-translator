@@ -44,6 +44,14 @@ vi.mock('../src/store.js', () => {
             }),
             update: vi.fn((obj: Record<string, unknown>) => Object.assign(data, obj)),
             getAll: vi.fn(() => ({ ...data })),
+            getConfigValues: vi.fn((keys: readonly string[]) =>
+                Object.fromEntries(
+                    keys.map((key) => {
+                        const value = data[key];
+                        return [key, Array.isArray(value) ? [...value] : value];
+                    }),
+                ),
+            ),
             isSetupComplete: vi.fn(() => data.setupComplete),
         },
     };
