@@ -316,6 +316,7 @@ npm run build           # Build for production
 npm start               # Run the production artifact
 npm run db:migrate      # Import legacy JSON → SQLite
 npm run db:export:json  # Export SQLite → JSON
+npm run benchmark:runtime-config -- 20000  # Compare config-only reads vs full store snapshots
 ```
 
 ### Pre-commit Hooks
@@ -326,7 +327,7 @@ Hooks are installed automatically on normal local Git checkouts. The `prepare` s
 
 ### Test Coverage
 
-173 tests across 22 suites covering all modules:
+181 tests across 23 suites covering all modules:
 
 | Suite | Tests | Covers |
 |---|---|---|
@@ -339,18 +340,29 @@ Hooks are installed automatically on normal local Git checkouts. The `prepare` s
 | `log.test.ts` | 14 | Ring buffer, addError, type filtering, O(1) error counter |
 | `lang.test.ts` | 29 | Script detection (CJK/Cyrillic/Arabic/Thai/Hindi), locale mapping, same-language check |
 | `dashboard-auth.test.ts` | 4 | scrypt auth flow, CSRF enforcement, session expiry cleanup |
-| `translation-runtime-limiter.test.ts` | 3 | FIFO queueing, per-user outstanding cap, per-guild/global queue shedding |
-| `translation-service.test.ts` | 9 | Shared workflow, cache hits, runtime shedding, budget/error handling |
-| `translate-command.test.ts` | 1 | `/translate` delegates delivery to webhook service |
-| `webhook-service.test.ts` | 4 | Stale webhook recovery, error classification, LRU webhook cache eviction |
-| `vertex-ai-client.test.ts` | 4 | Shared transport, timeout wiring, health checks, endpoint resolution |
-| `translate.test.ts` | 20 | Retry logic, prompt building, API errors, URL routing |
-| `usage.test.ts` | 23 | Cost calculation, per-server budget enforcement, global fallback, day rollover |
-| `store.test.ts` | 7 | SQLite persistence, legacy JSON import, defaults, copy safety |
-| `structured-logger.test.ts` | 2 | JSON shape, inherited request context, secret redaction |
+| `prepare-husky.test.ts` | 5 | Husky prepare skip logic for CI, missing git metadata, Windows/local execution |
 | `sqlite-session-repository.test.ts` | 2 | Persistent session storage, enumeration, delete/clear |
 | `dashboard.test.ts` | 17 | Auth flow, health endpoints, stats, config protection, async error handling |
+| `translation-runtime-limiter.test.ts` | 3 | FIFO queueing, per-user outstanding cap, per-guild/global queue shedding |
+| `translation-service.test.ts` | 10 | Shared workflow, cache hits, runtime shedding, budget/error handling, runtime config access pattern |
+| `translate-command.test.ts` | 1 | `/translate` delegates delivery to webhook service |
+| `translate.test.ts` | 20 | Retry logic, prompt building, API errors, URL routing |
+| `usage.test.ts` | 25 | Cost calculation, per-server budget enforcement, global fallback, day rollover, runtime config access pattern |
+| `webhook-service.test.ts` | 4 | Stale webhook recovery, error classification, LRU webhook cache eviction |
+| `vertex-ai-client.test.ts` | 4 | Shared transport, timeout wiring, health checks, endpoint resolution |
+| `store.test.ts` | 8 | SQLite persistence, legacy JSON import, defaults, copy safety, config-only reads |
+| `structured-logger.test.ts` | 2 | JSON shape, inherited request context, secret redaction |
 | `shutdown.test.ts` | 3 | Shutdown order, timeout forcing, signal deduplication |
+
+### Runtime Config Benchmark
+
+If you want to sanity-check the runtime-config hot path after refactors, run:
+
+```bash
+npm run benchmark:runtime-config -- 20000
+```
+
+This compares `configRepository.getRuntimeConfig()` against `store.getAll()` over the same number of iterations and prints total time, ops/sec, and relative speedup.
 
 ---
 

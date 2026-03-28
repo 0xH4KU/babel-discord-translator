@@ -21,9 +21,15 @@ vi.mock('../src/store.js', () => ({
     },
 }));
 
+import { store } from '../src/store.js';
 import { usage } from '../src/usage.js';
 
 describe('UsageTracker', () => {
+    const mockedStore = store as unknown as {
+        getAll: ReturnType<typeof vi.fn>;
+        getConfigValues: ReturnType<typeof vi.fn>;
+    };
+
     beforeEach(() => {
         // Reset mock store data
         const today = new Date().toISOString().slice(0, 10);
@@ -42,6 +48,9 @@ describe('UsageTracker', () => {
         mockData.guildBudgets = {};
         mockData.guildTokenUsage = {};
         mockData.guildUsageHistory = {};
+
+        mockedStore.getAll.mockClear();
+        mockedStore.getConfigValues.mockClear();
     });
 
     it('should record token usage', () => {
@@ -133,6 +142,18 @@ describe('UsageTracker', () => {
         expect(stats).toHaveProperty('dailyBudget', 5.0);
         expect(stats).toHaveProperty('budgetUsedPercent');
         expect(stats).toHaveProperty('budgetExceeded');
+    });
+
+    it('should read runtime config once for stats without falling back to getAll', () => {
+        mockData.dailyBudgetUsd = 5.0;
+        mockData.inputPricePerMillion = 1.0;
+        mockData.outputPricePerMillion = 2.0;
+
+        usage.record(500_000, 250_000);
+        usage.getStats();
+
+        expect(mockedStore.getConfigValues).toHaveBeenCalledOnce();
+        expect(mockedStore.getAll).not.toHaveBeenCalled();
     });
 
     it('should archive previous day when date changes', () => {
@@ -259,6 +280,18 @@ describe('UsageTracker', () => {
             usage.record(1_000_000, 0, 'guild-456'); // $1 cost = $1 global budget
 
             expect(usage.isBudgetExceeded('guild-456')).toBe(true);
+        });
+
+        it('should read runtime config once per budget check without falling back to getAll', () => {
+            mockData.dailyBudgetUsd = 1.0;
+            mockData.inputPricePerMillion = 1.0;
+            mockData.outputPricePerMillion = 0;
+
+            usage.record(1_000_000, 0, 'guild-456');
+            usage.isBudgetExceeded('guild-456');
+
+            expect(mockedStore.getConfigValues).toHaveBeenCalledOnce();
+            expect(mockedStore.getAll).not.toHaveBeenCalled();
         });
 
         it('should allow guild with separate budget even if global is exceeded', () => {

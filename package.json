@@ -12,6 +12,7 @@
     "register": "tsx scripts/register.ts",
     "db:migrate": "tsx scripts/migrate-json-to-sqlite.ts",
     "db:export:json": "tsx scripts/export-sqlite-to-json.ts",
+    "benchmark:runtime-config": "tsx scripts/benchmark-runtime-config.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

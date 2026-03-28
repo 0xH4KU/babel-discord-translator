@@ -58,27 +58,23 @@ function createStoreMock(overrides: Partial<StoreData> = {}) {
 
     return {
         data,
-        getRuntimeConfig() {
-            return {
-                vertexAiApiKey: data.vertexAiApiKey,
-                gcpProject: data.gcpProject,
-                gcpLocation: data.gcpLocation,
-                geminiModel: data.geminiModel,
-                allowedGuildIds: [...data.allowedGuildIds],
-                cooldownSeconds: data.cooldownSeconds,
-                cacheMaxSize: data.cacheMaxSize,
-                setupComplete: data.setupComplete,
-                inputPricePerMillion: data.inputPricePerMillion,
-                outputPricePerMillion: data.outputPricePerMillion,
-                dailyBudgetUsd: data.dailyBudgetUsd,
-                translationPrompt: data.translationPrompt,
-                maxInputLength: data.maxInputLength,
-                maxOutputTokens: data.maxOutputTokens,
-            };
-        },
-        isSetupComplete(): boolean {
-            return data.setupComplete;
-        },
+        getRuntimeConfig: vi.fn(() => ({
+            vertexAiApiKey: data.vertexAiApiKey,
+            gcpProject: data.gcpProject,
+            gcpLocation: data.gcpLocation,
+            geminiModel: data.geminiModel,
+            allowedGuildIds: [...data.allowedGuildIds],
+            cooldownSeconds: data.cooldownSeconds,
+            cacheMaxSize: data.cacheMaxSize,
+            setupComplete: data.setupComplete,
+            inputPricePerMillion: data.inputPricePerMillion,
+            outputPricePerMillion: data.outputPricePerMillion,
+            dailyBudgetUsd: data.dailyBudgetUsd,
+            translationPrompt: data.translationPrompt,
+            maxInputLength: data.maxInputLength,
+            maxOutputTokens: data.maxOutputTokens,
+        })),
+        isSetupComplete: vi.fn((): boolean => data.setupComplete),
     };
 }
 
@@ -100,11 +96,13 @@ function createUsageMock() {
 
 function createService({
     storeOverrides,
-    translator = vi.fn(async (): Promise<TranslationResult> => ({
-        text: 'こんにちは',
-        inputTokens: 12,
-        outputTokens: 6,
-    })),
+    translator = vi.fn(
+        async (): Promise<TranslationResult> => ({
+            text: 'こんにちは',
+            inputTokens: 12,
+            outputTokens: 6,
+        }),
+    ),
     usageTracker = createUsageMock(),
     loggerState = createStructuredLoggerMock(),
     runtimeLimiter,
@@ -155,11 +153,12 @@ function createService({
 describe('TranslationService', () => {
     it('should translate successfully and record usage through the shared service', async () => {
         const beforeTranslate = vi.fn(async () => undefined);
-        const { service, usageTracker, translator, log, stats, metrics, loggerState } = createService({
-            storeOverrides: {
-                userLanguagePrefs: { user1: 'ja' },
-            },
-        });
+        const { service, usageTracker, translator, log, stats, metrics, loggerState } =
+            createService({
+                storeOverrides: {
+                    userLanguagePrefs: { user1: 'ja' },
+                },
+            });
 
         const result = await service.process({
             command: 'babel',
@@ -196,34 +195,61 @@ describe('TranslationService', () => {
             translationCacheHitsTotal: 0,
             translationFailuresTotal: 0,
         });
-        expect(loggerState.entries).toEqual(expect.arrayContaining([
-            expect.objectContaining({
-                level: 'info',
-                event: 'translation.request.started',
-                requestId: 'req-1',
-                guildId: 'guild-1',
-                userId: 'user1',
-                command: 'babel',
-            }),
-            expect.objectContaining({
-                level: 'info',
-                event: 'translation.request.completed',
-                requestId: 'req-1',
-                guildId: 'guild-1',
-                userId: 'user1',
-                command: 'babel',
-                cached: false,
-                targetLanguage: 'ja',
-            }),
-        ]));
+        expect(loggerState.entries).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    level: 'info',
+                    event: 'translation.request.started',
+                    requestId: 'req-1',
+                    guildId: 'guild-1',
+                    userId: 'user1',
+                    command: 'babel',
+                }),
+                expect.objectContaining({
+                    level: 'info',
+                    event: 'translation.request.completed',
+                    requestId: 'req-1',
+                    guildId: 'guild-1',
+                    userId: 'user1',
+                    command: 'babel',
+                    cached: false,
+                    targetLanguage: 'ja',
+                }),
+            ]),
+        );
+    });
+
+    it('should read runtime config once per request', async () => {
+        const { service, configStore } = createService({
+            storeOverrides: {
+                userLanguagePrefs: { user1: 'ja' },
+            },
+        });
+
+        const result = await service.process({
+            command: 'babel',
+            commandLabel: 'Babel (context menu)',
+            guildId: 'guild-1',
+            guildName: 'Test Guild',
+            userId: 'user1',
+            userTag: 'user#0001',
+            locale: 'en-US',
+            text: 'Hello world',
+            requestId: 'req-config-1',
+        });
+
+        expect(result.status).toBe('success');
+        expect(configStore.getRuntimeConfig).toHaveBeenCalledOnce();
     });
 
     it('should reuse the same cached translation for identical requests', async () => {
-        const translator = vi.fn(async (): Promise<TranslationResult> => ({
-            text: '안녕하세요',
-            inputTokens: 20,
-            outputTokens: 10,
-        }));
+        const translator = vi.fn(
+            async (): Promise<TranslationResult> => ({
+                text: '안녕하세요',
+                inputTokens: 20,
+                outputTokens: 10,
+            }),
+        );
         const { service, metrics } = createService({ translator });
 
         const first = await service.process({
@@ -288,7 +314,9 @@ describe('TranslationService', () => {
 
     it('should return a sanitized error result when translation fails', async () => {
         const translator = vi.fn(async () => {
-            throw new Error('Vertex AI 500: https://example.com/projects/test-project/secret-token-value');
+            throw new Error(
+                'Vertex AI 500: https://example.com/projects/test-project/secret-token-value',
+            );
         });
         const { service, log, metrics } = createService({ translator });
 
@@ -306,7 +334,9 @@ describe('TranslationService', () => {
 
         expect(result.status).toBe('error');
         expect(result.status === 'error' ? result.message : '').toContain('Translation failed');
-        expect(result.status === 'error' ? result.message : '').not.toContain('https://example.com');
+        expect(result.status === 'error' ? result.message : '').not.toContain(
+            'https://example.com',
+        );
         expect(log.errorCount).toBe(1);
         expect(metrics.snapshot()).toMatchObject({
             translationApiCallsTotal: 1,
@@ -410,11 +440,16 @@ describe('resolveTargetLanguage', () => {
             userLanguagePrefs: { user1: 'ja' },
         });
 
-        expect(resolveTargetLanguage({
-            userId: 'user1',
-            locale: 'ko',
-            targetLanguageOption: 'fr',
-        }, preferenceStore)).toEqual({
+        expect(
+            resolveTargetLanguage(
+                {
+                    userId: 'user1',
+                    locale: 'ko',
+                    targetLanguageOption: 'fr',
+                },
+                preferenceStore,
+            ),
+        ).toEqual({
             targetLanguage: 'fr',
             langSource: 'option',
         });
@@ -425,44 +460,65 @@ describe('resolveTargetLanguage', () => {
             userLanguagePrefs: { user1: 'ja' },
         });
 
-        expect(resolveTargetLanguage({
-            userId: 'user1',
-            locale: 'ko',
-        }, preferenceStore)).toEqual({
+        expect(
+            resolveTargetLanguage(
+                {
+                    userId: 'user1',
+                    locale: 'ko',
+                },
+                preferenceStore,
+            ),
+        ).toEqual({
             targetLanguage: 'ja',
             langSource: 'setlang',
         });
-        expect(resolveTargetLanguage({
-            userId: 'user2',
-            locale: 'ko',
-        }, preferenceStore)).toEqual({
+        expect(
+            resolveTargetLanguage(
+                {
+                    userId: 'user2',
+                    locale: 'ko',
+                },
+                preferenceStore,
+            ),
+        ).toEqual({
             targetLanguage: 'ko',
             langSource: 'locale',
         });
-        expect(resolveTargetLanguage({
-            userId: 'user2',
-            locale: 'en-US',
-        }, preferenceStore)).toEqual({
+        expect(
+            resolveTargetLanguage(
+                {
+                    userId: 'user2',
+                    locale: 'en-US',
+                },
+                preferenceStore,
+            ),
+        ).toEqual({
             targetLanguage: 'auto',
             langSource: 'auto',
         });
     });
 
     it('should map runtime queue rejection reasons to user-facing messages', () => {
-        expect(resolveQueueBusyMessage('user_queue_full', {
-            userBusy: 'user',
-            guildBusy: 'guild',
-            serviceBusy: 'service',
-        })).toBe('user');
-        expect(resolveQueueBusyMessage('guild_queue_full', {
-            userBusy: 'user',
-            guildBusy: 'guild',
-            serviceBusy: 'service',
-        })).toBe('guild');
-        expect(resolveQueueBusyMessage('global_queue_full', {
-            userBusy: 'user',
-            guildBusy: 'guild',
-            serviceBusy: 'service',
-        })).toBe('service');
+        expect(
+            resolveQueueBusyMessage('user_queue_full', {
+                userBusy: 'user',
+                guildBusy: 'guild',
+                serviceBusy: 'service',
+            }),
+        ).toBe('user');
+        expect(
+            resolveQueueBusyMessage('guild_queue_full', {
+                userBusy: 'user',
+                guildBusy: 'guild',
+                serviceBusy: 'service',
+            }),
+        ).toBe('guild');
+        expect(
+            resolveQueueBusyMessage('global_queue_full', {
+                userBusy: 'user',
+                guildBusy: 'guild',
+                serviceBusy: 'service',
+            }),
+        ).toBe('service');
     });
 });

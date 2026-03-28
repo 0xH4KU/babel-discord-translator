@@ -2,10 +2,16 @@
  * Daily token usage tracker with cost calculation, budget enforcement,
  * and 30-day history archiving. Supports both global and per-guild tracking.
  */
-import { configRepository } from '../config/config-repository.js';
+import { configRepository, type RuntimeConfig } from '../config/config-repository.js';
 import { guildBudgetRepository } from './guild-budget-repository.js';
 import { usageRepository } from './usage-repository.js';
-import type { UsageCost, UsageStats, UsageHistoryDay, TokenUsage, UsageHistoryEntry } from '../../types.js';
+import type {
+    UsageCost,
+    UsageStats,
+    UsageHistoryDay,
+    TokenUsage,
+    UsageHistoryEntry,
+} from '../../types.js';
 
 class UsageTracker {
     constructor() {
@@ -68,9 +74,10 @@ class UsageTracker {
         if (guildId) {
             const todayValue = today();
             const guildUsage = usageRepository.getAllGuildDailyUsage();
-            const entry = guildUsage[guildId]?.date === todayValue
-                ? guildUsage[guildId]
-                : createEmptyUsage(todayValue);
+            const entry =
+                guildUsage[guildId]?.date === todayValue
+                    ? guildUsage[guildId]
+                    : createEmptyUsage(todayValue);
 
             entry.inputTokens += inputTokens || 0;
             entry.outputTokens += outputTokens || 0;
@@ -81,25 +88,32 @@ class UsageTracker {
     }
 
     /** Calculate today's cost in USD (global). */
-    getCost(): UsageCost {
+    getCost(runtimeConfig = configRepository.getRuntimeConfig()): UsageCost {
         this.ensureToday();
         const usage = usageRepository.getDailyUsage() ?? createEmptyUsage(today());
-        const config = configRepository.getRuntimeConfig();
 
-        return withCost(usage, config.inputPricePerMillion || 0, config.outputPricePerMillion || 0);
+        return withCost(
+            usage,
+            runtimeConfig.inputPricePerMillion || 0,
+            runtimeConfig.outputPricePerMillion || 0,
+        );
     }
 
     /** Calculate today's cost for a specific guild. */
-    getGuildCost(guildId: string): UsageCost {
+    getGuildCost(guildId: string, runtimeConfig = configRepository.getRuntimeConfig()): UsageCost {
         this.ensureToday();
         const todayValue = today();
         const guildUsage = usageRepository.getAllGuildDailyUsage();
-        const usage = guildUsage[guildId] && guildUsage[guildId].date === todayValue
-            ? guildUsage[guildId]
-            : createEmptyUsage(todayValue);
-        const config = configRepository.getRuntimeConfig();
+        const usage =
+            guildUsage[guildId] && guildUsage[guildId].date === todayValue
+                ? guildUsage[guildId]
+                : createEmptyUsage(todayValue);
 
-        return withCost(usage, config.inputPricePerMillion || 0, config.outputPricePerMillion || 0);
+        return withCost(
+            usage,
+            runtimeConfig.inputPricePerMillion || 0,
+            runtimeConfig.outputPricePerMillion || 0,
+        );
     }
 
     /**
@@ -108,16 +122,17 @@ class UsageTracker {
      * then falls back to the global budget.
      */
     isBudgetExceeded(guildId?: string | null): boolean {
+        const runtimeConfig = configRepository.getRuntimeConfig();
         let budget: number;
         let cost: UsageCost;
 
         if (guildId) {
             const guildBudget = guildBudgetRepository.getBudget(guildId);
-            budget = guildBudget?.dailyBudgetUsd ?? (configRepository.getRuntimeConfig().dailyBudgetUsd || 0);
-            cost = this.getGuildCost(guildId);
+            budget = guildBudget?.dailyBudgetUsd ?? (runtimeConfig.dailyBudgetUsd || 0);
+            cost = this.getGuildCost(guildId, runtimeConfig);
         } else {
-            budget = configRepository.getRuntimeConfig().dailyBudgetUsd || 0;
-            cost = this.getCost();
+            budget = runtimeConfig.dailyBudgetUsd || 0;
+            cost = this.getCost(runtimeConfig);
         }
 
         if (budget <= 0) return false;
@@ -126,9 +141,9 @@ class UsageTracker {
 
     /** Get stats for dashboard display (global). */
     getStats(): UsageStats {
-        const config = configRepository.getRuntimeConfig();
-        const cost = this.getCost();
-        const budget = config.dailyBudgetUsd || 0;
+        const runtimeConfig = configRepository.getRuntimeConfig();
+        const cost = this.getCost(runtimeConfig);
+        const budget = runtimeConfig.dailyBudgetUsd || 0;
 
         return {
             ...cost,
@@ -140,9 +155,11 @@ class UsageTracker {
 
     /** Get stats for a specific guild. */
     getGuildStats(guildId: string): UsageStats {
-        const cost = this.getGuildCost(guildId);
-        const budget = guildBudgetRepository.getBudget(guildId)?.dailyBudgetUsd
-            ?? (configRepository.getRuntimeConfig().dailyBudgetUsd || 0);
+        const runtimeConfig = configRepository.getRuntimeConfig();
+        const cost = this.getGuildCost(guildId, runtimeConfig);
+        const budget =
+            guildBudgetRepository.getBudget(guildId)?.dailyBudgetUsd ??
+            (runtimeConfig.dailyBudgetUsd || 0);
 
         return {
             ...cost,
@@ -156,13 +173,12 @@ class UsageTracker {
     getHistory(): UsageHistoryDay[] {
         this.ensureToday();
         const history = usageRepository.getUsageHistory();
-        const config = configRepository.getRuntimeConfig();
+        const runtimeConfig = configRepository.getRuntimeConfig();
 
         return history.map((day) => ({
             ...day,
             totalTokens: day.inputTokens + day.outputTokens,
-            cost: (day.inputTokens / 1_000_000) * (config.inputPricePerMillion || 0)
-                + (day.outputTokens / 1_000_000) * (config.outputPricePerMillion || 0),
+            cost: calculateCost(day, runtimeConfig),
         }));
     }
 
@@ -170,13 +186,12 @@ class UsageTracker {
     getGuildHistory(guildId: string): UsageHistoryDay[] {
         this.ensureToday();
         const history = usageRepository.getAllGuildUsageHistory()[guildId] || [];
-        const config = configRepository.getRuntimeConfig();
+        const runtimeConfig = configRepository.getRuntimeConfig();
 
         return history.map((day) => ({
             ...day,
             totalTokens: day.inputTokens + day.outputTokens,
-            cost: (day.inputTokens / 1_000_000) * (config.inputPricePerMillion || 0)
-                + (day.outputTokens / 1_000_000) * (config.outputPricePerMillion || 0),
+            cost: calculateCost(day, runtimeConfig),
         }));
     }
 }
@@ -213,6 +228,16 @@ function withCost(usage: TokenUsage, inputPrice: number, outputPrice: number): U
         outputCost,
         totalCost: inputCost + outputCost,
     };
+}
+
+function calculateCost(
+    usage: Pick<TokenUsage, 'inputTokens' | 'outputTokens'>,
+    runtimeConfig: Pick<RuntimeConfig, 'inputPricePerMillion' | 'outputPricePerMillion'>,
+): number {
+    return (
+        (usage.inputTokens / 1_000_000) * (runtimeConfig.inputPricePerMillion || 0) +
+        (usage.outputTokens / 1_000_000) * (runtimeConfig.outputPricePerMillion || 0)
+    );
 }
 
 export const usage = new UsageTracker();

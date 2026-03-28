@@ -2,37 +2,52 @@
 
 import { spawnSync } from 'child_process';
 import { existsSync } from 'fs';
+import { fileURLToPath } from 'url';
 
-function shouldSkipHuskyInstall() {
-    if (process.env.HUSKY === '0') {
+export function shouldSkipHuskyInstall({
+    env = process.env,
+    hasGitMetadata = existsSync('.git'),
+} = {}) {
+    if (env.HUSKY === '0') {
         return 'HUSKY=0';
     }
 
-    if (process.env.CI) {
+    if (env.CI) {
         return 'CI environment';
     }
 
-    if (!existsSync('.git')) {
+    if (!hasGitMetadata) {
         return 'missing .git metadata';
     }
 
     return null;
 }
 
-const skipReason = shouldSkipHuskyInstall();
-if (skipReason) {
-    console.log(`[prepare] Skipping Husky install: ${skipReason}`);
-    process.exit(0);
+export function runPrepareHusky({
+    env = process.env,
+    hasGitMetadata = existsSync('.git'),
+    platform = process.platform,
+    runner = spawnSync,
+} = {}) {
+    const skipReason = shouldSkipHuskyInstall({ env, hasGitMetadata });
+    if (skipReason) {
+        console.log(`[prepare] Skipping Husky install: ${skipReason}`);
+        return 0;
+    }
+
+    const command = platform === 'win32' ? 'npx.cmd' : 'npx';
+    const result = runner(command, ['--no-install', 'husky'], {
+        stdio: 'inherit',
+        env,
+    });
+
+    if (result.error) {
+        throw result.error;
+    }
+
+    return result.status ?? 1;
 }
 
-const command = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-const result = spawnSync(command, ['--no-install', 'husky'], {
-    stdio: 'inherit',
-    env: process.env,
-});
-
-if (result.error) {
-    throw result.error;
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+    process.exit(runPrepareHusky());
 }
-
-process.exit(result.status ?? 1);
