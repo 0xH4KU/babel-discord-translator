@@ -27,7 +27,14 @@ const log = new TranslationLog();
 const stats: BotStats = { totalTranslations: 0, apiCalls: 0 };
 const metrics = new AppMetrics();
 const runtimeLimiter = new TranslationRuntimeLimiter();
-const translationService = createTranslationService({ cache, cooldown, log, stats, metrics, runtimeLimiter });
+const translationService = createTranslationService({
+    cache,
+    cooldown,
+    log,
+    stats,
+    metrics,
+    runtimeLimiter,
+});
 const webhookService = createWebhookService({ metrics });
 const startupLogger = appLogger.child({ component: 'startup' });
 
@@ -39,6 +46,28 @@ const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 let dashboardApp: express.Express | null = null;
 let dashboardServer: http.Server | null = null;
+
+// --- Global error handlers ---
+
+process.on('unhandledRejection', (reason) => {
+    const errorLogger = appLogger.child({ component: 'process' });
+    errorLogger.error('process.unhandled_rejection', {
+        error: reason instanceof Error ? reason.message : String(reason),
+        stack: reason instanceof Error ? reason.stack : undefined,
+    });
+});
+
+process.on('uncaughtException', (error) => {
+    const errorLogger = appLogger.child({ component: 'process' });
+    errorLogger.error('process.uncaught_exception', {
+        error: error.message,
+        stack: error.stack,
+    });
+    // Exit after logging — uncaught exceptions leave the process in an undefined state
+    process.exit(1);
+});
+
+// --- Discord events ---
 
 client.once(Events.ClientReady, (c) => {
     startupLogger.info('discord.client.ready', {

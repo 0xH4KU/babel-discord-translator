@@ -5,12 +5,23 @@ import { isSameLanguage, localeToLang } from './lang.js';
 import type { AppMetricsCollector } from '../../shared/app-metrics.js';
 import { configRepository, type RuntimeConfig } from '../config/config-repository.js';
 import { userPreferenceRepository } from './user-preference-repository.js';
-import type { RuntimeLimitReason, TranslationRuntimeLimiter, TranslationRuntimeReservation } from './translation-runtime-limiter.js';
+import type {
+    RuntimeLimitReason,
+    TranslationRuntimeLimiter,
+    TranslationRuntimeReservation,
+} from './translation-runtime-limiter.js';
 import { usage } from '../usage/usage.js';
 import { translate, resolveSystemPrompt } from './translate.js';
 import { sanitizeError } from '../../commands/shared.js';
-import { appLogger, createRequestId, type StructuredLogger } from '../../shared/structured-logger.js';
-import { discordMessages, getDiscordTranslationCommandMessages } from '../../discord-messages.js';
+import {
+    appLogger,
+    createRequestId,
+    type StructuredLogger,
+} from '../../shared/structured-logger.js';
+import {
+    discordMessages,
+    getDiscordTranslationCommandMessages,
+} from '../../shared/messages/discord-messages.js';
 import type { BotStats, TranslationResult } from '../../types.js';
 
 type ServiceCommand = 'babel' | 'translate';
@@ -31,7 +42,18 @@ interface UsageLike {
 }
 
 interface Translator {
-    (text: string, targetLanguage?: string, options?: { logContext?: { requestId: string; guildId?: string | null; userId: string; command: ServiceCommand } }): Promise<TranslationResult>;
+    (
+        text: string,
+        targetLanguage?: string,
+        options?: {
+            logContext?: {
+                requestId: string;
+                guildId?: string | null;
+                userId: string;
+                command: ServiceCommand;
+            };
+        },
+    ): Promise<TranslationResult>;
 }
 
 export interface TranslationServiceRequest {
@@ -51,14 +73,14 @@ export interface TranslationServiceRequest {
 export type TranslationServiceResult =
     | { status: 'blocked'; message: string }
     | {
-        status: 'success';
-        deferred: boolean;
-        translatedText: string;
-        originalText: string;
-        cached: boolean;
-        targetLanguage: string;
-        langSource: LangSource;
-    }
+          status: 'success';
+          deferred: boolean;
+          translatedText: string;
+          originalText: string;
+          cached: boolean;
+          targetLanguage: string;
+          langSource: LangSource;
+      }
     | { status: 'error'; deferred: boolean; message: string };
 
 export interface TranslationService {
@@ -90,10 +112,7 @@ interface QueueBusyMessages {
     serviceBusy: string;
 }
 
-function resolveQueueBusyMessage(
-    reason: RuntimeLimitReason,
-    messages: QueueBusyMessages,
-): string {
+function resolveQueueBusyMessage(reason: RuntimeLimitReason, messages: QueueBusyMessages): string {
     switch (reason) {
         case 'user_queue_full':
             return messages.userBusy;
@@ -130,24 +149,32 @@ export function createTranslationService({
             requestLogger.info('translation.request.started', {
                 locale: request.locale ?? null,
                 textLength: request.text.length,
-                hasTargetLanguageOption: !!(request.targetLanguageOption && request.targetLanguageOption !== 'auto'),
+                hasTargetLanguageOption: !!(
+                    request.targetLanguageOption && request.targetLanguageOption !== 'auto'
+                ),
             });
 
             if (!configStore.isSetupComplete()) {
-                requestLogger.warn('translation.request.blocked', { blockReason: 'setup_incomplete' });
+                requestLogger.warn('translation.request.blocked', {
+                    blockReason: 'setup_incomplete',
+                });
                 return { status: 'blocked', message: messages.setupIncomplete };
             }
 
             const runtimeConfig = configStore.getRuntimeConfig();
             const allowedGuilds = runtimeConfig.allowedGuildIds;
             if (!request.guildId || !allowedGuilds.includes(request.guildId)) {
-                requestLogger.warn('translation.request.blocked', { blockReason: 'guild_not_allowed' });
+                requestLogger.warn('translation.request.blocked', {
+                    blockReason: 'guild_not_allowed',
+                });
                 return { status: 'blocked', message: discordMessages.unauthorizedGuild() };
             }
 
             if (usageTracker.isBudgetExceeded(request.guildId)) {
                 metrics?.recordBudgetExceeded();
-                requestLogger.warn('translation.request.blocked', { blockReason: 'budget_exceeded' });
+                requestLogger.warn('translation.request.blocked', {
+                    blockReason: 'budget_exceeded',
+                });
                 return { status: 'blocked', message: messages.budgetExceeded };
             }
 
@@ -157,7 +184,10 @@ export function createTranslationService({
                     blockReason: 'cooldown_active',
                     cooldownRemainingSeconds: cooldownState.remaining,
                 });
-                return { status: 'blocked', message: discordMessages.cooldownRemaining(cooldownState.remaining) };
+                return {
+                    status: 'blocked',
+                    message: discordMessages.cooldownRemaining(cooldownState.remaining),
+                };
             }
 
             const originalText = request.text;
@@ -179,7 +209,10 @@ export function createTranslationService({
                 };
             }
 
-            const { targetLanguage, langSource } = resolveTargetLanguage(request, userPreferenceStore);
+            const { targetLanguage, langSource } = resolveTargetLanguage(
+                request,
+                userPreferenceStore,
+            );
             if (isSameLanguage(originalText, targetLanguage, request.locale)) {
                 requestLogger.warn('translation.request.blocked', {
                     blockReason: 'same_language',
@@ -227,9 +260,14 @@ export function createTranslationService({
                     }
 
                     reservation = admission.reservation;
-                    requestLogger.info(reservation.queued ? 'translation.queue.enqueued' : 'translation.queue.acquired', {
-                        runtime: runtimeLimiter.snapshot(),
-                    });
+                    requestLogger.info(
+                        reservation.queued
+                            ? 'translation.queue.enqueued'
+                            : 'translation.queue.acquired',
+                        {
+                            runtime: runtimeLimiter.snapshot(),
+                        },
+                    );
                 }
 
                 if (request.beforeTranslate) {
@@ -273,7 +311,11 @@ export function createTranslationService({
                                 },
                             });
                             cache.set(cacheKey, result.text);
-                            usageTracker.record(result.inputTokens, result.outputTokens, request.guildId);
+                            usageTracker.record(
+                                result.inputTokens,
+                                result.outputTokens,
+                                request.guildId,
+                            );
                             return result.text;
                         });
                     } else {
@@ -289,7 +331,11 @@ export function createTranslationService({
                         });
                         translated = result.text;
                         cache.set(cacheKey, translated);
-                        usageTracker.record(result.inputTokens, result.outputTokens, request.guildId);
+                        usageTracker.record(
+                            result.inputTokens,
+                            result.outputTokens,
+                            request.guildId,
+                        );
                     }
                 }
 

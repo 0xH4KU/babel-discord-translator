@@ -20,6 +20,23 @@ export type RuntimeConfig = Pick<
     | 'maxOutputTokens'
 >;
 
+const RUNTIME_CONFIG_KEYS: (keyof RuntimeConfig)[] = [
+    'vertexAiApiKey',
+    'gcpProject',
+    'gcpLocation',
+    'geminiModel',
+    'allowedGuildIds',
+    'cooldownSeconds',
+    'cacheMaxSize',
+    'setupComplete',
+    'inputPricePerMillion',
+    'outputPricePerMillion',
+    'dailyBudgetUsd',
+    'translationPrompt',
+    'maxInputLength',
+    'maxOutputTokens',
+];
+
 export interface ConfigRepository {
     getRuntimeConfig(): RuntimeConfig;
     getDashboardConfig(): StoreData;
@@ -28,23 +45,19 @@ export interface ConfigRepository {
 }
 
 class StoreBackedConfigRepository implements ConfigRepository {
+    /**
+     * Get runtime configuration in a single batch read from the store.
+     * Uses store.getAll() instead of N individual store.get() calls.
+     */
     getRuntimeConfig(): RuntimeConfig {
-        return {
-            vertexAiApiKey: store.get('vertexAiApiKey'),
-            gcpProject: store.get('gcpProject'),
-            gcpLocation: store.get('gcpLocation'),
-            geminiModel: store.get('geminiModel'),
-            allowedGuildIds: [...store.get('allowedGuildIds')],
-            cooldownSeconds: store.get('cooldownSeconds'),
-            cacheMaxSize: store.get('cacheMaxSize'),
-            setupComplete: store.get('setupComplete'),
-            inputPricePerMillion: store.get('inputPricePerMillion'),
-            outputPricePerMillion: store.get('outputPricePerMillion'),
-            dailyBudgetUsd: store.get('dailyBudgetUsd'),
-            translationPrompt: store.get('translationPrompt'),
-            maxInputLength: store.get('maxInputLength'),
-            maxOutputTokens: store.get('maxOutputTokens'),
-        };
+        const all = store.getAll();
+        const result = {} as Record<string, unknown>;
+        for (const key of RUNTIME_CONFIG_KEYS) {
+            const value = all[key];
+            // Deep copy arrays to prevent mutation of store state
+            result[key] = Array.isArray(value) ? [...value] : value;
+        }
+        return result as RuntimeConfig;
     }
 
     getDashboardConfig(): StoreData {

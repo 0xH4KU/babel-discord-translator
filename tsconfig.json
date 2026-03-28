@@ -13,10 +13,7 @@
         "sourceMap": true,
         "skipLibCheck": true,
         "forceConsistentCasingInFileNames": true,
-        "resolveJsonModule": true,
-        "paths": {
-            "@/*": ["./src/*"]
-        }
+        "resolveJsonModule": true
     },
     "include": ["src/**/*.ts", "scripts/**/*.ts"],
     "exclude": ["node_modules", "dist"]

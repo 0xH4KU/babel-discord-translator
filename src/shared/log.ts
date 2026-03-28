@@ -7,10 +7,12 @@ import type { LogEntry } from '../types.js';
 export class TranslationLog {
     entries: LogEntry[];
     maxSize: number;
+    private _errorCount: number;
 
     constructor(maxSize: number = 200) {
         this.entries = [];
         this.maxSize = maxSize;
+        this._errorCount = 0;
     }
 
     /**
@@ -28,7 +30,7 @@ export class TranslationLog {
         langSource?: string;
         timestamp?: number;
     }): void {
-        this.entries.push({
+        this.pushEntry({
             type: 'translation',
             guildId: params.guildId ?? null,
             guildName: params.guildName || params.guildId || 'Unknown',
@@ -40,10 +42,6 @@ export class TranslationLog {
             langSource: params.langSource || 'auto',
             timestamp: params.timestamp || Date.now(),
         });
-
-        if (this.entries.length > this.maxSize) {
-            this.entries.shift();
-        }
     }
 
     /** Add an error log entry. */
@@ -56,7 +54,8 @@ export class TranslationLog {
         command?: string;
         timestamp?: number;
     }): void {
-        this.entries.push({
+        this._errorCount++;
+        this.pushEntry({
             type: 'error',
             guildId: params.guildId ?? null,
             guildName: params.guildName || params.guildId || 'Unknown',
@@ -66,17 +65,11 @@ export class TranslationLog {
             command: params.command || 'unknown',
             timestamp: params.timestamp || Date.now(),
         });
-
-        if (this.entries.length > this.maxSize) {
-            this.entries.shift();
-        }
     }
 
     /** Get recent log entries (newest first). */
     getRecent(count: number = 50, filter?: string): LogEntry[] {
-        const filtered = filter
-            ? this.entries.filter(e => e.type === filter)
-            : this.entries;
+        const filtered = filter ? this.entries.filter((e) => e.type === filter) : this.entries;
         return filtered.slice(-count).reverse();
     }
 
@@ -85,8 +78,18 @@ export class TranslationLog {
         return this.entries.length;
     }
 
-    /** Get error count. */
+    /** Get error count. O(1) via maintained counter. */
     get errorCount(): number {
-        return this.entries.filter(e => e.type === 'error').length;
+        return this._errorCount;
+    }
+
+    private pushEntry(entry: LogEntry): void {
+        if (this.entries.length >= this.maxSize) {
+            const evicted = this.entries.shift();
+            if (evicted?.type === 'error') {
+                this._errorCount--;
+            }
+        }
+        this.entries.push(entry);
     }
 }

@@ -4,10 +4,19 @@
  * while persistence moves away from the old JSON file.
  */
 import type { DatabaseSync } from 'node:sqlite';
-import { createSqliteDatabase, getSqliteDatabase, inTransaction, isSqliteStoreEmpty } from './persistence/sqlite-database.js';
+import {
+    createSqliteDatabase,
+    getSqliteDatabase,
+    inTransaction,
+    isSqliteStoreEmpty,
+} from './persistence/sqlite-database.js';
 import { readLegacyStoreData, resolveLegacyConfigPath } from './persistence/legacy-json-store.js';
-import { CONFIG_VALUE_KEYS, DEFAULT_STORE_DATA, type ConfigValueKey } from './persistence/store-defaults.js';
-import { appLogger, type StructuredLogger } from './structured-logger.js';
+import {
+    CONFIG_VALUE_KEYS,
+    DEFAULT_STORE_DATA,
+    type ConfigValueKey,
+} from './persistence/store-defaults.js';
+import { appLogger, type StructuredLogger } from './shared/structured-logger.js';
 import type { GuildBudgetConfig, StoreData, TokenUsage, UsageHistoryEntry } from './types.js';
 
 interface ConfigStoreOptions {
@@ -28,7 +37,9 @@ function cloneUsageHistory(history: UsageHistoryEntry[]): UsageHistoryEntry[] {
     return history.map((entry) => ({ ...entry }));
 }
 
-function cloneGuildBudgets(budgets: Record<string, GuildBudgetConfig>): Record<string, GuildBudgetConfig> {
+function cloneGuildBudgets(
+    budgets: Record<string, GuildBudgetConfig>,
+): Record<string, GuildBudgetConfig> {
     return Object.fromEntries(
         Object.entries(budgets).map(([guildId, budget]) => [guildId, { ...budget }]),
     );
@@ -40,7 +51,9 @@ function cloneGuildUsage(usage: Record<string, TokenUsage>): Record<string, Toke
     );
 }
 
-function cloneGuildUsageHistory(history: Record<string, UsageHistoryEntry[]>): Record<string, UsageHistoryEntry[]> {
+function cloneGuildUsageHistory(
+    history: Record<string, UsageHistoryEntry[]>,
+): Record<string, UsageHistoryEntry[]> {
     return Object.fromEntries(
         Object.entries(history).map(([guildId, entries]) => [guildId, cloneUsageHistory(entries)]),
     );
@@ -113,7 +126,9 @@ export class ConfigStore {
 
     update(obj: Partial<StoreData>): void {
         inTransaction(this.db, () => {
-            for (const [key, value] of Object.entries(obj) as Array<[keyof StoreData, StoreData[keyof StoreData]]>) {
+            for (const [key, value] of Object.entries(obj) as Array<
+                [keyof StoreData, StoreData[keyof StoreData]]
+            >) {
                 this.setValue(key, value);
             }
         });
@@ -155,11 +170,15 @@ export class ConfigStore {
     }
 
     private getConfigValue<K extends ConfigValueKey>(key: K): StoreData[K] {
-        const row = this.db.prepare(`
+        const row = this.db
+            .prepare(
+                `
             SELECT value_json
             FROM app_config
             WHERE key = ?
-        `).get(key) as { value_json: string } | undefined;
+        `,
+            )
+            .get(key) as { value_json: string } | undefined;
 
         if (!row) {
             return structuredClone(DEFAULT_STORE_DATA[key]);
@@ -169,41 +188,57 @@ export class ConfigStore {
     }
 
     private getDailyUsage(): TokenUsage | null {
-        const row = this.db.prepare(`
+        const row = this.db
+            .prepare(
+                `
             SELECT date, input_tokens as inputTokens, output_tokens as outputTokens, requests
             FROM daily_usage
             WHERE id = 1
-        `).get() as TokenUsage | undefined;
+        `,
+            )
+            .get() as TokenUsage | undefined;
 
         return row ? { ...row } : null;
     }
 
     private getUsageHistory(): UsageHistoryEntry[] {
-        const rows = this.db.prepare(`
+        const rows = this.db
+            .prepare(
+                `
             SELECT date, input_tokens as inputTokens, output_tokens as outputTokens, requests
             FROM usage_history
             ORDER BY date ASC
-        `).all() as unknown as UsageHistoryEntry[];
+        `,
+            )
+            .all() as unknown as UsageHistoryEntry[];
 
         return rows.map((row) => ({ ...row }));
     }
 
     private getUserLanguagePrefs(): Record<string, string> {
-        const rows = this.db.prepare(`
+        const rows = this.db
+            .prepare(
+                `
             SELECT user_id as userId, language
             FROM user_language_preferences
             ORDER BY user_id ASC
-        `).all() as Array<{ userId: string; language: string }>;
+        `,
+            )
+            .all() as Array<{ userId: string; language: string }>;
 
         return Object.fromEntries(rows.map((row) => [row.userId, row.language]));
     }
 
     private getGuildBudgets(): Record<string, GuildBudgetConfig> {
-        const rows = this.db.prepare(`
+        const rows = this.db
+            .prepare(
+                `
             SELECT guild_id as guildId, daily_budget_usd as dailyBudgetUsd
             FROM guild_budgets
             ORDER BY guild_id ASC
-        `).all() as Array<{ guildId: string; dailyBudgetUsd: number }>;
+        `,
+            )
+            .all() as Array<{ guildId: string; dailyBudgetUsd: number }>;
 
         return Object.fromEntries(
             rows.map((row) => [row.guildId, { dailyBudgetUsd: row.dailyBudgetUsd }]),
@@ -211,23 +246,29 @@ export class ConfigStore {
     }
 
     private getGuildTokenUsage(): Record<string, TokenUsage> {
-        const rows = this.db.prepare(`
+        const rows = this.db
+            .prepare(
+                `
             SELECT guild_id as guildId, date, input_tokens as inputTokens, output_tokens as outputTokens, requests
             FROM guild_daily_usage
             ORDER BY guild_id ASC
-        `).all() as unknown as Array<{ guildId: string } & TokenUsage>;
+        `,
+            )
+            .all() as unknown as Array<{ guildId: string } & TokenUsage>;
 
-        return Object.fromEntries(
-            rows.map(({ guildId, ...usage }) => [guildId, { ...usage }]),
-        );
+        return Object.fromEntries(rows.map(({ guildId, ...usage }) => [guildId, { ...usage }]));
     }
 
     private getGuildUsageHistory(): Record<string, UsageHistoryEntry[]> {
-        const rows = this.db.prepare(`
+        const rows = this.db
+            .prepare(
+                `
             SELECT guild_id as guildId, date, input_tokens as inputTokens, output_tokens as outputTokens, requests
             FROM guild_usage_history
             ORDER BY guild_id ASC, date ASC
-        `).all() as unknown as Array<{ guildId: string } & UsageHistoryEntry>;
+        `,
+            )
+            .all() as unknown as Array<{ guildId: string } & UsageHistoryEntry>;
 
         const history: Record<string, UsageHistoryEntry[]> = {};
         for (const { guildId, ...entry } of rows) {
@@ -240,11 +281,15 @@ export class ConfigStore {
 
     private setValue<K extends keyof StoreData>(key: K, value: StoreData[K]): void {
         if (CONFIG_KEYS.has(key)) {
-            this.db.prepare(`
+            this.db
+                .prepare(
+                    `
                 INSERT INTO app_config (key, value_json)
                 VALUES (?, ?)
                 ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json
-            `).run(key, JSON.stringify(value));
+            `,
+                )
+                .run(key, JSON.stringify(value));
             return;
         }
 
@@ -276,10 +321,14 @@ export class ConfigStore {
             return;
         }
 
-        this.db.prepare(`
+        this.db
+            .prepare(
+                `
             INSERT INTO daily_usage (id, date, input_tokens, output_tokens, requests)
             VALUES (1, ?, ?, ?, ?)
-        `).run(usage.date, usage.inputTokens, usage.outputTokens, usage.requests);
+        `,
+            )
+            .run(usage.date, usage.inputTokens, usage.outputTokens, usage.requests);
     }
 
     private replaceUsageHistory(history: UsageHistoryEntry[]): void {
@@ -339,7 +388,13 @@ export class ConfigStore {
 
         for (const [guildId, entries] of Object.entries(history)) {
             for (const entry of entries) {
-                insert.run(guildId, entry.date, entry.inputTokens, entry.outputTokens, entry.requests);
+                insert.run(
+                    guildId,
+                    entry.date,
+                    entry.inputTokens,
+                    entry.outputTokens,
+                    entry.requests,
+                );
             }
         }
     }

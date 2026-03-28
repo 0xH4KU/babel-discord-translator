@@ -1,12 +1,14 @@
 import crypto from 'crypto';
 import type { NextFunction, Request, Response } from 'express';
 import type { SessionData } from '../../../types.js';
-import { dashboardMessages } from '../../../dashboard-messages.js';
+import { dashboardMessages } from '../../../shared/messages/dashboard-messages.js';
 import { InMemorySessionRepository } from './in-memory-session-repository.js';
 import type { SessionRepository } from './session-repository.js';
 
 const SESSION_TTL_MS = 86400 * 1000;
 const SESSION_CLEANUP_INTERVAL_MS = 10 * 60 * 1000;
+const SCRYPT_KEYLEN = 64;
+const SCRYPT_SALT_LEN = 16;
 
 declare module 'express-serve-static-core' {
     interface Request {
@@ -20,7 +22,10 @@ export interface SessionState {
 }
 
 export interface DashboardAuth {
-    login(password: string | undefined, req: Request): { ok: true; csrfToken: string; cookie: string } | { ok: false };
+    login(
+        password: string | undefined,
+        req: Request,
+    ): { ok: true; csrfToken: string; cookie: string } | { ok: false };
     check(req: Request): { authenticated: boolean; csrfToken?: string };
     logout(req: Request): { cookie: string };
     getSessionState(req: Request): SessionState | null;
@@ -29,8 +34,19 @@ export interface DashboardAuth {
     dispose(): void;
 }
 
-export function hashPassword(password: string): string {
-    return crypto.createHash('sha256').update(password).digest('hex');
+export function hashPassword(password: string, salt?: Buffer): { hash: string; salt: string } {
+    const actualSalt = salt ?? crypto.randomBytes(SCRYPT_SALT_LEN);
+    const derived = crypto.scryptSync(password, actualSalt, SCRYPT_KEYLEN);
+    return {
+        hash: derived.toString('hex'),
+        salt: actualSalt.toString('hex'),
+    };
+}
+
+export function verifyPassword(password: string, storedHash: string, storedSalt: string): boolean {
+    const salt = Buffer.from(storedSalt, 'hex');
+    const { hash: candidateHash } = hashPassword(password, salt);
+    return safeCompare(candidateHash, storedHash);
 }
 
 export function safeCompare(a: string, b: string): boolean {
@@ -42,7 +58,13 @@ export function safeCompare(a: string, b: string): boolean {
 }
 
 export function buildSessionCookie(token: string, maxAge: number, req?: Request): string {
-    const parts = [`session=${token}`, 'HttpOnly', 'Path=/', 'SameSite=Strict', `Max-Age=${maxAge}`];
+    const parts = [
+        `session=${token}`,
+        'HttpOnly',
+        'Path=/',
+        'SameSite=Strict',
+        `Max-Age=${maxAge}`,
+    ];
     const isSecure = req?.secure || req?.headers?.['x-forwarded-proto'] === 'https';
     if (isSecure) parts.push('Secure');
     return parts.join('; ');
@@ -65,6 +87,9 @@ export function createDashboardAuth({
     sessionTtlMs?: number;
     cleanupIntervalMs?: number;
 }): DashboardAuth {
+    // Pre-hash the correct password once at startup
+    const { hash: passwordHash, salt: passwordSalt } = hashPassword(password);
+
     const cleanupExpiredSessions = (): void => {
         const now = Date.now();
         for (const [token, session] of sessionRepository.entries()) {
@@ -98,7 +123,10 @@ export function createDashboardAuth({
 
     return {
         login(passwordCandidate: string | undefined, req: Request) {
-            if (!passwordCandidate || !safeCompare(hashPassword(passwordCandidate), hashPassword(password))) {
+            if (
+                !passwordCandidate ||
+                !verifyPassword(passwordCandidate, passwordHash, passwordSalt)
+            ) {
                 return { ok: false };
             }
 

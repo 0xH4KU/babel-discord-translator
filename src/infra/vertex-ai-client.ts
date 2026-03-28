@@ -1,5 +1,5 @@
-import { configRepository } from '../repositories/config-repository.js';
-import { appLogger, type StructuredLogFields } from '../structured-logger.js';
+import { configRepository } from '../modules/config/config-repository.js';
+import { appLogger, type StructuredLogFields } from '../shared/structured-logger.js';
 import type { TranslationResult, VertexAIResponse } from '../types.js';
 
 const RETRY_CODES = [429, 500, 502, 503];
@@ -84,9 +84,7 @@ export async function fetchWithRetry(
         timeoutMs = REQUEST_TIMEOUT_MS,
         logPrefix = 'VertexAI',
         logContext,
-    } = typeof config === 'number'
-        ? { retries: config }
-        : config;
+    } = typeof config === 'number' ? { retries: config } : config;
     const logger = appLogger.child({
         component: 'vertex_ai',
         ...logContext,
@@ -118,7 +116,8 @@ export async function fetchWithRetry(
         } catch (error) {
             if (attempt < retries) {
                 const delay = Math.pow(2, attempt) * 500;
-                const reason = (error as Error).name === 'TimeoutError' ? 'timeout' : 'network error';
+                const reason =
+                    (error as Error).name === 'TimeoutError' ? 'timeout' : 'network error';
                 logger.warn('vertex_ai.retry_scheduled', {
                     operation: logPrefix,
                     attempt: attempt + 1,
@@ -193,25 +192,29 @@ async function requestGenerateContent(
 
     let response: Response;
     try {
-        response = await fetchWithRetry(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-goog-api-key': config.apiKey,
-            },
-            body: JSON.stringify({
-                contents: [{ role: 'user', parts: [{ text: prompt }] }],
-                generationConfig: {
-                    maxOutputTokens,
-                    temperature,
+        response = await fetchWithRetry(
+            url,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-goog-api-key': config.apiKey,
                 },
-            }),
-        }, {
-            retries,
-            timeoutMs,
-            logPrefix,
-            logContext,
-        });
+                body: JSON.stringify({
+                    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                    generationConfig: {
+                        maxOutputTokens,
+                        temperature,
+                    },
+                }),
+            },
+            {
+                retries,
+                timeoutMs,
+                logPrefix,
+                logContext,
+            },
+        );
     } catch (error) {
         logger.error('vertex_ai.request.failed', {
             operation: logPrefix,
@@ -251,7 +254,9 @@ async function requestGenerateContent(
 export async function generateTranslationContent(
     prompt: string,
     maxOutputTokens: number,
-    options?: { logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'> },
+    options?: {
+        logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'>;
+    },
 ): Promise<TranslationResult> {
     const { data } = await requestGenerateContent(prompt, {
         maxOutputTokens,

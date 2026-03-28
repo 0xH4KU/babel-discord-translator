@@ -1,18 +1,16 @@
 /**
  * Shared type definitions for the Babel Discord Translator.
  */
-import type {
-    Client,
-} from 'discord.js';
-import type { TranslationCache } from './cache.js';
-import type { CooldownManager } from './cooldown.js';
-import type { TranslationLog } from './log.js';
-import type { AppMetricsCollector } from './app-metrics.js';
+import type { Client } from 'discord.js';
+import type { TranslationCache } from './modules/translation/cache.js';
+import type { CooldownManager } from './modules/translation/cooldown.js';
+import type { TranslationLog } from './shared/log.js';
+import type { AppMetricsCollector } from './shared/app-metrics.js';
 import type { VertexAiHealthStatus } from './infra/vertex-ai-client.js';
-import type { TranslationService } from './services/translation-service.js';
-import type { SessionRepository } from './auth/session-repository.js';
-import type { TranslationRuntimeLimiter } from './translation-runtime-limiter.js';
-import type { TranslationWebhookService } from './webhook-service.js';
+import type { TranslationService } from './modules/translation/translation-service.js';
+import type { SessionRepository } from './modules/dashboard/auth/session-repository.js';
+import type { TranslationRuntimeLimiter } from './modules/translation/translation-runtime-limiter.js';
+import type { TranslationWebhookService } from './modules/translation/webhook-service.js';
 
 // --- Store ---
 

@@ -116,7 +116,9 @@ export function runMigrations(db: DatabaseSync): void {
         );
     `);
 
-    const appliedRows = db.prepare('SELECT id FROM schema_migrations').all() as Array<{ id: number }>;
+    const appliedRows = db.prepare('SELECT id FROM schema_migrations').all() as Array<{
+        id: number;
+    }>;
     const appliedIds = new Set(appliedRows.map((row) => row.id));
 
     for (const migration of MIGRATIONS) {
@@ -126,10 +128,12 @@ export function runMigrations(db: DatabaseSync): void {
 
         inTransaction(db, () => {
             migration.up(db);
-            db.prepare(`
+            db.prepare(
+                `
                 INSERT INTO schema_migrations (id, name, applied_at)
                 VALUES (?, ?, ?)
-            `).run(migration.id, migration.name, new Date().toISOString());
+            `,
+            ).run(migration.id, migration.name, new Date().toISOString());
         });
     }
 }
@@ -170,26 +174,34 @@ export function closeSqliteDatabase(): void {
     sharedDatabase = null;
 }
 
+/** Safe table names that are allowed to be queried in isSqliteStoreEmpty. */
+const STORE_TABLES = new Set([
+    'app_config',
+    'user_language_preferences',
+    'guild_budgets',
+    'daily_usage',
+    'guild_daily_usage',
+    'usage_history',
+    'guild_usage_history',
+]);
+
 export function isSqliteStoreEmpty(db: DatabaseSync): boolean {
-    const tables = [
-        'app_config',
-        'user_language_preferences',
-        'guild_budgets',
-        'daily_usage',
-        'guild_daily_usage',
-        'usage_history',
-        'guild_usage_history',
-    ];
+    const countStatement = db.prepare(
+        'SELECT COUNT(*) as count FROM sqlite_master WHERE type = ? AND name = ?',
+    );
 
-    const countStatement = db.prepare('SELECT COUNT(*) as count FROM sqlite_master WHERE type = ? AND name = ?');
-
-    for (const table of tables) {
+    // Pre-build parameterized statements for each known table.
+    // This is safe because table names come from the STORE_TABLES constant, not user input.
+    const countStatements = new Map<string, ReturnType<DatabaseSync['prepare']>>();
+    for (const table of STORE_TABLES) {
         const tableExists = countStatement.get('table', table) as { count: number } | undefined;
-        if (!tableExists?.count) {
-            continue;
+        if (tableExists?.count) {
+            countStatements.set(table, db.prepare(`SELECT COUNT(*) as count FROM "${table}"`));
         }
+    }
 
-        const count = db.prepare(`SELECT COUNT(*) as count FROM ${table}`).get() as { count: number } | undefined;
+    for (const [, stmt] of countStatements) {
+        const count = stmt.get() as { count: number } | undefined;
         if ((count?.count ?? 0) > 0) {
             return false;
         }

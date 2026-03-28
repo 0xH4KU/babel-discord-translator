@@ -2,11 +2,11 @@ import express, { type Request, type Response } from 'express';
 import http from 'http';
 import rateLimit from 'express-rate-limit';
 import { createEmptyAppMetricsSnapshot } from '../../shared/app-metrics.js';
-import { config } from '../../config.js';
+import { config } from '../config/config.js';
 import { getHealthStatus, getLivenessStatus, getReadinessStatus } from '../../shared/health.js';
-import { usage } from '../../usage.js';
+import { usage } from '../usage/usage.js';
 import { DEFAULT_TRANSLATION_RUNTIME_LIMITS } from '../translation/translation-runtime-limiter.js';
-import { translate } from '../../translate.js';
+import { translate } from '../translation/translate.js';
 import { createDashboardAuth } from './auth/dashboard-auth.js';
 import { SQLiteSessionRepository } from './auth/sqlite-session-repository.js';
 import { checkVertexAiHealth } from '../../infra/vertex-ai-client.js';
@@ -15,7 +15,7 @@ import { guildBudgetRepository } from '../usage/guild-budget-repository.js';
 import { userPreferenceRepository } from '../translation/user-preference-repository.js';
 import { applyConfigUpdateEffects } from '../config/config-runtime-effects.js';
 import { appLogger } from '../../shared/structured-logger.js';
-import { dashboardMessages } from '../../dashboard-messages.js';
+import { dashboardMessages } from '../../shared/messages/dashboard-messages.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import type { DashboardDeps, StoreData } from '../../types.js';
@@ -23,6 +23,15 @@ import type { DashboardDeps, StoreData } from '../../types.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MAX_CACHE_SIZE = 2000;
 const BYTES_PER_MB = 1024 * 1024;
+
+/** Wrap an async Express handler to forward errors to Express error handling (Express 4 compat). */
+function asyncHandler(
+    fn: (req: Request, res: Response) => Promise<void>,
+): (req: Request, res: Response, next: import('express').NextFunction) => void {
+    return (req, res, next) => {
+        fn(req, res).catch(next);
+    };
+}
 
 declare module 'express-serve-static-core' {
     interface Locals {
@@ -186,16 +195,22 @@ export function createDashboardApp({
         res.status(health.live ? 200 : 503).json(health);
     });
 
-    app.get('/readyz', async (_req: Request, res: Response) => {
-        const health = await getReadinessStatus({ healthCheck });
-        res.status(health.ready ? 200 : 503).json(health);
-    });
+    app.get(
+        '/readyz',
+        asyncHandler(async (_req: Request, res: Response) => {
+            const health = await getReadinessStatus({ healthCheck });
+            res.status(health.ready ? 200 : 503).json(health);
+        }),
+    );
 
-    app.get('/healthz', async (_req: Request, res: Response) => {
-        const metricsSnapshot = metrics?.snapshot() ?? createEmptyAppMetricsSnapshot();
-        const health = await getHealthStatus({ healthCheck }, metricsSnapshot);
-        res.status(health.live ? 200 : 503).json(health);
-    });
+    app.get(
+        '/healthz',
+        asyncHandler(async (_req: Request, res: Response) => {
+            const metricsSnapshot = metrics?.snapshot() ?? createEmptyAppMetricsSnapshot();
+            const health = await getHealthStatus({ healthCheck }, metricsSnapshot);
+            res.status(health.live ? 200 : 503).json(health);
+        }),
+    );
 
     app.get('/api/setup-status', auth.requireAuth, (_req: Request, res: Response) => {
         res.json({ complete: configRepository.isSetupComplete() });
@@ -407,7 +422,7 @@ export function createDashboardApp({
         '/api/translate/test',
         auth.requireAuth,
         auth.requireCsrf,
-        async (req: Request, res: Response) => {
+        asyncHandler(async (req: Request, res: Response) => {
             const { text, targetLanguage } = req.body;
             if (!text?.trim()) {
                 res.status(400).json({ error: dashboardMessages.translationTest.textRequired });
@@ -427,18 +442,22 @@ export function createDashboardApp({
             } catch (err) {
                 res.status(500).json({ error: (err as Error).message });
             }
-        },
+        }),
     );
 
-    app.get('/api/health', auth.requireAuth, async (_req: Request, res: Response) => {
-        const readiness = await getReadinessStatus({ healthCheck });
-        res.status(readiness.ready ? 200 : 503).json({
-            healthy: readiness.ready,
-            readiness: readiness.status,
-            vertexAi: readiness.checks.vertexAi,
-            checks: readiness.checks,
-        });
-    });
+    app.get(
+        '/api/health',
+        auth.requireAuth,
+        asyncHandler(async (_req: Request, res: Response) => {
+            const readiness = await getReadinessStatus({ healthCheck });
+            res.status(readiness.ready ? 200 : 503).json({
+                healthy: readiness.ready,
+                readiness: readiness.status,
+                vertexAi: readiness.checks.vertexAi,
+                checks: readiness.checks,
+            });
+        }),
+    );
 
     return app;
 }

@@ -1,7 +1,7 @@
 import { MessageFlags, type ChatInputCommandInteraction } from 'discord.js';
-import { discordMessages, getDiscordLanguageName } from '../discord-messages.js';
-import { localeToLang } from '../lang.js';
-import { userPreferenceRepository } from '../repositories/user-preference-repository.js';
+import { discordMessages, getDiscordLanguageName } from '../shared/messages/discord-messages.js';
+import { localeToLang } from '../modules/translation/lang.js';
+import { userPreferenceRepository } from '../modules/translation/user-preference-repository.js';
 
 /** Handle /setlang command — set user's preferred translation language. */
 export async function handleSetlang(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -30,9 +30,15 @@ export async function handleMylang(interaction: ChatInputCommandInteraction): Pr
 
     let reply: string;
     if (userPref) {
-        reply = discordMessages.currentLanguageFromPreference(getDiscordLanguageName(userPref), userPref);
+        reply = discordMessages.currentLanguageFromPreference(
+            getDiscordLanguageName(userPref),
+            userPref,
+        );
     } else if (localeLang) {
-        reply = discordMessages.currentLanguageFromLocale(getDiscordLanguageName(localeLang), interaction.locale);
+        reply = discordMessages.currentLanguageFromLocale(
+            getDiscordLanguageName(localeLang),
+            interaction.locale,
+        );
     } else {
         reply = discordMessages.currentLanguageAuto(interaction.locale);
     }

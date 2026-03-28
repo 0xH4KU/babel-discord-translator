@@ -16,51 +16,64 @@ Right-click any message → *Babel* → Get an ephemeral translation only you ca
 
 </div>
 
+---
+
 ## Features
 
+### Core Translation
+
 - **Context Menu Translation** — Right-click → Apps → Babel
-- **Ephemeral Messages** — Translations are private, only visible to you
+- **`/translate` Command** — Slash command with public webhook-based output
+- **Ephemeral Messages** — Context menu translations are private, only visible to you
 - **Multi-language Support** — Auto-detects your Discord locale, or use `/setlang` to choose
-- **Check Your Language** — Use `/mylang` to see your current translation language
-- **LRU Cache** — Same message translated by 50 users = 1 API call (both context menu and `/translate`)
-- **Versioned Cache Keys** — Cache entries are keyed by source content hash, target language, Gemini model, prompt fingerprint, and output token settings
-- **Auto-Retry** — Exponential backoff for transient API errors (429, 503)
-- **Per-User Cooldown** — Configurable rate limiting
-- **Server Whitelist** — Control which servers can use the bot
-- **Cost Tracking** — Real-time token usage with per-server budgets + 30-day history chart
-- **Translation & Error Logs** — In-memory audit log with filter tabs
-- **Custom Prompt** — Customize the translation prompt from the dashboard
-- **Shared Vertex AI Client** — Translation and API health checks use one centralized client with unified timeout and retry handling
-- **Repository Boundaries** — Commands, services, and dashboard routes talk to focused repositories instead of reaching into the raw JSON store directly
-- **SQLite Persistence** — Config, usage, preferences, guild budgets, and dashboard sessions are stored in a migrated SQLite database
-- **Structured Operational Logs** — JSON logs include request-scoped `requestId`, command, guild/user IDs, retry/error classification, and secret redaction
-- **Application Metrics** — In-memory counters expose translations, API calls, cache hits, failures, budget blocks, and webhook re-creates through `/api/stats`
-- **Runtime Translation Queue** — Cache misses flow through a bounded concurrency/queue limiter with per-user, per-guild, and global backpressure
-- **Dedicated Webhook Service** — `/translate` public output uses a dedicated webhook delivery service with stale-webhook recovery, error classification, and bounded LRU channel caching
-- **Governed Message Catalogs** — Discord user replies and dashboard/admin API errors are centralized into separate message catalogs instead of being scattered across handlers
-- **Web Dashboard** — Login-protected admin panel with setup wizard
-- **Modular Dashboard Auth** — Session, cookie, password, and CSRF handling live in dedicated auth modules instead of the route file
-- **Unified Config Runtime Effects** — Dashboard config changes flow through one hook that applies immediate runtime updates and cache invalidation rules
-- **API Health Check** — Dashboard shows translation readiness and Vertex AI probe status
-- **Translation Test** — Test translations directly from the dashboard
-- **User Preferences** — View and manage user language settings
-- **Input Length Limit** — Configurable max input characters to prevent token waste (default: 2000)
-- **Configurable Output Tokens** — Adjust Gemini `maxOutputTokens` from dashboard (default: 1000)
-- **Same-Language Detection** — Skips translation when text is already in user's language
+- **Same-Language Detection** — Skips translation when text is already in the user's language
+- **Custom Prompt** — Fully customizable translation system prompt from the dashboard
+
+### Performance & Reliability
+
+- **LRU Cache** — Same message translated by 50 users = 1 API call, with versioned cache keys (content hash × language × model × prompt × output tokens)
+- **Auto-Retry** — Exponential backoff for transient API errors (429, 5xx)
+- **Runtime Translation Queue** — Bounded concurrency/queue limiter with per-user, per-guild, and global backpressure
+- **Webhook Auto-Recovery** — Automatically re-creates webhooks if deleted externally
+
+### Security
+
+- **scrypt Password Hashing** — Dashboard password secured with `crypto.scryptSync` + random salt (timing-safe comparison)
 - **CSRF Protection** — All dashboard mutation endpoints require a CSRF token
 - **Login Rate Limiting** — Brute-force protection (5 attempts / 15 min per IP)
-- **Timing-Safe Auth** — SHA-256 hashed password comparison prevents timing attacks
-- **Decoupled Dashboard Bootstrap** — Express app creation and HTTP server startup are separated for cleaner tests and lifecycle control
-- **Graceful Shutdown** — Clean `SIGTERM`/`SIGINT` handling for Docker & PM2
-- **Input Validation** — Config updates are sanitized and range-checked
 - **Error Sanitization** — API keys and URLs stripped from user-facing error messages
-- **Health Model** — `/livez`, `/readyz`, and `/healthz` separate local process liveness from translation readiness
-- **Docker Health Check** — Built-in `/livez` endpoint for container orchestration
-- **Webhook Auto-Recovery** — Automatically re-creates webhooks if deleted externally
+- **Global Error Handlers** — `unhandledRejection` and `uncaughtException` are caught, logged, and handled
+
+### Observability
+
+- **Structured Logging** — JSON logs with request-scoped `requestId`, command context, guild/user IDs, retry classification, and automatic secret redaction
+- **Application Metrics** — In-memory counters for translations, API calls, cache hits, failures, budget blocks, and webhook re-creates via `/api/stats`
+- **Health Model** — Kubernetes-style `/livez`, `/readyz`, and `/healthz` endpoints separate liveness from readiness
+- **Translation & Error Logs** — In-memory audit ring buffer with O(1) error counter
+
+### Dashboard
+
+- **Web Dashboard** — Login-protected admin panel with setup wizard
+- **Modular Auth** — Session, cookie, password, and CSRF handling in dedicated auth modules
+- **Config Runtime Effects** — Config changes apply immediate runtime updates and cache invalidation
+- **API Health Check** — Real-time Vertex AI probe status
+- **Translation Test** — Test translations directly from the dashboard
+- **User Preferences** — View and manage per-user language settings
+- **Cost Tracking** — Real-time token usage with per-server budgets + 30-day history chart
+
+### Infrastructure
+
+- **SQLite Persistence** — Config, usage, preferences, guild budgets, and dashboard sessions stored in a migrated SQLite database
+- **Repository Pattern** — Commands, services, and dashboard routes talk to focused repositories instead of reaching into the store directly
+- **Governed Message Catalogs** — Discord and dashboard error messages centralized into separate message catalogs
+- **Graceful Shutdown** — Clean `SIGTERM`/`SIGINT` handling with ordered teardown for Docker & PM2
+- **Pre-commit Hooks** — `husky` + `lint-staged` ensure lint and format on every commit
+
+---
 
 ## Quick Start
 
-Prerequisites: Node.js `22.5+`, npm, a Discord bot token, and a Vertex AI project you can configure from the dashboard.
+**Prerequisites:** Node.js `22.5+`, npm, a Discord bot token, and a Vertex AI project.
 
 ```bash
 git clone https://github.com/0xH4KU/babel-discord-translator.git
@@ -71,9 +84,14 @@ cp .env.example .env
 
 Edit `.env` with your Discord bot token:
 
-```bash
-nano .env
+```env
+DISCORD_TOKEN=your_bot_token_here
+DASHBOARD_PORT=3000
+DASHBOARD_PASSWORD=your_strong_password
 ```
+
+> [!IMPORTANT]
+> Use a strong, randomly generated password for `DASHBOARD_PASSWORD`. The default `admin` is only for initial local development.
 
 Run in development:
 
@@ -81,7 +99,7 @@ Run in development:
 npm run dev
 ```
 
-For a production-like local run:
+For production:
 
 ```bash
 npm run build
@@ -90,6 +108,8 @@ npm start
 
 Open `http://localhost:3000` → Login → Complete the setup wizard.
 On first boot, Babel creates `data/babel.sqlite` and auto-imports `data/config.json` if a legacy JSON store exists.
+
+---
 
 ## Setup
 
@@ -106,7 +126,7 @@ On first boot, Babel creates `data/babel.sqlite` and auto-imports `data/config.j
 DISCORD_APP_ID=your_app_id DISCORD_BOT_TOKEN=your_token npm run register
 ```
 
-This registers the **Babel** context menu, **/setlang**, **/translate**, **/mylang**, and **/help** commands.
+This registers the **Babel** context menu, **/translate**, **/setlang**, **/mylang**, and **/help** commands.
 
 ### 3. Invite the Bot
 
@@ -120,18 +140,16 @@ https://discord.com/oauth2/authorize?client_id=YOUR_APP_ID&scope=bot+application
 
 After starting the bot, open `http://localhost:3000`:
 
-- **API Settings** — Vertex AI API key, GCP project, location
-- **Model** — Choose your Gemini model
-- **Pricing** — Set per-million-token prices for cost tracking
-- **Global Budget** — Set default daily USD limit (0 = unlimited)
-- **Per-Server Budget** — Override budget per server in the Access tab
-- **Prompt** — Customize the translation system prompt
-- **Limits** — Max input length (characters) and max output tokens
-- **Whitelist** — Toggle servers on/off, manage per-server budgets
-- **Translation Test** — Test API connectivity and translations
-- **User Preferences** — View and manage per-user language settings
-- **API Health** — Monitor API connectivity in real-time
-- **Metrics & Stats** — Track cache hit rate, failure rate, API call volume, budget blocks, and webhook recovery events
+| Tab | Settings |
+|---|---|
+| **Setup** | Vertex AI API key, GCP project, location, Gemini model |
+| **Config** | Cooldown, cache size, max input length, max output tokens, custom prompt |
+| **Pricing** | Per-million-token prices, global daily budget (0 = unlimited) |
+| **Access** | Server whitelist, per-server budget overrides |
+| **Users** | View and manage per-user language preferences |
+| **Monitor** | API health, cache hit rate, failure rate, API call volume, translation test |
+
+---
 
 ## Multi-language Support
 
@@ -145,179 +163,190 @@ Babel automatically translates to the language that makes sense for you:
 | Used `/setlang ja` | Always translates to 日本語 regardless of locale |
 | Used `/setlang auto` | Clears preference, reverts to locale detection |
 
-**Priority**: User preference (`/setlang`) > Discord locale > Auto-detect
+**Priority:** `/setlang` preference > Discord locale > Auto-detect
+
+---
 
 ## Configuration
 
-All configuration is managed through the web dashboard. The `.env` file only needs three required/runtime values, plus one optional data-path override:
+All configuration is managed through the web dashboard. The `.env` file only needs:
 
 | Variable | Description | Default |
 |---|---|---|
 | `DISCORD_TOKEN` | Discord bot token | *required* |
 | `DASHBOARD_PORT` | Dashboard web server port | `3000` |
 | `DASHBOARD_PASSWORD` | Dashboard login password | `admin` |
-| `BABEL_DB_PATH` | Optional SQLite database path | `data/babel.sqlite` |
+| `BABEL_DB_PATH` | SQLite database path | `data/babel.sqlite` |
 
-### Migration And Rollback
+### Migration & Rollback
 
-If you are upgrading from the old JSON store manually, Babel will auto-import `data/config.json` into SQLite on first startup. You can also run the scripts directly:
+Babel auto-imports `data/config.json` into SQLite on first startup. Manual scripts:
 
 ```bash
-# Import legacy data/config.json into SQLite
+# Import legacy JSON → SQLite
 npm run db:migrate
 
-# Export the current SQLite state back to data/config.json
+# Export SQLite → JSON for rollback
 npm run db:export:json
 ```
 
-Use `npm run db:migrate -- --force` only if you intentionally want to overwrite an existing SQLite file.
+Use `npm run db:migrate -- --force` to overwrite an existing SQLite file.
 
-## Persistence And Single-Process Limits
-
-Persistent state lives in SQLite:
-
-- Runtime/dashboard config
-- Usage totals and usage history
-- User language preferences
-- Per-guild budget overrides
-- Dashboard sessions
-
-Process-local state does not survive process restarts and is not shared across multiple bot workers:
-
-- Translation cache entries
-- Cooldown windows
-- Runtime limiter queues and counters
-- In-memory logs and in-memory metrics snapshots
-- `/translate` webhook channel cache
-
-As of March 27, 2026, the recommended deployment model is still one Node.js process per SQLite data file. If you want multiple bot workers, you should first externalize the cache and other process-local coordination state instead of pointing several workers at the same machine-local runtime assumptions.
+---
 
 ## Runtime Architecture
 
-- `src/index.ts` wires one process that hosts both the Discord gateway client and the admin/dashboard HTTP server.
-- `src/modules/translation/` owns translation workflow, cache, cooldowns, runtime backpressure, language preferences, and `/translate` webhook delivery.
-- `src/modules/config/` owns validated environment/runtime config plus immediate in-memory effects after dashboard edits.
-- `src/modules/usage/` owns token accounting, daily budgets, and usage history aggregation.
-- `src/modules/dashboard/` owns the Express app, auth/session flow, and admin API surface.
-- `src/shared/` owns cross-cutting operational concerns such as structured logs, health modeling, graceful shutdown, and centralized message catalogs.
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Node.js Process                         │
+│                                                             │
+│  ┌──────────────┐    ┌────────────────────────────────────┐ │
+│  │  Discord.js   │    │         Express Dashboard          │ │
+│  │  Gateway       │    │  /livez  /readyz  /healthz        │ │
+│  │               │    │  /api/config  /api/stats  ...      │ │
+│  └───────┬───────┘    └──────────────┬─────────────────────┘ │
+│          │                           │                       │
+│  ┌───────▼───────────────────────────▼─────────────────────┐ │
+│  │              Shared Application Layer                    │ │
+│  │  TranslationService → Cache → RuntimeLimiter → Vertex AI│ │
+│  │  CooldownManager    UsageTracker    WebhookService      │ │
+│  │  ConfigRepository   AppMetrics      StructuredLogger     │ │
+│  └───────────────────────────┬─────────────────────────────┘ │
+│                              │                               │
+│  ┌───────────────────────────▼─────────────────────────────┐ │
+│  │                   SQLite (babel.sqlite)                  │ │
+│  │  app_config │ daily_usage │ guild_budgets │ sessions ... │ │
+│  └─────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Module Layout
+
+| Layer | Path | Responsibility |
+|---|---|---|
+| **Entry** | `src/index.ts` | Wires Discord client, dashboard, metrics, shutdown, global error handlers |
+| **Commands** | `src/commands/` | Discord interaction handlers (`babel`, `translate`, `setlang`, `mylang`, `help`) |
+| **Translation** | `src/modules/translation/` | Cache, cooldowns, runtime limiter, language detection, webhook delivery |
+| **Config** | `src/modules/config/` | Environment validation, runtime config repository, config change effects |
+| **Usage** | `src/modules/usage/` | Token accounting, daily budgets, per-guild budgets, usage history |
+| **Dashboard** | `src/modules/dashboard/` | Express app, auth/session flow, admin API surface |
+| **Shared** | `src/shared/` | Structured logger, health model, graceful shutdown, app metrics, message catalogs |
+| **Infra** | `src/infra/` | Vertex AI transport with retry, timeout, and health probes |
+| **Persistence** | `src/persistence/` | SQLite connection, migrations, legacy JSON import/export |
+| **Repositories** | `src/repositories/` | Data normalization helpers for store data |
+
+### Persistence Model
+
+| State | Storage | Survives Restart? |
+|---|---|---|
+| Config, usage, preferences, guild budgets, sessions | SQLite | ✅ |
+| Translation cache, cooldowns, runtime limiter queues | In-memory | ❌ |
+| Audit logs, metrics snapshots, webhook channel cache | In-memory | ❌ |
+
+---
 
 ## Project Structure
 
-The runtime code now follows a module-oriented layout. The old top-level paths remain as thin compatibility re-exports while the real implementations live under `src/modules/` and `src/shared/`.
-
 ```
 src/
-├── index.ts                # Entry point wiring Discord, dashboard, metrics, and shutdown
-├── commands/               # Discord command handlers and small command-specific helpers
+├── index.ts                # Entry point: Discord + dashboard + error handlers
+├── commands/               # Discord command handlers
 ├── modules/
 │   ├── config/
-│   │   ├── config.ts               # Environment validation and app-level env config
-│   │   ├── config-repository.ts    # Runtime/dashboard config boundary over persistence
+│   │   ├── config.ts               # Environment validation (throws on missing vars)
+│   │   ├── config-repository.ts    # Batch-read runtime config over persistence
 │   │   └── config-runtime-effects.ts # Immediate in-memory reactions to config edits
 │   ├── dashboard/
-│   │   ├── dashboard.ts            # Dashboard app factory + HTTP server bootstrap
+│   │   ├── dashboard.ts            # Express app factory + async handler wrapper
 │   │   └── auth/
-│   │       ├── dashboard-auth.ts   # Cookie, session, and CSRF flow
+│   │       ├── dashboard-auth.ts   # scrypt password hashing, cookie, session, CSRF
 │   │       ├── in-memory-session-repository.ts
 │   │       ├── sqlite-session-repository.ts
 │   │       └── session-repository.ts
 │   ├── translation/
-│   │   ├── cache.ts                # LRU translation cache
+│   │   ├── cache.ts                # LRU translation cache with versioned keys
 │   │   ├── cooldown.ts             # Per-user cooldown manager
-│   │   ├── lang.ts                 # Locale/language detection helpers
+│   │   ├── lang.ts                 # Locale/script detection helpers
 │   │   ├── translate.ts            # Prompt assembly + translation entrypoint
-│   │   ├── translation-runtime-limiter.ts # Global/guild/user backpressure policy
-│   │   ├── translation-service.ts  # Shared translation application workflow
-│   │   ├── webhook-service.ts      # /translate webhook lifecycle, recovery, and channel-scoped LRU cache
+│   │   ├── translation-runtime-limiter.ts # Global/guild/user backpressure
+│   │   ├── translation-service.ts  # Translation application workflow
+│   │   ├── webhook-service.ts      # /translate webhook lifecycle + recovery
 │   │   └── user-preference-repository.ts
 │   └── usage/
 │       ├── usage.ts                # Token cost, budget, and history tracker
 │       ├── guild-budget-repository.ts
 │       └── usage-repository.ts
 ├── shared/
-│   ├── app-metrics.ts       # In-memory application metrics and derived rates
+│   ├── app-metrics.ts       # In-memory counters and derived rates
 │   ├── health.ts            # Liveness/readiness/composite health model
-│   ├── log.ts               # In-memory ring buffer audit log
-│   ├── messages/            # Separate Discord and dashboard/admin message catalogs
+│   ├── log.ts               # Ring buffer audit log with O(1) error counter
+│   ├── messages/            # Discord and dashboard message catalogs
 │   ├── shutdown.ts          # Graceful shutdown orchestration
-│   └── structured-logger.ts # JSON structured operational logging with request context
+│   └── structured-logger.ts # JSON logging with auto secret redaction
 ├── infra/
-│   └── vertex-ai-client.ts     # Shared Vertex AI transport, retry, timeout, health
+│   └── vertex-ai-client.ts     # Vertex AI transport, retry, timeout, health
 ├── persistence/
-│   ├── legacy-json-store.ts    # Legacy config.json import/export helpers
-│   ├── sqlite-database.ts      # Shared SQLite connection + migrations
-│   └── store-defaults.ts       # Canonical default StoreData values
+│   ├── legacy-json-store.ts    # Legacy config.json import/export
+│   ├── sqlite-database.ts      # SQLite connection + schema migrations
+│   └── store-defaults.ts       # Default StoreData values
 ├── repositories/
-│   └── store-data-normalizer.ts # Shared normalization helpers for SQLite-backed store data
-├── store.ts                # SQLite-backed store facade kept for repository compatibility
+│   └── store-data-normalizer.ts # Normalization helpers for store data
+├── store.ts                # SQLite-backed store facade
 ├── types.ts                # Shared TypeScript type definitions
 ├── locales/
-│   └── help.json     # Help text in 16 languages
-└── public/           # Dashboard frontend assets
+│   └── help.json           # Help text in 16 languages
+└── public/                 # Dashboard frontend assets
 ```
+
+---
 
 ## Development
 
 ```bash
-# Run in watch mode
-npm run dev
-
-# Type check (no emit)
-npm run typecheck
-
-# Import legacy JSON into SQLite
-npm run db:migrate
-
-# Export SQLite state back to config.json for rollback
-npm run db:export:json
-
-# Run tests
-npm test
-
-# Run tests with coverage
-npm run test:coverage
-
-# Run tests in watch mode
-npm run test:watch
-
-# Run linter
-npm run lint
-
-# Format code
-npm run format
-
-# Build for production
-npm run build
-
-# Run the production artifact locally
-npm start
+npm run dev             # Run in watch mode (tsx)
+npm run typecheck       # Type check (no emit)
+npm test                # Run tests
+npm run test:coverage   # Run tests with v8 coverage
+npm run test:watch      # Run tests in watch mode
+npm run lint            # Run ESLint
+npm run format          # Format with Prettier
+npm run build           # Build for production
+npm start               # Run the production artifact
+npm run db:migrate      # Import legacy JSON → SQLite
+npm run db:export:json  # Export SQLite → JSON
 ```
+
+### Pre-commit Hooks
+
+This project uses **husky** + **lint-staged** to automatically run ESLint and Prettier on staged `.ts` files before every commit.
 
 ### Test Coverage
 
-166 tests across 20 suites covering all modules:
+167 tests across 20 suites covering all modules:
 
 | Suite | Tests | Covers |
 |---|---|---|
-| `cache.test.ts` | 9 | LRU eviction, hit/miss stats, versioned cache keys |
+| `cache.test.ts` | 10 | LRU eviction, hit/miss stats, versioned cache keys |
 | `config-runtime-effects.test.ts` | 4 | Unified config side effects, cache invalidation, immediate runtime sync |
 | `cooldown.test.ts` | 6 | Rate limiting, cleanup, per-user isolation |
 | `app-metrics.test.ts` | 2 | Counter aggregation and derived success/failure/cache/api rates |
-| `log.test.ts` | 14 | Ring buffer, addError, type filtering, defaults |
+| `log.test.ts` | 14 | Ring buffer, addError, type filtering, O(1) error counter |
 | `lang.test.ts` | 29 | Script detection (CJK/Cyrillic/Arabic/Thai/Hindi), locale mapping, same-language check |
-| `dashboard-auth.test.ts` | 4 | Standalone auth flow, CSRF enforcement, session expiry cleanup |
+| `dashboard-auth.test.ts` | 4 | scrypt auth flow, CSRF enforcement, session expiry cleanup |
 | `translation-runtime-limiter.test.ts` | 3 | FIFO queueing, per-user outstanding cap, per-guild/global queue shedding |
-| `translation-service.test.ts` | 9 | Shared workflow, cache hits, runtime shedding, budget/error handling, language decisions |
-| `translate-command.test.ts` | 1 | `/translate` delegates delivery to the webhook service after a successful translation |
-| `webhook-service.test.ts` | 4 | Stale webhook recovery, error classification, and bounded LRU webhook cache eviction |
+| `translation-service.test.ts` | 9 | Shared workflow, cache hits, runtime shedding, budget/error handling |
+| `translate-command.test.ts` | 1 | `/translate` delegates delivery to webhook service |
+| `webhook-service.test.ts` | 4 | Stale webhook recovery, error classification, LRU webhook cache eviction |
 | `vertex-ai-client.test.ts` | 4 | Shared transport, timeout wiring, health checks, endpoint resolution |
 | `translate.test.ts` | 20 | Retry logic, prompt building, API errors, URL routing |
-| `usage.test.ts` | 23 | Cost calculation, per-server budget enforcement, global fallback, day rollover, guild history |
+| `usage.test.ts` | 23 | Cost calculation, per-server budget enforcement, global fallback, day rollover |
 | `store.test.ts` | 7 | SQLite persistence, legacy JSON import, defaults, copy safety |
 | `structured-logger.test.ts` | 2 | JSON shape, inherited request context, secret redaction |
-| `sqlite-session-repository.test.ts` | 2 | Persistent session storage, enumeration, delete/clear behavior |
-| `dashboard.test.ts` | 17 | Auth flow, health endpoints, stats metrics, config protection, runtime cache invalidation |
+| `sqlite-session-repository.test.ts` | 2 | Persistent session storage, enumeration, delete/clear |
+| `dashboard.test.ts` | 17 | Auth flow, health endpoints, stats, config protection, async error handling |
 | `shutdown.test.ts` | 3 | Shutdown order, timeout forcing, signal deduplication |
+
+---
 
 ## Production Deployment
 
@@ -331,73 +360,100 @@ pm2 save
 pm2 startup
 ```
 
+The PM2 config includes `max_memory_restart: '250M'` for resource-constrained environments (e.g., GCP e2-micro).
+
 ### Docker
 
 ```bash
 docker build -t babel .
-docker run -d --name babel --env-file .env -p 3000:3000 -v babel-data:/app/data babel
+docker run -d \
+  --name babel \
+  --env-file .env \
+  -p 3000:3000 \
+  -v babel-data:/app/data \
+  babel
 ```
 
-The committed `Dockerfile` uses a multi-stage Node.js `22-alpine` build, persists SQLite data under `/app/data`, and includes a built-in `HEALTHCHECK` that pings `/livez` every 30 seconds.
-Both PM2 and Docker run the same built artifact as `npm start`: `dist/src/index.js`.
-Dashboard sessions now share the same SQLite data file as the rest of the application state, and graceful shutdown closes the database connection before exit.
+The Dockerfile uses a **multi-stage build** with Node.js `22-alpine`:
+- Build stage compiles TypeScript
+- Runtime stage runs `npm ci --omit=dev` (no devDependencies in the image)
+- Runs as non-root user `babel`
+- Built-in `HEALTHCHECK` pings `/livez` every 30 seconds
+- SQLite data persisted under `/app/data`
 
 ### Health Endpoints
 
-- `GET /livez` checks only local process health and the in-process config repository. This is the container liveness probe.
-- `GET /readyz` checks setup completeness plus a live Vertex AI probe before declaring the app ready for translation traffic.
-- `GET /healthz` returns both liveness and readiness with a degraded/ok status so operators can see dependency strategy without conflating restart policy and readiness policy.
+| Endpoint | Purpose | Use As |
+|---|---|---|
+| `GET /livez` | Process health + config repository check | Container **liveness** probe |
+| `GET /readyz` | Setup completeness + live Vertex AI probe | Container **readiness** probe |
+| `GET /healthz` | Combined liveness + readiness with degraded/ok status | Operator **monitoring** |
+
+---
 
 ## Runtime Limiting Model
 
-- Discord translation commands still enforce the per-user cooldown first, so repeat taps are rejected before they consume queue capacity.
-- Dashboard login uses a separate `express-rate-limit` policy and does not share the translation queue, so admin access spikes do not steal translation permits.
-- Cache hits bypass the runtime queue entirely; only cache misses compete for translation capacity.
-- Cache misses are bounded by a shared runtime limiter with conservative defaults: `4` concurrent upstream translations, `25` queued globally, `5` queued per guild, and `1` outstanding miss per user.
-- Vertex AI retry/backoff runs inside an already-acquired permit, which prevents retry storms from multiplying upstream concurrency during partial outages.
-- Runtime pressure is exposed in `/api/stats` and the dashboard overview as `running`, `queued`, and `shed` counts.
+```
+User Request
+    │
+    ▼
+┌─ Cooldown Check ─┐  ← Per-user rate limit (reject fast)
+│                   │
+└──────┬────────────┘
+       ▼
+┌─ Cache Lookup ────┐  ← Cache hit? Return immediately (bypass queue)
+│                   │
+└──────┬────────────┘
+       ▼ (cache miss)
+┌─ Runtime Limiter ─┐  ← Bounded: 4 concurrent, 25 global queue,
+│  per-user: 1      │    5 per-guild queue, 1 per-user outstanding
+│  per-guild: 5     │
+│  global: 25       │
+└──────┬────────────┘
+       ▼
+┌─ Vertex AI Call ──┐  ← Retry/backoff runs inside acquired permit
+│  (with retry)     │    (prevents retry storms)
+└───────────────────┘
+```
 
-## Cache Roadmap
+- Dashboard login uses a separate `express-rate-limit` policy — admin traffic never steals translation permits
+- Runtime pressure is exposed in `/api/stats` as `running`, `queued`, and `shed` counts
 
-As of March 27, 2026, the recommended cache strategy is:
+---
 
-- Keep the current in-memory LRU for the default single-process deployment.
-- Move to Redis, not SQLite, when multiple bot workers need to share translation cache state.
-- Consider SQLite cache only as a narrow single-host warm-start optimization if restart cold-cache pain becomes material.
-- Use explicit semantic invalidation, not TTL alone, for model/prompt/output-token changes.
+## Security Model
 
-The full evaluation is documented in `docs/architecture/cache-evolution-roadmap.md`.
+| Layer | Mechanism |
+|---|---|
+| **Password Storage** | `crypto.scryptSync` with random 16-byte salt, 64-byte key |
+| **Password Comparison** | Timing-safe via `crypto.timingSafeEqual` |
+| **Session Tokens** | `crypto.randomBytes(32)`, HttpOnly + SameSite=Strict cookies |
+| **CSRF** | Per-session CSRF token required on all mutation endpoints |
+| **Login Throttle** | `express-rate-limit` — 5 attempts / 15 min per IP |
+| **Error Sanitization** | API keys, tokens, and URLs redacted from user-facing errors |
+| **Log Redaction** | Automatic redaction of secrets matching known patterns |
+| **Process Safety** | Global `unhandledRejection` / `uncaughtException` handlers |
+| **SQL Safety** | Table name whitelist in dynamic queries; parameterized queries throughout |
+| **Docker** | Non-root user, prod-only dependencies, no devDeps in image |
 
-## Process Separation
-
-As of March 27, 2026, the recommended deployment model is still a single Node.js process that hosts both the Discord gateway worker and the admin/dashboard HTTP server.
-
-- SQLite-backed config, usage, preferences, guild budgets, and dashboard sessions are now stable enough to support a future split.
-- Critical runtime state is still process-local: translation cache, cooldowns, runtime limiter, in-memory logs, metrics snapshots, and webhook cache ownership.
-- A formal evaluation is documented in `docs/architecture/bot-admin-process-separation.md`.
-
-Split the processes only when bot traffic and admin traffic need different scale, security boundaries, or SLA handling.
-
-## Architecture Decision Records
-
-- `docs/adr/0001-json-store-to-sqlite.md`
-- `docs/adr/0002-separate-dashboard-app-from-server-bootstrap.md`
-- `docs/adr/0003-translation-cache-key-and-invalidation.md`
-- `docs/adr/0004-keep-monolith-over-microservices-for-now.md`
+---
 
 ## Tech Stack
 
-- [TypeScript](https://www.typescriptlang.org) 5.9 — Strict mode with `noUncheckedIndexedAccess`
-- [node:sqlite](https://nodejs.org/api/sqlite.html) — Built-in SQLite engine, migrations, and persistent session/config storage
-- [discord.js](https://discord.js.org) v14 — Discord gateway client
-- [Express](https://expressjs.com) + [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) — Dashboard & API security
-- [Vertex AI Gemini](https://cloud.google.com/vertex-ai) — Translation engine
-- [tsx](https://tsx.is) — TypeScript execution for development
-- [Vitest](https://vitest.dev) — Testing (166 tests, 20 suites, v8 coverage)
-- [ESLint](https://eslint.org) + [Prettier](https://prettier.io) — Code quality
+| Technology | Version | Role |
+|---|---|---|
+| [TypeScript](https://www.typescriptlang.org) | 5.9 | Strict mode with `noUncheckedIndexedAccess` |
+| [Node.js](https://nodejs.org) | 22.5+ | Runtime with native `node:sqlite` |
+| [discord.js](https://discord.js.org) | v14 | Discord gateway client |
+| [Express](https://expressjs.com) | v4 | Dashboard & API server |
+| [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) | v8 | Login throttling |
+| [Vertex AI Gemini](https://cloud.google.com/vertex-ai) | — | Translation engine |
+| [Vitest](https://vitest.dev) | v3 | 167 tests, 20 suites, v8 coverage |
+| [ESLint](https://eslint.org) + [Prettier](https://prettier.io) | v9 / v3 | Code quality |
+| [husky](https://typicode.github.io/husky/) + [lint-staged](https://github.com/lint-staged/lint-staged) | v9 / v16 | Pre-commit hooks |
+
+---
 
 ## License
 
-This repository is licensed under [GPL-3.0-only](LICENSE). The package metadata now matches the committed license text.
-
-No Git tags or release markers exist in the local repository history, so there is no separate historical release remediation note to attach here.
+This project is licensed under [GPL-3.0-only](LICENSE).

@@ -5,7 +5,7 @@ import { AppMetrics } from '../src/app-metrics.js';
 // --- Mock dependencies ---
 vi.mock('dotenv/config', () => ({}));
 
-vi.mock('../src/config.js', () => ({
+vi.mock('../src/modules/config/config.js', () => ({
     config: {
         discordToken: 'test-token',
         dashboardPort: 0, // bind to random port
@@ -49,7 +49,7 @@ vi.mock('../src/store.js', () => {
     };
 });
 
-vi.mock('../src/usage.js', () => ({
+vi.mock('../src/modules/usage/usage.js', () => ({
     usage: {
         getStats: vi.fn(() => ({
             date: '2025-03-01',
@@ -68,7 +68,7 @@ vi.mock('../src/usage.js', () => ({
     },
 }));
 
-vi.mock('../src/translate.js', () => ({
+vi.mock('../src/modules/translation/translate.js', () => ({
     translate: vi.fn(async (text: string) => ({
         text: `translated: ${text}`,
         inputTokens: 10,

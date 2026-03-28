@@ -3,7 +3,6 @@
  * Validates required variables at startup to fail fast.
  */
 import 'dotenv/config';
-import { appLogger } from '../../shared/structured-logger.js';
 
 export interface AppConfig {
     /** Discord bot token for authentication. */
@@ -15,34 +14,24 @@ export interface AppConfig {
 }
 
 /** Validate that required environment variables are set. */
-function validateEnv(): AppConfig {
-    const logger = appLogger.child({ component: 'config' });
+export function validateEnv(): AppConfig {
     const token = process.env.DISCORD_TOKEN;
     if (!token) {
-        logger.error('config.validation.failed', {
-            field: 'DISCORD_TOKEN',
-            error: 'Missing required environment variable',
-            hint: 'Create a .env file with DISCORD_TOKEN=your_bot_token',
-        });
-        process.exit(1);
+        throw new Error(
+            'Missing required environment variable DISCORD_TOKEN. ' +
+                'Create a .env file with DISCORD_TOKEN=your_bot_token',
+        );
     }
 
     const port = parseInt(process.env.DASHBOARD_PORT || '3000');
     if (isNaN(port) || port < 1 || port > 65535) {
-        logger.error('config.validation.failed', {
-            field: 'DASHBOARD_PORT',
-            error: 'Invalid dashboard port',
-            value: process.env.DASHBOARD_PORT ?? '3000',
-        });
-        process.exit(1);
+        throw new Error(
+            `Invalid DASHBOARD_PORT: ${process.env.DASHBOARD_PORT ?? '3000'}. ` +
+                'Must be a number between 1 and 65535.',
+        );
     }
 
     const password = process.env.DASHBOARD_PASSWORD || 'admin';
-    if (password === 'admin') {
-        logger.warn('config.default_dashboard_password', {
-            field: 'DASHBOARD_PASSWORD',
-        });
-    }
 
     return { discordToken: token, dashboardPort: port, dashboardPassword: password };
 }

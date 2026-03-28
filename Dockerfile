@@ -13,9 +13,9 @@ WORKDIR /app
 
 RUN addgroup -S babel && adduser -S babel -G babel
 
-COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
-COPY package.json ./
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
 
 RUN mkdir -p data && chown babel:babel data
 

@@ -1,7 +1,7 @@
 import { MessageFlags, type ChatInputCommandInteraction } from 'discord.js';
 import { sanitizeError } from './shared.js';
-import { discordMessages } from '../discord-messages.js';
-import { appLogger, createRequestId } from '../structured-logger.js';
+import { discordMessages } from '../shared/messages/discord-messages.js';
+import { appLogger, createRequestId } from '../shared/structured-logger.js';
 import type { TranslateCommandDeps } from '../types.js';
 import type { GuildMember } from 'discord.js';
 
