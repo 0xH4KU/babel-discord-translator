@@ -17,7 +17,7 @@
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src/ tests/",
     "format": "prettier --write .",
-    "prepare": "husky || true"
+    "prepare": "node scripts/prepare-husky.js"
   },
   "keywords": [
     "discord",

@@ -91,7 +91,7 @@ DASHBOARD_PASSWORD=your_strong_password
 ```
 
 > [!IMPORTANT]
-> Use a strong, randomly generated password for `DASHBOARD_PASSWORD`. The default `admin` is only for initial local development.
+> Use a strong, randomly generated password for `DASHBOARD_PASSWORD`. Babel logs a warning when local development falls back to `admin`, and refuses to start in production if the dashboard password is still `admin`.
 
 Run in development:
 
@@ -175,8 +175,10 @@ All configuration is managed through the web dashboard. The `.env` file only nee
 |---|---|---|
 | `DISCORD_TOKEN` | Discord bot token | *required* |
 | `DASHBOARD_PORT` | Dashboard web server port | `3000` |
-| `DASHBOARD_PASSWORD` | Dashboard login password | `admin` |
+| `DASHBOARD_PASSWORD` | Dashboard login password | `admin` (development only; refused in production) |
 | `BABEL_DB_PATH` | SQLite database path | `data/babel.sqlite` |
+
+If `DASHBOARD_PASSWORD` is omitted, Babel warns in local development and test environments, but exits during startup when `NODE_ENV=production`.
 
 ### Migration & Rollback
 
@@ -253,7 +255,7 @@ src/
 ├── commands/               # Discord command handlers
 ├── modules/
 │   ├── config/
-│   │   ├── config.ts               # Environment validation (throws on missing vars)
+│   │   ├── config.ts               # Explicit env loading/validation with startup logging
 │   │   ├── config-repository.ts    # Batch-read runtime config over persistence
 │   │   └── config-runtime-effects.ts # Immediate in-memory reactions to config edits
 │   ├── dashboard/
@@ -320,13 +322,17 @@ npm run db:export:json  # Export SQLite → JSON
 
 This project uses **husky** + **lint-staged** to automatically run ESLint and Prettier on staged `.ts` files before every commit.
 
+Hooks are installed automatically on normal local Git checkouts. The `prepare` step intentionally skips Husky installation in CI, in Docker/runtime images without Git metadata, or when you set `HUSKY=0`.
+
 ### Test Coverage
 
-167 tests across 20 suites covering all modules:
+173 tests across 22 suites covering all modules:
 
 | Suite | Tests | Covers |
 |---|---|---|
 | `cache.test.ts` | 10 | LRU eviction, hit/miss stats, versioned cache keys |
+| `config.test.ts` | 4 | Env validation, structured startup logging, development warning, production password refusal |
+| `config-repository.test.ts` | 1 | Runtime config reads stay off the full store snapshot path |
 | `config-runtime-effects.test.ts` | 4 | Unified config side effects, cache invalidation, immediate runtime sync |
 | `cooldown.test.ts` | 6 | Rate limiting, cleanup, per-user isolation |
 | `app-metrics.test.ts` | 2 | Counter aggregation and derived success/failure/cache/api rates |

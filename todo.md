@@ -31,22 +31,22 @@ Acceptance criteria:
 
 ## P1: Restore startup security and observability
 
-- [ ] Reintroduce a clear warning when `DASHBOARD_PASSWORD` falls back to the default `admin`.
+- [x] Reintroduce a clear warning when `DASHBOARD_PASSWORD` falls back to the default `admin`.
   Files:
   `src/modules/config/config.ts`
   `README.md`
-- [ ] Decide the final policy for the default dashboard password.
+- [x] Decide the final policy for the default dashboard password.
   Recommended:
   warn in local development
   fail fast in production
-- [ ] Make startup config failures produce structured logs before process exit.
+- [x] Make startup config failures produce structured logs before process exit.
   Problem:
   `config` is evaluated at import time, so invalid env values fail before the process-level logging path is established.
   Files:
   `src/index.ts`
   `src/modules/config/config.ts`
   `src/shared/structured-logger.ts`
-- [ ] Add tests for environment validation behavior.
+- [x] Add tests for environment validation behavior.
   Suggested coverage:
   missing `DISCORD_TOKEN`
   invalid `DASHBOARD_PORT`
@@ -60,12 +60,12 @@ Acceptance criteria:
 
 ## P1: Tighten Husky installation behavior
 
-- [ ] Replace `"prepare": "husky || true"` with a narrower non-blocking strategy.
+- [x] Replace `"prepare": "husky || true"` with a narrower non-blocking strategy.
   File:
   `package.json`
-- [ ] Allow `prepare` to succeed in environments where Husky should be skipped, such as Docker runtime images or CI checkouts without usable Git metadata.
-- [ ] Do not silently swallow genuine Husky install failures on a normal local Git checkout.
-- [ ] Document the expected behavior for contributors.
+- [x] Allow `prepare` to succeed in environments where Husky should be skipped, such as Docker runtime images or CI checkouts without usable Git metadata.
+- [x] Do not silently swallow genuine Husky install failures on a normal local Git checkout.
+- [x] Document the expected behavior for contributors.
   Files:
   `package.json`
   `README.md`

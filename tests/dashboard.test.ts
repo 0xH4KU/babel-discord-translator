@@ -6,11 +6,11 @@ import { AppMetrics } from '../src/app-metrics.js';
 vi.mock('dotenv/config', () => ({}));
 
 vi.mock('../src/modules/config/config.js', () => ({
-    config: {
+    getConfig: vi.fn(() => ({
         discordToken: 'test-token',
         dashboardPort: 0, // bind to random port
         dashboardPassword: 'test-pass-123',
-    },
+    })),
 }));
 
 vi.mock('../src/store.js', () => {

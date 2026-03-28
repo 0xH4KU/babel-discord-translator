@@ -1,6 +1,6 @@
 import { Client, Events, GatewayIntentBits } from 'discord.js';
 import { AppMetrics } from './shared/app-metrics.js';
-import { config } from './modules/config/config.js';
+import { loadConfig } from './modules/config/config.js';
 import { TranslationCache } from './modules/translation/cache.js';
 import { CooldownManager } from './modules/translation/cooldown.js';
 import { TranslationLog } from './shared/log.js';
@@ -20,32 +20,7 @@ import type { BotStats } from './types.js';
 import type express from 'express';
 import type http from 'http';
 
-const runtimeConfig = configRepository.getRuntimeConfig();
-const cache = new TranslationCache(runtimeConfig.cacheMaxSize);
-const cooldown = new CooldownManager(runtimeConfig.cooldownSeconds);
-const log = new TranslationLog();
-const stats: BotStats = { totalTranslations: 0, apiCalls: 0 };
-const metrics = new AppMetrics();
-const runtimeLimiter = new TranslationRuntimeLimiter();
-const translationService = createTranslationService({
-    cache,
-    cooldown,
-    log,
-    stats,
-    metrics,
-    runtimeLimiter,
-});
-const webhookService = createWebhookService({ metrics });
 const startupLogger = appLogger.child({ component: 'startup' });
-
-startupLogger.info('translation.runtime_limits.configured', {
-    runtime: runtimeLimiter.snapshot(),
-});
-
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
-
-let dashboardApp: express.Express | null = null;
-let dashboardServer: http.Server | null = null;
 
 // --- Global error handlers ---
 
@@ -66,6 +41,40 @@ process.on('uncaughtException', (error) => {
     // Exit after logging — uncaught exceptions leave the process in an undefined state
     process.exit(1);
 });
+
+const config = (() => {
+    try {
+        return loadConfig();
+    } catch {
+        process.exit(1);
+    }
+})();
+
+const runtimeConfig = configRepository.getRuntimeConfig();
+const cache = new TranslationCache(runtimeConfig.cacheMaxSize);
+const cooldown = new CooldownManager(runtimeConfig.cooldownSeconds);
+const log = new TranslationLog();
+const stats: BotStats = { totalTranslations: 0, apiCalls: 0 };
+const metrics = new AppMetrics();
+const runtimeLimiter = new TranslationRuntimeLimiter();
+const translationService = createTranslationService({
+    cache,
+    cooldown,
+    log,
+    stats,
+    metrics,
+    runtimeLimiter,
+});
+const webhookService = createWebhookService({ metrics });
+
+startupLogger.info('translation.runtime_limits.configured', {
+    runtime: runtimeLimiter.snapshot(),
+});
+
+const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+
+let dashboardApp: express.Express | null = null;
+let dashboardServer: http.Server | null = null;
 
 // --- Discord events ---
 

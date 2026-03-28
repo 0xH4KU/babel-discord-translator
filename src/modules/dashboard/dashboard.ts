@@ -2,7 +2,7 @@ import express, { type Request, type Response } from 'express';
 import http from 'http';
 import rateLimit from 'express-rate-limit';
 import { createEmptyAppMetricsSnapshot } from '../../shared/app-metrics.js';
-import { config } from '../config/config.js';
+import { getConfig } from '../config/config.js';
 import { getHealthStatus, getLivenessStatus, getReadinessStatus } from '../../shared/health.js';
 import { usage } from '../usage/usage.js';
 import { DEFAULT_TRANSLATION_RUNTIME_LIMITS } from '../translation/translation-runtime-limiter.js';
@@ -150,6 +150,7 @@ export function createDashboardApp({
     sessionRepository,
 }: DashboardDeps): express.Express {
     const app = express();
+    const config = getConfig();
     const auth = createDashboardAuth({
         password: config.dashboardPassword,
         sessionRepository: sessionRepository ?? new SQLiteSessionRepository(),
