@@ -15,6 +15,10 @@ const EXPECTED_RUNTIME_CONFIG_KEYS = [
     'translationPrompt',
     'maxInputLength',
     'maxOutputTokens',
+    'openaiApiKey',
+    'openaiBaseUrl',
+    'openaiModel',
+    'translationProvider',
 ];
 
 describe('configRepository', () => {
@@ -39,6 +43,10 @@ describe('configRepository', () => {
             translationPrompt: 'translate carefully',
             maxInputLength: 2000,
             maxOutputTokens: 1000,
+            openaiApiKey: '',
+            openaiBaseUrl: '',
+            openaiModel: '',
+            translationProvider: 'vertex',
         };
         const getConfigValues = vi.fn(() => runtimeConfig);
         const getAll = vi.fn(() => {

@@ -18,6 +18,10 @@ export type RuntimeConfig = Pick<
     | 'translationPrompt'
     | 'maxInputLength'
     | 'maxOutputTokens'
+    | 'openaiApiKey'
+    | 'openaiBaseUrl'
+    | 'openaiModel'
+    | 'translationProvider'
 >;
 
 const RUNTIME_CONFIG_KEYS: (keyof RuntimeConfig)[] = [
@@ -35,6 +39,10 @@ const RUNTIME_CONFIG_KEYS: (keyof RuntimeConfig)[] = [
     'translationPrompt',
     'maxInputLength',
     'maxOutputTokens',
+    'openaiApiKey',
+    'openaiBaseUrl',
+    'openaiModel',
+    'translationProvider',
 ];
 
 export interface ConfigRepository {

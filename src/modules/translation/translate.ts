@@ -1,10 +1,13 @@
 /**
- * Translate text using Vertex AI Gemini REST API.
+ * Translate text using the configured translation provider(s).
  */
-import { fetchWithRetry, generateTranslationContent } from '../../infra/vertex-ai-client.js';
+import { createProviderOrchestrator } from '../../infra/provider-orchestrator.js';
+import { createVertexAiProvider } from '../../infra/vertex-ai-client.js';
+import { createOpenAiProvider } from '../../infra/openai-client.js';
 import { configRepository } from '../config/config-repository.js';
 import type { StructuredLogFields } from '../../shared/structured-logger.js';
 import type { TranslationResult } from '../../types.js';
+import type { TranslationProvider } from '../../infra/provider-orchestrator.js';
 
 /** Map Discord locale code to a human-readable language name for the prompt. */
 const LOCALE_MAP: Record<string, string> = {
@@ -61,7 +64,10 @@ Rules:
 - Preserve the original formatting (line breaks, punctuation, etc.)`;
 }
 
-export function resolveSystemPrompt(targetLanguage: string = 'auto', customPrompt?: string | null): string {
+export function resolveSystemPrompt(
+    targetLanguage: string = 'auto',
+    customPrompt?: string | null,
+): string {
     if (customPrompt?.trim()) {
         return customPrompt.trim();
     }
@@ -73,7 +79,11 @@ export function resolveSystemPrompt(targetLanguage: string = 'auto', customPromp
     return DEFAULT_PROMPT;
 }
 
-export function buildTranslationPrompt(text: string, targetLanguage: string = 'auto', customPrompt?: string | null): string {
+export function buildTranslationPrompt(
+    text: string,
+    targetLanguage: string = 'auto',
+    customPrompt?: string | null,
+): string {
     return `${resolveSystemPrompt(targetLanguage, customPrompt)}
 
 Text:
@@ -81,28 +91,51 @@ ${text}`;
 }
 
 /**
- * Translate text using Vertex AI Gemini REST API.
+ * Lazily-initialized provider instances (created once, reused).
+ */
+let providers: Map<string, TranslationProvider> | null = null;
+
+function getProviders(): Map<string, TranslationProvider> {
+    if (!providers) {
+        providers = new Map<string, TranslationProvider>([
+            ['vertex', createVertexAiProvider()],
+            ['openai', createOpenAiProvider()],
+        ]);
+    }
+    return providers;
+}
+
+/**
+ * Translate text using the configured translation provider(s).
  * @param text - Text to translate.
  * @param targetLanguage - Target language code (e.g. 'ja', 'zh-TW') or 'auto'.
  */
 export async function translate(
     text: string,
     targetLanguage: string = 'auto',
-    options?: { logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'> },
+    options?: {
+        logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'>;
+    },
 ): Promise<TranslationResult> {
     const config = configRepository.getRuntimeConfig();
     const customPrompt = config.translationPrompt;
     const prompt = buildTranslationPrompt(text, targetLanguage, customPrompt);
     const maxOutputTokens = config.maxOutputTokens || 1000;
-    return generateTranslationContent(prompt, maxOutputTokens, options);
+    const mode = config.translationProvider || 'vertex';
+
+    const orchestrator = createProviderOrchestrator(mode, getProviders());
+    return orchestrator.translate(prompt, maxOutputTokens, options);
 }
 
 export const _test = {
     getLanguageName,
     buildTargetedPrompt,
-    fetchWithRetry,
     LOCALE_MAP,
     DEFAULT_PROMPT,
     resolveSystemPrompt,
     buildTranslationPrompt,
+    /** Reset providers for testing. */
+    resetProviders(): void {
+        providers = null;
+    },
 };

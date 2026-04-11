@@ -21,6 +21,8 @@ export const dashboardMessages = {
         dailyBudgetUsd: nonNegativeMessage('dailyBudgetUsd'),
         inputPricePerMillion: nonNegativeMessage('inputPricePerMillion'),
         outputPricePerMillion: nonNegativeMessage('outputPricePerMillion'),
+        translationProvider:
+            'translationProvider must be one of: vertex, openai, vertex+openai, openai+vertex',
     },
     userPreferences: {
         notFound: 'User not found',

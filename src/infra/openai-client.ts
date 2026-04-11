@@ -1,16 +1,15 @@
-import type { TranslationProvider, TranslateOptions } from './provider-orchestrator.js';
 import { configRepository } from '../modules/config/config-repository.js';
 import { appLogger, type StructuredLogFields } from '../shared/structured-logger.js';
-import type { TranslationResult, VertexAIResponse } from '../types.js';
+import type { TranslationProvider, TranslateOptions } from './provider-orchestrator.js';
+import type { OpenAIChatResponse, TranslationResult } from '../types.js';
 
 const RETRY_CODES = [429, 500, 502, 503];
 const MAX_RETRIES = 3;
 const REQUEST_TIMEOUT_MS = 10_000;
 
-interface VertexAiConfig {
+interface OpenAiConfig {
     apiKey: string;
-    project: string;
-    location: string;
+    baseUrl: string;
     model: string;
 }
 
@@ -21,7 +20,7 @@ interface FetchWithRetryOptions {
     logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'>;
 }
 
-export interface VertexAiHealthStatus {
+export interface OpenAiHealthStatus {
     healthy: boolean;
     latencyMs?: number;
     error?: string;
@@ -31,37 +30,29 @@ function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function getVertexAiConfig(): VertexAiConfig {
+function getOpenAiConfig(): OpenAiConfig {
     const config = configRepository.getRuntimeConfig();
-    const project = config.gcpProject;
-    const apiKey = config.vertexAiApiKey;
+    const apiKey = config.openaiApiKey;
+    const baseUrl = config.openaiBaseUrl;
+    const model = config.openaiModel;
 
-    if (!project || !apiKey) {
-        throw new Error('API not configured. Please complete setup in the dashboard.');
+    if (!apiKey || !baseUrl || !model) {
+        throw new Error('OpenAI provider not configured. Please complete setup in the dashboard.');
     }
 
-    return {
-        apiKey,
-        project,
-        location: config.gcpLocation || 'global',
-        model: config.geminiModel,
-    };
+    return { apiKey, baseUrl, model };
 }
 
-function buildGenerateContentUrl({ project, location, model }: VertexAiConfig): string {
-    const baseUrl =
-        location === 'global'
-            ? 'https://aiplatform.googleapis.com'
-            : `https://${location}-aiplatform.googleapis.com`;
-
-    return `${baseUrl}/v1beta1/projects/${project}/locations/${location}/publishers/google/models/${model}:generateContent`;
+function buildChatCompletionsUrl(baseUrl: string): string {
+    const base = baseUrl.replace(/\/+$/, '');
+    return `${base}/v1/chat/completions`;
 }
 
 function buildTimeoutSignal(timeoutMs: number): AbortSignal {
     return AbortSignal.timeout(timeoutMs);
 }
 
-function classifyVertexAiFailure(value: number | Error): string {
+function classifyOpenAiFailure(value: number | Error): string {
     if (typeof value === 'number') {
         if (value === 429) return 'rate_limit';
         if (value === 401 || value === 403) return 'auth';
@@ -71,23 +62,23 @@ function classifyVertexAiFailure(value: number | Error): string {
     }
 
     if (value.name === 'TimeoutError') return 'timeout';
-    if (value.message.includes('API not configured')) return 'configuration';
+    if (value.message.includes('not configured')) return 'configuration';
     return 'network_error';
 }
 
-export async function fetchWithRetry(
+async function fetchWithRetry(
     url: string,
     options: RequestInit,
-    config: FetchWithRetryOptions | number = {},
+    config: FetchWithRetryOptions = {},
 ): Promise<Response> {
     const {
         retries = MAX_RETRIES,
         timeoutMs = REQUEST_TIMEOUT_MS,
-        logPrefix = 'VertexAI',
+        logPrefix = 'OpenAI',
         logContext,
-    } = typeof config === 'number' ? { retries: config } : config;
+    } = config;
     const logger = appLogger.child({
-        component: 'vertex_ai',
+        component: 'openai',
         ...logContext,
     });
 
@@ -104,13 +95,13 @@ export async function fetchWithRetry(
 
             if (attempt < retries) {
                 const delay = Math.pow(2, attempt) * 500;
-                logger.warn('vertex_ai.retry_scheduled', {
+                logger.warn('openai.retry_scheduled', {
                     operation: logPrefix,
                     attempt: attempt + 1,
                     retries,
                     statusCode: response.status,
                     retryAfterMs: delay,
-                    errorType: classifyVertexAiFailure(response.status),
+                    errorType: classifyOpenAiFailure(response.status),
                 });
                 await sleep(delay);
             }
@@ -119,12 +110,12 @@ export async function fetchWithRetry(
                 const delay = Math.pow(2, attempt) * 500;
                 const reason =
                     (error as Error).name === 'TimeoutError' ? 'timeout' : 'network error';
-                logger.warn('vertex_ai.retry_scheduled', {
+                logger.warn('openai.retry_scheduled', {
                     operation: logPrefix,
                     attempt: attempt + 1,
                     retries,
                     retryAfterMs: delay,
-                    errorType: classifyVertexAiFailure(error as Error),
+                    errorType: classifyOpenAiFailure(error as Error),
                     retryReason: reason,
                 });
                 await sleep(delay);
@@ -140,20 +131,20 @@ export async function fetchWithRetry(
     });
 }
 
-async function buildVertexAiError(response: Response): Promise<Error> {
+async function buildOpenAiError(response: Response): Promise<Error> {
     const body = (await response.text()).replace(/\s+/g, ' ').trim();
     const detail = body || response.statusText || 'Request failed';
-    return new Error(`Vertex AI ${response.status}: ${detail.slice(0, 200)}`);
+    return new Error(`OpenAI ${response.status}: ${detail.slice(0, 200)}`);
 }
 
-async function requestGenerateContent(
+async function requestChatCompletion(
     prompt: string,
     {
         maxOutputTokens,
         temperature = 0.1,
         retries = MAX_RETRIES,
         timeoutMs = REQUEST_TIMEOUT_MS,
-        logPrefix = 'VertexAI',
+        logPrefix = 'OpenAI',
         logContext,
     }: {
         maxOutputTokens: number;
@@ -163,31 +154,31 @@ async function requestGenerateContent(
         logPrefix?: string;
         logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'>;
     },
-): Promise<{ data: VertexAIResponse; latencyMs: number }> {
+): Promise<{ data: OpenAIChatResponse; latencyMs: number }> {
     const logger = appLogger.child({
-        component: 'vertex_ai',
+        component: 'openai',
         ...logContext,
     });
     const start = Date.now();
-    let config: VertexAiConfig;
+    let config: OpenAiConfig;
 
     try {
-        config = getVertexAiConfig();
+        config = getOpenAiConfig();
     } catch (error) {
-        logger.error('vertex_ai.request.failed', {
+        logger.error('openai.request.failed', {
             operation: logPrefix,
             error: (error as Error).message,
-            errorType: classifyVertexAiFailure(error as Error),
+            errorType: classifyOpenAiFailure(error as Error),
             latencyMs: Date.now() - start,
         });
         throw error;
     }
 
-    const url = buildGenerateContentUrl(config);
-    logger.info('vertex_ai.request.started', {
+    const url = buildChatCompletionsUrl(config.baseUrl);
+    logger.info('openai.request.started', {
         operation: logPrefix,
         model: config.model,
-        location: config.location,
+        baseUrl: config.baseUrl,
         maxOutputTokens,
     });
 
@@ -199,14 +190,13 @@ async function requestGenerateContent(
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'x-goog-api-key': config.apiKey,
+                    Authorization: `Bearer ${config.apiKey}`,
                 },
                 body: JSON.stringify({
-                    contents: [{ role: 'user', parts: [{ text: prompt }] }],
-                    generationConfig: {
-                        maxOutputTokens,
-                        temperature,
-                    },
+                    model: config.model,
+                    messages: [{ role: 'user', content: prompt }],
+                    max_tokens: maxOutputTokens,
+                    temperature,
                 }),
             },
             {
@@ -217,37 +207,36 @@ async function requestGenerateContent(
             },
         );
     } catch (error) {
-        logger.error('vertex_ai.request.failed', {
+        logger.error('openai.request.failed', {
             operation: logPrefix,
             error: (error as Error).message,
-            errorType: classifyVertexAiFailure(error as Error),
+            errorType: classifyOpenAiFailure(error as Error),
             latencyMs: Date.now() - start,
         });
         throw error;
     }
 
     if (!response.ok) {
-        const error = await buildVertexAiError(response);
-        logger.error('vertex_ai.request.failed', {
+        const error = await buildOpenAiError(response);
+        logger.error('openai.request.failed', {
             operation: logPrefix,
             statusCode: response.status,
             error: error.message,
-            errorType: classifyVertexAiFailure(response.status),
+            errorType: classifyOpenAiFailure(response.status),
             latencyMs: Date.now() - start,
         });
         throw error;
     }
 
     const latencyMs = Date.now() - start;
-    logger.info('vertex_ai.request.completed', {
+    logger.info('openai.request.completed', {
         operation: logPrefix,
         model: config.model,
-        location: config.location,
         latencyMs,
     });
 
     return {
-        data: (await response.json()) as VertexAIResponse,
+        data: (await response.json()) as OpenAIChatResponse,
         latencyMs,
     };
 }
@@ -259,32 +248,32 @@ export async function generateTranslationContent(
         logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'>;
     },
 ): Promise<TranslationResult> {
-    const { data } = await requestGenerateContent(prompt, {
+    const { data } = await requestChatCompletion(prompt, {
         maxOutputTokens,
         logPrefix: 'Translate',
         logContext: options?.logContext,
     });
 
-    const result = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    const result = data.choices?.[0]?.message?.content?.trim();
     if (!result) {
-        throw new Error('Empty response from Gemini');
+        throw new Error('Empty response from OpenAI');
     }
 
-    const meta = data.usageMetadata || {};
+    const usage = data.usage || {};
     return {
         text: result,
-        inputTokens: meta.promptTokenCount || 0,
-        outputTokens: meta.candidatesTokenCount || 0,
+        inputTokens: usage.prompt_tokens || 0,
+        outputTokens: usage.completion_tokens || 0,
     };
 }
 
-export async function checkVertexAiHealth(): Promise<VertexAiHealthStatus> {
+export async function checkOpenAiHealth(): Promise<OpenAiHealthStatus> {
     try {
-        const { latencyMs } = await requestGenerateContent('hi', {
+        const { latencyMs } = await requestChatCompletion('hi', {
             maxOutputTokens: 5,
             retries: 0,
             timeoutMs: REQUEST_TIMEOUT_MS,
-            logPrefix: 'VertexAI Health',
+            logPrefix: 'OpenAI Health',
             logContext: { command: 'health_check' },
         });
 
@@ -300,14 +289,14 @@ export async function checkVertexAiHealth(): Promise<VertexAiHealthStatus> {
     }
 }
 
-export function isVertexAiConfigured(): boolean {
+export function isOpenAiConfigured(): boolean {
     const config = configRepository.getRuntimeConfig();
-    return !!(config.vertexAiApiKey && config.gcpProject);
+    return !!(config.openaiApiKey && config.openaiBaseUrl && config.openaiModel);
 }
 
-export function createVertexAiProvider(): TranslationProvider {
+export function createOpenAiProvider(): TranslationProvider {
     return {
-        name: 'vertex',
+        name: 'openai',
         async translate(
             prompt: string,
             maxOutputTokens: number,
@@ -316,14 +305,14 @@ export function createVertexAiProvider(): TranslationProvider {
             return generateTranslationContent(prompt, maxOutputTokens, options);
         },
         isConfigured(): boolean {
-            return isVertexAiConfigured();
+            return isOpenAiConfigured();
         },
     };
 }
 
 export const _test = {
-    buildGenerateContentUrl,
-    getVertexAiConfig,
-    buildVertexAiError,
-    classifyVertexAiFailure,
+    buildChatCompletionsUrl,
+    getOpenAiConfig,
+    buildOpenAiError,
+    classifyOpenAiFailure,
 };

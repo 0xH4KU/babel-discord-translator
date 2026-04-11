@@ -12,6 +12,10 @@ import type { SessionRepository } from './modules/dashboard/auth/session-reposit
 import type { TranslationRuntimeLimiter } from './modules/translation/translation-runtime-limiter.js';
 import type { TranslationWebhookService } from './modules/translation/webhook-service.js';
 
+// --- Provider ---
+
+export type TranslationProviderMode = 'vertex' | 'openai' | 'vertex+openai' | 'openai+vertex';
+
 // --- Store ---
 
 export interface GuildBudgetConfig {
@@ -36,6 +40,11 @@ export interface StoreData {
     userLanguagePrefs: Record<string, string>;
     maxInputLength: number;
     maxOutputTokens: number;
+    // OpenAI-compatible provider
+    openaiApiKey: string;
+    openaiBaseUrl: string;
+    openaiModel: string;
+    translationProvider: TranslationProviderMode;
     // Per-guild budget & usage
     guildBudgets: Record<string, GuildBudgetConfig>;
     guildTokenUsage: Record<string, TokenUsage>;
@@ -73,6 +82,18 @@ export interface VertexAIResponse {
     usageMetadata?: {
         promptTokenCount?: number;
         candidatesTokenCount?: number;
+    };
+}
+
+export interface OpenAIChatResponse {
+    choices?: Array<{
+        message?: {
+            content?: string;
+        };
+    }>;
+    usage?: {
+        prompt_tokens?: number;
+        completion_tokens?: number;
     };
 }
 

@@ -5,6 +5,18 @@
 
 let currentConfig = {};
 
+function onProviderModeChange() {
+  const mode = document.getElementById('cfg-provider').value;
+  const vertexSection = document.getElementById('section-vertex');
+  const openaiSection = document.getElementById('section-openai');
+
+  const showVertex = mode === 'vertex' || mode === 'vertex+openai' || mode === 'openai+vertex';
+  const showOpenai = mode === 'openai' || mode === 'vertex+openai' || mode === 'openai+vertex';
+
+  vertexSection.style.display = showVertex ? '' : 'none';
+  openaiSection.style.display = showOpenai ? '' : 'none';
+}
+
 async function loadSettings() {
   try {
     const [cfgRes, guildRes] = await Promise.all([api('/config'), api('/guilds')]);
@@ -25,6 +37,15 @@ async function loadSettings() {
     document.getElementById('cfg-output-price').value = currentConfig.outputPricePerMillion || 0;
     document.getElementById('cfg-budget').value = currentConfig.dailyBudgetUsd || 0;
     document.getElementById('cfg-prompt').value = currentConfig.translationPrompt || '';
+
+    // Provider settings
+    document.getElementById('cfg-provider').value = currentConfig.translationProvider || 'vertex';
+    document.getElementById('cfg-openai-apikey').value = '';
+    document.getElementById('cfg-openai-apikey').placeholder =
+      currentConfig.hasOpenaiApiKey ? currentConfig.openaiApiKey + ' (leave blank to keep)' : 'Not set';
+    document.getElementById('cfg-openai-baseurl').value = currentConfig.openaiBaseUrl || '';
+    document.getElementById('cfg-openai-model').value = currentConfig.openaiModel || '';
+    onProviderModeChange();
   } catch { }
 }
 
@@ -45,6 +66,13 @@ async function saveSettings() {
   updates.outputPricePerMillion = parseFloat(document.getElementById('cfg-output-price').value) || 0;
   updates.dailyBudgetUsd = parseFloat(document.getElementById('cfg-budget').value) || 0;
   updates.translationPrompt = document.getElementById('cfg-prompt').value;
+
+  // Provider settings
+  updates.translationProvider = document.getElementById('cfg-provider').value;
+  const newOpenaiKey = document.getElementById('cfg-openai-apikey').value.trim();
+  if (newOpenaiKey) updates.openaiApiKey = newOpenaiKey;
+  updates.openaiBaseUrl = document.getElementById('cfg-openai-baseurl').value.trim();
+  updates.openaiModel = document.getElementById('cfg-openai-model').value.trim();
 
   const res = await api('/config', {
     method: 'POST',

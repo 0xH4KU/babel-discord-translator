@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { translate, _test } from '../src/translate.js';
+import { fetchWithRetry } from '../src/infra/vertex-ai-client.js';
 
-const { getLanguageName, buildTargetedPrompt, fetchWithRetry, LOCALE_MAP, DEFAULT_PROMPT } = _test;
+const { getLanguageName, buildTargetedPrompt, LOCALE_MAP, DEFAULT_PROMPT } = _test;
 
 // --- Mock store ---
 vi.mock('../src/store.js', () => {
@@ -20,6 +21,10 @@ vi.mock('../src/store.js', () => {
         translationPrompt: '',
         maxInputLength: 2000,
         maxOutputTokens: 1000,
+        openaiApiKey: '',
+        openaiBaseUrl: '',
+        openaiModel: '',
+        translationProvider: 'vertex',
     };
     return {
         store: {
@@ -206,7 +211,7 @@ describe('translate', () => {
         mockStore._setMock('gcpProject', '');
         mockStore._setMock('vertexAiApiKey', '');
 
-        await expect(translate('Hello')).rejects.toThrow('API not configured');
+        await expect(translate('Hello')).rejects.toThrow('No translation provider is configured');
     });
 
     it('should throw on API error response', async () => {

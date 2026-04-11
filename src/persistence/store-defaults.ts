@@ -18,6 +18,10 @@ export const DEFAULT_STORE_DATA: StoreData = {
     userLanguagePrefs: {},
     maxInputLength: 2000,
     maxOutputTokens: 1000,
+    openaiApiKey: '',
+    openaiBaseUrl: '',
+    openaiModel: '',
+    translationProvider: 'vertex',
     guildBudgets: {},
     guildTokenUsage: {},
     guildUsageHistory: {},
@@ -38,6 +42,10 @@ export const CONFIG_VALUE_KEYS = [
     'translationPrompt',
     'maxInputLength',
     'maxOutputTokens',
+    'openaiApiKey',
+    'openaiBaseUrl',
+    'openaiModel',
+    'translationProvider',
 ] as const satisfies readonly (keyof StoreData)[];
 
 export type ConfigValueKey = (typeof CONFIG_VALUE_KEYS)[number];

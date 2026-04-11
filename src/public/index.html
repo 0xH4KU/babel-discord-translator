@@ -249,6 +249,26 @@
             <!-- Settings Tab -->
             <div class="tab-content" id="tab-settings">
                 <div class="settings-section">
+                    <h3>Translation Provider</h3>
+                    <div class="desc-text">
+                        Choose which AI provider(s) to use for translation. You can set a primary
+                        and fallback provider for redundancy.
+                    </div>
+                    <div class="settings-row">
+                        <div class="input-group">
+                            <label>Provider Mode</label>
+                            <select id="cfg-provider" class="settings-select" onchange="onProviderModeChange()">
+                                <option value="vertex">Vertex AI only</option>
+                                <option value="openai">OpenAI-compatible only</option>
+                                <option value="vertex+openai">Vertex AI (primary) + OpenAI (backup)</option>
+                                <option value="openai+vertex">OpenAI (primary) + Vertex AI (backup)</option>
+                            </select>
+                            <div class="hint">When using dual providers, the backup is used automatically if the primary fails.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-section" id="section-vertex">
                     <h3>Vertex AI API</h3>
                     <div class="settings-row">
                         <div class="input-group">
@@ -274,6 +294,43 @@
                         <div class="input-group">
                             <label>Model</label>
                             <input type="text" id="cfg-model" />
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-section" id="section-openai">
+                    <h3>OpenAI-Compatible API</h3>
+                    <div class="desc-text">
+                        Works with OpenAI, OpenRouter, AI Studio (OpenAI format), and any
+                        compatible endpoint.
+                    </div>
+                    <div class="settings-row">
+                        <div class="input-group">
+                            <label>API Key</label>
+                            <input
+                                type="password"
+                                id="cfg-openai-apikey"
+                                placeholder="Enter new key to change"
+                            />
+                        </div>
+                    </div>
+                    <div class="settings-row">
+                        <div class="input-group">
+                            <label>Base URL</label>
+                            <input
+                                type="text"
+                                id="cfg-openai-baseurl"
+                                placeholder="e.g. https://openrouter.ai/api"
+                            />
+                            <div class="hint">The base URL without trailing /v1/chat/completions</div>
+                        </div>
+                        <div class="input-group">
+                            <label>Model</label>
+                            <input
+                                type="text"
+                                id="cfg-openai-model"
+                                placeholder="e.g. gpt-4o-mini"
+                            />
                         </div>
                     </div>
                 </div>

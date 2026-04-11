@@ -10,6 +10,7 @@ export const MANAGED_RUNTIME_CONFIG_KEYS = [
     'maxInputLength',
     'maxOutputTokens',
     'dailyBudgetUsd',
+    'translationProvider',
 ] as const;
 
 export type ManagedRuntimeConfigKey = (typeof MANAGED_RUNTIME_CONFIG_KEYS)[number];
@@ -39,6 +40,7 @@ const CONFIG_EFFECT_DESCRIPTIONS: Record<ManagedRuntimeConfigKey, string> = {
         'Clear the translation cache so future requests use the new output token limit.',
     dailyBudgetUsd:
         'No in-memory sync required; budget checks read the persisted value on each call.',
+    translationProvider: 'Clear the translation cache so future requests use the new provider.',
 };
 
 export function applyConfigUpdateEffects(
@@ -62,6 +64,7 @@ export function applyConfigUpdateEffects(
             case 'geminiModel':
             case 'translationPrompt':
             case 'maxOutputTokens':
+            case 'translationProvider':
                 if (!cacheCleared) {
                     cache.clear();
                     cacheCleared = true;

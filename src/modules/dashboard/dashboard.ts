@@ -10,6 +10,7 @@ import { translate } from '../translation/translate.js';
 import { createDashboardAuth } from './auth/dashboard-auth.js';
 import { SQLiteSessionRepository } from './auth/sqlite-session-repository.js';
 import { checkVertexAiHealth } from '../../infra/vertex-ai-client.js';
+import { checkOpenAiHealth } from '../../infra/openai-client.js';
 import { configRepository } from '../config/config-repository.js';
 import { guildBudgetRepository } from '../usage/guild-budget-repository.js';
 import { userPreferenceRepository } from '../translation/user-preference-repository.js';
@@ -48,6 +49,10 @@ function validateConfigUpdate(updates: Record<string, unknown>): {
 
     if (!sanitized.vertexAiApiKey || String(sanitized.vertexAiApiKey).startsWith('••••')) {
         delete sanitized.vertexAiApiKey;
+    }
+
+    if (!sanitized.openaiApiKey || String(sanitized.openaiApiKey).startsWith('••••')) {
+        delete sanitized.openaiApiKey;
     }
 
     delete sanitized.tokenUsage;
@@ -133,6 +138,17 @@ function validateConfigUpdate(updates: Record<string, unknown>): {
             };
         }
         sanitized.outputPricePerMillion = v;
+    }
+
+    if (sanitized.translationProvider !== undefined) {
+        const valid = ['vertex', 'openai', 'vertex+openai', 'openai+vertex'];
+        if (!valid.includes(String(sanitized.translationProvider))) {
+            return {
+                valid: false,
+                error: dashboardMessages.validation.translationProvider,
+                sanitized: sanitized as Partial<StoreData>,
+            };
+        }
     }
 
     return { valid: true, sanitized: sanitized as Partial<StoreData> };
@@ -295,6 +311,8 @@ export function createDashboardApp({
             ...cfg,
             vertexAiApiKey: cfg.vertexAiApiKey ? '••••' + cfg.vertexAiApiKey.slice(-6) : '',
             hasApiKey: !!cfg.vertexAiApiKey,
+            openaiApiKey: cfg.openaiApiKey ? '••••' + cfg.openaiApiKey.slice(-6) : '',
+            hasOpenaiApiKey: !!cfg.openaiApiKey,
         });
     });
 
