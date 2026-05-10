@@ -129,6 +129,60 @@ describe('ConfigStore', () => {
         store.close();
     });
 
+    it('should support direct guild budget operations', async () => {
+        const { ConfigStore } = await importStoreModule();
+        const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+
+        expect(store.getGuildBudget('guild-1')).toBeNull();
+
+        store.setGuildBudget('guild-1', 2.5);
+        expect(store.getGuildBudget('guild-1')).toEqual({ dailyBudgetUsd: 2.5 });
+        expect(store.get('guildBudgets')).toEqual({ 'guild-1': { dailyBudgetUsd: 2.5 } });
+
+        expect(store.clearGuildBudget('guild-1')).toBe(true);
+        expect(store.getGuildBudget('guild-1')).toBeNull();
+        expect(store.clearGuildBudget('guild-1')).toBe(false);
+        store.close();
+    });
+
+    it('should support direct guild usage operations', async () => {
+        const { ConfigStore } = await importStoreModule();
+        const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+
+        store.saveGuildDailyUsage('guild-1', {
+            date: '2026-03-27',
+            inputTokens: 100,
+            outputTokens: 50,
+            requests: 1,
+        });
+        store.saveGuildUsageHistory('guild-1', [
+            {
+                date: '2026-03-26',
+                inputTokens: 80,
+                outputTokens: 40,
+                requests: 2,
+            },
+        ]);
+
+        expect(store.getGuildDailyUsage('guild-1')).toEqual({
+            date: '2026-03-27',
+            inputTokens: 100,
+            outputTokens: 50,
+            requests: 1,
+        });
+        expect(store.getGuildUsageHistory('guild-1')).toEqual([
+            {
+                date: '2026-03-26',
+                inputTokens: 80,
+                outputTokens: 40,
+                requests: 2,
+            },
+        ]);
+        expect(store.getGuildDailyUsage('guild-2')).toBeNull();
+        expect(store.getGuildUsageHistory('guild-2')).toEqual([]);
+        store.close();
+    });
+
     it('should import legacy JSON data into a fresh SQLite database', async () => {
         writeFileSync(
             legacyConfigPath,

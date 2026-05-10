@@ -163,6 +163,7 @@ export function createDashboardApp({
     metrics,
     runtimeLimiter,
     healthCheck = checkVertexAiHealth,
+    openAiHealthCheck = checkOpenAiHealth,
     sessionRepository,
 }: DashboardDeps): express.Express {
     const app = express();
@@ -215,7 +216,7 @@ export function createDashboardApp({
     app.get(
         '/readyz',
         asyncHandler(async (_req: Request, res: Response) => {
-            const health = await getReadinessStatus({ healthCheck });
+            const health = await getReadinessStatus({ healthCheck, openAiHealthCheck });
             res.status(health.ready ? 200 : 503).json(health);
         }),
     );
@@ -224,7 +225,10 @@ export function createDashboardApp({
         '/healthz',
         asyncHandler(async (_req: Request, res: Response) => {
             const metricsSnapshot = metrics?.snapshot() ?? createEmptyAppMetricsSnapshot();
-            const health = await getHealthStatus({ healthCheck }, metricsSnapshot);
+            const health = await getHealthStatus(
+                { healthCheck, openAiHealthCheck },
+                metricsSnapshot,
+            );
             res.status(health.live ? 200 : 503).json(health);
         }),
     );
@@ -254,21 +258,24 @@ export function createDashboardApp({
             limits: DEFAULT_TRANSLATION_RUNTIME_LIMITS,
         };
 
+        const guildIds = client.guilds.cache.map((guild) => guild.id);
         const guildBudgetConfigs = guildBudgetRepository.listBudgets();
-        const globalBudget = configRepository.getRuntimeConfig().dailyBudgetUsd || 0;
+        const guildStatsById = guildIds.length > 0 ? usage.getGuildStatsForGuilds(guildIds) : {};
         const guildBudgetList = client.guilds.cache.map((guild) => {
             const guildCfg = guildBudgetConfigs[guild.id];
             const hasCustom = guildCfg && guildCfg.dailyBudgetUsd !== undefined;
-            const budget = hasCustom ? guildCfg.dailyBudgetUsd : globalBudget;
-            const guildStats = usage.getGuildStats(guild.id);
+            const guildStats = guildStatsById[guild.id];
+            const budget = guildStats?.dailyBudget ?? usageStats.dailyBudget;
+            const totalCost = guildStats?.totalCost ?? 0;
+            const requests = guildStats?.requests ?? 0;
             return {
                 id: guild.id,
                 name: guild.name,
                 budget,
                 isCustom: hasCustom,
-                totalCost: guildStats.totalCost,
-                requests: guildStats.requests,
-                exceeded: budget > 0 && guildStats.totalCost >= budget,
+                totalCost,
+                requests,
+                exceeded: budget > 0 && totalCost >= budget,
             };
         });
 
@@ -358,6 +365,8 @@ export function createDashboardApp({
     app.get('/api/guild-budgets', auth.requireAuth, (_req: Request, res: Response) => {
         const guildBudgets = guildBudgetRepository.listBudgets();
         const guilds = client.guilds.cache;
+        const guildIds = guilds.map((guild) => guild.id);
+        const guildStatsById = guildIds.length > 0 ? usage.getGuildStatsForGuilds(guildIds) : {};
         const result: Record<
             string,
             { name: string; budget: number; usage: ReturnType<typeof usage.getGuildStats> }
@@ -367,7 +376,7 @@ export function createDashboardApp({
             result[id] = {
                 name: guild.name,
                 budget: guildBudgets[id]?.dailyBudgetUsd ?? -1,
-                usage: usage.getGuildStats(id),
+                usage: guildStatsById[id] ?? usage.getGuildStats(id),
             };
         }
         res.json(result);
@@ -468,7 +477,7 @@ export function createDashboardApp({
         '/api/health',
         auth.requireAuth,
         asyncHandler(async (_req: Request, res: Response) => {
-            const readiness = await getReadinessStatus({ healthCheck });
+            const readiness = await getReadinessStatus({ healthCheck, openAiHealthCheck });
             res.status(readiness.ready ? 200 : 503).json({
                 healthy: readiness.ready,
                 readiness: readiness.status,

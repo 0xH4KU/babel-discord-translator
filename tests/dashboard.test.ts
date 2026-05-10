@@ -52,28 +52,45 @@ vi.mock('../src/store.js', () => {
                     }),
                 ),
             ),
+            getGuildBudget: vi.fn((guildId: string) => {
+                const budgets = data.guildBudgets as Record<string, unknown>;
+                return budgets[guildId] ?? null;
+            }),
+            setGuildBudget: vi.fn((guildId: string, dailyBudgetUsd: number) => {
+                const budgets = data.guildBudgets as Record<string, unknown>;
+                budgets[guildId] = { dailyBudgetUsd };
+            }),
+            clearGuildBudget: vi.fn((guildId: string) => {
+                const budgets = data.guildBudgets as Record<string, unknown>;
+                if (!(guildId in budgets)) return false;
+                delete budgets[guildId];
+                return true;
+            }),
             isSetupComplete: vi.fn(() => data.setupComplete),
         },
     };
 });
 
+const usageMock = vi.hoisted(() => ({
+    getStats: vi.fn(() => ({
+        date: '2025-03-01',
+        inputTokens: 1000,
+        outputTokens: 500,
+        requests: 10,
+        inputCost: 0.001,
+        outputCost: 0.001,
+        totalCost: 0.002,
+        dailyBudget: 1.0,
+        budgetUsedPercent: 0.2,
+        budgetExceeded: false,
+    })),
+    getGuildStatsForGuilds: vi.fn(() => ({})),
+    getHistory: vi.fn(() => []),
+    record: vi.fn(),
+}));
+
 vi.mock('../src/modules/usage/usage.js', () => ({
-    usage: {
-        getStats: vi.fn(() => ({
-            date: '2025-03-01',
-            inputTokens: 1000,
-            outputTokens: 500,
-            requests: 10,
-            inputCost: 0.001,
-            outputCost: 0.001,
-            totalCost: 0.002,
-            dailyBudget: 1.0,
-            budgetUsedPercent: 0.2,
-            budgetExceeded: false,
-        })),
-        getHistory: vi.fn(() => []),
-        record: vi.fn(),
-    },
+    usage: usageMock,
 }));
 
 vi.mock('../src/modules/translation/translate.js', () => ({
@@ -161,9 +178,14 @@ describe('Dashboard API', () => {
         healthCheck = vi.fn().mockResolvedValue({ healthy: true, latencyMs: 24 });
         const cooldown = new CooldownManager(5);
         const log = new TranslationLog(100);
+        const guilds = [
+            { id: 'guild-1', name: 'Guild One', iconURL: () => '', memberCount: 10 },
+            { id: 'guild-2', name: 'Guild Two', iconURL: () => '', memberCount: 20 },
+            { id: 'guild-3', name: 'Guild Three', iconURL: () => '', memberCount: 30 },
+        ];
         const mockClient = {
             user: { tag: 'Babel#1234', displayAvatarURL: () => 'https://example.com/avatar.png' },
-            guilds: { cache: { size: 3, map: (_fn: Function) => [] } },
+            guilds: { cache: { size: guilds.length, map: (fn: Function) => guilds.map(fn) } },
         } as unknown as Client;
 
         app = createDashboardApp({
@@ -276,6 +298,7 @@ describe('Dashboard API', () => {
             cookie: sessionCookie,
         });
         expect(res.status).toBe(200);
+        expect(usageMock.getGuildStatsForGuilds).toHaveBeenCalledOnce();
         expect((res.body!.bot as Record<string, unknown>).name).toBe('Babel#1234');
         expect((res.body!.translations as Record<string, unknown>).total).toBe(42);
         expect((res.body!.metrics as Record<string, unknown>).translationFailuresTotal).toBe(1);

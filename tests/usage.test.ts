@@ -18,6 +18,36 @@ vi.mock('../src/store.js', () => ({
         set: vi.fn((key: string, val: unknown) => {
             mockData[key] = val;
         }),
+        getGuildBudget: vi.fn((guildId: string) => {
+            const budgets = mockData.guildBudgets as Record<string, unknown>;
+            return budgets[guildId] ?? null;
+        }),
+        setGuildBudget: vi.fn((guildId: string, dailyBudgetUsd: number) => {
+            const budgets = mockData.guildBudgets as Record<string, unknown>;
+            budgets[guildId] = { dailyBudgetUsd };
+        }),
+        clearGuildBudget: vi.fn((guildId: string) => {
+            const budgets = mockData.guildBudgets as Record<string, unknown>;
+            if (!(guildId in budgets)) return false;
+            delete budgets[guildId];
+            return true;
+        }),
+        getGuildDailyUsage: vi.fn((guildId: string) => {
+            const usage = mockData.guildTokenUsage as Record<string, unknown>;
+            return usage[guildId] ?? null;
+        }),
+        saveGuildDailyUsage: vi.fn((guildId: string, usage: unknown) => {
+            const allUsage = mockData.guildTokenUsage as Record<string, unknown>;
+            allUsage[guildId] = usage;
+        }),
+        getGuildUsageHistory: vi.fn((guildId: string) => {
+            const history = mockData.guildUsageHistory as Record<string, unknown>;
+            return history[guildId] ?? [];
+        }),
+        saveGuildUsageHistory: vi.fn((guildId: string, history: unknown) => {
+            const allHistory = mockData.guildUsageHistory as Record<string, unknown>;
+            allHistory[guildId] = history;
+        }),
     },
 }));
 

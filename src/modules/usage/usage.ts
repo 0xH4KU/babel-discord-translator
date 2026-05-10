@@ -35,29 +35,16 @@ class UsageTracker {
         }
 
         const guildUsage = usageRepository.getAllGuildDailyUsage();
-        const guildHistory = usageRepository.getAllGuildUsageHistory();
-        let guildUsageChanged = false;
-        let guildHistoryChanged = false;
 
         for (const guildId of Object.keys(guildUsage)) {
             const usageEntry = guildUsage[guildId];
             if (usageEntry && usageEntry.date !== today) {
-                const history = guildHistory[guildId] ?? [];
+                const history = usageRepository.getGuildUsageHistory(guildId);
                 history.push(toHistoryEntry(usageEntry));
                 while (history.length > 30) history.shift();
-                guildHistory[guildId] = history;
-                guildUsage[guildId] = createEmptyUsage(today);
-                guildHistoryChanged = true;
-                guildUsageChanged = true;
+                usageRepository.saveGuildUsageHistory(guildId, history);
+                usageRepository.saveGuildDailyUsage(guildId, createEmptyUsage(today));
             }
-        }
-
-        if (guildHistoryChanged) {
-            usageRepository.saveAllGuildUsageHistory(guildHistory);
-        }
-
-        if (guildUsageChanged) {
-            usageRepository.saveAllGuildDailyUsage(guildUsage);
         }
     }
 
@@ -73,17 +60,14 @@ class UsageTracker {
 
         if (guildId) {
             const todayValue = today();
-            const guildUsage = usageRepository.getAllGuildDailyUsage();
+            const currentUsage = usageRepository.getGuildDailyUsage(guildId);
             const entry =
-                guildUsage[guildId]?.date === todayValue
-                    ? guildUsage[guildId]
-                    : createEmptyUsage(todayValue);
+                currentUsage?.date === todayValue ? currentUsage : createEmptyUsage(todayValue);
 
             entry.inputTokens += inputTokens || 0;
             entry.outputTokens += outputTokens || 0;
             entry.requests += 1;
-            guildUsage[guildId] = entry;
-            usageRepository.saveAllGuildDailyUsage(guildUsage);
+            usageRepository.saveGuildDailyUsage(guildId, entry);
         }
     }
 
@@ -103,11 +87,8 @@ class UsageTracker {
     getGuildCost(guildId: string, runtimeConfig = configRepository.getRuntimeConfig()): UsageCost {
         this.ensureToday();
         const todayValue = today();
-        const guildUsage = usageRepository.getAllGuildDailyUsage();
-        const usage =
-            guildUsage[guildId] && guildUsage[guildId].date === todayValue
-                ? guildUsage[guildId]
-                : createEmptyUsage(todayValue);
+        const guildUsage = usageRepository.getGuildDailyUsage(guildId);
+        const usage = guildUsage?.date === todayValue ? guildUsage : createEmptyUsage(todayValue);
 
         return withCost(
             usage,
@@ -145,12 +126,7 @@ class UsageTracker {
         const cost = this.getCost(runtimeConfig);
         const budget = runtimeConfig.dailyBudgetUsd || 0;
 
-        return {
-            ...cost,
-            dailyBudget: budget,
-            budgetUsedPercent: budget > 0 ? Math.min((cost.totalCost / budget) * 100, 100) : 0,
-            budgetExceeded: budget > 0 && cost.totalCost >= budget,
-        };
+        return toUsageStats(cost, budget);
     }
 
     /** Get stats for a specific guild. */
@@ -161,12 +137,34 @@ class UsageTracker {
             guildBudgetRepository.getBudget(guildId)?.dailyBudgetUsd ??
             (runtimeConfig.dailyBudgetUsd || 0);
 
-        return {
-            ...cost,
-            dailyBudget: budget,
-            budgetUsedPercent: budget > 0 ? Math.min((cost.totalCost / budget) * 100, 100) : 0,
-            budgetExceeded: budget > 0 && cost.totalCost >= budget,
-        };
+        return toUsageStats(cost, budget);
+    }
+
+    /** Get stats for multiple guilds with shared config, budget, and usage snapshots. */
+    getGuildStatsForGuilds(guildIds: readonly string[]): Record<string, UsageStats> {
+        this.ensureToday();
+        const runtimeConfig = configRepository.getRuntimeConfig();
+        const todayValue = today();
+        const guildUsage = usageRepository.getAllGuildDailyUsage();
+        const guildBudgets = guildBudgetRepository.listBudgets();
+
+        return Object.fromEntries(
+            guildIds.map((guildId) => {
+                const usage =
+                    guildUsage[guildId]?.date === todayValue
+                        ? guildUsage[guildId]
+                        : createEmptyUsage(todayValue);
+                const cost = withCost(
+                    usage,
+                    runtimeConfig.inputPricePerMillion || 0,
+                    runtimeConfig.outputPricePerMillion || 0,
+                );
+                const budget =
+                    guildBudgets[guildId]?.dailyBudgetUsd ?? (runtimeConfig.dailyBudgetUsd || 0);
+
+                return [guildId, toUsageStats(cost, budget)];
+            }),
+        );
     }
 
     /** Get global usage history (last 30 days) with cost calculations. */
@@ -185,7 +183,7 @@ class UsageTracker {
     /** Get usage history for a specific guild (last 30 days). */
     getGuildHistory(guildId: string): UsageHistoryDay[] {
         this.ensureToday();
-        const history = usageRepository.getAllGuildUsageHistory()[guildId] || [];
+        const history = usageRepository.getGuildUsageHistory(guildId);
         const runtimeConfig = configRepository.getRuntimeConfig();
 
         return history.map((day) => ({
@@ -227,6 +225,15 @@ function withCost(usage: TokenUsage, inputPrice: number, outputPrice: number): U
         inputCost,
         outputCost,
         totalCost: inputCost + outputCost,
+    };
+}
+
+function toUsageStats(cost: UsageCost, budget: number): UsageStats {
+    return {
+        ...cost,
+        dailyBudget: budget,
+        budgetUsedPercent: budget > 0 ? Math.min((cost.totalCost / budget) * 100, 100) : 0,
+        budgetExceeded: budget > 0 && cost.totalCost >= budget,
     };
 }
 

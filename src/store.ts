@@ -112,11 +112,11 @@ export class ConfigStore {
             case 'userLanguagePrefs':
                 return this.getUserLanguagePrefs() as StoreData[K];
             case 'guildBudgets':
-                return this.getGuildBudgets() as StoreData[K];
+                return this.getAllGuildBudgets() as StoreData[K];
             case 'guildTokenUsage':
                 return this.getGuildTokenUsage() as StoreData[K];
             case 'guildUsageHistory':
-                return this.getGuildUsageHistory() as StoreData[K];
+                return this.getAllGuildUsageHistory() as StoreData[K];
             default:
                 return DEFAULT_STORE_DATA[key];
         }
@@ -175,14 +175,114 @@ export class ConfigStore {
             tokenUsage: cloneTokenUsage(this.getDailyUsage()),
             usageHistory: cloneUsageHistory(this.getUsageHistory()),
             userLanguagePrefs: { ...this.getUserLanguagePrefs() },
-            guildBudgets: cloneGuildBudgets(this.getGuildBudgets()),
+            guildBudgets: cloneGuildBudgets(this.getAllGuildBudgets()),
             guildTokenUsage: cloneGuildUsage(this.getGuildTokenUsage()),
-            guildUsageHistory: cloneGuildUsageHistory(this.getGuildUsageHistory()),
+            guildUsageHistory: cloneGuildUsageHistory(this.getAllGuildUsageHistory()),
         };
     }
 
     isSetupComplete(): boolean {
         return this.getConfigValue('setupComplete') === true;
+    }
+
+    getGuildBudget(guildId: string): GuildBudgetConfig | null {
+        const row = this.db
+            .prepare(
+                `
+            SELECT daily_budget_usd as dailyBudgetUsd
+            FROM guild_budgets
+            WHERE guild_id = ?
+        `,
+            )
+            .get(guildId) as GuildBudgetConfig | undefined;
+
+        return row ? { ...row } : null;
+    }
+
+    setGuildBudget(guildId: string, dailyBudgetUsd: number): void {
+        this.db
+            .prepare(
+                `
+            INSERT INTO guild_budgets (guild_id, daily_budget_usd)
+            VALUES (?, ?)
+            ON CONFLICT(guild_id) DO UPDATE SET daily_budget_usd = excluded.daily_budget_usd
+        `,
+            )
+            .run(guildId, dailyBudgetUsd);
+    }
+
+    clearGuildBudget(guildId: string): boolean {
+        if (!this.getGuildBudget(guildId)) {
+            return false;
+        }
+
+        this.db.prepare('DELETE FROM guild_budgets WHERE guild_id = ?').run(guildId);
+        return true;
+    }
+
+    getGuildDailyUsage(guildId: string): TokenUsage | null {
+        const row = this.db
+            .prepare(
+                `
+            SELECT date, input_tokens as inputTokens, output_tokens as outputTokens, requests
+            FROM guild_daily_usage
+            WHERE guild_id = ?
+        `,
+            )
+            .get(guildId) as TokenUsage | undefined;
+
+        return row ? { ...row } : null;
+    }
+
+    saveGuildDailyUsage(guildId: string, usage: TokenUsage): void {
+        this.db
+            .prepare(
+                `
+            INSERT INTO guild_daily_usage (guild_id, date, input_tokens, output_tokens, requests)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(guild_id) DO UPDATE SET
+                date = excluded.date,
+                input_tokens = excluded.input_tokens,
+                output_tokens = excluded.output_tokens,
+                requests = excluded.requests
+        `,
+            )
+            .run(guildId, usage.date, usage.inputTokens, usage.outputTokens, usage.requests);
+    }
+
+    getGuildUsageHistory(guildId: string): UsageHistoryEntry[] {
+        const rows = this.db
+            .prepare(
+                `
+            SELECT date, input_tokens as inputTokens, output_tokens as outputTokens, requests
+            FROM guild_usage_history
+            WHERE guild_id = ?
+            ORDER BY date ASC
+        `,
+            )
+            .all(guildId) as unknown as UsageHistoryEntry[];
+
+        return rows.map((row) => ({ ...row }));
+    }
+
+    saveGuildUsageHistory(guildId: string, history: UsageHistoryEntry[]): void {
+        inTransaction(this.db, () => {
+            this.db.prepare('DELETE FROM guild_usage_history WHERE guild_id = ?').run(guildId);
+            const insert = this.db.prepare(`
+                INSERT INTO guild_usage_history (guild_id, date, input_tokens, output_tokens, requests)
+                VALUES (?, ?, ?, ?, ?)
+            `);
+
+            for (const entry of history) {
+                insert.run(
+                    guildId,
+                    entry.date,
+                    entry.inputTokens,
+                    entry.outputTokens,
+                    entry.requests,
+                );
+            }
+        });
     }
 
     close(): void {
@@ -251,7 +351,7 @@ export class ConfigStore {
         return Object.fromEntries(rows.map((row) => [row.userId, row.language]));
     }
 
-    private getGuildBudgets(): Record<string, GuildBudgetConfig> {
+    private getAllGuildBudgets(): Record<string, GuildBudgetConfig> {
         const rows = this.db
             .prepare(
                 `
@@ -281,7 +381,7 @@ export class ConfigStore {
         return Object.fromEntries(rows.map(({ guildId, ...usage }) => [guildId, { ...usage }]));
     }
 
-    private getGuildUsageHistory(): Record<string, UsageHistoryEntry[]> {
+    private getAllGuildUsageHistory(): Record<string, UsageHistoryEntry[]> {
         const rows = this.db
             .prepare(
                 `

@@ -12,8 +12,12 @@ export interface UsageRepository {
     saveDailyUsage(usage: TokenUsage): void;
     getUsageHistory(): UsageHistoryEntry[];
     saveUsageHistory(history: UsageHistoryEntry[]): void;
+    getGuildDailyUsage(guildId: string): TokenUsage | null;
+    saveGuildDailyUsage(guildId: string, usage: TokenUsage): void;
     getAllGuildDailyUsage(): Record<string, TokenUsage>;
     saveAllGuildDailyUsage(usage: Record<string, TokenUsage>): void;
+    getGuildUsageHistory(guildId: string): UsageHistoryEntry[];
+    saveGuildUsageHistory(guildId: string, history: UsageHistoryEntry[]): void;
     getAllGuildUsageHistory(): Record<string, UsageHistoryEntry[]>;
     saveAllGuildUsageHistory(history: Record<string, UsageHistoryEntry[]>): void;
 }
@@ -36,12 +40,28 @@ class StoreBackedUsageRepository implements UsageRepository {
         store.set('usageHistory', cloneUsageHistory(history));
     }
 
+    getGuildDailyUsage(guildId: string): TokenUsage | null {
+        return cloneTokenUsage(store.getGuildDailyUsage(guildId));
+    }
+
+    saveGuildDailyUsage(guildId: string, usage: TokenUsage): void {
+        store.saveGuildDailyUsage(guildId, normalizeTokenUsage(usage));
+    }
+
     getAllGuildDailyUsage(): Record<string, TokenUsage> {
         return cloneGuildDailyUsage(store.get('guildTokenUsage') ?? {});
     }
 
     saveAllGuildDailyUsage(usage: Record<string, TokenUsage>): void {
         store.set('guildTokenUsage', cloneGuildDailyUsage(usage));
+    }
+
+    getGuildUsageHistory(guildId: string): UsageHistoryEntry[] {
+        return cloneUsageHistory(store.getGuildUsageHistory(guildId));
+    }
+
+    saveGuildUsageHistory(guildId: string, history: UsageHistoryEntry[]): void {
+        store.saveGuildUsageHistory(guildId, cloneUsageHistory(history));
     }
 
     getAllGuildUsageHistory(): Record<string, UsageHistoryEntry[]> {
@@ -51,6 +71,14 @@ class StoreBackedUsageRepository implements UsageRepository {
     saveAllGuildUsageHistory(history: Record<string, UsageHistoryEntry[]>): void {
         store.set('guildUsageHistory', cloneGuildUsageHistory(history));
     }
+}
+
+function normalizeTokenUsage(usage: TokenUsage): TokenUsage {
+    const cloned = cloneTokenUsage(usage);
+    if (!cloned) {
+        throw new Error('Cannot save empty guild usage entry');
+    }
+    return cloned;
 }
 
 export const usageRepository = new StoreBackedUsageRepository();

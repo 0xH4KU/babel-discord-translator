@@ -7,6 +7,7 @@ import type { CooldownManager } from './modules/translation/cooldown.js';
 import type { TranslationLog } from './shared/log.js';
 import type { AppMetricsCollector } from './shared/app-metrics.js';
 import type { VertexAiHealthStatus } from './infra/vertex-ai-client.js';
+import type { OpenAiHealthStatus } from './infra/openai-client.js';
 import type { TranslationService } from './modules/translation/translation-service.js';
 import type { SessionRepository } from './modules/dashboard/auth/session-repository.js';
 import type { TranslationRuntimeLimiter } from './modules/translation/translation-runtime-limiter.js';
@@ -156,6 +157,7 @@ export interface DashboardDeps {
     metrics?: AppMetricsCollector;
     runtimeLimiter?: TranslationRuntimeLimiter;
     healthCheck?: () => Promise<VertexAiHealthStatus>;
+    openAiHealthCheck?: () => Promise<OpenAiHealthStatus>;
     sessionRepository?: SessionRepository;
 }
 

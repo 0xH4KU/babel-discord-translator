@@ -11,7 +11,7 @@ export interface GuildBudgetRepository {
 
 class StoreBackedGuildBudgetRepository implements GuildBudgetRepository {
     getBudget(guildId: string): GuildBudgetConfig | null {
-        return this.listBudgets()[guildId] ?? null;
+        return store.getGuildBudget(guildId);
     }
 
     listBudgets(): Record<string, GuildBudgetConfig> {
@@ -19,20 +19,11 @@ class StoreBackedGuildBudgetRepository implements GuildBudgetRepository {
     }
 
     setBudget(guildId: string, dailyBudgetUsd: number): void {
-        const budgets = this.listBudgets();
-        budgets[guildId] = { dailyBudgetUsd };
-        store.set('guildBudgets', budgets);
+        store.setGuildBudget(guildId, dailyBudgetUsd);
     }
 
     clearBudget(guildId: string): boolean {
-        const budgets = this.listBudgets();
-        if (!(guildId in budgets)) {
-            return false;
-        }
-
-        delete budgets[guildId];
-        store.set('guildBudgets', budgets);
-        return true;
+        return store.clearGuildBudget(guildId);
     }
 }
 

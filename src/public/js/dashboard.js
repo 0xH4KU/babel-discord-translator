@@ -101,15 +101,21 @@ async function checkApiHealth() {
     try {
         const res = await api('/health');
         const data = await res.json();
+        const checks = data.checks || {};
+        const providerChecks = [checks.vertexAi, checks.openAi].filter(
+            (check) => check && check.status !== 'skip',
+        );
+        const passingProvider = providerChecks.find((check) => check.status === 'pass');
+        const failedProvider = providerChecks.find((check) => check.status === 'fail');
         if (data.healthy) {
             badge.className = 'health-badge ok';
             badge.textContent = 'API';
-            badge.title = 'Ready · ' + (data.vertexAi.latencyMs ?? '?') + 'ms';
+            badge.title = 'Ready · ' + (passingProvider?.latencyMs ?? '?') + 'ms';
         } else {
             badge.className = 'health-badge fail';
             badge.textContent = 'API';
             badge.title =
-                data.vertexAi.error || data.checks.configuration.detail || 'Unknown error';
+                failedProvider?.error || checks.configuration?.detail || 'Unknown error';
         }
     } catch {
         badge.className = 'health-badge fail';

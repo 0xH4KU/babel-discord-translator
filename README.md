@@ -327,7 +327,7 @@ Hooks are installed automatically on normal local Git checkouts. The `prepare` s
 
 ### Test Coverage
 
-181 tests across 23 suites covering all modules:
+183 tests across 23 suites covering all modules:
 
 | Suite | Tests | Covers |
 |---|---|---|
@@ -350,7 +350,7 @@ Hooks are installed automatically on normal local Git checkouts. The `prepare` s
 | `usage.test.ts` | 25 | Cost calculation, per-server budget enforcement, global fallback, day rollover, runtime config access pattern |
 | `webhook-service.test.ts` | 4 | Stale webhook recovery, error classification, LRU webhook cache eviction |
 | `vertex-ai-client.test.ts` | 4 | Shared transport, timeout wiring, health checks, endpoint resolution |
-| `store.test.ts` | 8 | SQLite persistence, legacy JSON import, defaults, copy safety, config-only reads |
+| `store.test.ts` | 10 | SQLite persistence, legacy JSON import, defaults, copy safety, config-only reads, direct guild row operations |
 | `structured-logger.test.ts` | 2 | JSON shape, inherited request context, secret redaction |
 | `shutdown.test.ts` | 3 | Shutdown order, timeout forcing, signal deduplication |
 
@@ -466,7 +466,7 @@ User Request
 | [Express](https://expressjs.com) | v4 | Dashboard & API server |
 | [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) | v8 | Login throttling |
 | [Vertex AI Gemini](https://cloud.google.com/vertex-ai) | — | Translation engine |
-| [Vitest](https://vitest.dev) | v3 | 167 tests, 20 suites, v8 coverage |
+| [Vitest](https://vitest.dev) | v3 | 183 tests, 23 suites, v8 coverage |
 | [ESLint](https://eslint.org) + [Prettier](https://prettier.io) | v9 / v3 | Code quality |
 | [husky](https://typicode.github.io/husky/) + [lint-staged](https://github.com/lint-staged/lint-staged) | v9 / v16 | Pre-commit hooks |
 
