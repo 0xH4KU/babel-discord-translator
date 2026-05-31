@@ -1,7 +1,19 @@
 import { MessageFlags, type MessageContextMenuCommandInteraction } from 'discord.js';
-import { discordMessages } from '../shared/messages/discord-messages.js';
+import { buildTranslationMessages } from '../shared/discord-message-format.js';
+import { extractTranslatableMessageText } from '../shared/message-extraction.js';
 import { createRequestId } from '../shared/structured-logger.js';
 import type { CommandDeps } from '../types.js';
+
+async function editReplyWithChunks(
+    interaction: MessageContextMenuCommandInteraction,
+    messages: string[],
+): Promise<void> {
+    await interaction.editReply({ content: messages[0] ?? '' });
+
+    for (const message of messages.slice(1)) {
+        await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
+    }
+}
 
 /**
  * Handle Babel context menu command — translate a right-clicked message.
@@ -19,7 +31,7 @@ export async function handleBabel(
         userId: interaction.user.id,
         userTag: interaction.user.tag,
         locale: interaction.locale,
-        text: interaction.targetMessage.content,
+        text: extractTranslatableMessageText(interaction.targetMessage),
         requestId,
         beforeTranslate: () => interaction.deferReply({ flags: MessageFlags.Ephemeral }),
     });
@@ -41,7 +53,16 @@ export async function handleBabel(
         return;
     }
 
-    await interaction.editReply({
-        content: discordMessages.quotedTranslation(result.originalText, result.translatedText),
-    });
+    await editReplyWithChunks(
+        interaction,
+        buildTranslationMessages({
+            originalText: result.originalText,
+            translatedText: result.translatedText,
+            targetLanguage: result.targetLanguage,
+            cached: result.cached,
+            provider: result.provider,
+            inputTokens: result.inputTokens,
+            outputTokens: result.outputTokens,
+        }),
+    );
 }

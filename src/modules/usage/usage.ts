@@ -120,6 +120,37 @@ class UsageTracker {
         return cost.totalCost >= budget;
     }
 
+    wouldExceedBudget({
+        estimatedInputTokens,
+        estimatedOutputTokens,
+        guildId,
+    }: {
+        estimatedInputTokens: number;
+        estimatedOutputTokens: number;
+        guildId?: string | null;
+    }): boolean {
+        const runtimeConfig = configRepository.getRuntimeConfig();
+        let budget: number;
+        let cost: UsageCost;
+
+        if (guildId) {
+            const guildBudget = guildBudgetRepository.getBudget(guildId);
+            budget = guildBudget?.dailyBudgetUsd ?? (runtimeConfig.dailyBudgetUsd || 0);
+            cost = this.getGuildCost(guildId, runtimeConfig);
+        } else {
+            budget = runtimeConfig.dailyBudgetUsd || 0;
+            cost = this.getCost(runtimeConfig);
+        }
+
+        if (budget <= 0) return false;
+
+        const estimatedCost =
+            (estimatedInputTokens / 1_000_000) * (runtimeConfig.inputPricePerMillion || 0) +
+            (estimatedOutputTokens / 1_000_000) * (runtimeConfig.outputPricePerMillion || 0);
+
+        return cost.totalCost + estimatedCost >= budget;
+    }
+
     /** Get stats for dashboard display (global). */
     getStats(): UsageStats {
         const runtimeConfig = configRepository.getRuntimeConfig();

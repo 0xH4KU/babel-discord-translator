@@ -18,6 +18,11 @@ export type RuntimeConfig = Pick<
     | 'translationPrompt'
     | 'maxInputLength'
     | 'maxOutputTokens'
+    | 'translationMaxConcurrent'
+    | 'translationMaxGlobalQueue'
+    | 'translationMaxGuildQueue'
+    | 'translationMaxUserOutstanding'
+    | 'translationMaxQueueWaitMs'
     | 'openaiApiKey'
     | 'openaiBaseUrl'
     | 'openaiModel'
@@ -39,6 +44,11 @@ const RUNTIME_CONFIG_KEYS: (keyof RuntimeConfig)[] = [
     'translationPrompt',
     'maxInputLength',
     'maxOutputTokens',
+    'translationMaxConcurrent',
+    'translationMaxGlobalQueue',
+    'translationMaxGuildQueue',
+    'translationMaxUserOutstanding',
+    'translationMaxQueueWaitMs',
     'openaiApiKey',
     'openaiBaseUrl',
     'openaiModel',

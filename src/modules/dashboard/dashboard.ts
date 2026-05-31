@@ -1,14 +1,18 @@
-import express, { type Request, type Response } from 'express';
+import express, { type NextFunction, type Request, type Response } from 'express';
 import http from 'http';
 import rateLimit from 'express-rate-limit';
 import {
+    type AppMetricsSnapshot,
     createEmptyAppMetricsSnapshot,
     type ProviderMetricsSnapshot,
 } from '../../shared/app-metrics.js';
 import { getConfig } from '../config/config.js';
 import { getHealthStatus, getLivenessStatus, getReadinessStatus } from '../../shared/health.js';
 import { usage } from '../usage/usage.js';
-import { DEFAULT_TRANSLATION_RUNTIME_LIMITS } from '../translation/translation-runtime-limiter.js';
+import {
+    DEFAULT_TRANSLATION_RUNTIME_LIMITS,
+    type TranslationRuntimeSnapshot,
+} from '../translation/translation-runtime-limiter.js';
 import { translate } from '../translation/translate.js';
 import { createDashboardAuth } from './auth/dashboard-auth.js';
 import { SQLiteSessionRepository } from './auth/sqlite-session-repository.js';
@@ -20,6 +24,7 @@ import { userPreferenceRepository } from '../translation/user-preference-reposit
 import { applyConfigUpdateEffects } from '../config/config-runtime-effects.js';
 import { appLogger } from '../../shared/structured-logger.js';
 import { dashboardMessages } from '../../shared/messages/dashboard-messages.js';
+import { getVersionMetadata } from '../../shared/version.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import type { DashboardDeps, StoreData, TranslationProviderMode } from '../../types.js';
@@ -44,6 +49,13 @@ type BudgetRiskItem = {
     budget: number;
     totalCost: number;
     usedPercent: number;
+};
+
+type OperationsGuidanceItem = {
+    area: 'provider' | 'runtime' | 'budget';
+    severity: 'info' | 'warning' | 'critical';
+    title: string;
+    action: string;
 };
 
 function providerModeIncludes(
@@ -111,10 +123,265 @@ function providerSummary(
     };
 }
 
+function buildOperationsGuidance({
+    providers,
+    runtimePressure,
+    budgetRisk,
+}: {
+    providers: Record<
+        'vertex' | 'openai',
+        ProviderMetricsSnapshot & { enabled: boolean; configured: boolean }
+    >;
+    runtimePressure: {
+        queued: number;
+        rejectedTotal: number;
+    };
+    budgetRisk: {
+        warningCount: number;
+        exceededCount: number;
+    };
+}): OperationsGuidanceItem[] {
+    const guidance: OperationsGuidanceItem[] = [];
+
+    for (const [provider, summary] of Object.entries(providers)) {
+        if (summary.enabled && !summary.configured) {
+            guidance.push({
+                area: 'provider',
+                severity: 'critical',
+                title: `${provider} setup is incomplete`,
+                action: 'Open Settings and complete the enabled provider configuration.',
+            });
+            continue;
+        }
+
+        if (summary.enabled && summary.lastErrorType) {
+            guidance.push({
+                area: 'provider',
+                severity: summary.lastErrorType === 'auth' ? 'warning' : 'info',
+                title: `${provider} reported ${summary.lastErrorType}`,
+                action: 'Review provider credentials, fallback mode, and recent error logs.',
+            });
+        }
+    }
+
+    if (runtimePressure.rejectedTotal > 0) {
+        guidance.push({
+            area: 'runtime',
+            severity: runtimePressure.queued > 0 ? 'warning' : 'info',
+            title: 'Translation queue rejected requests',
+            action: 'Review runtime pressure and reduce concurrency or raise queue limits.',
+        });
+    }
+
+    if (budgetRisk.exceededCount > 0) {
+        guidance.push({
+            area: 'budget',
+            severity: 'critical',
+            title: 'Server budget exceeded',
+            action: 'Raise the affected server budget or wait for the daily reset.',
+        });
+    } else if (budgetRisk.warningCount > 0) {
+        guidance.push({
+            area: 'budget',
+            severity: 'warning',
+            title: 'Server budget nearing limit',
+            action: 'Review per-server usage and adjust budgets before translations are blocked.',
+        });
+    }
+
+    return guidance;
+}
+
+function applySecurityHeaders(_req: Request, res: Response, next: NextFunction): void {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    res.setHeader(
+        'Content-Security-Policy',
+        [
+            "default-src 'self'",
+            "base-uri 'self'",
+            "object-src 'none'",
+            "frame-ancestors 'none'",
+            "connect-src 'self'",
+            "img-src 'self' data: https:",
+            "font-src 'self' https://fonts.gstatic.com",
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+            "script-src 'self' 'unsafe-inline'",
+        ].join('; '),
+    );
+    next();
+}
+
+function createEmptyRuntimeSnapshot(): TranslationRuntimeSnapshot {
+    return {
+        inflight: 0,
+        queued: 0,
+        rejectedTotal: 0,
+        rejectionCounts: {
+            user_queue_full: 0,
+            guild_queue_full: 0,
+            global_queue_full: 0,
+            queue_wait_timeout: 0,
+        },
+        limits: { ...DEFAULT_TRANSLATION_RUNTIME_LIMITS },
+    };
+}
+
+function escapePrometheusLabel(value: string): string {
+    return value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/"/g, '\\"');
+}
+
+function metricValue(value: number): string {
+    return Number.isFinite(value) ? String(value) : '0';
+}
+
+function metricLine(
+    name: string,
+    value: number,
+    labels: Record<string, string | number | boolean> = {},
+): string {
+    const labelEntries = Object.entries(labels);
+    const labelText =
+        labelEntries.length > 0
+            ? `{${labelEntries
+                  .map(
+                      ([key, labelValue]) =>
+                          `${key}="${escapePrometheusLabel(String(labelValue))}"`,
+                  )
+                  .join(',')}}`
+            : '';
+
+    return `${name}${labelText} ${metricValue(value)}`;
+}
+
+function renderPrometheusMetrics({
+    metricsSnapshot,
+    cacheStats,
+    runtimeSnapshot,
+}: {
+    metricsSnapshot: AppMetricsSnapshot;
+    cacheStats: ReturnType<DashboardDeps['cache']['stats']>;
+    runtimeSnapshot: TranslationRuntimeSnapshot;
+}): string {
+    const version = getVersionMetadata();
+    const providerNames = new Set(['vertex', 'openai', ...Object.keys(metricsSnapshot.providers)]);
+    const lines: string[] = [
+        '# HELP babel_app_version_info Babel application version metadata.',
+        '# TYPE babel_app_version_info gauge',
+        metricLine('babel_app_version_info', 1, {
+            version: version.version,
+            repository_url: version.repositoryUrl,
+        }),
+        '# HELP babel_translations_total Successful translation count.',
+        '# TYPE babel_translations_total counter',
+        metricLine('babel_translations_total', metricsSnapshot.translationsTotal),
+        '# HELP babel_translation_api_calls_total Provider API call count.',
+        '# TYPE babel_translation_api_calls_total counter',
+        metricLine('babel_translation_api_calls_total', metricsSnapshot.translationApiCallsTotal),
+        '# HELP babel_translation_cache_hits_total Translation cache hits recorded by workflow.',
+        '# TYPE babel_translation_cache_hits_total counter',
+        metricLine('babel_translation_cache_hits_total', metricsSnapshot.translationCacheHitsTotal),
+        '# HELP babel_translation_failures_total Failed translation count.',
+        '# TYPE babel_translation_failures_total counter',
+        metricLine('babel_translation_failures_total', metricsSnapshot.translationFailuresTotal),
+        '# HELP babel_budget_blocks_total Requests blocked by daily budget guard.',
+        '# TYPE babel_budget_blocks_total counter',
+        metricLine('babel_budget_blocks_total', metricsSnapshot.budgetExceededTotal),
+        '# HELP babel_webhook_recreate_total Webhook recovery count.',
+        '# TYPE babel_webhook_recreate_total counter',
+        metricLine('babel_webhook_recreate_total', metricsSnapshot.webhookRecreateTotal),
+        '# HELP babel_cache_hits_total Raw translation cache hit count.',
+        '# TYPE babel_cache_hits_total counter',
+        metricLine('babel_cache_hits_total', cacheStats.hits),
+        '# HELP babel_cache_misses_total Raw translation cache miss count.',
+        '# TYPE babel_cache_misses_total counter',
+        metricLine('babel_cache_misses_total', cacheStats.misses),
+        '# HELP babel_cache_entries Current translation cache entry count.',
+        '# TYPE babel_cache_entries gauge',
+        metricLine('babel_cache_entries', cacheStats.size),
+        '# HELP babel_cache_max_entries Translation cache capacity.',
+        '# TYPE babel_cache_max_entries gauge',
+        metricLine('babel_cache_max_entries', cacheStats.maxSize),
+        '# HELP babel_provider_requests_total Provider request result counters.',
+        '# TYPE babel_provider_requests_total counter',
+    ];
+
+    for (const provider of Array.from(providerNames).sort()) {
+        const providerMetrics = metricsSnapshot.providers[provider] ?? EMPTY_PROVIDER_METRICS;
+        lines.push(
+            metricLine('babel_provider_requests_total', providerMetrics.successTotal, {
+                provider,
+                result: 'success',
+            }),
+            metricLine('babel_provider_requests_total', providerMetrics.failureTotal, {
+                provider,
+                result: 'failure',
+            }),
+            metricLine('babel_provider_fallback_from_total', providerMetrics.fallbackFromTotal, {
+                provider,
+            }),
+            metricLine('babel_provider_fallback_to_total', providerMetrics.fallbackToTotal, {
+                provider,
+            }),
+        );
+
+        if (providerMetrics.lastLatencyMs !== null) {
+            lines.push(
+                metricLine('babel_provider_last_latency_ms', providerMetrics.lastLatencyMs, {
+                    provider,
+                }),
+            );
+        }
+    }
+
+    lines.push(
+        '# HELP babel_provider_fallback_total Provider fallback count.',
+        '# TYPE babel_provider_fallback_total counter',
+        metricLine('babel_provider_fallback_total', metricsSnapshot.providerFallbackTotal),
+        '# HELP babel_runtime_inflight Current active translation requests.',
+        '# TYPE babel_runtime_inflight gauge',
+        metricLine('babel_runtime_inflight', runtimeSnapshot.inflight),
+        '# HELP babel_runtime_queue_depth Current queued translation requests.',
+        '# TYPE babel_runtime_queue_depth gauge',
+        metricLine('babel_runtime_queue_depth', runtimeSnapshot.queued),
+        '# HELP babel_runtime_rejections_total Translation runtime rejection count.',
+        '# TYPE babel_runtime_rejections_total counter',
+        metricLine('babel_runtime_rejections_total', runtimeSnapshot.rejectedTotal),
+    );
+
+    for (const [reason, count] of Object.entries(runtimeSnapshot.rejectionCounts)) {
+        lines.push(metricLine('babel_runtime_rejections_total', count, { reason }));
+    }
+
+    lines.push(
+        '# HELP babel_runtime_limit Runtime limiter configured limits.',
+        '# TYPE babel_runtime_limit gauge',
+        metricLine('babel_runtime_limit', runtimeSnapshot.limits.maxConcurrent, {
+            limit: 'max_concurrent',
+        }),
+        metricLine('babel_runtime_limit', runtimeSnapshot.limits.maxGlobalQueue, {
+            limit: 'max_global_queue',
+        }),
+        metricLine('babel_runtime_limit', runtimeSnapshot.limits.maxGuildQueue, {
+            limit: 'max_guild_queue',
+        }),
+        metricLine('babel_runtime_limit', runtimeSnapshot.limits.maxUserOutstanding, {
+            limit: 'max_user_outstanding',
+        }),
+        metricLine('babel_runtime_limit', runtimeSnapshot.limits.maxQueueWaitMs, {
+            limit: 'max_queue_wait_ms',
+        }),
+    );
+
+    return `${lines.join('\n')}\n`;
+}
+
 /** Wrap an async Express handler to forward errors to Express error handling (Express 4 compat). */
 function asyncHandler(
     fn: (req: Request, res: Response) => Promise<void>,
-): (req: Request, res: Response, next: import('express').NextFunction) => void {
+): (req: Request, res: Response, next: NextFunction) => void {
     return (req, res, next) => {
         fn(req, res).catch(next);
     };
@@ -203,6 +470,25 @@ function validateConfigUpdate(updates: Record<string, unknown>): {
         }
         sanitized.dailyBudgetUsd = v;
     }
+    for (const key of [
+        'translationMaxConcurrent',
+        'translationMaxGlobalQueue',
+        'translationMaxGuildQueue',
+        'translationMaxUserOutstanding',
+        'translationMaxQueueWaitMs',
+    ] as const) {
+        if (sanitized[key] !== undefined) {
+            const v = parseInt(String(sanitized[key]));
+            if (isNaN(v) || v < 1) {
+                return {
+                    valid: false,
+                    error: `${key} must be a positive integer`,
+                    sanitized: sanitized as Partial<StoreData>,
+                };
+            }
+            sanitized[key] = v;
+        }
+    }
     if (sanitized.inputPricePerMillion !== undefined) {
         const v = parseFloat(String(sanitized.inputPricePerMillion));
         if (isNaN(v) || v < 0) {
@@ -251,6 +537,7 @@ export function createDashboardApp({
     healthCheck = checkVertexAiHealth,
     openAiHealthCheck = checkOpenAiHealth,
     sessionRepository,
+    healthProbeCacheTtlMs = 5_000,
 }: DashboardDeps): express.Express {
     const app = express();
     const config = getConfig();
@@ -263,6 +550,7 @@ export function createDashboardApp({
         auth.dispose();
     };
 
+    app.use(applySecurityHeaders);
     app.use(express.json());
     app.use(express.static(join(__dirname, '../../public')));
 
@@ -302,7 +590,11 @@ export function createDashboardApp({
     app.get(
         '/readyz',
         asyncHandler(async (_req: Request, res: Response) => {
-            const health = await getReadinessStatus({ healthCheck, openAiHealthCheck });
+            const health = await getReadinessStatus({
+                healthCheck,
+                openAiHealthCheck,
+                cacheTtlMs: healthProbeCacheTtlMs,
+            });
             res.status(health.ready ? 200 : 503).json(health);
         }),
     );
@@ -312,16 +604,63 @@ export function createDashboardApp({
         asyncHandler(async (_req: Request, res: Response) => {
             const metricsSnapshot = metrics?.snapshot() ?? createEmptyAppMetricsSnapshot();
             const health = await getHealthStatus(
-                { healthCheck, openAiHealthCheck },
+                { healthCheck, openAiHealthCheck, cacheTtlMs: healthProbeCacheTtlMs },
                 metricsSnapshot,
             );
             res.status(health.live ? 200 : 503).json(health);
         }),
     );
 
+    app.get('/metrics', (_req: Request, res: Response) => {
+        const metricsSnapshot = metrics?.snapshot() ?? createEmptyAppMetricsSnapshot();
+        const runtimeSnapshot = runtimeLimiter?.snapshot() ?? createEmptyRuntimeSnapshot();
+
+        res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+        res.send(
+            renderPrometheusMetrics({
+                metricsSnapshot,
+                cacheStats: cache.stats(),
+                runtimeSnapshot,
+            }),
+        );
+    });
+
     app.get('/api/setup-status', auth.requireAuth, (_req: Request, res: Response) => {
         res.json({ complete: configRepository.isSetupComplete() });
     });
+
+    app.get('/api/version', auth.requireAuth, (_req: Request, res: Response) => {
+        res.json(getVersionMetadata());
+    });
+
+    app.get('/api/sessions', auth.requireAuth, (req: Request, res: Response) => {
+        res.json({ sessions: auth.listSessions(req) });
+    });
+
+    app.post(
+        '/api/sessions/revoke',
+        auth.requireAuth,
+        auth.requireCsrf,
+        (req: Request, res: Response) => {
+            const id = typeof req.body.id === 'string' ? req.body.id.trim() : '';
+            if (!id) {
+                res.status(400).json({ error: 'Session id is required' });
+                return;
+            }
+
+            const result = auth.revokeSession(req, id);
+            if (!result.revoked) {
+                res.status(404).json({ error: 'Session not found' });
+                return;
+            }
+
+            if (result.current) {
+                res.setHeader('Set-Cookie', auth.logout(req).cookie);
+            }
+
+            res.json({ ok: true, revoked: true, current: result.current });
+        },
+    );
 
     app.get('/api/stats', auth.requireAuth, (_req: Request, res: Response) => {
         const stats = getStats();
@@ -332,17 +671,7 @@ export function createDashboardApp({
         const rssMB = (memoryUsage.rss / BYTES_PER_MB).toFixed(1);
         const heapUsedMB = (memoryUsage.heapUsed / BYTES_PER_MB).toFixed(1);
         const externalMB = (memoryUsage.external / BYTES_PER_MB).toFixed(1);
-        const runtimeSnapshot = runtimeLimiter?.snapshot() ?? {
-            inflight: 0,
-            queued: 0,
-            rejectedTotal: 0,
-            rejectionCounts: {
-                user_queue_full: 0,
-                guild_queue_full: 0,
-                global_queue_full: 0,
-            },
-            limits: DEFAULT_TRANSLATION_RUNTIME_LIMITS,
-        };
+        const runtimeSnapshot = runtimeLimiter?.snapshot() ?? createEmptyRuntimeSnapshot();
         const runtimeConfig = configRepository.getRuntimeConfig();
         const providerMode = runtimeConfig.translationProvider || 'vertex';
 
@@ -368,32 +697,40 @@ export function createDashboardApp({
         });
         const vertexEnabled = providerModeIncludes(providerMode, 'vertex');
         const openAiEnabled = providerModeIncludes(providerMode, 'openai');
+        const providers = {
+            vertex: providerSummary(metricsSnapshot.providers, 'vertex', {
+                enabled: vertexEnabled,
+                configured: Boolean(runtimeConfig.vertexAiApiKey && runtimeConfig.gcpProject),
+            }),
+            openai: providerSummary(metricsSnapshot.providers, 'openai', {
+                enabled: openAiEnabled,
+                configured: Boolean(
+                    runtimeConfig.openaiApiKey &&
+                    runtimeConfig.openaiBaseUrl &&
+                    runtimeConfig.openaiModel,
+                ),
+            }),
+        };
+        const runtimePressure = {
+            inflight: runtimeSnapshot.inflight,
+            queued: runtimeSnapshot.queued,
+            rejectedTotal: runtimeSnapshot.rejectedTotal,
+            rejectionCounts: runtimeSnapshot.rejectionCounts,
+            limits: runtimeSnapshot.limits,
+        };
+        const budgetRisk = budgetRiskForGuilds(guildBudgetList);
         const operations = {
             providerMode,
-            providers: {
-                vertex: providerSummary(metricsSnapshot.providers, 'vertex', {
-                    enabled: vertexEnabled,
-                    configured: Boolean(runtimeConfig.vertexAiApiKey && runtimeConfig.gcpProject),
-                }),
-                openai: providerSummary(metricsSnapshot.providers, 'openai', {
-                    enabled: openAiEnabled,
-                    configured: Boolean(
-                        runtimeConfig.openaiApiKey &&
-                        runtimeConfig.openaiBaseUrl &&
-                        runtimeConfig.openaiModel,
-                    ),
-                }),
-            },
+            providers,
             fallbackTotal: metricsSnapshot.providerFallbackTotal,
             lastFallback: metricsSnapshot.lastProviderFallback,
-            runtimePressure: {
-                inflight: runtimeSnapshot.inflight,
-                queued: runtimeSnapshot.queued,
-                rejectedTotal: runtimeSnapshot.rejectedTotal,
-                rejectionCounts: runtimeSnapshot.rejectionCounts,
-                limits: runtimeSnapshot.limits,
-            },
-            budgetRisk: budgetRiskForGuilds(guildBudgetList),
+            runtimePressure,
+            budgetRisk,
+            guidance: buildOperationsGuidance({
+                providers,
+                runtimePressure,
+                budgetRisk,
+            }),
         };
 
         res.json({
@@ -555,6 +892,37 @@ export function createDashboardApp({
         });
     });
 
+    app.post(
+        '/api/user-prefs/batch-delete',
+        auth.requireAuth,
+        auth.requireCsrf,
+        (req: Request, res: Response) => {
+            const userIds: string[] = Array.isArray(req.body.userIds)
+                ? req.body.userIds
+                      .map((userId: unknown) => String(userId).trim())
+                      .filter((userId: string) => userId.length > 0)
+                : [];
+
+            if (userIds.length === 0) {
+                res.status(400).json({ error: 'userIds must be a non-empty array' });
+                return;
+            }
+
+            const deleted: string[] = [];
+            const notFound: string[] = [];
+
+            for (const userId of [...new Set(userIds)]) {
+                if (userPreferenceRepository.clearLanguage(userId)) {
+                    deleted.push(userId);
+                } else {
+                    notFound.push(userId);
+                }
+            }
+
+            res.json({ ok: true, deleted, notFound });
+        },
+    );
+
     app.delete(
         '/api/user-prefs/:userId',
         auth.requireAuth,
@@ -611,7 +979,11 @@ export function createDashboardApp({
         '/api/health',
         auth.requireAuth,
         asyncHandler(async (_req: Request, res: Response) => {
-            const readiness = await getReadinessStatus({ healthCheck, openAiHealthCheck });
+            const readiness = await getReadinessStatus({
+                healthCheck,
+                openAiHealthCheck,
+                cacheTtlMs: healthProbeCacheTtlMs,
+            });
             res.status(readiness.ready ? 200 : 503).json({
                 healthy: readiness.ready,
                 readiness: readiness.status,

@@ -29,6 +29,11 @@ export interface ProviderOrchestratorResult extends TranslationResult {
 
 export interface ProviderOrchestratorOptions {
     metrics?: AppMetricsCollector;
+    circuitBreaker?: {
+        failureThreshold?: number;
+        cooldownMs?: number;
+        now?: () => number;
+    };
 }
 
 export class ProviderOrchestratorError extends Error {
@@ -73,6 +78,10 @@ function resolveProviderOrder(
 }
 
 export function classifyProviderError(error: Error | null): string {
+    if (error && 'errorType' in error && typeof error.errorType === 'string') {
+        return error.errorType;
+    }
+
     const message = error?.message ?? '';
     if (/429|rate/i.test(message)) return 'rate_limit';
     if (/401|403|auth|api key|not configured/i.test(message)) return 'auth';
@@ -92,6 +101,31 @@ export function createProviderOrchestrator(
     orchestratorOptions: ProviderOrchestratorOptions = {},
 ) {
     const logger = appLogger.child({ component: 'provider_orchestrator' });
+    const breaker = {
+        failureThreshold: orchestratorOptions.circuitBreaker?.failureThreshold ?? 3,
+        cooldownMs: orchestratorOptions.circuitBreaker?.cooldownMs ?? 60_000,
+        now: orchestratorOptions.circuitBreaker?.now ?? (() => Date.now()),
+        state: new Map<string, { failures: number; openUntil: number }>(),
+    };
+
+    const isCircuitOpen = (provider: string): boolean => {
+        const state = breaker.state.get(provider);
+        return state !== undefined && state.openUntil > breaker.now();
+    };
+
+    const recordBreakerSuccess = (provider: string): void => {
+        breaker.state.delete(provider);
+    };
+
+    const recordBreakerFailure = (provider: string): void => {
+        const current = breaker.state.get(provider) ?? { failures: 0, openUntil: 0 };
+        const failures = current.failures + 1;
+        breaker.state.set(provider, {
+            failures,
+            openUntil:
+                failures >= breaker.failureThreshold ? breaker.now() + breaker.cooldownMs : 0,
+        });
+    };
 
     return {
         async translate(
@@ -101,6 +135,7 @@ export function createProviderOrchestrator(
         ): Promise<ProviderOrchestratorResult> {
             const ordered = resolveProviderOrder(mode, providers);
             const configured = ordered.filter((p) => p.isConfigured());
+            const available = configured.filter((p) => !isCircuitOpen(p.name));
 
             if (configured.length === 0) {
                 throw new Error(
@@ -108,23 +143,29 @@ export function createProviderOrchestrator(
                 );
             }
 
+            if (available.length === 0) {
+                throw new Error(
+                    'All configured translation providers are temporarily unavailable.',
+                );
+            }
+
             let lastError: Error | null = null;
             let lastProvider: string | null = null;
 
-            for (let i = 0; i < configured.length; i++) {
-                const provider = configured[i]!;
+            for (let i = 0; i < available.length; i++) {
+                const provider = available[i]!;
                 const isFallback = i > 0;
 
                 try {
                     if (isFallback) {
                         orchestratorOptions.metrics?.recordProviderFallback({
-                            from: configured[i - 1]!.name,
+                            from: available[i - 1]!.name,
                             to: provider.name,
                             errorType: classifyProviderError(lastError),
                             error: lastError?.message ?? 'Unknown provider failure',
                         });
                         logger.warn('provider_orchestrator.fallback', {
-                            from: configured[i - 1]!.name,
+                            from: available[i - 1]!.name,
                             to: provider.name,
                             error: lastError?.message,
                             ...options?.logContext,
@@ -132,6 +173,7 @@ export function createProviderOrchestrator(
                     }
 
                     const result = await provider.translate(prompt, maxOutputTokens, options);
+                    recordBreakerSuccess(provider.name);
                     orchestratorOptions.metrics?.recordProviderSuccess(provider.name);
                     return {
                         ...result,
@@ -141,6 +183,7 @@ export function createProviderOrchestrator(
                 } catch (error) {
                     lastError = toError(error);
                     lastProvider = provider.name;
+                    recordBreakerFailure(provider.name);
                     orchestratorOptions.metrics?.recordProviderFailure(provider.name, {
                         errorType: classifyProviderError(lastError),
                         error: lastError.message,
@@ -148,7 +191,7 @@ export function createProviderOrchestrator(
                     logger.error('provider_orchestrator.provider_failed', {
                         provider: provider.name,
                         error: lastError.message,
-                        hasNextProvider: i < configured.length - 1,
+                        hasNextProvider: i < available.length - 1,
                         ...options?.logContext,
                     });
                 }

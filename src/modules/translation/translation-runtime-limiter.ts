@@ -1,10 +1,15 @@
-export type RuntimeLimitReason = 'user_queue_full' | 'guild_queue_full' | 'global_queue_full';
+export type RuntimeLimitReason =
+    | 'user_queue_full'
+    | 'guild_queue_full'
+    | 'global_queue_full'
+    | 'queue_wait_timeout';
 
 export interface TranslationRuntimeLimits {
     maxConcurrent: number;
     maxGlobalQueue: number;
     maxGuildQueue: number;
     maxUserOutstanding: number;
+    maxQueueWaitMs: number;
 }
 
 export interface TranslationRuntimeSnapshot {
@@ -28,6 +33,8 @@ interface QueueEntry {
     activeAt?: number;
     cancelled: boolean;
     resolve: (meta: ReservationRunMeta) => void;
+    reject: (error: RuntimeLimitError) => void;
+    timeout?: NodeJS.Timeout;
 }
 
 export interface ReservationRunMeta {
@@ -38,14 +45,14 @@ export interface ReservationRunMeta {
 
 export type TranslationRuntimeAdmission =
     | {
-        accepted: true;
-        reservation: TranslationRuntimeReservation;
-    }
+          accepted: true;
+          reservation: TranslationRuntimeReservation;
+      }
     | {
-        accepted: false;
-        reason: RuntimeLimitReason;
-        snapshot: TranslationRuntimeSnapshot;
-    };
+          accepted: false;
+          reason: RuntimeLimitReason;
+          snapshot: TranslationRuntimeSnapshot;
+      };
 
 export interface TranslationRuntimeReservation {
     readonly queued: boolean;
@@ -58,13 +65,25 @@ export const DEFAULT_TRANSLATION_RUNTIME_LIMITS: TranslationRuntimeLimits = {
     maxGlobalQueue: 25,
     maxGuildQueue: 5,
     maxUserOutstanding: 1,
+    maxQueueWaitMs: 30_000,
 };
 
 const EMPTY_REJECTION_COUNTS: Record<RuntimeLimitReason, number> = {
     user_queue_full: 0,
     guild_queue_full: 0,
     global_queue_full: 0,
+    queue_wait_timeout: 0,
 };
+
+export class RuntimeLimitError extends Error {
+    readonly reason: RuntimeLimitReason;
+
+    constructor(reason: RuntimeLimitReason, message: string) {
+        super(message);
+        this.name = 'RuntimeLimitError';
+        this.reason = reason;
+    }
+}
 
 function guildKey(guildId?: string | null): string {
     return guildId ?? '__unknown_guild__';
@@ -109,19 +128,24 @@ export class TranslationRuntimeLimiter {
             this.inflight += 1;
             return {
                 accepted: true,
-                reservation: this.createActiveReservation({
-                    queued: false,
-                    waitMs: 0,
-                    snapshot: this.snapshot(),
-                }, scope.userId),
+                reservation: this.createActiveReservation(
+                    {
+                        queued: false,
+                        waitMs: 0,
+                        snapshot: this.snapshot(),
+                    },
+                    scope.userId,
+                ),
             };
         }
 
         this.bumpMap(this.queuedByGuild, guild, 1);
 
         let resolve: (meta: ReservationRunMeta) => void = () => undefined;
-        const activation = new Promise<ReservationRunMeta>((res) => {
+        let reject: (error: RuntimeLimitError) => void = () => undefined;
+        const activationWithReject = new Promise<ReservationRunMeta>((res, rej) => {
             resolve = res;
+            reject = rej;
         });
 
         const entry: QueueEntry = {
@@ -131,12 +155,17 @@ export class TranslationRuntimeLimiter {
             userId: scope.userId,
             cancelled: false,
             resolve,
+            reject,
         };
+        entry.timeout = setTimeout(() => {
+            this.expireQueuedEntry(entry);
+        }, this.limits.maxQueueWaitMs);
+        entry.timeout.unref?.();
         this.queue.push(entry);
 
         return {
             accepted: true,
-            reservation: this.createQueuedReservation(entry, activation),
+            reservation: this.createQueuedReservation(entry, activationWithReject),
         };
     }
 
@@ -150,7 +179,10 @@ export class TranslationRuntimeLimiter {
         };
     }
 
-    private createActiveReservation(meta: ReservationRunMeta, userId: string): TranslationRuntimeReservation {
+    private createActiveReservation(
+        meta: ReservationRunMeta,
+        userId: string,
+    ): TranslationRuntimeReservation {
         let settled = false;
 
         return {
@@ -175,7 +207,10 @@ export class TranslationRuntimeLimiter {
         };
     }
 
-    private createQueuedReservation(entry: QueueEntry, activation: Promise<ReservationRunMeta>): TranslationRuntimeReservation {
+    private createQueuedReservation(
+        entry: QueueEntry,
+        activation: Promise<ReservationRunMeta>,
+    ): TranslationRuntimeReservation {
         let settled = false;
 
         return {
@@ -214,8 +249,26 @@ export class TranslationRuntimeLimiter {
 
         this.queue.splice(index, 1);
         entry.cancelled = true;
+        if (entry.timeout) clearTimeout(entry.timeout);
         this.bumpMap(this.queuedByGuild, entry.guildKey, -1);
         this.bumpMap(this.outstandingByUser, entry.userId, -1);
+    }
+
+    private expireQueuedEntry(entry: QueueEntry): void {
+        const index = this.queue.findIndex((candidate) => candidate.id === entry.id);
+        if (index === -1 || entry.cancelled || entry.activeAt !== undefined) {
+            return;
+        }
+
+        this.queue.splice(index, 1);
+        entry.cancelled = true;
+        this.bumpMap(this.queuedByGuild, entry.guildKey, -1);
+        this.bumpMap(this.outstandingByUser, entry.userId, -1);
+        this.rejectedTotal += 1;
+        this.rejectionCounts.queue_wait_timeout += 1;
+        entry.reject(
+            new RuntimeLimitError('queue_wait_timeout', 'Translation queue wait timed out'),
+        );
     }
 
     private releaseActive(userId: string): void {
@@ -235,6 +288,7 @@ export class TranslationRuntimeLimiter {
             this.bumpMap(this.queuedByGuild, entry.guildKey, -1);
             const activeAt = Date.now();
             entry.activeAt = activeAt;
+            if (entry.timeout) clearTimeout(entry.timeout);
             entry.resolve({
                 queued: true,
                 waitMs: Math.max(activeAt - entry.createdAt, 0),

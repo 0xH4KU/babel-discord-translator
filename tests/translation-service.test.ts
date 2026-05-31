@@ -51,6 +51,11 @@ function createStoreMock(overrides: Partial<StoreData> = {}) {
         userLanguagePrefs: {},
         maxInputLength: 2000,
         maxOutputTokens: 1000,
+        translationMaxConcurrent: 4,
+        translationMaxGlobalQueue: 25,
+        translationMaxGuildQueue: 5,
+        translationMaxUserOutstanding: 1,
+        translationMaxQueueWaitMs: 30000,
         guildBudgets: {},
         guildTokenUsage: {},
         guildUsageHistory: {},
@@ -74,6 +79,11 @@ function createStoreMock(overrides: Partial<StoreData> = {}) {
             translationPrompt: data.translationPrompt,
             maxInputLength: data.maxInputLength,
             maxOutputTokens: data.maxOutputTokens,
+            translationMaxConcurrent: data.translationMaxConcurrent,
+            translationMaxGlobalQueue: data.translationMaxGlobalQueue,
+            translationMaxGuildQueue: data.translationMaxGuildQueue,
+            translationMaxUserOutstanding: data.translationMaxUserOutstanding,
+            translationMaxQueueWaitMs: data.translationMaxQueueWaitMs,
         })),
         isSetupComplete: vi.fn((): boolean => data.setupComplete),
     };
@@ -177,6 +187,8 @@ describe('TranslationService', () => {
         expect(result.status).toBe('success');
         expect(result.status === 'success' ? result.targetLanguage : '').toBe('ja');
         expect(result.status === 'success' ? result.langSource : '').toBe('setlang');
+        expect(result.status === 'success' ? result.inputTokens : 0).toBe(12);
+        expect(result.status === 'success' ? result.outputTokens : 0).toBe(6);
         expect(beforeTranslate).toHaveBeenCalledTimes(1);
         expect(translator).toHaveBeenCalledWith(
             'Hello world',

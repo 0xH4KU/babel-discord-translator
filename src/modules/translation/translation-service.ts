@@ -48,6 +48,11 @@ interface UserPreferenceRepositoryLike {
 
 interface UsageLike {
     isBudgetExceeded(guildId?: string | null): boolean;
+    wouldExceedBudget?(estimate: {
+        estimatedInputTokens: number;
+        estimatedOutputTokens: number;
+        guildId?: string | null;
+    }): boolean;
     record(inputTokens: number, outputTokens: number, guildId?: string | null): void;
 }
 
@@ -83,6 +88,10 @@ export type TranslationServiceResult =
           cached: boolean;
           targetLanguage: string;
           langSource: LangSource;
+          inputTokens: number;
+          outputTokens: number;
+          provider?: string;
+          fallback?: boolean;
       }
     | { status: 'error'; deferred: boolean; message: string };
 
@@ -122,6 +131,8 @@ function resolveQueueBusyMessage(reason: RuntimeLimitReason, messages: QueueBusy
         case 'guild_queue_full':
             return messages.guildBusy;
         case 'global_queue_full':
+            return messages.serviceBusy;
+        case 'queue_wait_timeout':
             return messages.serviceBusy;
     }
 }
@@ -278,6 +289,20 @@ export function createTranslationService({
                 };
             }
 
+            if (
+                usageTracker.wouldExceedBudget?.({
+                    estimatedInputTokens: Math.ceil(originalText.length / 4),
+                    estimatedOutputTokens: runtimeConfig.maxOutputTokens || 1000,
+                    guildId: request.guildId,
+                })
+            ) {
+                metrics?.recordBudgetExceeded();
+                requestLogger.warn('translation.request.blocked', {
+                    blockReason: 'budget_estimate_exceeded',
+                });
+                return { status: 'blocked', message: messages.budgetExceeded };
+            }
+
             const { targetLanguage, langSource } = resolveTargetLanguage(
                 request,
                 userPreferenceStore,
@@ -306,6 +331,10 @@ export function createTranslationService({
             try {
                 let translated = cache.get(cacheKey);
                 let cached = translated !== null;
+                let inputTokens = 0;
+                let outputTokens = 0;
+                let provider: string | undefined;
+                let fallback: boolean | undefined;
                 requestLogger.info(cached ? 'translation.cache.hit' : 'translation.cache.miss', {
                     targetLanguage,
                     langSource,
@@ -385,6 +414,10 @@ export function createTranslationService({
                                 ),
                             );
                             cache.set(cacheKey, result.text);
+                            inputTokens = result.inputTokens;
+                            outputTokens = result.outputTokens;
+                            provider = result.provider;
+                            fallback = result.fallback;
                             usageTracker.record(
                                 result.inputTokens,
                                 result.outputTokens,
@@ -409,6 +442,10 @@ export function createTranslationService({
                             ),
                         );
                         translated = result.text;
+                        inputTokens = result.inputTokens;
+                        outputTokens = result.outputTokens;
+                        provider = result.provider;
+                        fallback = result.fallback;
                         cache.set(cacheKey, translated);
                         usageTracker.record(
                             result.inputTokens,
@@ -444,6 +481,10 @@ export function createTranslationService({
                     cached,
                     targetLanguage,
                     langSource,
+                    inputTokens,
+                    outputTokens,
+                    provider,
+                    fallback,
                 };
             } catch (error) {
                 reservation?.cancel();

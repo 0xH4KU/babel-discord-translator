@@ -62,11 +62,27 @@ interface HealthDeps {
     configStore?: Pick<ConfigRepository, 'getRuntimeConfig' | 'isSetupComplete'>;
     healthCheck?: () => Promise<VertexAiHealthStatus>;
     openAiHealthCheck?: () => Promise<OpenAiHealthStatus>;
+    cacheTtlMs?: number;
+}
+
+interface CachedReadiness {
+    expiresAt: number;
+    status: ReadinessStatus;
+}
+
+let readinessCache: CachedReadiness | null = null;
+
+function resetReadinessCache(): void {
+    readinessCache = null;
 }
 
 function now(): string {
     return new Date().toISOString();
 }
+
+export const _test = {
+    resetReadinessCache,
+};
 
 function createVertexCheck(result: VertexAiHealthStatus): HealthCheckResult {
     if (result.healthy) {
@@ -157,12 +173,18 @@ export async function getReadinessStatus({
     configStore = configRepository,
     healthCheck = checkVertexAiHealth,
     openAiHealthCheck = checkOpenAiHealth,
+    cacheTtlMs = 5_000,
 }: HealthDeps = {}): Promise<ReadinessStatus> {
     const timestamp = now();
+    const cacheKeyApplies = cacheTtlMs > 0;
+
+    if (cacheKeyApplies && readinessCache && readinessCache.expiresAt > Date.now()) {
+        return readinessCache.status;
+    }
 
     try {
         if (!configStore.isSetupComplete()) {
-            return {
+            const status: ReadinessStatus = {
                 ready: false,
                 status: 'not_ready',
                 timestamp,
@@ -181,6 +203,10 @@ export async function getReadinessStatus({
                     },
                 },
             };
+            if (cacheKeyApplies) {
+                readinessCache = { status, expiresAt: Date.now() + cacheTtlMs };
+            }
+            return status;
         }
 
         const runtimeConfig = configStore.getRuntimeConfig();
@@ -207,7 +233,7 @@ export async function getReadinessStatus({
         const anyEnabled = useVertex || useOpenAi;
         const ready = anyEnabled && enabledProviderHealthy;
 
-        return {
+        const status: ReadinessStatus = {
             ready,
             status: ready ? 'ready' : 'not_ready',
             timestamp,
@@ -220,8 +246,12 @@ export async function getReadinessStatus({
                 openAi: openAiCheck,
             },
         };
+        if (cacheKeyApplies) {
+            readinessCache = { status, expiresAt: Date.now() + cacheTtlMs };
+        }
+        return status;
     } catch (error) {
-        return {
+        const status: ReadinessStatus = {
             ready: false,
             status: 'not_ready',
             timestamp,
@@ -241,6 +271,10 @@ export async function getReadinessStatus({
                 },
             },
         };
+        if (cacheKeyApplies) {
+            readinessCache = { status, expiresAt: Date.now() + cacheTtlMs };
+        }
+        return status;
     }
 }
 
@@ -249,11 +283,17 @@ export async function getHealthStatus(
         configStore = configRepository,
         healthCheck = checkVertexAiHealth,
         openAiHealthCheck = checkOpenAiHealth,
+        cacheTtlMs = 5_000,
     }: HealthDeps = {},
     metrics: AppMetricsSnapshot = createEmptyAppMetricsSnapshot(),
 ): Promise<HealthStatus> {
     const liveness = getLivenessStatus({ configStore });
-    const readiness = await getReadinessStatus({ configStore, healthCheck, openAiHealthCheck });
+    const readiness = await getReadinessStatus({
+        configStore,
+        healthCheck,
+        openAiHealthCheck,
+        cacheTtlMs,
+    });
 
     return {
         live: liveness.live,

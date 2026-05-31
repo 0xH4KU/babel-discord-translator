@@ -5,6 +5,20 @@
 
 let wizStep = 0;
 
+function wizProviderUsesVertex(mode) {
+  return mode === 'vertex' || mode === 'vertex+openai' || mode === 'openai+vertex';
+}
+
+function wizProviderUsesOpenai(mode) {
+  return mode === 'openai' || mode === 'vertex+openai' || mode === 'openai+vertex';
+}
+
+function wizProviderChanged() {
+  const mode = document.getElementById('wiz-provider').value;
+  document.getElementById('wiz-section-vertex').style.display = wizProviderUsesVertex(mode) ? '' : 'none';
+  document.getElementById('wiz-section-openai').style.display = wizProviderUsesOpenai(mode) ? '' : 'none';
+}
+
 function wizUpdateDots() {
   for (let i = 0; i < 3; i++) {
     const dot = document.getElementById('dot-' + i);
@@ -19,10 +33,18 @@ function wizUpdateDots() {
 
 function wizNext() {
   if (wizStep === 0) {
+    const mode = document.getElementById('wiz-provider').value;
     const key = document.getElementById('wiz-apikey').value.trim();
     const proj = document.getElementById('wiz-project').value.trim();
-    if (!key || !proj) {
+    const openaiKey = document.getElementById('wiz-openai-apikey').value.trim();
+    const openaiBaseUrl = document.getElementById('wiz-openai-baseurl').value.trim();
+    const openaiModel = document.getElementById('wiz-openai-model').value.trim();
+    if (wizProviderUsesVertex(mode) && (!key || !proj)) {
       showToast('Please fill in API Key and Project ID', true);
+      return;
+    }
+    if (wizProviderUsesOpenai(mode) && (!openaiKey || !openaiBaseUrl || !openaiModel)) {
+      showToast('Please fill in OpenAI-compatible API settings', true);
       return;
     }
   }
@@ -36,11 +58,16 @@ function wizPrev() {
 }
 
 async function wizFinish() {
+  const mode = document.getElementById('wiz-provider').value;
   const cfg = {
+    translationProvider: mode,
     vertexAiApiKey: document.getElementById('wiz-apikey').value.trim(),
     gcpProject: document.getElementById('wiz-project').value.trim(),
     gcpLocation: document.getElementById('wiz-location').value.trim() || 'global',
     geminiModel: document.getElementById('wiz-model').value.trim(),
+    openaiApiKey: document.getElementById('wiz-openai-apikey').value.trim(),
+    openaiBaseUrl: document.getElementById('wiz-openai-baseurl').value.trim(),
+    openaiModel: document.getElementById('wiz-openai-model').value.trim(),
     cooldownSeconds: parseInt(document.getElementById('wiz-cooldown').value) || 5,
     cacheMaxSize: parseInt(document.getElementById('wiz-cache').value) || 2000,
     setupComplete: true,
@@ -59,3 +86,5 @@ async function wizFinish() {
     showToast('Save failed', true);
   }
 }
+
+wizProviderChanged();

@@ -34,7 +34,7 @@ const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 if (!APP_ID || !BOT_TOKEN) {
     console.error(
         '❌ Missing env vars. Usage:\n' +
-        '   DISCORD_APP_ID=xxx DISCORD_BOT_TOKEN=xxx node --import tsx scripts/register.ts',
+            '   DISCORD_APP_ID=xxx DISCORD_BOT_TOKEN=xxx node --import tsx scripts/register.ts',
     );
     process.exit(1);
 }
@@ -108,6 +108,16 @@ const commands: DiscordCommand[] = [
                     { name: 'ไทย', value: 'th' },
                     { name: 'العربية', value: 'ar' },
                     { name: 'Bahasa Indonesia', value: 'id' },
+                ],
+            },
+            {
+                name: 'visibility',
+                description: 'Where to send the translation',
+                type: 3, // STRING
+                required: false,
+                choices: [
+                    { name: 'Public channel message', value: 'public' },
+                    { name: 'Private ephemeral reply', value: 'private' },
                 ],
             },
         ],

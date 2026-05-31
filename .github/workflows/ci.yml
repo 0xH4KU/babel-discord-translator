@@ -24,6 +24,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Audit
+        run: npm audit --audit-level=high
+
       - name: Type Check
         run: npm run typecheck
 
@@ -32,6 +35,15 @@ jobs:
 
       - name: Test with Coverage
         run: npm run test:coverage
+
+      - name: Build
+        run: npm run build
+
+      - name: Smoke Built Artifact
+        run: |
+          test -f dist/src/index.js
+          test -f dist/src/public/index.html
+          node --input-type=module -e "const v = await import('./dist/src/shared/version.js'); if (v.APP_VERSION !== '0.1.0') process.exit(1);"
 
   docker:
     runs-on: ubuntu-latest

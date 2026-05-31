@@ -7,6 +7,7 @@ function createInteraction() {
             getString: vi.fn((name: string) => {
                 if (name === 'text') return 'Hello world';
                 if (name === 'to') return 'es';
+                if (name === 'visibility') return null;
                 return null;
             }),
         },
@@ -53,12 +54,60 @@ describe('handleTranslate', () => {
             webhookService: webhookService as never,
         });
 
-        expect(webhookService.sendTranslation).toHaveBeenCalledWith(expect.objectContaining({
-            channel: interaction.channel,
-            content: 'Hola mundo',
-            username: 'Guild Tester',
-            userId: 'user-1',
-        }));
+        expect(webhookService.sendTranslation).toHaveBeenCalledWith(
+            expect.objectContaining({
+                channel: interaction.channel,
+                content: expect.stringContaining('Hola mundo'),
+                username: 'Guild Tester',
+                userId: 'user-1',
+            }),
+        );
+        expect(webhookService.sendTranslation).toHaveBeenCalledWith(
+            expect.objectContaining({
+                content: expect.stringContaining('Target: `es`'),
+            }),
+        );
         expect(interaction.deleteReply).toHaveBeenCalledTimes(1);
+    });
+
+    it('should send private translations through the deferred ephemeral reply', async () => {
+        const webhookService = {
+            sendTranslation: vi.fn().mockResolvedValue(undefined),
+        };
+        const translationService = {
+            process: vi.fn().mockResolvedValue({
+                status: 'success',
+                deferred: true,
+                translatedText: 'Hola mundo',
+                originalText: 'Hello world',
+                cached: true,
+                targetLanguage: 'es',
+                langSource: 'option',
+                provider: 'openai',
+                inputTokens: 8,
+                outputTokens: 4,
+            }),
+        };
+        const interaction = createInteraction();
+        interaction.options.getString = vi.fn((name: string) => {
+            if (name === 'text') return 'Hello world';
+            if (name === 'to') return 'es';
+            if (name === 'visibility') return 'private';
+            return null;
+        });
+
+        await handleTranslate(interaction as never, {
+            translationService: translationService as never,
+            webhookService: webhookService as never,
+        });
+
+        expect(webhookService.sendTranslation).not.toHaveBeenCalled();
+        expect(interaction.deleteReply).not.toHaveBeenCalled();
+        expect(interaction.editReply).toHaveBeenCalledWith({
+            content: expect.stringContaining('Hola mundo'),
+        });
+        expect(interaction.editReply).toHaveBeenCalledWith({
+            content: expect.stringContaining('Provider: `openai`'),
+        });
     });
 });

@@ -12,6 +12,7 @@ Right-click any message → *Babel* → Get an ephemeral translation only you ca
 [![Node.js](https://img.shields.io/badge/Node.js-22.5%2B-green.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
 [![discord.js](https://img.shields.io/badge/discord.js-v14-blue.svg)](https://discord.js.org)
+[![Version](https://img.shields.io/badge/version-0.1.0-brightgreen.svg)](package.json)
 [![CI](https://github.com/0xH4KU/babel-discord-translator/actions/workflows/ci.yml/badge.svg)](https://github.com/0xH4KU/babel-discord-translator/actions)
 
 </div>
@@ -47,7 +48,7 @@ Right-click any message → *Babel* → Get an ephemeral translation only you ca
 ### Observability
 
 - **Structured Logging** — JSON logs with request-scoped `requestId`, command context, guild/user IDs, retry classification, and automatic secret redaction
-- **Application Metrics** — In-memory counters for translations, API calls, cache hits, failures, budget blocks, and webhook re-creates via `/api/stats`
+- **Application Metrics** — In-memory counters for translations, API calls, cache hits, failures, provider fallback, budget blocks, and webhook re-creates via `/api/stats` and Prometheus `/metrics`
 - **Health Model** — Kubernetes-style `/livez`, `/readyz`, and `/healthz` endpoints separate liveness from readiness
 - **Translation & Error Logs** — In-memory audit ring buffer with O(1) error counter
 
@@ -55,6 +56,7 @@ Right-click any message → *Babel* → Get an ephemeral translation only you ca
 
 - **Web Dashboard** — Login-protected admin panel with setup wizard
 - **Modular Auth** — Session, cookie, password, and CSRF handling in dedicated auth modules
+- **Session Management** — View active dashboard sessions and revoke stale admin logins
 - **Config Runtime Effects** — Config changes apply immediate runtime updates and cache invalidation
 - **API Health Check** — Real-time Vertex AI probe status
 - **Translation Test** — Test translations directly from the dashboard
@@ -327,29 +329,32 @@ Hooks are installed automatically on normal local Git checkouts. The `prepare` s
 
 ### Test Coverage
 
-183 tests across 23 suites covering all modules:
+219 tests across 26 suites covering all modules:
 
 | Suite | Tests | Covers |
 |---|---|---|
 | `cache.test.ts` | 10 | LRU eviction, hit/miss stats, versioned cache keys |
 | `config.test.ts` | 4 | Env validation, structured startup logging, development warning, production password refusal |
 | `config-repository.test.ts` | 1 | Runtime config reads stay off the full store snapshot path |
-| `config-runtime-effects.test.ts` | 4 | Unified config side effects, cache invalidation, immediate runtime sync |
+| `config-runtime-effects.test.ts` | 5 | Unified config side effects, cache invalidation, immediate runtime sync |
 | `cooldown.test.ts` | 6 | Rate limiting, cleanup, per-user isolation |
-| `app-metrics.test.ts` | 2 | Counter aggregation and derived success/failure/cache/api rates |
-| `log.test.ts` | 14 | Ring buffer, addError, type filtering, O(1) error counter |
+| `app-metrics.test.ts` | 5 | Counter aggregation, provider fallback metrics, and derived success/failure/cache/api rates |
+| `log.test.ts` | 15 | Ring buffer, addError, type filtering, O(1) error counter |
 | `lang.test.ts` | 29 | Script detection (CJK/Cyrillic/Arabic/Thai/Hindi), locale mapping, same-language check |
 | `dashboard-auth.test.ts` | 4 | scrypt auth flow, CSRF enforcement, session expiry cleanup |
 | `prepare-husky.test.ts` | 5 | Husky prepare skip logic for CI, missing git metadata, Windows/local execution |
 | `sqlite-session-repository.test.ts` | 2 | Persistent session storage, enumeration, delete/clear |
-| `dashboard.test.ts` | 17 | Auth flow, health endpoints, stats, config protection, async error handling |
-| `translation-runtime-limiter.test.ts` | 3 | FIFO queueing, per-user outstanding cap, per-guild/global queue shedding |
-| `translation-service.test.ts` | 10 | Shared workflow, cache hits, runtime shedding, budget/error handling, runtime config access pattern |
-| `translate-command.test.ts` | 1 | `/translate` delegates delivery to webhook service |
-| `translate.test.ts` | 20 | Retry logic, prompt building, API errors, URL routing |
-| `usage.test.ts` | 25 | Cost calculation, per-server budget enforcement, global fallback, day rollover, runtime config access pattern |
+| `dashboard.test.ts` | 31 | Auth flow, session revoke, metrics, health endpoints, stats, config protection, async error handling |
+| `discord-message-format.test.ts` | 2 | Discord-safe chunking and metadata rendering |
+| `message-extraction.test.ts` | 3 | Context menu extraction from content, embeds, attachments, and referenced context |
+| `provider-orchestrator.test.ts` | 5 | Provider fallback ordering, structured errors, and circuit breaker behavior |
+| `translation-runtime-limiter.test.ts` | 4 | FIFO queueing, per-user outstanding cap, queue wait timeout, per-guild/global queue shedding |
+| `translation-service.test.ts` | 11 | Shared workflow, cache hits, runtime shedding, budget/error handling, runtime config access pattern |
+| `translate-command.test.ts` | 2 | `/translate` public/private delivery behavior |
+| `translate.test.ts` | 21 | Retry logic, prompt building, API errors, URL routing, provider metadata |
+| `usage.test.ts` | 26 | Cost calculation, budget estimate guard, per-server budget enforcement, global fallback, day rollover, runtime config access pattern |
 | `webhook-service.test.ts` | 4 | Stale webhook recovery, error classification, LRU webhook cache eviction |
-| `vertex-ai-client.test.ts` | 4 | Shared transport, timeout wiring, health checks, endpoint resolution |
+| `vertex-ai-client.test.ts` | 6 | Shared transport, timeout wiring, structured provider errors, health checks, endpoint resolution |
 | `store.test.ts` | 10 | SQLite persistence, legacy JSON import, defaults, copy safety, config-only reads, direct guild row operations |
 | `structured-logger.test.ts` | 2 | JSON shape, inherited request context, secret redaction |
 | `shutdown.test.ts` | 3 | Shutdown order, timeout forcing, signal deduplication |
@@ -406,6 +411,16 @@ The Dockerfile uses a **multi-stage build** with Node.js `22-alpine`:
 | `GET /livez` | Process health + config repository check | Container **liveness** probe |
 | `GET /readyz` | Setup completeness + live Vertex AI probe | Container **readiness** probe |
 | `GET /healthz` | Combined liveness + readiness with degraded/ok status | Operator **monitoring** |
+| `GET /metrics` | Prometheus text metrics with version, translation, provider, queue, cache, and budget counters | Alerting and dashboards |
+
+### Operations Guides
+
+- [Alerts runbook](docs/operations/alerts-runbook.md)
+- [SQLite backup and restore](docs/operations/sqlite-backup-restore.md)
+
+### 0.1.0 Release Notes
+
+Babel `0.1.0` is the first release-tagged operations build. It adds visible version metadata in the README, dashboard, `/api/version`, and `/metrics`; provider fallback diagnostics; bounded translation queue controls; budget estimate guards; dashboard operations guidance; dashboard session revoke controls; and Prometheus-ready metrics for release monitoring.
 
 ---
 
@@ -448,6 +463,7 @@ User Request
 | **Session Tokens** | `crypto.randomBytes(32)`, HttpOnly + SameSite=Strict cookies |
 | **CSRF** | Per-session CSRF token required on all mutation endpoints |
 | **Login Throttle** | `express-rate-limit` — 5 attempts / 15 min per IP |
+| **Security Headers** | Dashboard responses include CSP, `X-Frame-Options`, `X-Content-Type-Options`, and Referrer Policy |
 | **Error Sanitization** | API keys, tokens, and URLs redacted from user-facing errors |
 | **Log Redaction** | Automatic redaction of secrets matching known patterns |
 | **Process Safety** | Global `unhandledRejection` / `uncaughtException` handlers |

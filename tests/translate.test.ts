@@ -147,6 +147,27 @@ describe('fetchWithRetry', () => {
         expect(globalThis.fetch).toHaveBeenCalledTimes(2);
     });
 
+    it('should honor Retry-After before retrying retryable responses', async () => {
+        const fail = {
+            ok: false,
+            status: 429,
+            headers: new Headers({ 'retry-after': '2' }),
+        } as Response;
+        const success = { ok: true, status: 200 } as Response;
+        globalThis.fetch = vi.fn().mockResolvedValueOnce(fail).mockResolvedValueOnce(success);
+
+        vi.useFakeTimers();
+        const promise = fetchWithRetry('https://example.com', {}, 1);
+        await vi.advanceTimersByTimeAsync(1999);
+        expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+        await vi.advanceTimersByTimeAsync(1);
+        const result = await promise;
+        vi.useRealTimers();
+
+        expect(result).toBe(success);
+        expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    });
+
     it('should retry on network error and eventually succeed', async () => {
         const success = { ok: true, status: 200 } as Response;
         globalThis.fetch = vi

@@ -56,7 +56,13 @@ const cooldown = new CooldownManager(runtimeConfig.cooldownSeconds);
 const log = new TranslationLog();
 const stats: BotStats = { totalTranslations: 0, apiCalls: 0 };
 const metrics = new AppMetrics();
-const runtimeLimiter = new TranslationRuntimeLimiter();
+const runtimeLimiter = new TranslationRuntimeLimiter({
+    maxConcurrent: runtimeConfig.translationMaxConcurrent,
+    maxGlobalQueue: runtimeConfig.translationMaxGlobalQueue,
+    maxGuildQueue: runtimeConfig.translationMaxGuildQueue,
+    maxUserOutstanding: runtimeConfig.translationMaxUserOutstanding,
+    maxQueueWaitMs: runtimeConfig.translationMaxQueueWaitMs,
+});
 const translationService = createTranslationService({
     cache,
     cooldown,

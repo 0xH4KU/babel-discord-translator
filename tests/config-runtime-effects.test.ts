@@ -23,6 +23,11 @@ function createConfig(overrides: Partial<StoreData> = {}): StoreData {
         userLanguagePrefs: {},
         maxInputLength: 2000,
         maxOutputTokens: 1000,
+        translationMaxConcurrent: 4,
+        translationMaxGlobalQueue: 25,
+        translationMaxGuildQueue: 5,
+        translationMaxUserOutstanding: 1,
+        translationMaxQueueWaitMs: 30000,
         guildBudgets: {},
         guildTokenUsage: {},
         guildUsageHistory: {},
@@ -115,5 +120,31 @@ describe('applyConfigUpdateEffects', () => {
         expect(result.immediateEffects).toEqual([]);
         expect(clearSpy).not.toHaveBeenCalled();
         expect(cooldown.seconds).toBe(5);
+    });
+
+    it('should report runtime limit config changes as read on restart settings', () => {
+        const cache = new TranslationCache(100);
+        const cooldown = new CooldownManager(5);
+
+        const result = applyConfigUpdateEffects(
+            createConfig(),
+            {
+                translationMaxConcurrent: 8,
+                translationMaxGlobalQueue: 50,
+                translationMaxGuildQueue: 10,
+                translationMaxUserOutstanding: 2,
+                translationMaxQueueWaitMs: 15000,
+            },
+            { cache, cooldown },
+        );
+
+        expect(result.cacheCleared).toBe(false);
+        expect(result.changedKeys).toEqual([
+            'translationMaxConcurrent',
+            'translationMaxGlobalQueue',
+            'translationMaxGuildQueue',
+            'translationMaxUserOutstanding',
+            'translationMaxQueueWaitMs',
+        ]);
     });
 });

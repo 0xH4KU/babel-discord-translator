@@ -303,6 +303,8 @@ const LANG_NAMES = {
 let allPrefsData = {};
 let prefsPage = 1,
     prefsPageSize = 15;
+let prefsSearch = '';
+let selectedPrefUserIds = new Set();
 
 async function loadUserPrefs() {
     try {
@@ -313,18 +315,51 @@ async function loadUserPrefs() {
         document.getElementById('prefs-count').textContent =
             count + ' user(s) with custom settings';
         prefsPage = 1;
+        selectedPrefUserIds = new Set(
+            [...selectedPrefUserIds].filter((userId) =>
+                Object.prototype.hasOwnProperty.call(prefs, userId),
+            ),
+        );
         renderUserPrefs();
     } catch {}
 }
 
+function filteredPrefsEntries() {
+    const query = prefsSearch.trim().toLowerCase();
+    const entries = Object.entries(allPrefsData);
+
+    if (!query) return entries;
+
+    return entries.filter(([userId, lang]) => {
+        const name = LANG_NAMES[lang] || lang;
+        return (
+            userId.toLowerCase().includes(query) ||
+            String(lang).toLowerCase().includes(query) ||
+            String(name).toLowerCase().includes(query)
+        );
+    });
+}
+
+function updatePrefBatchState() {
+    const button = document.getElementById('prefs-batch-delete');
+    if (!button) return;
+
+    button.disabled = selectedPrefUserIds.size === 0;
+    button.textContent =
+        selectedPrefUserIds.size === 0
+            ? 'Clear Selected'
+            : `Clear Selected (${selectedPrefUserIds.size})`;
+}
+
 function renderUserPrefs() {
     const container = document.getElementById('user-prefs-container');
-    const entries = Object.entries(allPrefsData);
+    const entries = filteredPrefsEntries();
 
     if (entries.length === 0) {
         container.innerHTML =
-            '<div class="empty-state">No users have set custom languages yet.</div>';
+            '<div class="empty-state">No matching user language preferences.</div>';
         document.getElementById('prefs-pagination').innerHTML = '';
+        updatePrefBatchState();
         return;
     }
 
@@ -332,11 +367,13 @@ function renderUserPrefs() {
     const pageEntries = entries.slice(start, start + prefsPageSize);
 
     let html = `<div class="table-scroll"><table class="data-table"><thead><tr>
-    <th>User ID</th><th>Language</th><th></th>
+    <th></th><th>User ID</th><th>Language</th><th></th>
   </tr></thead><tbody>`;
     for (const [userId, lang] of pageEntries) {
         const name = LANG_NAMES[lang] || lang;
+        const checked = selectedPrefUserIds.has(userId) ? 'checked' : '';
         html += `<tr>
+      <td><input type="checkbox" onchange="togglePrefSelection('${userId}', this.checked)" ${checked}></td>
       <td class="mono" style="font-size:0.8rem">${userId}</td>
       <td>${name} (${lang})</td>
       <td><button class="btn-danger" onclick="deleteUserPref('${userId}')">Delete</button></td>
@@ -352,6 +389,9 @@ function renderUserPrefs() {
         onPageChange: 'setPrefsPage',
         onSizeChange: 'setPrefsPageSize',
     });
+    document.getElementById('prefs-count').textContent =
+        `${entries.length} shown / ${Object.keys(allPrefsData).length} total`;
+    updatePrefBatchState();
 }
 
 function setPrefsPage(p) {
@@ -364,11 +404,50 @@ function setPrefsPageSize(s) {
     renderUserPrefs();
 }
 
+function setPrefsSearch(value) {
+    prefsSearch = value || '';
+    prefsPage = 1;
+    renderUserPrefs();
+}
+
+function togglePrefSelection(userId, checked) {
+    if (checked) {
+        selectedPrefUserIds.add(userId);
+    } else {
+        selectedPrefUserIds.delete(userId);
+    }
+
+    updatePrefBatchState();
+}
+
+async function deleteSelectedUserPrefs() {
+    const userIds = [...selectedPrefUserIds];
+    if (userIds.length === 0) return;
+
+    const res = await api('/user-prefs/batch-delete', {
+        method: 'POST',
+        body: JSON.stringify({ userIds }),
+    });
+
+    if (res.ok) {
+        const data = await res.json();
+        for (const userId of data.deleted || []) {
+            delete allPrefsData[userId];
+            selectedPrefUserIds.delete(userId);
+        }
+        showToast(`${(data.deleted || []).length} user preference(s) cleared`);
+        renderUserPrefs();
+    } else {
+        showToast('Batch delete failed', true);
+    }
+}
+
 async function deleteUserPref(userId) {
     const res = await api('/user-prefs/' + userId, { method: 'DELETE' });
     if (res.ok) {
         showToast('User preference deleted');
         delete allPrefsData[userId];
+        selectedPrefUserIds.delete(userId);
         document.getElementById('prefs-count').textContent =
             Object.keys(allPrefsData).length + ' user(s) with custom settings';
         renderUserPrefs();

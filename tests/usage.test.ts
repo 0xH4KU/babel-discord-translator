@@ -75,6 +75,11 @@ describe('UsageTracker', () => {
         mockData.translationPrompt = '';
         mockData.maxInputLength = 2000;
         mockData.maxOutputTokens = 1000;
+        mockData.translationMaxConcurrent = 4;
+        mockData.translationMaxGlobalQueue = 25;
+        mockData.translationMaxGuildQueue = 5;
+        mockData.translationMaxUserOutstanding = 1;
+        mockData.translationMaxQueueWaitMs = 30000;
         mockData.guildBudgets = {};
         mockData.guildTokenUsage = {};
         mockData.guildUsageHistory = {};
@@ -421,6 +426,22 @@ describe('UsageTracker', () => {
 
             const guildUsage = mockData.guildTokenUsage as Record<string, unknown>;
             expect(Object.keys(guildUsage).length).toBe(0);
+        });
+
+        it('should block estimated requests that would exceed a guild budget', () => {
+            mockData.guildBudgets = { 'guild-estimate': { dailyBudgetUsd: 1.0 } };
+            mockData.inputPricePerMillion = 1.0;
+            mockData.outputPricePerMillion = 1.0;
+
+            usage.record(900_000, 0, 'guild-estimate');
+
+            expect(
+                usage.wouldExceedBudget({
+                    estimatedInputTokens: 50_000,
+                    estimatedOutputTokens: 100_000,
+                    guildId: 'guild-estimate',
+                }),
+            ).toBe(true);
         });
     });
 });

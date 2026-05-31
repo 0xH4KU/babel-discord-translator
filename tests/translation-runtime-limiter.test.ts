@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { TranslationRuntimeLimiter } from '../src/translation-runtime-limiter.js';
+import { describe, expect, it, vi } from 'vitest';
+import {
+    RuntimeLimitError,
+    TranslationRuntimeLimiter,
+} from '../src/translation-runtime-limiter.js';
 
 function deferred<T>() {
     let resolve!: (value: T | PromiseLike<T>) => void;
@@ -107,5 +110,42 @@ describe('TranslationRuntimeLimiter', () => {
         if (firstAdmission.accepted) {
             firstAdmission.reservation.cancel();
         }
+    });
+
+    it('should expire queued reservations after the max queue wait', async () => {
+        vi.useFakeTimers();
+        const limiter = new TranslationRuntimeLimiter({
+            maxConcurrent: 1,
+            maxGlobalQueue: 2,
+            maxGuildQueue: 2,
+            maxUserOutstanding: 1,
+            maxQueueWaitMs: 100,
+        });
+        const gate = deferred<void>();
+        const firstAdmission = limiter.acquire({ userId: 'user-1', guildId: 'guild-1' });
+        const secondAdmission = limiter.acquire({ userId: 'user-2', guildId: 'guild-1' });
+
+        if (!firstAdmission.accepted || !secondAdmission.accepted) {
+            throw new Error('Expected reservations to be accepted');
+        }
+
+        const first = firstAdmission.reservation.run(async () => {
+            await gate.promise;
+        });
+
+        const second = secondAdmission.reservation.run(async () => 'second-done');
+        const caught = second.catch((error: Error) => error);
+        await vi.advanceTimersByTimeAsync(100);
+        vi.useRealTimers();
+
+        await expect(caught).resolves.toMatchObject({
+            name: 'RuntimeLimitError',
+            reason: 'queue_wait_timeout',
+        });
+        expect(limiter.snapshot().queued).toBe(0);
+        expect(limiter.snapshot().rejectionCounts.queue_wait_timeout).toBe(1);
+
+        gate.resolve();
+        await first;
     });
 });

@@ -58,6 +58,10 @@
   display: block;
 }
 
+.wizard-provider-section {
+  margin-top: 0.75rem;
+}
+
 .wizard-nav {
   display: flex;
   justify-content: space-between;

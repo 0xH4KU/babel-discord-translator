@@ -101,6 +101,23 @@
   background: var(--yellow);
 }
 
+.version-link {
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+
+.version-link:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 /* --- Logout --- */
 .btn-logout {
   background: transparent;
@@ -402,6 +419,39 @@
   color: var(--text-dim);
 }
 
+.operations-guidance {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.operations-guidance:empty {
+  display: none;
+}
+
+.operations-guidance-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+
+.operations-guidance-item strong {
+  color: var(--text);
+}
+
+.operations-guidance-item.warning {
+  border-color: var(--yellow);
+}
+
+.operations-guidance-item.critical {
+  border-color: var(--red);
+}
+
 /* --- Per-Server Budget Overview Items --- */
 .guild-budget-overview-item {
   display: flex;
@@ -600,4 +650,16 @@
   font-weight: 600;
   line-height: 1.2;
   overflow-wrap: anywhere;
+}
+
+.prefs-tools {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  margin: 0.75rem 0 1rem;
+}
+
+.prefs-tools input {
+  flex: 1;
+  min-width: 0;
 }

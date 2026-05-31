@@ -1,5 +1,6 @@
 import { configRepository } from '../modules/config/config-repository.js';
 import { appLogger, type StructuredLogFields } from '../shared/structured-logger.js';
+import { ProviderHttpError, classifyStatusCode, parseRetryAfterMs } from './provider-errors.js';
 import type { TranslationProvider, TranslateOptions } from './provider-orchestrator.js';
 import type { OpenAIChatResponse, TranslationResult } from '../types.js';
 
@@ -54,16 +55,20 @@ function buildTimeoutSignal(timeoutMs: number): AbortSignal {
 
 function classifyOpenAiFailure(value: number | Error): string {
     if (typeof value === 'number') {
-        if (value === 429) return 'rate_limit';
-        if (value === 401 || value === 403) return 'auth';
-        if (value >= 500) return 'server_error';
-        if (value >= 400) return 'client_error';
-        return 'http_error';
+        return classifyStatusCode(value);
     }
 
+    if ('errorType' in value && typeof value.errorType === 'string') return value.errorType;
     if (value.name === 'TimeoutError') return 'timeout';
     if (value.message.includes('not configured')) return 'configuration';
     return 'network_error';
+}
+
+function retryDelayMs(response: Response, attempt: number): number {
+    return (
+        parseRetryAfterMs(response.headers?.get('retry-after') ?? null) ??
+        Math.pow(2, attempt) * 500
+    );
 }
 
 async function fetchWithRetry(
@@ -94,7 +99,7 @@ async function fetchWithRetry(
             }
 
             if (attempt < retries) {
-                const delay = Math.pow(2, attempt) * 500;
+                const delay = retryDelayMs(response, attempt);
                 logger.warn('openai.retry_scheduled', {
                     operation: logPrefix,
                     attempt: attempt + 1,
@@ -134,7 +139,12 @@ async function fetchWithRetry(
 async function buildOpenAiError(response: Response): Promise<Error> {
     const body = (await response.text()).replace(/\s+/g, ' ').trim();
     const detail = body || response.statusText || 'Request failed';
-    return new Error(`OpenAI ${response.status}: ${detail.slice(0, 200)}`);
+    return new ProviderHttpError(
+        'openai',
+        response.status,
+        detail.slice(0, 200),
+        parseRetryAfterMs(response.headers?.get('retry-after') ?? null),
+    );
 }
 
 async function requestChatCompletion(

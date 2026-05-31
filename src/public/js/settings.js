@@ -17,6 +17,42 @@ function onProviderModeChange() {
   openaiSection.style.display = showOpenai ? '' : 'none';
 }
 
+function renderSessions(sessions) {
+  const container = document.getElementById('session-list');
+  if (!container) return;
+
+  if (!sessions || sessions.length === 0) {
+    container.innerHTML = '<div class="session-empty">No active sessions</div>';
+    return;
+  }
+
+  container.innerHTML = sessions.map((session) => {
+    const expires = session.expiresAt ? new Date(session.expiresAt).toLocaleString() : 'Unknown';
+    const currentBadge = session.current ? '<span class="session-badge">Current</span>' : '';
+    const action = session.current
+      ? '<span class="session-muted">This browser</span>'
+      : `<button class="btn-danger btn-xs" onclick="revokeSession('${session.id}')">Revoke</button>`;
+
+    return `<div class="session-item">
+      <div>
+        <div class="session-title">Session ${session.id} ${currentBadge}</div>
+        <div class="session-meta">Expires ${expires}</div>
+      </div>
+      ${action}
+    </div>`;
+  }).join('');
+}
+
+async function loadSessions() {
+  try {
+    const res = await api('/sessions');
+    if (!res.ok) return;
+
+    const data = await res.json();
+    renderSessions(data.sessions || []);
+  } catch { }
+}
+
 async function loadSettings() {
   try {
     const [cfgRes, guildRes] = await Promise.all([api('/config'), api('/guilds')]);
@@ -46,6 +82,7 @@ async function loadSettings() {
     document.getElementById('cfg-openai-baseurl').value = currentConfig.openaiBaseUrl || '';
     document.getElementById('cfg-openai-model').value = currentConfig.openaiModel || '';
     onProviderModeChange();
+    loadSessions();
   } catch { }
 }
 
@@ -133,4 +170,18 @@ async function testTranslate() {
 function restoreDefaultPrompt() {
   document.getElementById('cfg-prompt').value = '';
   showToast('Default prompt will be used — click Save to apply');
+}
+
+async function revokeSession(id) {
+  const res = await api('/sessions/revoke', {
+    method: 'POST',
+    body: JSON.stringify({ id }),
+  });
+
+  if (res.ok) {
+    showToast('Session revoked');
+    loadSessions();
+  } else {
+    showToast('Revoke failed', true);
+  }
 }

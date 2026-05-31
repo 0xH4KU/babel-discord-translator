@@ -1,9 +1,23 @@
 import { MessageFlags, type ChatInputCommandInteraction } from 'discord.js';
 import { sanitizeError } from './shared.js';
+import { buildTranslationMessages } from '../shared/discord-message-format.js';
 import { discordMessages } from '../shared/messages/discord-messages.js';
 import { appLogger, createRequestId } from '../shared/structured-logger.js';
 import type { TranslateCommandDeps } from '../types.js';
 import type { GuildMember } from 'discord.js';
+
+type TranslateVisibility = 'public' | 'private';
+
+async function sendPrivateChunks(
+    interaction: ChatInputCommandInteraction,
+    messages: string[],
+): Promise<void> {
+    await interaction.editReply({ content: messages[0] ?? '' });
+
+    for (const message of messages.slice(1)) {
+        await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
+    }
+}
 
 /**
  * Handle /translate command — translate text and send publicly via webhook.
@@ -14,6 +28,8 @@ export async function handleTranslate(
 ): Promise<void> {
     const text = interaction.options.getString('text')!;
     const targetOpt = interaction.options.getString('to');
+    const visibility = (interaction.options.getString('visibility') ??
+        'public') as TranslateVisibility;
     const requestId = createRequestId();
     const logger = appLogger.child({
         component: 'translate_command',
@@ -51,16 +67,33 @@ export async function handleTranslate(
     }
 
     try {
-        const member = interaction.member as GuildMember | null;
-        await webhookService.sendTranslation({
-            channel: interaction.channel as never,
-            content: result.translatedText,
-            username: member?.displayName || interaction.user.displayName,
-            avatarURL: interaction.user.displayAvatarURL({ size: 128 }),
-            requestId,
-            guildId: interaction.guildId,
-            userId: interaction.user.id,
+        const messages = buildTranslationMessages({
+            originalText: result.originalText,
+            translatedText: result.translatedText,
+            targetLanguage: result.targetLanguage,
+            cached: result.cached,
+            provider: result.provider,
+            inputTokens: result.inputTokens,
+            outputTokens: result.outputTokens,
         });
+
+        if (visibility === 'private') {
+            await sendPrivateChunks(interaction, messages);
+            return;
+        }
+
+        const member = interaction.member as GuildMember | null;
+        for (const message of messages) {
+            await webhookService.sendTranslation({
+                channel: interaction.channel as never,
+                content: message,
+                username: member?.displayName || interaction.user.displayName,
+                avatarURL: interaction.user.displayAvatarURL({ size: 128 }),
+                requestId,
+                guildId: interaction.guildId,
+                userId: interaction.user.id,
+            });
+        }
         await interaction.deleteReply();
     } catch (error) {
         logger.error('translate.webhook.send.failed', {

@@ -144,6 +144,7 @@ function renderOperations(operations) {
     const providers = ops.providers || {};
     const runtimePressure = ops.runtimePressure || {};
     const budgetRisk = ops.budgetRisk || {};
+    const guidance = ops.guidance || [];
     const lastFallback = ops.lastFallback || null;
     const fallbackTotal = ops.fallbackTotal;
 
@@ -223,6 +224,25 @@ function renderOperations(operations) {
         );
 
         budgetEl.append(header, metrics);
+    }
+
+    const guidanceEl = document.getElementById('ops-guidance');
+    if (guidanceEl) {
+        guidanceEl.replaceChildren();
+
+        guidance.forEach((item) => {
+            const row = document.createElement('div');
+            row.className = 'operations-guidance-item ' + (item.severity || 'info');
+
+            const title = document.createElement('strong');
+            title.textContent = item.title || item.area || 'Action';
+
+            const action = document.createElement('span');
+            action.textContent = item.action || '';
+
+            row.append(title, action);
+            guidanceEl.append(row);
+        });
     }
 }
 

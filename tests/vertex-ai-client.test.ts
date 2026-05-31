@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+    ProviderHttpError,
     checkVertexAiHealth,
     generateTranslationContent,
     _test,
@@ -127,5 +128,41 @@ describe('vertex-ai-client', () => {
                 model: 'gemini-2.5-flash-lite',
             }),
         ).toContain('https://us-central1-aiplatform.googleapis.com');
+    });
+
+    it('should throw structured provider errors for failed Vertex AI responses', async () => {
+        globalThis.fetch = vi.fn().mockResolvedValue({
+            ok: false,
+            status: 429,
+            statusText: 'Too Many Requests',
+            headers: new Headers({ 'retry-after': '3' }),
+            text: () => Promise.resolve('rate limited'),
+        });
+
+        vi.useFakeTimers();
+        const promise = generateTranslationContent('Translate me', 512);
+        const caught = promise.catch((error: Error) => error);
+        await vi.runAllTimersAsync();
+        vi.useRealTimers();
+
+        await expect(caught).resolves.toMatchObject({
+            name: 'ProviderHttpError',
+            provider: 'vertex',
+            errorType: 'rate_limit',
+            statusCode: 429,
+            retryAfterMs: 3000,
+        });
+    });
+
+    it('should expose structured provider error details directly', () => {
+        const error = new ProviderHttpError('vertex', 403, 'forbidden', 1200);
+
+        expect(error).toMatchObject({
+            name: 'ProviderHttpError',
+            provider: 'vertex',
+            errorType: 'auth',
+            statusCode: 403,
+            retryAfterMs: 1200,
+        });
     });
 });

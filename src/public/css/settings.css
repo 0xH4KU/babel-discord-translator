@@ -90,6 +90,51 @@
     font-weight: 600;
 }
 
+/* --- Dashboard Sessions --- */
+.session-list {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.session-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.75rem 0.85rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+
+.session-title {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    color: var(--text);
+    font-size: 0.85rem;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.session-meta,
+.session-muted,
+.session-empty {
+    color: var(--text-dim);
+    font-size: 0.75rem;
+}
+
+.session-badge {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--green);
+    border-radius: 6px;
+    padding: 0.1rem 0.35rem;
+    color: var(--green);
+    font-size: 0.65rem;
+    font-weight: 700;
+}
+
 /* --- Guild List --- */
 .guild-list {
     display: flex;

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import http from 'http';
 import { AppMetrics } from '../src/app-metrics.js';
 
@@ -34,6 +34,11 @@ vi.mock('../src/store.js', () => {
         userLanguagePrefs: { user1: 'ja', user2: 'ko' },
         maxInputLength: 2000,
         maxOutputTokens: 1000,
+        translationMaxConcurrent: 4,
+        translationMaxGlobalQueue: 25,
+        translationMaxGuildQueue: 5,
+        translationMaxUserOutstanding: 1,
+        translationMaxQueueWaitMs: 30000,
         tokenUsage: null,
         usageHistory: [],
         guildBudgets: {},
@@ -111,6 +116,7 @@ import { TranslationCache } from '../src/cache.js';
 import { CooldownManager } from '../src/cooldown.js';
 import { TranslationLog } from '../src/log.js';
 import { TranslationRuntimeLimiter } from '../src/translation-runtime-limiter.js';
+import { _test as healthTest } from '../src/shared/health.js';
 import type { Client } from 'discord.js';
 
 interface TestResponse {
@@ -118,6 +124,12 @@ interface TestResponse {
     headers: http.IncomingHttpHeaders;
     body: Record<string, unknown> | null;
     rawHeaders: http.IncomingHttpHeaders;
+}
+
+interface TextTestResponse {
+    status: number;
+    headers: http.IncomingHttpHeaders;
+    text: string;
 }
 
 // --- Helper: make HTTP requests to the test server ---
@@ -156,6 +168,43 @@ function request(
 
         req.on('error', reject);
         if (body) req.write(JSON.stringify(body));
+        req.end();
+    });
+}
+
+function requestText(
+    server: http.Server,
+    method: string,
+    path: string,
+    { cookie, csrf }: { cookie?: string; csrf?: string } = {},
+): Promise<TextTestResponse> {
+    return new Promise((resolve, reject) => {
+        const addr = server.address() as { port: number };
+        const options: http.RequestOptions = {
+            hostname: '127.0.0.1',
+            port: addr.port,
+            path,
+            method,
+            headers: {},
+        };
+        if (cookie) (options.headers as Record<string, string>)['Cookie'] = cookie;
+        if (csrf) (options.headers as Record<string, string>)['x-csrf-token'] = csrf;
+
+        const req = http.request(options, (res) => {
+            let data = '';
+            res.on('data', (chunk: Buffer) => {
+                data += chunk;
+            });
+            res.on('end', () => {
+                resolve({
+                    status: res.statusCode!,
+                    headers: res.headers,
+                    text: data,
+                });
+            });
+        });
+
+        req.on('error', reject);
         req.end();
     });
 }
@@ -208,6 +257,12 @@ describe('Dashboard API', () => {
         server = startDashboardServer(app, 0);
     });
 
+    beforeEach(() => {
+        healthTest.resetReadinessCache();
+        healthCheck?.mockClear();
+        healthCheck?.mockResolvedValue({ healthy: true, latencyMs: 24 });
+    });
+
     afterAll(() => {
         stopDashboardApp(app);
         server?.close();
@@ -249,6 +304,15 @@ describe('Dashboard API', () => {
     it('should report unauthenticated without cookie', async () => {
         const res = await request(server, 'GET', '/api/auth/check');
         expect(res.body!.authenticated).toBe(false);
+    });
+
+    it('should attach security headers to dashboard responses', async () => {
+        const res = await request(server, 'GET', '/api/auth/check');
+
+        expect(res.headers['x-content-type-options']).toBe('nosniff');
+        expect(res.headers['x-frame-options']).toBe('DENY');
+        expect(res.headers['referrer-policy']).toBe('no-referrer');
+        expect(res.headers['content-security-policy']).toContain("default-src 'self'");
     });
 
     // --- Protected route access ---
@@ -314,6 +378,87 @@ describe('Dashboard API', () => {
         expect((res.body!.bot as Record<string, unknown>).memory).toBeDefined();
     });
 
+    it('should cache readiness probes within the configured health TTL', async () => {
+        healthTest.resetReadinessCache();
+        healthCheck.mockClear();
+        healthCheck.mockResolvedValue({ healthy: true, latencyMs: 21 });
+
+        const first = await request(server, 'GET', '/readyz');
+        const second = await request(server, 'GET', '/readyz');
+
+        expect(first.status).toBe(200);
+        expect(second.status).toBe(200);
+        expect(healthCheck).toHaveBeenCalledTimes(1);
+    });
+
+    it('should expose release version metadata to authenticated users', async () => {
+        const res = await request(server, 'GET', '/api/version', {
+            cookie: sessionCookie,
+        });
+
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({
+            version: '0.1.0',
+            repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator',
+        });
+    });
+
+    it('should expose Prometheus metrics without dashboard authentication', async () => {
+        metrics.recordTranslationSuccess({ cached: true });
+        metrics.recordTranslationFailure();
+        metrics.recordBudgetExceeded();
+        metrics.recordProviderSuccess('vertex', { latencyMs: 25 });
+        metrics.recordProviderFailure('openai', {
+            errorType: 'rate_limit',
+            error: 'OpenAI 429',
+        });
+        cache.set('metrics-cache-key', 'bonjour');
+        cache.get('metrics-cache-key');
+
+        const first = runtimeLimiter.acquire({
+            guildId: 'metrics-guild',
+            userId: 'metrics-user-1',
+        });
+        const second = runtimeLimiter.acquire({
+            guildId: 'metrics-guild',
+            userId: 'metrics-user-2',
+        });
+        const queued = runtimeLimiter.acquire({
+            guildId: 'metrics-guild',
+            userId: 'metrics-user-3',
+        });
+
+        try {
+            expect(first.accepted).toBe(true);
+            expect(second.accepted).toBe(true);
+            expect(queued.accepted).toBe(true);
+
+            const res = await requestText(server, 'GET', '/metrics');
+
+            expect(res.status).toBe(200);
+            expect(res.headers['content-type']).toContain('text/plain');
+            expect(res.text).toContain(
+                'babel_app_version_info{version="0.1.0",repository_url="https://github.com/0xH4KU/babel-discord-translator"} 1',
+            );
+            expect(res.text).toContain('babel_translations_total');
+            expect(res.text).toContain('babel_translation_failures_total');
+            expect(res.text).toContain('babel_translation_cache_hits_total');
+            expect(res.text).toContain('babel_cache_hits_total');
+            expect(res.text).toContain(
+                'babel_provider_requests_total{provider="vertex",result="success"}',
+            );
+            expect(res.text).toContain(
+                'babel_provider_requests_total{provider="openai",result="failure"}',
+            );
+            expect(res.text).toContain('babel_runtime_queue_depth 1');
+            expect(res.text).toContain('babel_budget_blocks_total');
+        } finally {
+            if (queued.accepted) queued.reservation.cancel();
+            if (second.accepted) second.reservation.cancel();
+            if (first.accepted) first.reservation.cancel();
+        }
+    });
+
     it('should include operations summary in stats', async () => {
         metrics.recordProviderSuccess('vertex', { latencyMs: 42 });
         metrics.recordProviderFailure('openai', {
@@ -367,6 +512,31 @@ describe('Dashboard API', () => {
         const budgetRisk = operations.budgetRisk as Record<string, unknown>;
         expect(budgetRisk.warningCount).toEqual(expect.any(Number));
         expect(budgetRisk.exceededCount).toEqual(expect.any(Number));
+    });
+
+    it('should include actionable operations guidance in stats', async () => {
+        metrics.recordProviderFailure('vertex', {
+            errorType: 'auth',
+            error: 'Vertex AI 403',
+        });
+
+        const res = await request(server, 'GET', '/api/stats', {
+            cookie: sessionCookie,
+        });
+
+        expect(res.status).toBe(200);
+        const operations = res.body!.operations as Record<string, unknown>;
+        const guidance = operations.guidance as Array<Record<string, unknown>>;
+
+        expect(guidance).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    area: 'provider',
+                    severity: 'warning',
+                    action: expect.stringContaining('provider'),
+                }),
+            ]),
+        );
     });
 
     it('should expose readiness details on the authenticated health endpoint', async () => {
@@ -447,6 +617,31 @@ describe('Dashboard API', () => {
         expect(clearSpy).toHaveBeenCalledTimes(1);
     });
 
+    it('should accept runtime limiter settings through dashboard config', async () => {
+        const res = await request(server, 'POST', '/api/config', {
+            cookie: sessionCookie,
+            csrf: csrfToken,
+            body: {
+                translationMaxConcurrent: 6,
+                translationMaxGlobalQueue: 40,
+                translationMaxGuildQueue: 8,
+                translationMaxUserOutstanding: 2,
+                translationMaxQueueWaitMs: 15000,
+            },
+        });
+
+        expect(res.status).toBe(200);
+        expect(res.body!.changedKeys).toEqual(
+            expect.arrayContaining([
+                'translationMaxConcurrent',
+                'translationMaxGlobalQueue',
+                'translationMaxGuildQueue',
+                'translationMaxUserOutstanding',
+                'translationMaxQueueWaitMs',
+            ]),
+        );
+    });
+
     // --- Translate test endpoint ---
 
     it('should reject translate test with empty text', async () => {
@@ -467,6 +662,85 @@ describe('Dashboard API', () => {
         expect(res.status).toBe(200);
         expect(res.body!.ok).toBe(true);
         expect(res.body!.translation).toBe('translated: Hello');
+    });
+
+    it('should list active dashboard sessions without exposing raw tokens', async () => {
+        const secondLogin = await request(server, 'POST', '/api/login', {
+            body: { password: 'test-pass-123' },
+        });
+        const secondCookie = secondLogin.rawHeaders['set-cookie']![0].split(';')[0];
+
+        const res = await request(server, 'GET', '/api/sessions', {
+            cookie: sessionCookie,
+        });
+
+        expect(res.status).toBe(200);
+        const sessions = res.body!.sessions as Array<Record<string, unknown>>;
+        expect(sessions.length).toBeGreaterThanOrEqual(2);
+        expect(sessions).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    id: expect.any(String),
+                    current: true,
+                    expiresAt: expect.any(String),
+                    expiresInMs: expect.any(Number),
+                }),
+                expect.objectContaining({
+                    id: expect.any(String),
+                    current: false,
+                }),
+            ]),
+        );
+
+        const rawCurrentToken = sessionCookie.replace(/^session=/, '');
+        const rawSecondToken = secondCookie.replace(/^session=/, '');
+        const serialized = JSON.stringify(sessions);
+        expect(serialized).not.toContain(rawCurrentToken);
+        expect(serialized).not.toContain(rawSecondToken);
+    });
+
+    it('should require CSRF when revoking dashboard sessions', async () => {
+        const res = await request(server, 'POST', '/api/sessions/revoke', {
+            cookie: sessionCookie,
+            body: { id: 'missing-session-id' },
+        });
+
+        expect(res.status).toBe(403);
+    });
+
+    it('should revoke a selected dashboard session', async () => {
+        const secondLogin = await request(server, 'POST', '/api/login', {
+            body: { password: 'test-pass-123' },
+        });
+        const secondCookie = secondLogin.rawHeaders['set-cookie']![0].split(';')[0];
+
+        const list = await request(server, 'GET', '/api/sessions', {
+            cookie: sessionCookie,
+        });
+        const sessions = list.body!.sessions as Array<Record<string, unknown>>;
+        const target = sessions
+            .filter((session) => session.current === false)
+            .sort((a, b) => Date.parse(String(b.expiresAt)) - Date.parse(String(a.expiresAt)))[0];
+
+        expect(target?.id).toEqual(expect.any(String));
+
+        const revoke = await request(server, 'POST', '/api/sessions/revoke', {
+            cookie: sessionCookie,
+            csrf: csrfToken,
+            body: { id: target!.id },
+        });
+
+        expect(revoke.status).toBe(200);
+        expect(revoke.body).toEqual({
+            ok: true,
+            revoked: true,
+            current: false,
+        });
+
+        const rejected = await request(server, 'GET', '/api/stats', {
+            cookie: secondCookie,
+        });
+        expect(rejected.status).toBe(401);
     });
 
     // --- Logs ---
@@ -589,6 +863,26 @@ describe('Dashboard API', () => {
 
         expect(res.status).toBe(400);
         expect(res.body).toEqual({ error: 'errorType filter requires error logs' });
+    });
+
+    it('should batch delete user language preferences', async () => {
+        const res = await request(server, 'POST', '/api/user-prefs/batch-delete', {
+            cookie: sessionCookie,
+            csrf: csrfToken,
+            body: { userIds: ['user1', 'missing-user'] },
+        });
+
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({
+            ok: true,
+            deleted: ['user1'],
+            notFound: ['missing-user'],
+        });
+
+        const prefsRes = await request(server, 'GET', '/api/user-prefs', {
+            cookie: sessionCookie,
+        });
+        expect((prefsRes.body!.prefs as Record<string, string>).user1).toBeUndefined();
     });
 
     // --- Logout ---

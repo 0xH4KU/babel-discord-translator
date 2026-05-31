@@ -11,6 +11,11 @@ export const MANAGED_RUNTIME_CONFIG_KEYS = [
     'maxOutputTokens',
     'dailyBudgetUsd',
     'translationProvider',
+    'translationMaxConcurrent',
+    'translationMaxGlobalQueue',
+    'translationMaxGuildQueue',
+    'translationMaxUserOutstanding',
+    'translationMaxQueueWaitMs',
 ] as const;
 
 export type ManagedRuntimeConfigKey = (typeof MANAGED_RUNTIME_CONFIG_KEYS)[number];
@@ -41,6 +46,16 @@ const CONFIG_EFFECT_DESCRIPTIONS: Record<ManagedRuntimeConfigKey, string> = {
     dailyBudgetUsd:
         'No in-memory sync required; budget checks read the persisted value on each call.',
     translationProvider: 'Clear the translation cache so future requests use the new provider.',
+    translationMaxConcurrent:
+        'Runtime limiter changes are read when the limiter is constructed on the next process start.',
+    translationMaxGlobalQueue:
+        'Runtime limiter changes are read when the limiter is constructed on the next process start.',
+    translationMaxGuildQueue:
+        'Runtime limiter changes are read when the limiter is constructed on the next process start.',
+    translationMaxUserOutstanding:
+        'Runtime limiter changes are read when the limiter is constructed on the next process start.',
+    translationMaxQueueWaitMs:
+        'Runtime limiter changes are read when the limiter is constructed on the next process start.',
 };
 
 export function applyConfigUpdateEffects(
@@ -72,6 +87,11 @@ export function applyConfigUpdateEffects(
                 break;
             case 'maxInputLength':
             case 'dailyBudgetUsd':
+            case 'translationMaxConcurrent':
+            case 'translationMaxGlobalQueue':
+            case 'translationMaxGuildQueue':
+            case 'translationMaxUserOutstanding':
+            case 'translationMaxQueueWaitMs':
                 break;
         }
     }

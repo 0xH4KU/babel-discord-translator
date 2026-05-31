@@ -41,6 +41,11 @@ export interface StoreData {
     userLanguagePrefs: Record<string, string>;
     maxInputLength: number;
     maxOutputTokens: number;
+    translationMaxConcurrent: number;
+    translationMaxGlobalQueue: number;
+    translationMaxGuildQueue: number;
+    translationMaxUserOutstanding: number;
+    translationMaxQueueWaitMs: number;
     // OpenAI-compatible provider
     openaiApiKey: string;
     openaiBaseUrl: string;
@@ -72,6 +77,8 @@ export interface TranslationResult {
     text: string;
     inputTokens: number;
     outputTokens: number;
+    provider?: string;
+    fallback?: boolean;
 }
 
 export interface VertexAIResponse {
@@ -160,6 +167,7 @@ export interface DashboardDeps {
     getStats: () => BotStats;
     metrics?: AppMetricsCollector;
     runtimeLimiter?: TranslationRuntimeLimiter;
+    healthProbeCacheTtlMs?: number;
     healthCheck?: () => Promise<VertexAiHealthStatus>;
     openAiHealthCheck?: () => Promise<OpenAiHealthStatus>;
     sessionRepository?: SessionRepository;

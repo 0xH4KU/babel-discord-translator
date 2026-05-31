@@ -21,6 +21,13 @@ export interface SessionState {
     session: SessionData;
 }
 
+export interface DashboardSessionSummary {
+    id: string;
+    current: boolean;
+    expiresAt: string;
+    expiresInMs: number;
+}
+
 export interface DashboardAuth {
     login(
         password: string | undefined,
@@ -29,6 +36,11 @@ export interface DashboardAuth {
     check(req: Request): { authenticated: boolean; csrfToken?: string };
     logout(req: Request): { cookie: string };
     getSessionState(req: Request): SessionState | null;
+    listSessions(req: Request): DashboardSessionSummary[];
+    revokeSession(
+        req: Request,
+        id: string,
+    ): { revoked: true; current: boolean } | { revoked: false };
     requireAuth(req: Request, res: Response, next: NextFunction): void;
     requireCsrf(req: Request, res: Response, next: NextFunction): void;
     dispose(): void;
@@ -74,6 +86,10 @@ function getSessionToken(req: Request): string | null {
     const cookie = req.headers.cookie || '';
     const match = cookie.match(/session=([^;]+)/);
     return match?.[1] ?? null;
+}
+
+function publicSessionId(token: string): string {
+    return crypto.createHash('sha256').update(token).digest('hex').slice(0, 16);
 }
 
 export function createDashboardAuth({
@@ -159,6 +175,47 @@ export function createDashboardAuth({
             };
         },
         getSessionState,
+        listSessions(req: Request) {
+            cleanupExpiredSessions();
+            const currentToken = getSessionToken(req);
+            const now = Date.now();
+
+            return Array.from(sessionRepository.entries())
+                .map(([token, session]) => ({
+                    id: publicSessionId(token),
+                    current:
+                        currentToken !== null &&
+                        token.length === currentToken.length &&
+                        safeCompare(token, currentToken),
+                    expiresAt: new Date(session.expiry).toISOString(),
+                    expiresInMs: Math.max(session.expiry - now, 0),
+                }))
+                .sort((a, b) => {
+                    if (a.current !== b.current) return a.current ? -1 : 1;
+                    return a.expiresAt.localeCompare(b.expiresAt);
+                });
+        },
+        revokeSession(req: Request, id: string) {
+            cleanupExpiredSessions();
+            const currentToken = getSessionToken(req);
+
+            for (const [token] of sessionRepository.entries()) {
+                if (publicSessionId(token) !== id) {
+                    continue;
+                }
+
+                sessionRepository.delete(token);
+                return {
+                    revoked: true,
+                    current:
+                        currentToken !== null &&
+                        token.length === currentToken.length &&
+                        safeCompare(token, currentToken),
+                };
+            }
+
+            return { revoked: false };
+        },
         requireAuth(req: Request, res: Response, next: NextFunction): void {
             const state = getSessionState(req);
             if (!state) {
@@ -186,4 +243,5 @@ export function createDashboardAuth({
 
 export const _test = {
     getSessionToken,
+    publicSessionId,
 };

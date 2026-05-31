@@ -94,4 +94,32 @@ describe('ProviderOrchestrator diagnostics', () => {
             errorType: 'unknown',
         });
     });
+
+    it('opens a circuit breaker after repeated provider failures and uses fallback', async () => {
+        const metrics = new AppMetrics();
+        const vertex = provider('vertex', 'fail');
+        const openai = provider('openai', 'ok');
+        const orchestrator = createProviderOrchestrator(
+            'vertex+openai',
+            new Map([
+                ['vertex', vertex],
+                ['openai', openai],
+            ]),
+            {
+                metrics,
+                circuitBreaker: {
+                    failureThreshold: 1,
+                    cooldownMs: 60_000,
+                    now: () => 1_000,
+                },
+            },
+        );
+
+        await orchestrator.translate('prompt', 100);
+        await orchestrator.translate('prompt', 100);
+
+        expect(vertex.translate).toHaveBeenCalledTimes(1);
+        expect(openai.translate).toHaveBeenCalledTimes(2);
+        expect(metrics.snapshot().providers.vertex.failureTotal).toBe(1);
+    });
 });
