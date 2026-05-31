@@ -131,20 +131,22 @@
         <div id="dashboard-view" class="view">
             <div class="header">
                 <img id="bot-avatar" src="" alt="" />
-                <div>
+                <div class="header-title">
                     <h1 id="bot-name">Loading...</h1>
                     <span class="tag" id="bot-tag"></span>
                 </div>
-                <div class="status">Online</div>
-                <span class="health-badge checking" id="api-health">API</span>
-                <a
-                    class="version-link"
-                    id="version-link"
-                    href="https://github.com/0xH4KU/babel-discord-translator"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    >v0.1.0</a
-                >
+                <div class="header-meta">
+                    <a
+                        class="version-link"
+                        id="version-link"
+                        href="https://github.com/0xH4KU/babel-discord-translator"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        >v0.1.0</a
+                    >
+                    <div class="status">Online</div>
+                    <span class="health-badge checking" id="api-health">API</span>
+                </div>
                 <button class="btn-logout" onclick="doLogout()">Logout</button>
             </div>
 

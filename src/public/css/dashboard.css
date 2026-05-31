@@ -32,13 +32,24 @@
   color: #fff;
 }
 
+.header-title {
+  min-width: 0;
+}
+
 .header .tag {
   font-size: 0.8rem;
   color: var(--text-dim);
 }
 
-.header .status {
+.header-meta {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.header .status {
   display: flex;
   align-items: center;
   gap: 0.4rem;
@@ -662,4 +673,39 @@
 .prefs-tools input {
   flex: 1;
   min-width: 0;
+  padding: 0.65rem 0.85rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.9rem;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.prefs-tools input:focus {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+.prefs-tools input::placeholder {
+  color: var(--text-dim);
+}
+
+.user-prefs-table th:first-child,
+.user-prefs-table td:first-child {
+  width: 2.5rem;
+}
+
+.user-prefs-table th:last-child,
+.user-prefs-table td:last-child {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.user-prefs-table .mono {
+  overflow-wrap: anywhere;
 }

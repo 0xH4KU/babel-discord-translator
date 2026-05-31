@@ -366,7 +366,7 @@ function renderUserPrefs() {
     const start = (prefsPage - 1) * prefsPageSize;
     const pageEntries = entries.slice(start, start + prefsPageSize);
 
-    let html = `<div class="table-scroll"><table class="data-table"><thead><tr>
+    let html = `<div class="table-scroll"><table class="data-table user-prefs-table"><thead><tr>
     <th></th><th>User ID</th><th>Language</th><th></th>
   </tr></thead><tbody>`;
     for (const [userId, lang] of pageEntries) {

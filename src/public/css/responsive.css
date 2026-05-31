@@ -8,20 +8,29 @@
     .header {
         flex-wrap: wrap;
         gap: 0.75rem;
+        align-items: center;
     }
 
-    .header .status {
-        margin-left: 0;
-        order: 3;
+    .header-title {
+        flex: 1;
     }
 
-    .header .health-badge {
+    .header-meta {
         order: 4;
+        margin-left: 0;
+        width: 100%;
+        gap: 0.6rem;
+        padding-left: calc(44px + 0.75rem);
+    }
+
+    .header .status,
+    .header .health-badge {
+        font-size: 0.8rem;
     }
 
     .header .btn-logout {
         margin-left: auto;
-        order: 5;
+        order: 3;
     }
 
     .grid {
@@ -125,5 +134,32 @@
         flex-direction: column;
         align-items: flex-start;
         gap: 0.25rem;
+    }
+
+    .header {
+        gap: 0.6rem;
+    }
+
+    .header img {
+        width: 40px;
+        height: 40px;
+    }
+
+    .header-meta {
+        padding-left: 0;
+    }
+
+    .version-link {
+        padding: 0.3rem 0.5rem;
+        font-size: 0.72rem;
+    }
+
+    .btn-logout {
+        padding: 0.35rem 0.65rem;
+    }
+
+    .prefs-tools {
+        flex-direction: column;
+        align-items: stretch;
     }
 }
