@@ -10,7 +10,7 @@ Right-click any message → *Babel* → get an ephemeral translation only you ca
 Server owners keep control of hosting, API keys, access rules, and token costs instead of paying a monthly hosted-bot subscription.
 
 [![License: GPL-3.0-only](https://img.shields.io/badge/License-GPL--3.0--only-blue.svg)](LICENSE)
-[![Node.js](https://img.shields.io/badge/Node.js-22.5%2B-green.svg)](https://nodejs.org)
+[![Node.js](https://img.shields.io/badge/Node.js-22.12%2B-green.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
 [![discord.js](https://img.shields.io/badge/discord.js-v14-blue.svg)](https://discord.js.org)
 [![Version](https://img.shields.io/badge/version-0.1.2-brightgreen.svg)](package.json)
@@ -105,7 +105,7 @@ Sponsorship is optional and does not unlock private features. If Babel helps you
 
 ## Quick Start
 
-**Prerequisites:** Node.js `22.5+`, npm, a Discord bot token, and a Vertex AI project.
+**Prerequisites:** Node.js `22.12+`, npm, a Discord bot token, and a Vertex AI project.
 
 ```bash
 git clone https://github.com/0xH4KU/babel-discord-translator.git
@@ -534,12 +534,12 @@ User Request
 | Technology | Version | Role |
 |---|---|---|
 | [TypeScript](https://www.typescriptlang.org) | 5.9 | Strict mode with `noUncheckedIndexedAccess` |
-| [Node.js](https://nodejs.org) | 22.5+ | Runtime with native `node:sqlite` |
+| [Node.js](https://nodejs.org) | 22.12+ | Runtime with native `node:sqlite` |
 | [discord.js](https://discord.js.org) | v14 | Discord gateway client |
 | [Express](https://expressjs.com) | v4 | Dashboard & API server |
 | [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) | v8 | Login throttling |
 | [Vertex AI Gemini](https://cloud.google.com/vertex-ai) | — | Translation engine |
-| [Vitest](https://vitest.dev) | v3 | 183 tests, 23 suites, v8 coverage |
+| [Vitest](https://vitest.dev) | v4 | 249 tests, 30 test files, v8 coverage |
 | [ESLint](https://eslint.org) + [Prettier](https://prettier.io) | v9 / v3 | Code quality |
 | [husky](https://typicode.github.io/husky/) + [lint-staged](https://github.com/lint-staged/lint-staged) | v9 / v16 | Pre-commit hooks |
 

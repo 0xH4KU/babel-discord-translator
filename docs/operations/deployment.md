@@ -9,7 +9,7 @@ This guide covers common ways to run Babel as a self-hosted Discord translation 
 You need:
 
 - A Discord application with a bot token
-- Node.js `22.5+` for local/VPS installs, or Docker for container installs
+- Node.js `22.12+` for local/VPS installs, or Docker for container installs
 - A dashboard password that is not `admin`
 - At least one configured translation provider in the dashboard after startup
 
