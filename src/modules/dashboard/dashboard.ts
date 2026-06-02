@@ -26,6 +26,8 @@ import { applyConfigUpdateEffects } from '../config/config-runtime-effects.js';
 import { appLogger } from '../../shared/structured-logger.js';
 import { dashboardMessages } from '../../shared/messages/dashboard-messages.js';
 import { getVersionMetadata, getVersionMetadataWithUpdate } from '../../shared/version.js';
+import { DiscordUserProfileRepository } from './discord-user-profile-repository.js';
+import { resolveDiscordUserProfiles } from './discord-user-profile-resolver.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import type { DashboardDeps, StoreData, TranslationProviderMode } from '../../types.js';
@@ -597,6 +599,7 @@ export function createDashboardApp({
     openAiHealthCheck = checkOpenAiHealth,
     versionCheck = getVersionMetadataWithUpdate,
     sessionRepository,
+    userProfileRepository = new DiscordUserProfileRepository(),
     healthProbeCacheTtlMs = 5_000,
 }: DashboardDeps): express.Express {
     const app = express();
@@ -1025,13 +1028,24 @@ export function createDashboardApp({
         res.json(entries);
     });
 
-    app.get('/api/user-prefs', auth.requireAuth, (_req: Request, res: Response) => {
-        const prefs = userPreferenceRepository.listPreferences();
-        res.json({
-            prefs,
-            count: Object.keys(prefs).length,
-        });
-    });
+    app.get(
+        '/api/user-prefs',
+        auth.requireAuth,
+        asyncHandler(async (_req: Request, res: Response) => {
+            const prefs = userPreferenceRepository.listPreferences();
+            const profiles = await resolveDiscordUserProfiles({
+                client,
+                repository: userProfileRepository,
+                userIds: Object.keys(prefs),
+            });
+
+            res.json({
+                prefs,
+                count: Object.keys(prefs).length,
+                profiles,
+            });
+        }),
+    );
 
     app.post(
         '/api/user-prefs/batch-delete',

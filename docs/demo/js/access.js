@@ -475,17 +475,69 @@ const LANG_NAMES = {
 };
 
 let allPrefsData = {};
+let userProfiles = {};
 let prefsPage = 1,
     prefsPageSize = 15;
 let prefsSearch = '';
 let selectedPrefUserIds = new Set();
 
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (char) => {
+        const entities = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;',
+        };
+        return entities[char];
+    });
+}
+
+function userProfile(userId) {
+    return userProfiles[userId] || null;
+}
+
+function userDisplayName(userId) {
+    const profile = userProfile(userId);
+    return profile?.displayName || profile?.globalName || profile?.username || userId;
+}
+
+function userAvatar(userId) {
+    return userProfile(userId)?.avatarUrl || genAvatar(userDisplayName(userId));
+}
+
+function userSearchText(userId) {
+    const profile = userProfile(userId);
+    return [userId, profile?.displayName, profile?.globalName, profile?.username]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+}
+
+function renderUserIdentity(userId, withAvatar = false) {
+    const displayName = escapeHtml(userDisplayName(userId));
+    const escapedUserId = escapeHtml(userId);
+    const avatar = withAvatar
+        ? `<img class="user-identity-avatar" src="${escapeHtml(userAvatar(userId))}" alt="">`
+        : '';
+
+    return `<span class="user-identity">
+        ${avatar}
+        <span class="user-identity-text">
+          <span class="user-identity-name">${displayName}</span>
+          <span class="user-identity-id">${escapedUserId}</span>
+        </span>
+      </span>`;
+}
+
 async function loadUserPrefs() {
     try {
         const res = await api('/user-prefs');
         if (!res.ok) return;
-        const { prefs, count } = await res.json();
+        const { prefs, count, profiles } = await res.json();
         allPrefsData = prefs;
+        userProfiles = profiles || {};
         document.getElementById('prefs-count').textContent =
             count + ' user(s) with custom settings';
         prefsPage = 1;
@@ -508,6 +560,7 @@ function filteredPrefsEntries() {
         const name = LANG_NAMES[lang] || lang;
         return (
             userId.toLowerCase().includes(query) ||
+            userSearchText(userId).includes(query) ||
             String(lang).toLowerCase().includes(query) ||
             String(name).toLowerCase().includes(query)
         );
@@ -541,15 +594,15 @@ function renderUserPrefs() {
     const pageEntries = entries.slice(start, start + prefsPageSize);
 
     let html = `<div class="table-scroll"><table class="data-table user-prefs-table"><thead><tr>
-    <th></th><th>User ID</th><th>Language</th><th></th>
+    <th></th><th>User</th><th>Language</th><th></th>
   </tr></thead><tbody>`;
     for (const [userId, lang] of pageEntries) {
         const name = LANG_NAMES[lang] || lang;
         const checked = selectedPrefUserIds.has(userId) ? 'checked' : '';
         html += `<tr>
       <td><input type="checkbox" onchange="togglePrefSelection('${userId}', this.checked)" ${checked}></td>
-      <td class="mono" style="font-size:0.8rem">${userId}</td>
-      <td>${name} (${lang})</td>
+      <td>${renderUserIdentity(userId, true)}</td>
+      <td>${escapeHtml(name)} (${escapeHtml(lang)})</td>
       <td><button class="btn-danger" onclick="deleteUserPref('${userId}')">Delete</button></td>
     </tr>`;
     }
