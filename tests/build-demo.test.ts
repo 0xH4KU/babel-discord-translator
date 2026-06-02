@@ -54,5 +54,8 @@ describe('build-dashboard-demo', () => {
         expect(readFileSync(join(demoDir, 'demo', 'fixtures', 'stats.json'), 'utf-8')).toContain(
             'Babel Demo#0110',
         );
+        expect(
+            readFileSync(join(demoDir, 'demo', 'fixtures', 'user-prefs.json'), 'utf-8'),
+        ).toContain('Alex Chen');
     });
 });

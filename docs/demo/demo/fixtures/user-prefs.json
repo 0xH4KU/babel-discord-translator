@@ -6,5 +6,52 @@
     "200000000000000004": "en",
     "200000000000000005": "es"
   },
-  "count": 5
+  "count": 5,
+  "profiles": {
+    "200000000000000001": {
+      "userId": "200000000000000001",
+      "username": "alex",
+      "globalName": "Alex Chen",
+      "displayName": "Alex Chen",
+      "avatarUrl": "data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2228%22 height=%2228%22%3E%3Crect width=%2228%22 height=%2228%22 rx=%2214%22 fill=%22%235865f2%22/%3E%3Ctext x=%2214%22 y=%2219%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2214%22%3EA%3C/text%3E%3C/svg%3E",
+      "fetchedAt": "2026-06-01T12:00:00.000Z",
+      "lastSeenAt": "2026-06-01T12:00:00.000Z"
+    },
+    "200000000000000002": {
+      "userId": "200000000000000002",
+      "username": "mei",
+      "globalName": "Mei Lin",
+      "displayName": "Mei Lin",
+      "avatarUrl": "data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2228%22 height=%2228%22%3E%3Crect width=%2228%22 height=%2228%22 rx=%2214%22 fill=%22%2322c55e%22/%3E%3Ctext x=%2214%22 y=%2219%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2214%22%3EM%3C/text%3E%3C/svg%3E",
+      "fetchedAt": "2026-06-01T12:00:00.000Z",
+      "lastSeenAt": "2026-06-01T12:00:00.000Z"
+    },
+    "200000000000000003": {
+      "userId": "200000000000000003",
+      "username": "sora",
+      "globalName": "Sora",
+      "displayName": "Sora",
+      "avatarUrl": "data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2228%22 height=%2228%22%3E%3Crect width=%2228%22 height=%2228%22 rx=%2214%22 fill=%22%23f59e0b%22/%3E%3Ctext x=%2214%22 y=%2219%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2214%22%3ES%3C/text%3E%3C/svg%3E",
+      "fetchedAt": "2026-06-01T12:00:00.000Z",
+      "lastSeenAt": "2026-06-01T12:00:00.000Z"
+    },
+    "200000000000000004": {
+      "userId": "200000000000000004",
+      "username": "riley",
+      "globalName": null,
+      "displayName": "riley",
+      "avatarUrl": "data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2228%22 height=%2228%22%3E%3Crect width=%2228%22 height=%2228%22 rx=%2214%22 fill=%22%23ef4444%22/%3E%3Ctext x=%2214%22 y=%2219%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2214%22%3ER%3C/text%3E%3C/svg%3E",
+      "fetchedAt": "2026-06-01T12:00:00.000Z",
+      "lastSeenAt": "2026-06-01T12:00:00.000Z"
+    },
+    "200000000000000005": {
+      "userId": "200000000000000005",
+      "username": "dani",
+      "globalName": "Dani",
+      "displayName": "Dani",
+      "avatarUrl": "data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2228%22 height=%2228%22%3E%3Crect width=%2228%22 height=%2228%22 rx=%2214%22 fill=%22%238b5cf6%22/%3E%3Ctext x=%2214%22 y=%2219%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2214%22%3ED%3C/text%3E%3C/svg%3E",
+      "fetchedAt": "2026-06-01T12:00:00.000Z",
+      "lastSeenAt": "2026-06-01T12:00:00.000Z"
+    }
+  }
 }

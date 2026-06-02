@@ -173,7 +173,10 @@ import { CooldownManager } from '../src/cooldown.js';
 import { TranslationLog } from '../src/log.js';
 import { TranslationRuntimeLimiter } from '../src/translation-runtime-limiter.js';
 import { _test as healthTest } from '../src/shared/health.js';
+import { createSqliteDatabase } from '../src/persistence/sqlite-database.js';
+import { DiscordUserProfileRepository } from '../src/modules/dashboard/discord-user-profile-repository.js';
 import type { Client } from 'discord.js';
+import type { DatabaseSync } from 'node:sqlite';
 
 interface TestResponse {
     status: number;
@@ -276,6 +279,8 @@ describe('Dashboard API', () => {
     let versionCheck: ReturnType<typeof vi.fn>;
     let runtimeLimiter: TranslationRuntimeLimiter;
     let log: TranslationLog;
+    let profileDb: DatabaseSync;
+    let userProfileRepository: DiscordUserProfileRepository;
 
     beforeAll(async () => {
         cache = new TranslationCache(100);
@@ -298,6 +303,17 @@ describe('Dashboard API', () => {
         });
         const cooldown = new CooldownManager(5);
         log = new TranslationLog(100);
+        profileDb = createSqliteDatabase(':memory:');
+        userProfileRepository = new DiscordUserProfileRepository({ db: profileDb });
+        userProfileRepository.upsertProfile({
+            userId: 'user2',
+            username: 'haku',
+            globalName: 'Haku',
+            displayName: 'Haku',
+            avatarUrl: 'https://cdn.discordapp.com/avatars/user2/avatar.png',
+            fetchedAt: '2026-06-02T10:00:00.000Z',
+            lastSeenAt: null,
+        });
         const guilds = [
             { id: 'guild-1', name: 'Guild One', iconURL: () => '', memberCount: 10 },
             { id: 'guild-2', name: 'Guild Two', iconURL: () => '', memberCount: 20 },
@@ -329,6 +345,7 @@ describe('Dashboard API', () => {
             healthCheck,
             versionCheck,
             sessionRepository: new InMemorySessionRepository(),
+            userProfileRepository,
         });
 
         server = startDashboardServer(app, 0);
@@ -343,6 +360,9 @@ describe('Dashboard API', () => {
     afterAll(() => {
         stopDashboardApp(app);
         server?.close();
+        if (profileDb.isOpen) {
+            profileDb.close();
+        }
     });
 
     // --- Auth tests ---
@@ -1190,6 +1210,31 @@ describe('Dashboard API', () => {
             cookie: sessionCookie,
         });
         expect((prefsRes.body!.prefs as Record<string, string>).user1).toBeUndefined();
+    });
+
+    it('should include Discord user profiles with user language preferences', async () => {
+        const res = await request(server, 'GET', '/api/user-prefs', {
+            cookie: sessionCookie,
+        });
+
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual(
+            expect.objectContaining({
+                prefs: expect.objectContaining({
+                    user2: 'ko',
+                }),
+                count: expect.any(Number),
+                profiles: expect.objectContaining({
+                    user2: expect.objectContaining({
+                        userId: 'user2',
+                        username: 'haku',
+                        globalName: 'Haku',
+                        displayName: 'Haku',
+                        avatarUrl: 'https://cdn.discordapp.com/avatars/user2/avatar.png',
+                    }),
+                }),
+            }),
+        );
     });
 
     it('should manage per-guild glossary entries', async () => {

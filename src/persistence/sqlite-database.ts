@@ -103,6 +103,23 @@ const MIGRATIONS: Migration[] = [
             `);
         },
     },
+    {
+        id: 4,
+        name: 'discord_user_profiles',
+        up(db) {
+            db.exec(`
+                CREATE TABLE IF NOT EXISTS discord_user_profiles (
+                    user_id TEXT PRIMARY KEY,
+                    username TEXT NOT NULL,
+                    global_name TEXT,
+                    display_name TEXT NOT NULL,
+                    avatar_url TEXT NOT NULL,
+                    fetched_at TEXT NOT NULL,
+                    last_seen_at TEXT
+                );
+            `);
+        },
+    },
 ];
 
 let sharedDatabase: DatabaseSync | null = null;
@@ -204,6 +221,7 @@ const STORE_TABLES = new Set([
     'usage_history',
     'guild_usage_history',
     'guild_glossary',
+    'discord_user_profiles',
 ]);
 
 export function isSqliteStoreEmpty(db: DatabaseSync): boolean {

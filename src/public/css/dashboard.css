@@ -745,3 +745,43 @@
 .user-prefs-table .mono {
   overflow-wrap: anywhere;
 }
+
+.user-identity {
+  display: flex;
+  gap: 0.55rem;
+  align-items: center;
+  min-width: 0;
+}
+
+.user-identity-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.user-identity-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.user-identity-name,
+.user-identity-id {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-identity-name {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.user-identity-id {
+  color: var(--text-dim);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+}
