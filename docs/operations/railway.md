@@ -1,6 +1,6 @@
 # Railway Deployment
 
-Railway is the easiest hosted self-deploy path for Babel. It keeps the project aligned with the original model: every server owner runs their own bot instance, brings their own Discord token and AI provider credentials, and pays Railway/API usage directly instead of paying Babel for a hosted subscription.
+Railway is the easiest hosted self-deploy path for Babel Guild or Babel Pocket. It keeps the project aligned with the self-hosted model: every operator runs their own app instance, brings their own Discord token and AI provider credentials, and pays Railway/API usage directly instead of paying Babel for a hosted subscription.
 
 > Railway template links may support Babel maintenance through Railway's template kickback program. Babel remains free and open source; sponsorship or affiliate attribution does not unlock private features.
 
@@ -15,9 +15,16 @@ The repository is Railway-ready:
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/babel-discord-tran-1?referralCode=euhy-o&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
-## Choosing An App
+## Choose The Product Profile
 
-Use Babel Guild for server/guild install deployments. Use Babel Pocket for User Install deployments.
+Select the app profile before deploying or registering Discord commands.
+
+| Product      | Install Model        | Railway Variable   | Command Registration      |
+| ------------ | -------------------- | ------------------ | ------------------------- |
+| Babel Guild  | Server/Guild Install | `BABEL_APP=guild`  | `npm run register:guild`  |
+| Babel Pocket | User Install         | `BABEL_APP=pocket` | `npm run register:pocket` |
+
+Babel Guild remains the default for existing Railway template users. Babel Pocket uses the same image and persistence layer, but expects a Discord application configured for User Install.
 
 For Guild:
 
@@ -41,19 +48,19 @@ Railway Docker deployments can use the same image for either app. Set `BABEL_APP
 
 Set these in the Railway template or service variables:
 
-| Variable | Value |
-| --- | --- |
-| `DISCORD_TOKEN` | Discord bot token |
-| `BABEL_APP` | `guild` or `pocket` |
-| `DASHBOARD_PASSWORD` | Strong random password |
-| `NODE_ENV` | `production` |
-| `BABEL_DB_PATH` | `/app/data/babel.sqlite` |
+| Variable             | Value                    |
+| -------------------- | ------------------------ |
+| `DISCORD_TOKEN`      | Discord bot token        |
+| `BABEL_APP`          | `guild` or `pocket`      |
+| `DASHBOARD_PASSWORD` | Strong random password   |
+| `NODE_ENV`           | `production`             |
+| `BABEL_DB_PATH`      | `/app/data/babel.sqlite` |
 
 Optional variables:
 
-| Variable | Value |
-| --- | --- |
-| `DASHBOARD_HOST` | `0.0.0.0` |
+| Variable         | Value                                                             |
+| ---------------- | ----------------------------------------------------------------- |
+| `DASHBOARD_HOST` | `0.0.0.0`                                                         |
 | `DASHBOARD_PORT` | `3000` for non-Railway deploys; Railway's `PORT` takes precedence |
 
 Do not put provider API keys in the template defaults. Configure Vertex AI or OpenAI-compatible provider settings from the dashboard after first login.
@@ -115,7 +122,7 @@ Register commands from a local checkout:
 DISCORD_APP_ID=your_app_id DISCORD_BOT_TOKEN=your_token npm run register
 ```
 
-Or run the same command in a Railway shell with `DISCORD_APP_ID` and `DISCORD_BOT_TOKEN` set. This registers the default Babel Guild command set. Use `npm run register:pocket` for Babel Pocket user-install commands.
+Or run the same command in a Railway shell with `DISCORD_APP_ID` and `DISCORD_BOT_TOKEN` set. This registers the default Babel Guild command set unless `BABEL_APP=pocket` is set. Use `npm run register:guild` or `npm run register:pocket` when you want the command surface to be explicit.
 
 ## Template Publishing Checklist
 

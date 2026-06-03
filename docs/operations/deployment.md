@@ -1,6 +1,6 @@
 # Babel Deployment Guide
 
-This guide covers common ways to run Babel as a self-hosted Discord translation bot. Babel does not proxy your traffic through a shared hosted bot: you provide the Discord bot token, dashboard password, hosting, and AI provider credentials.
+This guide covers common ways to run Babel Guild and Babel Pocket from the `babel-discord-translator` monorepo. Babel does not proxy your traffic through a shared hosted bot: you provide the Discord application, dashboard password, hosting, and AI provider credentials.
 
 > Railway links may be affiliate or template links when provided. They help support Babel maintenance at no extra cost to you.
 
@@ -15,9 +15,16 @@ You need:
 
 Babel does not require privileged Discord intents.
 
-## Choosing An App
+## Choose The Product Profile
 
-Use Babel Guild for server/guild install deployments. Use Babel Pocket for User Install deployments.
+Select the app profile before you register Discord commands or start the process.
+
+| Product      | Install Model        | Runtime Selector   | Command Registration      |
+| ------------ | -------------------- | ------------------ | ------------------------- |
+| Babel Guild  | Server/Guild Install | `BABEL_APP=guild`  | `npm run register:guild`  |
+| Babel Pocket | User Install         | `BABEL_APP=pocket` | `npm run register:pocket` |
+
+Babel Guild is the default root profile for backward compatibility. Use Babel Pocket when the Discord application is configured for User Install and you want user-scoped access and budgets.
 
 For Guild:
 
@@ -54,7 +61,7 @@ https://discord.com/oauth2/authorize?client_id=YOUR_APP_ID&scope=bot+application
 DISCORD_APP_ID=your_app_id DISCORD_BOT_TOKEN=your_token npm run register
 ```
 
-This registers the default Babel Guild command set. Use `npm run register:pocket` for Babel Pocket user-install commands.
+This registers the default Babel Guild command set unless `BABEL_APP=pocket` is set. Use `npm run register:guild` or `npm run register:pocket` when you want the command surface to be explicit.
 
 ## Railway
 
@@ -78,7 +85,7 @@ After deployment:
 2. Open the Railway public URL.
 3. Log in with `DASHBOARD_PASSWORD`.
 4. Complete the setup wizard and configure the provider.
-5. Register Discord commands from a local checkout or Railway shell with `npm run register`.
+5. Register Discord commands from a local checkout or Railway shell with the matching `npm run register:guild` or `npm run register:pocket` command.
 6. Check `/livez`, `/readyz`, and the dashboard Operations panel.
 
 For the one-click template checklist, persistent volume notes, and affiliate disclosure wording, see [Railway deployment](railway.md).
@@ -161,10 +168,10 @@ In the dashboard, check:
 - Runtime queue pressure
 - Budget risk
 - Translation test
-- Server whitelist
+- Guild access controls for Babel Guild, or user allowlist/pending owners for Babel Pocket
 
 ## Support
 
-Babel is free and self-hosted. If it saves setup time or helps your community avoid a hosted bot subscription, you can support upstream maintenance on Ko-fi:
+Babel is free and self-hosted. If it saves setup time or helps your community or private install avoid a hosted bot subscription, you can support upstream maintenance on Ko-fi:
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/0xh4ku)
