@@ -1,9 +1,19 @@
 <div align="center">
 
 <p>
-  <img src="assets/babel-guild-logo-transparent.png" alt="Babel Guild logo" width="104">
-  &nbsp;&nbsp;&nbsp;
-  <img src="assets/babel-pocket-logo-transparent.png" alt="Babel Pocket logo" width="104">
+  <img src="assets/logos/babel-guild/babel-guild-logo-transparent.png" alt="Babel Guild logo" width="96">
+</p>
+<p>
+  <strong>Babel Guild</strong><br>
+  <sub>Server/Guild Install</sub>
+</p>
+
+<p>
+  <img src="assets/logos/babel-pocket/babel-pocket-logo-transparent.png" alt="Babel Pocket logo" width="96">
+</p>
+<p>
+  <strong>Babel Pocket</strong><br>
+  <sub>User Install</sub>
 </p>
 
 # babel-discord-translator
