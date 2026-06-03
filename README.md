@@ -2,11 +2,18 @@
 
 <img src="assets/babel-logo-transparent.png" alt="Babel" width="120">
 
-# Babel
+# babel-discord-translator
 
-**Self-hosted Discord translation bot with one-click private translations, a web dashboard, usage budgets, and bring-your-own AI provider.**
+**Self-hosted Discord translation apps with one-click private translations, a web dashboard, usage budgets, and bring-your-own AI provider.**
 
-Right-click any message → *Babel* → get an ephemeral translation only you can see.
+This repository contains two self-hosted Discord translation apps that share one core translation, provider, cache, language detection, metrics, logging, persistence, and dashboard foundation:
+
+| App | Install Model | Best For | Command Surface |
+|---|---|---|---|
+| Babel Guild | Server/Guild Install | Communities and servers | `Babel`, `/translate`, `/setlang`, `/mylang`, `/help` |
+| Babel Pocket | User Install | Individuals and trusted friends | `Babel Pocket`, `/setlang`, `/mylang`, `/help` |
+
+Right-click any message → *Babel* or *Babel Pocket* → get an ephemeral translation only you can see.
 Server owners keep control of hosting, API keys, access rules, and token costs instead of paying a monthly hosted-bot subscription.
 
 [![License: GPL-3.0-only](https://img.shields.io/badge/License-GPL--3.0--only-blue.svg)](LICENSE)
@@ -32,7 +39,7 @@ Server owners keep control of hosting, API keys, access rules, and token costs i
 
 ## Why Babel
 
-Babel is for Discord communities that want translation without handing control to a paid shared bot. Many Discord translation bots charge a subscription for workflows your own AI provider key can already power. Babel keeps that workflow self-hosted: you deploy your own instance, use your own provider key, and pay only your provider usage.
+Babel is for Discord communities and trusted individual installs that want translation without handing control to a paid shared bot. Many Discord translation bots charge a subscription for workflows your own AI provider key can already power. Babel keeps that workflow self-hosted: you deploy your own instance, use your own provider key, and pay only your provider usage.
 
 - **Self-hosted** — your Discord token, provider keys, SQLite data, and logs stay in your deployment
 - **No privileged intents** — Babel uses context menu and slash commands, not full message-content access
@@ -131,6 +138,13 @@ Run in development:
 npm run dev
 ```
 
+Choose a specific app:
+
+```bash
+npm run dev:guild
+npm run dev:pocket
+```
+
 For production:
 
 ```bash
@@ -166,7 +180,16 @@ For Railway, Docker, VPS, PM2, and static dashboard demo notes, see the [deploym
 DISCORD_APP_ID=your_app_id DISCORD_BOT_TOKEN=your_token npm run register
 ```
 
-This registers the **Babel** context menu, **/translate**, **/setlang**, **/mylang**, and **/help** commands.
+By default, this registers Babel Guild commands: **Babel**, **/translate**, **/setlang**, **/mylang**, and **/help**.
+
+Choose a specific app:
+
+```bash
+DISCORD_APP_ID=your_app_id DISCORD_BOT_TOKEN=your_token npm run register:guild
+DISCORD_APP_ID=your_app_id DISCORD_BOT_TOKEN=your_token npm run register:pocket
+```
+
+Babel Pocket registers **Babel Pocket**, **/setlang**, **/mylang**, and **/help** for User Install contexts.
 
 ### 3. Invite the Bot
 
@@ -220,6 +243,7 @@ All configuration is managed through the web dashboard. The `.env` file only nee
 | `DASHBOARD_HOST` | Dashboard bind host | `0.0.0.0` |
 | `DASHBOARD_PASSWORD` | Dashboard login password | `admin` (development only; refused in production) |
 | `BABEL_DB_PATH` | SQLite database path | `data/babel.sqlite` |
+| `BABEL_APP` | Root app selector: `guild` for Babel Guild, `pocket` for Babel Pocket | `guild` |
 
 If `DASHBOARD_PASSWORD` is omitted, Babel warns in local development and test environments, but exits during startup when `NODE_ENV=production`.
 
@@ -269,7 +293,8 @@ Use `npm run db:migrate -- --force` to overwrite an existing SQLite file.
 
 | Layer | Path | Responsibility |
 |---|---|---|
-| **Entry** | `src/index.ts` | Wires Discord client, dashboard, metrics, shutdown, global error handlers |
+| **Apps** | `apps/babel-guild/`, `apps/babel-pocket/` | Product entrypoints for Babel Guild and Babel Pocket |
+| **Entry** | `src/index.ts` | Backward-compatible root entrypoint selected by `BABEL_APP` |
 | **Commands** | `src/commands/` | Discord interaction handlers (`babel`, `translate`, `setlang`, `mylang`, `help`) |
 | **Translation** | `src/modules/translation/` | Cache, cooldowns, runtime limiter, language detection, webhook delivery |
 | **Config** | `src/modules/config/` | Environment validation, runtime config repository, config change effects |
@@ -349,16 +374,24 @@ src/
 ## Development
 
 ```bash
-npm run dev             # Run in watch mode (tsx)
+npm run dev             # Run root app in watch mode, selected by BABEL_APP
+npm run dev:guild       # Run Babel Guild in watch mode
+npm run dev:pocket      # Run Babel Pocket in watch mode
 npm run typecheck       # Type check (no emit)
 npm test                # Run tests
 npm run test:coverage   # Run tests with v8 coverage
 npm run test:watch      # Run tests in watch mode
 npm run lint            # Run ESLint
 npm run format          # Format with Prettier
-npm run build           # Build for production
+npm run build           # Build both apps for production
+npm run build:guild     # Build Babel Guild
+npm run build:pocket    # Build Babel Pocket
+npm run register:guild  # Register Babel Guild commands
+npm run register:pocket # Register Babel Pocket commands
 npm run demo:build      # Mirror dashboard assets into docs/demo for GitHub Pages
-npm start               # Run the production artifact
+npm start               # Run production root app, selected by BABEL_APP
+npm run start:guild     # Run Babel Guild production artifact
+npm run start:pocket    # Run Babel Pocket production artifact
 npm run db:migrate      # Import legacy JSON → SQLite
 npm run db:export:json  # Export SQLite → JSON
 npm run benchmark:runtime-config -- 20000  # Compare config-only reads vs full store snapshots

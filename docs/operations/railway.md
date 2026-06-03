@@ -15,6 +15,28 @@ The repository is Railway-ready:
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/babel-discord-tran-1?referralCode=euhy-o&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
+## Choosing An App
+
+Use Babel Guild for server/guild install deployments. Use Babel Pocket for User Install deployments.
+
+For Guild:
+
+```bash
+npm run build:guild
+npm run register:guild
+npm run start -w @babel-discord-translator/guild
+```
+
+For Pocket:
+
+```bash
+npm run build:pocket
+npm run register:pocket
+npm run start -w @babel-discord-translator/pocket
+```
+
+Railway Docker deployments can use the same image for either app. Set `BABEL_APP=guild` for Babel Guild or `BABEL_APP=pocket` for Babel Pocket.
+
 ## Required Variables
 
 Set these in the Railway template or service variables:
@@ -22,6 +44,7 @@ Set these in the Railway template or service variables:
 | Variable | Value |
 | --- | --- |
 | `DISCORD_TOKEN` | Discord bot token |
+| `BABEL_APP` | `guild` or `pocket` |
 | `DASHBOARD_PASSWORD` | Strong random password |
 | `NODE_ENV` | `production` |
 | `BABEL_DB_PATH` | `/app/data/babel.sqlite` |
@@ -92,7 +115,7 @@ Register commands from a local checkout:
 DISCORD_APP_ID=your_app_id DISCORD_BOT_TOKEN=your_token npm run register
 ```
 
-Or run the same command in a Railway shell with `DISCORD_APP_ID` and `DISCORD_BOT_TOKEN` set. This registers the `Babel` context menu plus `/translate`, `/setlang`, `/mylang`, and `/help`.
+Or run the same command in a Railway shell with `DISCORD_APP_ID` and `DISCORD_BOT_TOKEN` set. This registers the default Babel Guild command set. Use `npm run register:pocket` for Babel Pocket user-install commands.
 
 ## Template Publishing Checklist
 

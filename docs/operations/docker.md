@@ -2,6 +2,28 @@
 
 This guide is for server owners who want to run Babel as their own self-hosted Discord translation bot. You provide the Discord bot token, dashboard password, hosting, and AI provider key. Babel does not require a hosted bot subscription.
 
+## Choosing An App
+
+Use Babel Guild for server/guild install deployments. Use Babel Pocket for User Install deployments.
+
+For Guild:
+
+```bash
+npm run build:guild
+npm run register:guild
+npm run start -w @babel-discord-translator/guild
+```
+
+For Pocket:
+
+```bash
+npm run build:pocket
+npm run register:pocket
+npm run start -w @babel-discord-translator/pocket
+```
+
+Docker defaults to Babel Guild with `BABEL_APP=guild`. Set `BABEL_APP=pocket` in `.env` or Compose to run Babel Pocket from the same image.
+
 ## Install Docker on Ubuntu 24.04 ARM
 
 Update the host and install curl:
@@ -39,6 +61,7 @@ Set at least:
 
 ```env
 DISCORD_TOKEN=your_bot_token_here
+BABEL_APP=guild
 DASHBOARD_PASSWORD=replace_with_a_strong_password
 DASHBOARD_PORT=3000
 DASHBOARD_HOST=0.0.0.0

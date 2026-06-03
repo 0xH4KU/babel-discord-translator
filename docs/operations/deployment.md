@@ -15,6 +15,28 @@ You need:
 
 Babel does not require privileged Discord intents.
 
+## Choosing An App
+
+Use Babel Guild for server/guild install deployments. Use Babel Pocket for User Install deployments.
+
+For Guild:
+
+```bash
+npm run build:guild
+npm run register:guild
+npm run start -w @babel-discord-translator/guild
+```
+
+For Pocket:
+
+```bash
+npm run build:pocket
+npm run register:pocket
+npm run start -w @babel-discord-translator/pocket
+```
+
+Root commands also support `BABEL_APP=guild` or `BABEL_APP=pocket` for Docker, PM2, and simple VPS deployments.
+
 ## Discord Setup
 
 1. Open the [Discord Developer Portal](https://discord.com/developers/applications).
@@ -32,7 +54,7 @@ https://discord.com/oauth2/authorize?client_id=YOUR_APP_ID&scope=bot+application
 DISCORD_APP_ID=your_app_id DISCORD_BOT_TOKEN=your_token npm run register
 ```
 
-This registers the `Babel` message context menu plus `/translate`, `/setlang`, `/mylang`, and `/help`.
+This registers the default Babel Guild command set. Use `npm run register:pocket` for Babel Pocket user-install commands.
 
 ## Railway
 
@@ -43,6 +65,7 @@ Recommended environment variables:
 | Variable             | Value                    |
 | -------------------- | ------------------------ |
 | `DISCORD_TOKEN`      | Your Discord bot token   |
+| `BABEL_APP`          | `guild` or `pocket`      |
 | `DASHBOARD_PASSWORD` | A strong random password |
 | `BABEL_DB_PATH`      | `/app/data/babel.sqlite` |
 | `NODE_ENV`           | `production`             |
@@ -80,6 +103,7 @@ Example `.env`:
 
 ```env
 DISCORD_TOKEN=your_bot_token_here
+BABEL_APP=guild
 DASHBOARD_PORT=3000
 DASHBOARD_HOST=0.0.0.0
 DASHBOARD_PASSWORD=replace_with_a_strong_password
