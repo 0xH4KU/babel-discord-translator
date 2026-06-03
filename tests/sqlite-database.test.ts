@@ -57,4 +57,37 @@ describe('createSqliteDatabase', () => {
             db.close();
         }
     });
+
+    it('should create user-install usage and pending owner tables', async () => {
+        const { createSqliteDatabase } = await import('../src/persistence/sqlite-database.js');
+        const db = createSqliteDatabase(':memory:');
+
+        try {
+            const rows = db
+                .prepare(
+                    `
+                    SELECT name
+                    FROM sqlite_master
+                    WHERE type = 'table'
+                      AND name IN (
+                          'user_budgets',
+                          'user_daily_usage',
+                          'user_usage_history',
+                          'pending_user_install_owners'
+                      )
+                    ORDER BY name ASC
+                `,
+                )
+                .all() as Array<{ name: string }>;
+
+            expect(rows.map((row) => row.name)).toEqual([
+                'pending_user_install_owners',
+                'user_budgets',
+                'user_daily_usage',
+                'user_usage_history',
+            ]);
+        } finally {
+            db.close();
+        }
+    });
 });

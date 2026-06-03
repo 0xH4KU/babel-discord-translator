@@ -1,0 +1,165 @@
+/* ===== RESPONSIVE ===== */
+
+@media (max-width: 768px) {
+    #dashboard-view {
+        padding: 1rem;
+    }
+
+    .header {
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        align-items: center;
+    }
+
+    .header-title {
+        flex: 1;
+    }
+
+    .header-meta {
+        order: 4;
+        margin-left: 0;
+        width: 100%;
+        gap: 0.6rem;
+        padding-left: calc(44px + 0.75rem);
+    }
+
+    .header .status,
+    .header .health-badge {
+        font-size: 0.8rem;
+    }
+
+    .header .btn-logout {
+        margin-left: auto;
+        order: 3;
+    }
+
+    .grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.75rem;
+    }
+
+    .operations-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .settings-row {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .tab-btn {
+        padding: 0.65rem 0.85rem;
+        font-size: 0.8rem;
+    }
+
+    .data-table {
+        font-size: 0.75rem;
+    }
+
+    .data-table th,
+    .data-table td {
+        padding: 0.4rem 0.5rem;
+    }
+
+    .wizard-card,
+    .login-card {
+        padding: 1.5rem;
+    }
+
+    .bar-chart {
+        height: 60px;
+    }
+
+    .pagination {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+    }
+
+    .prompt-editor .prompt-actions {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+
+    .save-bar-inline {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+
+@media (max-width: 480px) {
+    .grid {
+        grid-template-columns: 1fr;
+    }
+
+    .operations-header {
+        flex-direction: column;
+    }
+
+    .operations-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .card .value {
+        font-size: 1.3rem;
+    }
+
+    .test-widget {
+        flex-direction: column;
+    }
+
+    .test-widget .test-select {
+        width: 100%;
+    }
+
+    .add-guild-row {
+        flex-direction: column;
+    }
+
+    .add-guild-row input {
+        width: 100%;
+    }
+
+    .header h1 {
+        font-size: 1.1rem;
+    }
+
+    .budget-header {
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .table-card .table-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.25rem;
+    }
+
+    .header {
+        gap: 0.6rem;
+    }
+
+    .header img {
+        width: 40px;
+        height: 40px;
+    }
+
+    .header-meta {
+        padding-left: 0;
+    }
+
+    .version-link {
+        padding: 0.3rem 0.5rem;
+        font-size: 0.72rem;
+    }
+
+    .btn-logout {
+        padding: 0.35rem 0.65rem;
+    }
+
+    .prefs-tools {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}

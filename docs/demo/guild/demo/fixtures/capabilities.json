@@ -1,0 +1,14 @@
+{
+  "profile": {
+    "id": "babel-guild",
+    "productName": "Babel Guild",
+    "commandName": "Babel",
+    "accessMode": "guild"
+  },
+  "capabilities": {
+    "guildAccess": true,
+    "userAccess": false,
+    "guildGlossary": true,
+    "pendingUserInstallOwners": false
+  }
+}

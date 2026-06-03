@@ -1,6 +1,6 @@
 # Railway Deployment
 
-Railway is the easiest hosted self-deploy path for Babel. It keeps the project aligned with the original model: every server owner runs their own bot instance, brings their own Discord token and AI provider credentials, and pays Railway/API usage directly instead of paying Babel for a hosted subscription.
+Railway is the easiest hosted self-deploy path for Babel Guild or Babel Pocket. It keeps the project aligned with the self-hosted model: every operator runs their own app instance, brings their own Discord token and AI provider credentials, and pays Railway/API usage directly instead of paying Babel for a hosted subscription.
 
 > Railway template links may support Babel maintenance through Railway's template kickback program. Babel remains free and open source; sponsorship or affiliate attribution does not unlock private features.
 
@@ -12,25 +12,67 @@ The repository is Railway-ready:
 - Babel reads Railway's `PORT` before `DASHBOARD_PORT`.
 - Babel binds the dashboard to `DASHBOARD_HOST`, which defaults to `0.0.0.0`.
 - The Docker image stores SQLite data under `/app/data` when `BABEL_DB_PATH=/app/data/babel.sqlite`.
+- The app profile is selected at runtime with `BABEL_APP`, so the same Railway service can run Babel Guild or Babel Pocket.
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/babel-discord-tran-1?referralCode=euhy-o&utm_medium=integration&utm_source=template&utm_campaign=generic)
+
+## Choose The Product Profile
+
+Select the app profile before deploying or registering Discord commands. For the published Railway template, expose `BABEL_APP` as a service variable with `guild` as the default. Users who want Babel Pocket should set it to `pocket` during template deploy or before the first production restart.
+
+| Product      | Install Model        | Railway Variable   | Command Registration      |
+| ------------ | -------------------- | ------------------ | ------------------------- |
+| Babel Guild  | Server/Guild Install | `BABEL_APP=guild`  | `npm run register:guild`  |
+| Babel Pocket | User Install         | `BABEL_APP=pocket` | `npm run register:pocket` |
+
+Babel Guild remains the default for existing Railway template users. Babel Pocket uses the same image and persistence layer, but expects a Discord application configured for User Install.
+
+Railway template variables are configured in Railway's template composer, not in `railway.json`. Keep `railway.json` focused on deploy behavior such as healthchecks and restart policy; use the template/service variable list for the product choice.
+
+For Guild:
+
+```bash
+npm run build:guild
+npm run register:guild
+npm run start -w @babel-discord-translator/guild
+```
+
+For Pocket:
+
+```bash
+npm run build:pocket
+npm run register:pocket
+npm run start -w @babel-discord-translator/pocket
+```
+
+Railway Docker deployments can use the same image for either app. Set `BABEL_APP=guild` for Babel Guild or `BABEL_APP=pocket` for Babel Pocket.
 
 ## Required Variables
 
 Set these in the Railway template or service variables:
 
-| Variable | Value |
-| --- | --- |
-| `DISCORD_TOKEN` | Discord bot token |
-| `DASHBOARD_PASSWORD` | Strong random password |
-| `NODE_ENV` | `production` |
-| `BABEL_DB_PATH` | `/app/data/babel.sqlite` |
+| Variable             | Value                    |
+| -------------------- | ------------------------ |
+| `DISCORD_TOKEN`      | Discord bot token        |
+| `BABEL_APP`          | `guild` or `pocket`      |
+| `DASHBOARD_PASSWORD` | Strong random password   |
+| `NODE_ENV`           | `production`             |
+| `BABEL_DB_PATH`      | `/app/data/babel.sqlite` |
+
+Recommended template defaults:
+
+| Variable             | Template Default         |
+| -------------------- | ------------------------ |
+| `BABEL_APP`          | `guild`                  |
+| `DASHBOARD_PASSWORD` | `${{secret(32)}}`        |
+| `NODE_ENV`           | `production`             |
+| `BABEL_DB_PATH`      | `/app/data/babel.sqlite` |
 
 Optional variables:
 
-| Variable | Value |
-| --- | --- |
-| `DASHBOARD_HOST` | `0.0.0.0` |
+| Variable         | Value                                                             |
+| ---------------- | ----------------------------------------------------------------- |
+| `DASHBOARD_HOST` | `0.0.0.0`                                                         |
 | `DASHBOARD_PORT` | `3000` for non-Railway deploys; Railway's `PORT` takes precedence |
 
 Do not put provider API keys in the template defaults. Configure Vertex AI or OpenAI-compatible provider settings from the dashboard after first login.
@@ -92,7 +134,7 @@ Register commands from a local checkout:
 DISCORD_APP_ID=your_app_id DISCORD_BOT_TOKEN=your_token npm run register
 ```
 
-Or run the same command in a Railway shell with `DISCORD_APP_ID` and `DISCORD_BOT_TOKEN` set. This registers the `Babel` context menu plus `/translate`, `/setlang`, `/mylang`, and `/help`.
+Or run the same command in a Railway shell with `DISCORD_APP_ID` and `DISCORD_BOT_TOKEN` set. This registers the default Babel Guild command set unless `BABEL_APP=pocket` is set. Use `npm run register:guild` or `npm run register:pocket` when you want the command surface to be explicit.
 
 ## Template Publishing Checklist
 
@@ -100,11 +142,13 @@ Before publishing the marketplace template:
 
 - Use the GitHub repository as the template source.
 - Confirm Railway detects the root `Dockerfile`.
-- Add required variables with clear descriptions and no secret defaults.
+- Add required variables with clear descriptions and no static secret defaults.
+- Add `BABEL_APP` with default `guild` and description `guild for Babel Guild, pocket for Babel Pocket`.
 - Add a volume mounted at `/app/data`.
 - Generate a public domain.
 - Verify `/livez` returns `200`.
 - Log in to the dashboard and confirm the setup wizard loads.
+- Confirm the template overview says one template can deploy either product and that Pocket requires a Discord application configured for User Install.
 - Add a short disclosure that Railway may charge hosting usage and that template attribution may support upstream maintenance.
 
 Railway's template kickback program currently requires marketplace publication. Their docs describe a 15% usage kickback for deployed public templates, with a possible support bonus bringing it to 25% when template questions are handled through the Template Queue.

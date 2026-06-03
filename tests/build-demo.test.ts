@@ -14,7 +14,7 @@ describe('build-dashboard-demo', () => {
         }
     });
 
-    it('should mirror public dashboard assets and inject demo mode scripts', () => {
+    it('should mirror public dashboard assets and inject demo mode scripts for both apps', () => {
         tempDir = mkdtempSync(join(tmpdir(), 'babel-demo-'));
         const publicDir = join(tempDir, 'src-public');
         const demoDir = join(tempDir, 'docs-demo');
@@ -39,23 +39,79 @@ describe('build-dashboard-demo', () => {
 
         buildDashboardDemo({ publicDir, demoDir });
 
-        const html = readFileSync(join(demoDir, 'index.html'), 'utf-8');
-        expect(html).toContain('<title>Babel — Dashboard Demo</title>');
-        expect(html).toContain('<script src="demo/demo-api.js"></script>');
-        expect(html).toContain('<script src="demo/demo-readonly.js"></script>');
-        expect(html).toContain('<link rel="stylesheet" href="demo/demo.css" />');
+        const landingHtml = readFileSync(join(demoDir, 'index.html'), 'utf-8');
+        expect(landingHtml).toContain('Babel Guild demo');
+        expect(landingHtml).toContain('guild/index.html');
+        expect(landingHtml).toContain('Babel Pocket demo');
+        expect(landingHtml).toContain('pocket/index.html');
 
-        expect(readFileSync(join(demoDir, 'js', 'utils.js'), 'utf-8')).toContain(
+        const guildHtml = readFileSync(join(demoDir, 'guild', 'index.html'), 'utf-8');
+        expect(guildHtml).toContain('<title>Babel Guild — Dashboard Demo</title>');
+        expect(guildHtml).toContain('<script src="demo/demo-api.js"></script>');
+        expect(guildHtml).toContain('<script src="demo/demo-readonly.js"></script>');
+        expect(guildHtml).toContain('<link rel="stylesheet" href="demo/demo.css" />');
+
+        const pocketHtml = readFileSync(join(demoDir, 'pocket', 'index.html'), 'utf-8');
+        expect(pocketHtml).toContain('<title>Babel Pocket — Dashboard Demo</title>');
+        expect(pocketHtml).toContain('<script src="demo/demo-api.js"></script>');
+
+        expect(readFileSync(join(demoDir, 'guild', 'js', 'utils.js'), 'utf-8')).toContain(
             'window.originalUtils',
         );
-        expect(readFileSync(join(demoDir, 'demo', 'demo-api.js'), 'utf-8')).toContain(
+        expect(readFileSync(join(demoDir, 'pocket', 'js', 'utils.js'), 'utf-8')).toContain(
+            'window.originalUtils',
+        );
+        expect(readFileSync(join(demoDir, 'guild', 'demo', 'demo-api.js'), 'utf-8')).toContain(
             'window.BABEL_DEMO',
         );
-        expect(readFileSync(join(demoDir, 'demo', 'fixtures', 'stats.json'), 'utf-8')).toContain(
-            'Babel Demo#0110',
-        );
+        const guildStats = JSON.parse(
+            readFileSync(join(demoDir, 'guild', 'demo', 'fixtures', 'stats.json'), 'utf-8'),
+        ) as { bot: { name: string }; guildBudgets: unknown[] };
+        expect(guildStats.bot.name).toBe('Babel Guild Demo#0110');
+        expect(guildStats.guildBudgets.length).toBeGreaterThan(0);
+
+        const pocketStats = JSON.parse(
+            readFileSync(join(demoDir, 'pocket', 'demo', 'fixtures', 'stats.json'), 'utf-8'),
+        ) as { bot: { name: string }; guildBudgets: unknown[] };
+        expect(pocketStats.bot.name).toBe('Babel Pocket Demo#0110');
+        expect(pocketStats.guildBudgets).toEqual([]);
+
+        const guildCapabilities = JSON.parse(
+            readFileSync(join(demoDir, 'guild', 'demo', 'fixtures', 'capabilities.json'), 'utf-8'),
+        ) as { profile: { id: string }; capabilities: Record<string, boolean> };
+        expect(guildCapabilities.profile.id).toBe('babel-guild');
+        expect(guildCapabilities.capabilities).toMatchObject({
+            guildAccess: true,
+            userAccess: false,
+            guildGlossary: true,
+            pendingUserInstallOwners: false,
+        });
+
+        const pocketCapabilities = JSON.parse(
+            readFileSync(join(demoDir, 'pocket', 'demo', 'fixtures', 'capabilities.json'), 'utf-8'),
+        ) as { profile: { id: string }; capabilities: Record<string, boolean> };
+        expect(pocketCapabilities.profile.id).toBe('babel-pocket');
+        expect(pocketCapabilities.capabilities).toMatchObject({
+            guildAccess: false,
+            userAccess: true,
+            guildGlossary: false,
+            pendingUserInstallOwners: true,
+        });
+
+        const pocketConfig = JSON.parse(
+            readFileSync(join(demoDir, 'pocket', 'demo', 'fixtures', 'config.json'), 'utf-8'),
+        ) as { allowedGuildIds?: string[]; allowedUserIds?: string[] };
+        expect(pocketConfig.allowedGuildIds).toEqual([]);
+        expect(pocketConfig.allowedUserIds).toEqual(['200000000000000001', '200000000000000002']);
+
         expect(
-            readFileSync(join(demoDir, 'demo', 'fixtures', 'user-prefs.json'), 'utf-8'),
+            readFileSync(join(demoDir, 'guild', 'demo', 'fixtures', 'user-prefs.json'), 'utf-8'),
         ).toContain('Alex Chen');
+        expect(
+            readFileSync(
+                join(demoDir, 'pocket', 'demo', 'fixtures', 'pending-users.json'),
+                'utf-8',
+            ),
+        ).toContain('Waiting Operator');
     });
 });

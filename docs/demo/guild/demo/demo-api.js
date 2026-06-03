@@ -3,6 +3,7 @@
   const fixtureMap = {
     '/auth/check': { authenticated: true, csrfToken: 'demo-csrf-token' },
     '/setup-status': { complete: true },
+    '/capabilities': 'capabilities.json',
     '/stats': 'stats.json',
     '/health': 'health.json',
     '/version': 'version.json',
@@ -22,7 +23,7 @@
 
   function jsonResponse(data, status) {
     return new Response(JSON.stringify(data), {
-      status: status || 200,
+      status: status || data.status || 200,
       headers: { 'Content-Type': 'application/json' }
     });
   }
@@ -37,6 +38,7 @@
   }
 
   window.BABEL_DEMO = true;
+  window.BABEL_DEMO_APP = "guild";
   window.api = async function demoApi(path, opts) {
     const method = (opts && opts.method ? opts.method : 'GET').toUpperCase();
     const route = normalizePath(path);

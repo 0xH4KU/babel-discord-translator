@@ -4,6 +4,7 @@ import type {
     TokenUsage,
     TranslationProviderMode,
     UsageHistoryEntry,
+    UserBudgetConfig,
 } from '../types.js';
 
 function normalizeNumber(value: unknown, fallback = 0): number {
@@ -81,6 +82,17 @@ export function cloneGuildBudgets(
     );
 }
 
+export function cloneUserBudgets(
+    budgets: Record<string, UserBudgetConfig> | undefined,
+): Record<string, UserBudgetConfig> {
+    return Object.fromEntries(
+        Object.entries(budgets ?? {}).map(([userId, budget]) => [
+            userId,
+            { dailyBudgetUsd: normalizeNumber(budget?.dailyBudgetUsd) },
+        ]),
+    );
+}
+
 export function cloneGuildDailyUsage(
     usage: Record<string, TokenUsage> | undefined,
 ): Record<string, TokenUsage> {
@@ -92,12 +104,34 @@ export function cloneGuildDailyUsage(
     );
 }
 
+export function cloneUserDailyUsage(
+    usage: Record<string, TokenUsage> | undefined,
+): Record<string, TokenUsage> {
+    return Object.fromEntries(
+        Object.entries(usage ?? {}).map(([userId, entry]) => [
+            userId,
+            normalizeTokenUsageEntry(entry),
+        ]),
+    );
+}
+
 export function cloneGuildUsageHistory(
     history: Record<string, UsageHistoryEntry[]> | undefined,
 ): Record<string, UsageHistoryEntry[]> {
     return Object.fromEntries(
         Object.entries(history ?? {}).map(([guildId, entries]) => [
             guildId,
+            cloneUsageHistory(entries),
+        ]),
+    );
+}
+
+export function cloneUserUsageHistory(
+    history: Record<string, UsageHistoryEntry[]> | undefined,
+): Record<string, UsageHistoryEntry[]> {
+    return Object.fromEntries(
+        Object.entries(history ?? {}).map(([userId, entries]) => [
+            userId,
             cloneUsageHistory(entries),
         ]),
     );
@@ -116,12 +150,16 @@ export function normalizeStoreData(data: Partial<StoreData> | undefined): StoreD
                   (guildId): guildId is string => typeof guildId === 'string',
               )
             : [],
+        allowedUserIds: Array.isArray(source.allowedUserIds)
+            ? source.allowedUserIds.filter((userId): userId is string => typeof userId === 'string')
+            : [],
         cooldownSeconds: normalizeNumber(source.cooldownSeconds, 5),
         cacheMaxSize: normalizeNumber(source.cacheMaxSize, 2000),
         setupComplete: source.setupComplete === true,
         inputPricePerMillion: normalizeNumber(source.inputPricePerMillion),
         outputPricePerMillion: normalizeNumber(source.outputPricePerMillion),
         dailyBudgetUsd: normalizeNumber(source.dailyBudgetUsd),
+        defaultUserDailyBudgetUsd: normalizeNumber(source.defaultUserDailyBudgetUsd),
         tokenUsage: cloneTokenUsage(source.tokenUsage),
         usageHistory: cloneUsageHistory(source.usageHistory),
         translationPrompt: normalizeString(source.translationPrompt),
@@ -140,5 +178,8 @@ export function normalizeStoreData(data: Partial<StoreData> | undefined): StoreD
         guildBudgets: cloneGuildBudgets(source.guildBudgets),
         guildTokenUsage: cloneGuildDailyUsage(source.guildTokenUsage),
         guildUsageHistory: cloneGuildUsageHistory(source.guildUsageHistory),
+        userBudgets: cloneUserBudgets(source.userBudgets),
+        userTokenUsage: cloneUserDailyUsage(source.userTokenUsage),
+        userUsageHistory: cloneUserUsageHistory(source.userUsageHistory),
     };
 }

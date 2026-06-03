@@ -1,0 +1,144 @@
+{
+  "bot": {
+    "name": "Babel Pocket Demo#0110",
+    "avatar": "data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2264%22 height=%2264%22 viewBox=%220 0 64 64%22%3E%3Crect width=%2264%22 height=%2264%22 rx=%2218%22 fill=%22%235865f2%22/%3E%3Ctext x=%2232%22 y=%2240%22 text-anchor=%22middle%22 font-family=%22Arial%22 font-size=%2228%22 font-weight=%22700%22 fill=%22white%22%3EB%3C/text%3E%3C/svg%3E",
+    "uptime": 342720,
+    "memoryMB": "86.3",
+    "memory": {
+      "rssMB": "86.3",
+      "heapUsedMB": "33.1",
+      "externalMB": "4.6"
+    },
+    "guilds": 0
+  },
+  "translations": {
+    "total": 1284,
+    "apiCalls": 713,
+    "saved": 571,
+    "failures": 9,
+    "failureRate": 0.0069,
+    "cacheHits": 571,
+    "cacheHitRate": 0.445,
+    "budgetExceeded": 3,
+    "webhookRecreated": 1
+  },
+  "metrics": {
+    "translationsTotal": 1284,
+    "translationApiCallsTotal": 713,
+    "translationCacheHitsTotal": 571,
+    "translationFailuresTotal": 9,
+    "budgetExceededTotal": 3,
+    "webhookRecreateTotal": 1,
+    "translationSuccessRate": 0.993,
+    "translationFailureRate": 0.0069,
+    "translationCacheHitRate": 0.445,
+    "translationApiCallRate": 0.555,
+    "providers": {},
+    "providerFallbackTotal": 4,
+    "lastProviderFallback": {
+      "from": "vertex",
+      "to": "openai",
+      "errorType": "timeout",
+      "error": "Provider request timed out",
+      "timestamp": 1780313640000
+    }
+  },
+  "runtime": {
+    "inflight": 1,
+    "queued": 0,
+    "rejectedTotal": 2,
+    "rejectionCounts": {
+      "user_queue_full": 1,
+      "guild_queue_full": 0,
+      "global_queue_full": 1,
+      "queue_wait_timeout": 0
+    },
+    "limits": {
+      "maxConcurrent": 4,
+      "maxGlobalQueue": 25,
+      "maxGuildQueue": 5,
+      "maxUserOutstanding": 1,
+      "maxQueueWaitMs": 30000
+    }
+  },
+  "operations": {
+    "providerMode": "vertex+openai",
+    "providers": {
+      "vertex": {
+        "enabled": true,
+        "configured": true,
+        "successTotal": 704,
+        "failureTotal": 5,
+        "fallbackFromTotal": 4,
+        "fallbackToTotal": 0,
+        "lastLatencyMs": 582,
+        "lastErrorType": "timeout",
+        "lastError": "Provider request timed out"
+      },
+      "openai": {
+        "enabled": true,
+        "configured": true,
+        "successTotal": 9,
+        "failureTotal": 1,
+        "fallbackFromTotal": 0,
+        "fallbackToTotal": 4,
+        "lastLatencyMs": 771,
+        "lastErrorType": "rate_limit",
+        "lastError": "OpenAI-compatible provider returned 429"
+      }
+    },
+    "fallbackTotal": 4,
+    "lastFallback": {
+      "from": "vertex",
+      "to": "openai",
+      "errorType": "timeout",
+      "error": "Provider request timed out",
+      "timestamp": 1780313640000
+    },
+    "runtimePressure": {
+      "inflight": 1,
+      "queued": 0,
+      "rejectedTotal": 2
+    },
+    "budgetRisk": {
+      "warningCount": 0,
+      "exceededCount": 0,
+      "warnings": [],
+      "exceeded": []
+    },
+    "guidance": [
+      {
+        "area": "budget",
+        "severity": "info",
+        "title": "User budget is healthy",
+        "action": "Babel Pocket is tracking usage against the installing user."
+      },
+      {
+        "area": "provider",
+        "severity": "info",
+        "title": "Fallback is working",
+        "action": "The backup provider handled recent primary provider failures."
+      }
+    ]
+  },
+  "cache": {
+    "size": 571,
+    "maxSize": 2000,
+    "hits": 571,
+    "misses": 713
+  },
+  "usage": {
+    "date": "2026-06-01",
+    "inputTokens": 318420,
+    "outputTokens": 104880,
+    "requests": 241,
+    "inputCost": 0.0318,
+    "outputCost": 0.042,
+    "totalCost": 0.0738,
+    "dailyBudget": 0.5,
+    "budgetUsedPercent": 14.76,
+    "budgetExceeded": false
+  },
+  "guildBudgets": [],
+  "errors": 9
+}

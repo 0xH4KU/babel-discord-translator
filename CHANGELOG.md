@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Added the Babel Guild and Babel Pocket monorepo app split so server/guild install and user-install products share translation, provider, cache, usage, metrics, logging, and persistence foundations.
+- Added app-specific command registration scripts and workspace builds for Guild and Pocket deployments.
+- Added user-install persistence, access control, pending owner tracking, and per-user budget/usage support for Babel Pocket.
+
 ## 0.1.2 - 2026-06-01
 
 - Added the Railway one-click deployment path with a public template button, `railway.json`, `/livez` healthcheck wiring, Railway `PORT` support, and `/app/data` SQLite persistence guidance.

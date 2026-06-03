@@ -14,6 +14,8 @@ import type { TranslationRuntimeLimiter } from './modules/translation/translatio
 import type { TranslationWebhookService } from './modules/translation/webhook-service.js';
 import type { VersionMetadataWithUpdate } from './shared/version.js';
 import type { DiscordUserProfileRepository } from './modules/dashboard/discord-user-profile-repository.js';
+import type { PendingUserInstallOwnerRepository } from './modules/dashboard/pending-user-install-owner-repository.js';
+import type { AppProfile } from './apps/app-profile.js';
 
 // --- Provider ---
 
@@ -23,6 +25,16 @@ export type TranslationProviderMode = 'vertex' | 'openai' | 'vertex+openai' | 'o
 
 export interface GuildBudgetConfig {
     dailyBudgetUsd: number;
+}
+
+export interface UserBudgetConfig {
+    dailyBudgetUsd: number;
+}
+
+export interface TranslationScope {
+    guildId?: string | null;
+    actorUserId: string;
+    billingUserId?: string | null;
 }
 
 export interface DiscordUserProfile {
@@ -58,12 +70,14 @@ export interface StoreData {
     gcpLocation: string;
     geminiModel: string;
     allowedGuildIds: string[];
+    allowedUserIds: string[];
     cooldownSeconds: number;
     cacheMaxSize: number;
     setupComplete: boolean;
     inputPricePerMillion: number;
     outputPricePerMillion: number;
     dailyBudgetUsd: number;
+    defaultUserDailyBudgetUsd: number;
     tokenUsage: TokenUsage | null;
     usageHistory: UsageHistoryEntry[];
     translationPrompt: string;
@@ -84,6 +98,10 @@ export interface StoreData {
     guildBudgets: Record<string, GuildBudgetConfig>;
     guildTokenUsage: Record<string, TokenUsage>;
     guildUsageHistory: Record<string, UsageHistoryEntry[]>;
+    // Per-user budget & usage
+    userBudgets: Record<string, UserBudgetConfig>;
+    userTokenUsage: Record<string, TokenUsage>;
+    userUsageHistory: Record<string, UsageHistoryEntry[]>;
 }
 
 export interface TokenUsage {
@@ -202,6 +220,8 @@ export interface DashboardDeps {
     versionCheck?: (options?: { forceRefresh?: boolean }) => Promise<VersionMetadataWithUpdate>;
     sessionRepository?: SessionRepository;
     userProfileRepository?: DiscordUserProfileRepository;
+    profile?: AppProfile;
+    pendingUserInstallOwnerRepository?: PendingUserInstallOwnerRepository;
 }
 
 // --- Usage ---

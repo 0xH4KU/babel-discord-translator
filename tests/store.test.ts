@@ -94,6 +94,18 @@ describe('ConfigStore', () => {
         store.close();
     });
 
+    it('should include empty user-install collections in snapshots', async () => {
+        const { ConfigStore } = await importStoreModule();
+        const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+
+        const snapshot = store.getAll();
+
+        expect(snapshot.userBudgets).toEqual({});
+        expect(snapshot.userTokenUsage).toEqual({});
+        expect(snapshot.userUsageHistory).toEqual({});
+        store.close();
+    });
+
     it('should return only requested config keys and preserve defensive copies', async () => {
         const { ConfigStore } = await importStoreModule();
         const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
@@ -237,6 +249,69 @@ describe('ConfigStore', () => {
         ]);
         expect(store.getGuildDailyUsage('guild-2')).toBeNull();
         expect(store.getGuildUsageHistory('guild-2')).toEqual([]);
+        store.close();
+    });
+
+    it('should support direct user budget and usage operations', async () => {
+        const { ConfigStore } = await importStoreModule();
+        const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+
+        expect(store.getUserBudget('user-1')).toBeNull();
+
+        store.setUserBudget('user-1', 1.5);
+        store.saveUserDailyUsage('user-1', {
+            date: '2026-03-27',
+            inputTokens: 100,
+            outputTokens: 50,
+            requests: 1,
+        });
+        store.saveUserUsageHistory('user-1', [
+            {
+                date: '2026-03-26',
+                inputTokens: 80,
+                outputTokens: 40,
+                requests: 2,
+            },
+        ]);
+
+        expect(store.getUserBudget('user-1')).toEqual({ dailyBudgetUsd: 1.5 });
+        expect(store.getUserDailyUsage('user-1')).toEqual({
+            date: '2026-03-27',
+            inputTokens: 100,
+            outputTokens: 50,
+            requests: 1,
+        });
+        expect(store.getUserUsageHistory('user-1')).toEqual([
+            {
+                date: '2026-03-26',
+                inputTokens: 80,
+                outputTokens: 40,
+                requests: 2,
+            },
+        ]);
+        expect(store.get('userBudgets')).toEqual({ 'user-1': { dailyBudgetUsd: 1.5 } });
+        expect(store.get('userTokenUsage')).toEqual({
+            'user-1': {
+                date: '2026-03-27',
+                inputTokens: 100,
+                outputTokens: 50,
+                requests: 1,
+            },
+        });
+        expect(store.get('userUsageHistory')).toEqual({
+            'user-1': [
+                {
+                    date: '2026-03-26',
+                    inputTokens: 80,
+                    outputTokens: 40,
+                    requests: 2,
+                },
+            ],
+        });
+
+        expect(store.clearUserBudget('user-1')).toBe(true);
+        expect(store.getUserBudget('user-1')).toBeNull();
+        expect(store.clearUserBudget('user-1')).toBe(false);
         store.close();
     });
 

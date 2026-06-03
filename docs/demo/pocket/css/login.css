@@ -1,0 +1,29 @@
+/* ===== LOGIN ===== */
+#login-view {
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+.login-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 2.5rem;
+  width: 100%;
+  max-width: 380px;
+  text-align: center;
+}
+
+.login-card h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 0.5rem;
+}
+
+.login-card .subtitle {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  margin-bottom: 2rem;
+}

@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import {
+    APP_VERSION,
     getVersionMetadataWithUpdate,
     getVersionUpdateStatus,
     _test,
@@ -14,6 +16,31 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
 }
 
 describe('version metadata', () => {
+    it('keeps root, workspace, and runtime app versions synchronized', () => {
+        const rootPackage = JSON.parse(readFileSync('package.json', 'utf8')) as {
+            version: string;
+        };
+        const guildPackage = JSON.parse(readFileSync('apps/babel-guild/package.json', 'utf8')) as {
+            version: string;
+        };
+        const pocketPackage = JSON.parse(
+            readFileSync('apps/babel-pocket/package.json', 'utf8'),
+        ) as { version: string };
+        const lockfile = JSON.parse(readFileSync('package-lock.json', 'utf8')) as {
+            version: string;
+            packages: Record<string, { version?: string }>;
+        };
+
+        expect(APP_VERSION).toBe('0.1.3');
+        expect(rootPackage.version).toBe(APP_VERSION);
+        expect(guildPackage.version).toBe(APP_VERSION);
+        expect(pocketPackage.version).toBe(APP_VERSION);
+        expect(lockfile.version).toBe(APP_VERSION);
+        expect(lockfile.packages[''].version).toBe(APP_VERSION);
+        expect(lockfile.packages['apps/babel-guild'].version).toBe(APP_VERSION);
+        expect(lockfile.packages['apps/babel-pocket'].version).toBe(APP_VERSION);
+    });
+
     it('should report outdated when the latest release tag is newer', async () => {
         _test.resetVersionUpdateCache();
         const fetchImpl = vi.fn(async () =>

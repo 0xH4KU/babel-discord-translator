@@ -1,19 +1,38 @@
 <div align="center">
 
-<img src="assets/babel-logo-transparent.png" alt="Babel" width="120">
+<table>
+  <tr>
+    <td align="center" width="220">
+      <img src="assets/logos/babel-guild/babel-guild-logo-transparent.png" alt="Babel Guild logo" width="96"><br>
+      <strong>Babel Guild</strong><br>
+      <sub>Server/Guild Install</sub>
+    </td>
+    <td align="center" width="220">
+      <img src="assets/logos/babel-pocket/babel-pocket-logo-transparent.png" alt="Babel Pocket logo" width="96"><br>
+      <strong>Babel Pocket</strong><br>
+      <sub>User Install</sub>
+    </td>
+  </tr>
+</table>
 
-# Babel
+# babel-discord-translator
 
-**Self-hosted Discord translation bot with one-click private translations, a web dashboard, usage budgets, and bring-your-own AI provider.**
+**A self-hosted Discord translation monorepo for server installs and user installs.**
 
-Right-click any message → *Babel* → get an ephemeral translation only you can see.
-Server owners keep control of hosting, API keys, access rules, and token costs instead of paying a monthly hosted-bot subscription.
+Babel now ships as two product profiles on one shared core: translation providers, cache, language detection, usage accounting, metrics, logging, persistence, and dashboard foundations are implemented once and reused by both apps.
+
+| App          | Install Model        | Best For                        | Command Surface                                       |
+| ------------ | -------------------- | ------------------------------- | ----------------------------------------------------- |
+| Babel Guild  | Server/Guild Install | Communities and servers         | `Babel`, `/translate`, `/setlang`, `/mylang`, `/help` |
+| Babel Pocket | User Install         | Individuals and trusted friends | `Babel Pocket`, `/setlang`, `/mylang`, `/help`        |
+
+Right-click any message → **Apps** → **Babel** or **Babel Pocket** → get an ephemeral translation only you can see. Operators keep control of hosting, provider keys, access policy, and token costs instead of paying for a shared hosted bot.
 
 [![License: GPL-3.0-only](https://img.shields.io/badge/License-GPL--3.0--only-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-22.12%2B-green.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
 [![discord.js](https://img.shields.io/badge/discord.js-v14-blue.svg)](https://discord.js.org)
-[![Version](https://img.shields.io/badge/version-0.1.2-brightgreen.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-0.1.3-brightgreen.svg)](package.json)
 [![CI](https://github.com/0xH4KU/babel-discord-translator/actions/workflows/ci.yml/badge.svg)](https://github.com/0xH4KU/babel-discord-translator/actions)
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/babel-discord-tran-1?referralCode=euhy-o&utm_medium=integration&utm_source=template&utm_campaign=generic)
@@ -32,33 +51,57 @@ Server owners keep control of hosting, API keys, access rules, and token costs i
 
 ## Why Babel
 
-Babel is for Discord communities that want translation without handing control to a paid shared bot. Many Discord translation bots charge a subscription for workflows your own AI provider key can already power. Babel keeps that workflow self-hosted: you deploy your own instance, use your own provider key, and pay only your provider usage.
+Babel is for Discord communities and trusted individual installs that want translation without handing control to a paid shared bot. Many Discord translation bots charge a subscription for workflows your own AI provider key can already power. Babel keeps that workflow self-hosted: you deploy your own instance, use your own provider key, and pay only your provider usage.
 
 - **Self-hosted** — your Discord token, provider keys, SQLite data, and logs stay in your deployment
 - **No privileged intents** — Babel uses context menu and slash commands, not full message-content access
-- **Cost controls** — daily budgets, per-server budget overrides, cache hit tracking, and usage history
-- **Server glossaries** — each server can define its own term mappings for names, brands, game terms, and community vocabulary
+- **Cost controls** — global, per-server, and per-user budgets with cache hit tracking and usage history
+- **Guild glossaries** — Babel Guild can define server-specific term mappings for names, brands, game terms, and community vocabulary
 - **Operations ready** — health endpoints, Prometheus metrics, runtime queue limits, provider fallback diagnostics, and backup docs
 
-Try the [read-only dashboard demo](https://0xh4ku.github.io/babel-discord-translator/demo/) with mock data before deploying.
+Try the [read-only dashboard demos](https://0xh4ku.github.io/babel-discord-translator/demo/) with Guild and Pocket mock data before deploying.
+
+## Products
+
+### Babel Guild
+
+Babel Guild is the original server-install product. It is built for community operators who want a bot installed in a Discord server, with guild access controls, per-server budgets, server glossaries, and `/translate` webhook output for public translation workflows.
+
+```bash
+npm run dev:guild
+npm run register:guild
+npm run build:guild
+npm run start:guild
+```
+
+### Babel Pocket
+
+Babel Pocket is the user-install product. It is built for individuals, small trusted groups, and private workflows where the installing user owns the budget and access policy. Pocket keeps translations private and does not register the public `/translate` command.
+
+```bash
+npm run dev:pocket
+npm run register:pocket
+npm run build:pocket
+npm run start:pocket
+```
 
 ## Support
 
-Babel is free and self-hosted. If it saves you setup time or helps your community avoid a hosted bot subscription, you can support upstream maintenance on [Ko-fi](https://ko-fi.com/P5P51QB1B7).
+Babel is free and self-hosted. If it saves you setup time or helps your community or private install avoid a hosted bot subscription, you can support upstream maintenance on [Ko-fi](https://ko-fi.com/P5P51QB1B7).
 
-Sponsorship is optional and does not unlock private features. If Babel helps your server avoid a paid translation-bot subscription, supporting maintenance helps fund docs, fixes, deployment templates, and provider updates for everyone.
+Sponsorship is optional and does not unlock private features. Supporting maintenance helps fund docs, fixes, deployment templates, and provider updates for everyone.
 
 ## Features
 
 ### Core Translation
 
-- **Context Menu Translation** — Right-click → Apps → Babel
-- **`/translate` Command** — Slash command with public webhook-based output
+- **Context Menu Translation** — Right-click → Apps → Babel Guild or Babel Pocket
+- **`/translate` Command** — Guild-only slash command with public webhook-based output
 - **Ephemeral Messages** — Context menu translations are private, only visible to you
 - **Multi-language Support** — Auto-detects your Discord locale, or use `/setlang` to choose
 - **Same-Language Detection** — Skips translation when text is already in the user's language
 - **Custom Prompt** — Fully customizable translation system prompt from the dashboard
-- **Server Glossary** — Per-server term mappings injected into translation prompts, with cache invalidation when terms change
+- **Server Glossary** — Guild-only term mappings injected into translation prompts, with cache invalidation when terms change
 
 ### Performance & Reliability
 
@@ -91,11 +134,11 @@ Sponsorship is optional and does not unlock private features. If Babel helps you
 - **API Health Check** — Real-time Vertex AI probe status
 - **Translation Test** — Test translations directly from the dashboard
 - **User Preferences** — View and manage per-user language settings
-- **Cost Tracking** — Real-time token usage with per-server budgets + 30-day history chart
+- **Cost Tracking** — Real-time token usage with global, per-server, and per-user budget controls
 
 ### Infrastructure
 
-- **SQLite Persistence** — Config, usage, preferences, guild budgets, and dashboard sessions stored in a migrated SQLite database
+- **SQLite Persistence** — Config, usage, preferences, guild/user budgets, pending Pocket owners, and dashboard sessions stored in a migrated SQLite database
 - **Repository Pattern** — Commands, services, and dashboard routes talk to focused repositories instead of reaching into the store directly
 - **Governed Message Catalogs** — Discord and dashboard error messages centralized into separate message catalogs
 - **Graceful Shutdown** — Clean `SIGTERM`/`SIGINT` handling with ordered teardown for Docker & PM2
@@ -114,10 +157,11 @@ npm install
 cp .env.example .env
 ```
 
-Edit `.env` with your Discord bot token:
+Edit `.env` with your Discord bot token and app profile:
 
 ```env
 DISCORD_TOKEN=your_bot_token_here
+BABEL_APP=guild
 DASHBOARD_PORT=3000
 DASHBOARD_PASSWORD=your_strong_password
 ```
@@ -129,6 +173,13 @@ Run in development:
 
 ```bash
 npm run dev
+```
+
+Or choose a specific workspace app:
+
+```bash
+npm run dev:guild
+npm run dev:pocket
 ```
 
 For production:
@@ -166,7 +217,16 @@ For Railway, Docker, VPS, PM2, and static dashboard demo notes, see the [deploym
 DISCORD_APP_ID=your_app_id DISCORD_BOT_TOKEN=your_token npm run register
 ```
 
-This registers the **Babel** context menu, **/translate**, **/setlang**, **/mylang**, and **/help** commands.
+By default, `npm run register` follows `BABEL_APP` and falls back to Babel Guild. Babel Guild registers **Babel**, **/translate**, **/setlang**, **/mylang**, and **/help**.
+
+Choose a specific app:
+
+```bash
+DISCORD_APP_ID=your_app_id DISCORD_BOT_TOKEN=your_token npm run register:guild
+DISCORD_APP_ID=your_app_id DISCORD_BOT_TOKEN=your_token npm run register:pocket
+```
+
+Babel Pocket registers **Babel Pocket**, **/setlang**, **/mylang**, and **/help** for User Install contexts.
 
 ### 3. Invite the Bot
 
@@ -180,15 +240,15 @@ https://discord.com/oauth2/authorize?client_id=YOUR_APP_ID&scope=bot+application
 
 After starting the bot, open `http://localhost:3000`:
 
-| Tab | Settings |
-|---|---|
-| **Setup** | Vertex AI API key, GCP project, location, Gemini model |
-| **Config** | Cooldown, cache size, max input length, max output tokens, custom prompt |
-| **Pricing** | Per-million-token prices, global daily budget (0 = unlimited) |
-| **Access** | Server whitelist, per-server budget overrides |
-| **Glossary** | Per-server source → target term mappings |
-| **Users** | View and manage per-user language preferences |
-| **Monitor** | API health, cache hit rate, failure rate, API call volume, translation test |
+| Tab          | Settings                                                                    |
+| ------------ | --------------------------------------------------------------------------- |
+| **Setup**    | Vertex AI API key, GCP project, location, Gemini model                      |
+| **Config**   | Cooldown, cache size, max input length, max output tokens, custom prompt    |
+| **Pricing**  | Per-million-token prices, global daily budget (0 = unlimited)               |
+| **Access**   | Guild whitelist, user allowlist, per-server and per-user budget overrides   |
+| **Glossary** | Babel Guild source → target term mappings                                   |
+| **Users**    | View and manage per-user language preferences                               |
+| **Monitor**  | API health, cache hit rate, failure rate, API call volume, translation test |
 
 ---
 
@@ -196,13 +256,13 @@ After starting the bot, open `http://localhost:3000`:
 
 Babel automatically translates to the language that makes sense for you:
 
-| Scenario | Behavior |
-|---|---|
-| Your Discord is set to Japanese | English messages → 日本語 |
-| Your Discord is set to Korean | English messages → 한국어 |
-| Chinese/English Discord users | Auto Chinese ↔ English (default behavior) |
-| Used `/setlang ja` | Always translates to 日本語 regardless of locale |
-| Used `/setlang auto` | Clears preference, reverts to locale detection |
+| Scenario                        | Behavior                                         |
+| ------------------------------- | ------------------------------------------------ |
+| Your Discord is set to Japanese | English messages → 日本語                        |
+| Your Discord is set to Korean   | English messages → 한국어                        |
+| Chinese/English Discord users   | Auto Chinese ↔ English (default behavior)        |
+| Used `/setlang ja`              | Always translates to 日本語 regardless of locale |
+| Used `/setlang auto`            | Clears preference, reverts to locale detection   |
 
 **Priority:** `/setlang` preference > Discord locale > Auto-detect
 
@@ -212,14 +272,15 @@ Babel automatically translates to the language that makes sense for you:
 
 All configuration is managed through the web dashboard. The `.env` file only needs:
 
-| Variable | Description | Default |
-|---|---|---|
-| `DISCORD_TOKEN` | Discord bot token | *required* |
-| `PORT` | Platform-provided dashboard web server port; takes precedence over `DASHBOARD_PORT` | unset |
-| `DASHBOARD_PORT` | Dashboard web server port | `3000` |
-| `DASHBOARD_HOST` | Dashboard bind host | `0.0.0.0` |
-| `DASHBOARD_PASSWORD` | Dashboard login password | `admin` (development only; refused in production) |
-| `BABEL_DB_PATH` | SQLite database path | `data/babel.sqlite` |
+| Variable             | Description                                                                         | Default                                           |
+| -------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `DISCORD_TOKEN`      | Discord bot token                                                                   | _required_                                        |
+| `PORT`               | Platform-provided dashboard web server port; takes precedence over `DASHBOARD_PORT` | unset                                             |
+| `DASHBOARD_PORT`     | Dashboard web server port                                                           | `3000`                                            |
+| `DASHBOARD_HOST`     | Dashboard bind host                                                                 | `0.0.0.0`                                         |
+| `DASHBOARD_PASSWORD` | Dashboard login password                                                            | `admin` (development only; refused in production) |
+| `BABEL_DB_PATH`      | SQLite database path                                                                | `data/babel.sqlite`                               |
+| `BABEL_APP`          | Root app selector: `guild` for Babel Guild, `pocket` for Babel Pocket               | `guild`                                           |
 
 If `DASHBOARD_PASSWORD` is omitted, Babel warns in local development and test environments, but exits during startup when `NODE_ENV=production`.
 
@@ -245,6 +306,12 @@ Use `npm run db:migrate -- --force` to overwrite an existing SQLite file.
 ┌─────────────────────────────────────────────────────────────┐
 │                     Node.js Process                         │
 │                                                             │
+│  BABEL_APP=guild                 BABEL_APP=pocket           │
+│  ┌──────────────┐                ┌────────────────┐         │
+│  │ Babel Guild  │                │ Babel Pocket   │         │
+│  └──────┬───────┘                └────────┬───────┘         │
+│         └────────────────┬────────────────┘                 │
+│                          │                                  │
 │  ┌──────────────┐    ┌────────────────────────────────────┐ │
 │  │  Discord.js   │    │         Express Dashboard          │ │
 │  │  Gateway       │    │  /livez  /readyz  /healthz        │ │
@@ -267,35 +334,40 @@ Use `npm run db:migrate -- --force` to overwrite an existing SQLite file.
 
 ### Module Layout
 
-| Layer | Path | Responsibility |
-|---|---|---|
-| **Entry** | `src/index.ts` | Wires Discord client, dashboard, metrics, shutdown, global error handlers |
-| **Commands** | `src/commands/` | Discord interaction handlers (`babel`, `translate`, `setlang`, `mylang`, `help`) |
-| **Translation** | `src/modules/translation/` | Cache, cooldowns, runtime limiter, language detection, webhook delivery |
-| **Config** | `src/modules/config/` | Environment validation, runtime config repository, config change effects |
-| **Usage** | `src/modules/usage/` | Token accounting, daily budgets, per-guild budgets, usage history |
-| **Dashboard** | `src/modules/dashboard/` | Express app, auth/session flow, admin API surface |
-| **Shared** | `src/shared/` | Structured logger, health model, graceful shutdown, app metrics, message catalogs |
-| **Infra** | `src/infra/` | Vertex AI transport with retry, timeout, and health probes |
-| **Persistence** | `src/persistence/` | SQLite connection, migrations, legacy JSON import/export |
-| **Repositories** | `src/repositories/` | Data normalization helpers for store data |
+| Layer            | Path                                      | Responsibility                                                                    |
+| ---------------- | ----------------------------------------- | --------------------------------------------------------------------------------- |
+| **Apps**         | `apps/babel-guild/`, `apps/babel-pocket/` | Product entrypoints for Babel Guild and Babel Pocket                              |
+| **Entry**        | `src/index.ts`                            | Backward-compatible root entrypoint selected by `BABEL_APP`                       |
+| **Commands**     | `src/commands/`                           | Discord interaction handlers (`babel`, `translate`, `setlang`, `mylang`, `help`)  |
+| **Translation**  | `src/modules/translation/`                | Cache, cooldowns, runtime limiter, language detection, webhook delivery           |
+| **Config**       | `src/modules/config/`                     | Environment validation, runtime config repository, config change effects          |
+| **Usage**        | `src/modules/usage/`                      | Token accounting, global/guild/user budgets, usage history                        |
+| **Dashboard**    | `src/modules/dashboard/`                  | Express app, auth/session flow, capability-gated admin API surface                |
+| **Shared**       | `src/shared/`                             | Structured logger, health model, graceful shutdown, app metrics, message catalogs |
+| **Infra**        | `src/infra/`                              | Vertex AI transport with retry, timeout, and health probes                        |
+| **Persistence**  | `src/persistence/`                        | SQLite connection, migrations, legacy JSON import/export                          |
+| **Repositories** | `src/repositories/`                       | Data normalization helpers for store data                                         |
 
 ### Persistence Model
 
-| State | Storage | Survives Restart? |
-|---|---|---|
-| Config, usage, preferences, guild budgets, sessions | SQLite | ✅ |
-| Server glossaries | SQLite | ✅ |
-| Translation cache, cooldowns, runtime limiter queues | In-memory | ❌ |
-| Audit logs, metrics snapshots, webhook channel cache | In-memory | ❌ |
+| State                                                    | Storage   | Survives Restart? |
+| -------------------------------------------------------- | --------- | ----------------- |
+| Config, usage, preferences, guild/user budgets, sessions | SQLite    | yes               |
+| Server glossaries and pending Pocket owners              | SQLite    | yes               |
+| Translation cache, cooldowns, runtime limiter queues     | In-memory | no                |
+| Audit logs, metrics snapshots, webhook channel cache     | In-memory | no                |
 
 ---
 
 ## Project Structure
 
 ```
+apps/
+├── babel-guild/           # Babel Guild product entrypoint and command registration
+└── babel-pocket/          # Babel Pocket product entrypoint and command registration
 src/
 ├── index.ts                # Entry point: Discord + dashboard + error handlers
+├── apps/                   # App profiles, shared bootstrap, command definitions
 ├── commands/               # Discord command handlers
 ├── modules/
 │   ├── config/
@@ -320,7 +392,9 @@ src/
 │   │   └── user-preference-repository.ts
 │   └── usage/
 │       ├── usage.ts                # Token cost, budget, and history tracker
+│       ├── budget-scope.ts         # Global/guild/user budget selection
 │       ├── guild-budget-repository.ts
+│       ├── user-budget-repository.ts
 │       └── usage-repository.ts
 ├── shared/
 │   ├── app-metrics.ts       # In-memory counters and derived rates
@@ -349,16 +423,24 @@ src/
 ## Development
 
 ```bash
-npm run dev             # Run in watch mode (tsx)
+npm run dev             # Run root app in watch mode, selected by BABEL_APP
+npm run dev:guild       # Run Babel Guild in watch mode
+npm run dev:pocket      # Run Babel Pocket in watch mode
 npm run typecheck       # Type check (no emit)
 npm test                # Run tests
 npm run test:coverage   # Run tests with v8 coverage
 npm run test:watch      # Run tests in watch mode
 npm run lint            # Run ESLint
 npm run format          # Format with Prettier
-npm run build           # Build for production
-npm run demo:build      # Mirror dashboard assets into docs/demo for GitHub Pages
-npm start               # Run the production artifact
+npm run build           # Build both apps for production
+npm run build:guild     # Build Babel Guild
+npm run build:pocket    # Build Babel Pocket
+npm run register:guild  # Register Babel Guild commands
+npm run register:pocket # Register Babel Pocket commands
+npm run demo:build      # Build Guild and Pocket dashboard demos into docs/demo for GitHub Pages
+npm start               # Run production root app, selected by BABEL_APP
+npm run start:guild     # Run Babel Guild production artifact
+npm run start:pocket    # Run Babel Pocket production artifact
 npm run db:migrate      # Import legacy JSON → SQLite
 npm run db:export:json  # Export SQLite → JSON
 npm run benchmark:runtime-config -- 20000  # Compare config-only reads vs full store snapshots
@@ -372,39 +454,43 @@ Hooks are installed automatically on normal local Git checkouts. The `prepare` s
 
 ### Test Coverage
 
-245 tests across 29 suites covering all modules:
+295 tests across 38 suites covering all modules:
 
-| Suite | Tests | Covers |
-|---|---|---|
-| `cache.test.ts` | 10 | LRU eviction, hit/miss stats, versioned cache keys |
-| `babel-command.test.ts` | 1 | Context menu command registration metadata |
-| `config.test.ts` | 6 | Env validation, structured startup logging, development warning, production password refusal |
-| `config-repository.test.ts` | 1 | Runtime config reads stay off the full store snapshot path |
-| `config-runtime-effects.test.ts` | 5 | Unified config side effects, cache invalidation, immediate runtime sync |
-| `cooldown.test.ts` | 6 | Rate limiting, cleanup, per-user isolation |
-| `app-metrics.test.ts` | 5 | Counter aggregation, provider fallback metrics, and derived success/failure/cache/api rates |
-| `log.test.ts` | 15 | Ring buffer, addError, type filtering, O(1) error counter |
-| `lang.test.ts` | 29 | Script detection (CJK/Cyrillic/Arabic/Thai/Hindi), locale mapping, same-language check |
-| `dashboard-auth.test.ts` | 4 | scrypt auth flow, CSRF enforcement, session expiry cleanup |
-| `prepare-husky.test.ts` | 5 | Husky prepare skip logic for CI, missing git metadata, Windows/local execution |
-| `build-demo.test.ts` | 1 | Static dashboard demo mirroring and fixture injection |
-| `sqlite-session-repository.test.ts` | 2 | Persistent session storage, enumeration, delete/clear |
-| `dashboard.test.ts` | 39 | Auth flow, session revoke, metrics, health endpoints, stats, config protection, version refresh, async error handling |
-| `discord-message-format.test.ts` | 3 | Discord-safe chunking and metadata rendering |
-| `message-extraction.test.ts` | 3 | Context menu extraction from content, embeds, attachments, and referenced context |
-| `provider-orchestrator.test.ts` | 5 | Provider fallback ordering, structured errors, and circuit breaker behavior |
-| `translation-runtime-limiter.test.ts` | 4 | FIFO queueing, per-user outstanding cap, queue wait timeout, per-guild/global queue shedding |
-| `translation-service.test.ts` | 12 | Shared workflow, cache hits, runtime shedding, budget/error handling, runtime config access pattern |
-| `translate-command.test.ts` | 2 | `/translate` public/private delivery behavior |
-| `translate.test.ts` | 24 | Retry logic, prompt building, API errors, URL routing, provider metadata |
-| `usage.test.ts` | 30 | Cost calculation, budget estimate guard, per-server budget enforcement, global fallback, day rollover, runtime config access pattern |
-| `webhook-service.test.ts` | 4 | Stale webhook recovery, error classification, LRU webhook cache eviction |
-| `vertex-ai-client.test.ts` | 6 | Shared transport, timeout wiring, structured provider errors, health checks, endpoint resolution |
-| `version.test.ts` | 4 | Release metadata, GitHub latest-release checks, cache refresh, and update status fallback |
-| `sqlite-database.test.ts` | 3 | SQLite connection, migrations, and pragma setup |
-| `store.test.ts` | 11 | SQLite persistence, legacy JSON import, defaults, copy safety, config-only reads, direct guild row operations |
-| `structured-logger.test.ts` | 2 | JSON shape, inherited request context, secret redaction |
-| `shutdown.test.ts` | 3 | Shutdown order, timeout forcing, signal deduplication |
+| Suite                                           | Tests | Covers                                                                                                                                      |
+| ----------------------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cache.test.ts`                                 | 10    | LRU eviction, hit/miss stats, versioned cache keys                                                                                          |
+| `babel-command.test.ts`                         | 2     | Context menu command handling and Pocket billing owner resolution                                                                           |
+| `config.test.ts`                                | 6     | Env validation, structured startup logging, development warning, production password refusal                                                |
+| `config-repository.test.ts`                     | 2     | Runtime config reads stay off the full store snapshot path                                                                                  |
+| `config-runtime-effects.test.ts`                | 5     | Unified config side effects, cache invalidation, immediate runtime sync                                                                     |
+| `cooldown.test.ts`                              | 6     | Rate limiting, cleanup, per-user isolation                                                                                                  |
+| `app-metrics.test.ts`                           | 5     | Counter aggregation, provider fallback metrics, and derived success/failure/cache/api rates                                                 |
+| `log.test.ts`                                   | 15    | Ring buffer, addError, type filtering, O(1) error counter                                                                                   |
+| `lang.test.ts`                                  | 29    | Script detection (CJK/Cyrillic/Arabic/Thai/Hindi), locale mapping, same-language check                                                      |
+| `dashboard-auth.test.ts`                        | 4     | scrypt auth flow, CSRF enforcement, session expiry cleanup                                                                                  |
+| `prepare-husky.test.ts`                         | 5     | Husky prepare skip logic for CI, missing git metadata, Windows/local execution                                                              |
+| `build-demo.test.ts`                            | 1     | Static Guild/Pocket dashboard demo mirroring and fixture injection                                                                          |
+| `sqlite-session-repository.test.ts`             | 2     | Persistent session storage, enumeration, delete/clear                                                                                       |
+| `dashboard.test.ts`                             | 42    | Auth flow, session revoke, metrics, health endpoints, stats, config protection, version refresh, async error handling, app capability gates |
+| `deployment-config.test.ts`                     | 3     | Root app selection scripts, Docker workspace build context, Compose default app                                                             |
+| `discord-user-profile-repository.test.ts`       | 2     | Discord user profile persistence                                                                                                            |
+| `discord-message-format.test.ts`                | 3     | Discord-safe chunking and metadata rendering                                                                                                |
+| `message-extraction.test.ts`                    | 3     | Context menu extraction from content, embeds, attachments, and referenced context                                                           |
+| `provider-orchestrator.test.ts`                 | 5     | Provider fallback ordering, structured errors, and circuit breaker behavior                                                                 |
+| `translation-runtime-limiter.test.ts`           | 4     | FIFO queueing, per-user outstanding cap, queue wait timeout, per-guild/global queue shedding                                                |
+| `register.test.ts`                              | 3     | Guild/Pocket command registration surfaces and app profile selection                                                                        |
+| `pending-user-install-owner-repository.test.ts` | 1     | Pending Pocket owner persistence                                                                                                            |
+| `translation-service.test.ts`                   | 15    | Shared workflow, cache hits, runtime shedding, budget/error handling, runtime config access pattern, Guild/Pocket authorization             |
+| `translate-command.test.ts`                     | 2     | `/translate` public/private delivery behavior                                                                                               |
+| `translate.test.ts`                             | 24    | Retry logic, prompt building, API errors, URL routing, provider metadata                                                                    |
+| `usage.test.ts`                                 | 40    | Cost calculation, budget estimate guard, global/guild/user budget enforcement, day rollover, runtime config access pattern                  |
+| `webhook-service.test.ts`                       | 4     | Stale webhook recovery, error classification, LRU webhook cache eviction                                                                    |
+| `vertex-ai-client.test.ts`                      | 6     | Shared transport, timeout wiring, structured provider errors, health checks, endpoint resolution                                            |
+| `version.test.ts`                               | 5     | Release metadata, synced app versions, GitHub latest-release checks, cache refresh, and update status fallback                              |
+| `sqlite-database.test.ts`                       | 5     | SQLite connection, migrations, and pragma setup                                                                                             |
+| `store.test.ts`                                 | 13    | SQLite persistence, legacy JSON import, defaults, copy safety, config-only reads, direct guild/user row operations                          |
+| `structured-logger.test.ts`                     | 2     | JSON shape, inherited request context, secret redaction                                                                                     |
+| `shutdown.test.ts`                              | 3     | Shutdown order, timeout forcing, signal deduplication                                                                                       |
 
 ### Runtime Config Benchmark
 
@@ -422,16 +508,17 @@ This compares `configRepository.getRuntimeConfig()` against `store.getAll()` ove
 
 ### Railway
 
-Babel is Railway-ready for a one-click self-host template: `railway.json` configures the `/livez` healthcheck, Railway's `PORT` is respected automatically, and `/app/data` can be mounted as a volume for SQLite.
+Babel is Railway-ready for a one-click self-host template: `railway.json` configures the `/livez` healthcheck, Railway's `PORT` is respected automatically, and `/app/data` can be mounted as a volume for SQLite. One Railway template can deploy either Babel Guild or Babel Pocket by exposing `BABEL_APP` as a service variable; keep `guild` as the default for existing users and set `pocket` for user-install deployments.
 
 Use these template variables:
 
-| Variable | Value |
-|---|---|
-| `DISCORD_TOKEN` | Your Discord bot token |
-| `DASHBOARD_PASSWORD` | A strong random password |
-| `BABEL_DB_PATH` | `/app/data/babel.sqlite` |
-| `NODE_ENV` | `production` |
+| Variable             | Value                                                |
+| -------------------- | ---------------------------------------------------- |
+| `DISCORD_TOKEN`      | Your Discord bot token                               |
+| `BABEL_APP`          | `guild` for Babel Guild or `pocket` for Babel Pocket |
+| `DASHBOARD_PASSWORD` | A strong random password                             |
+| `BABEL_DB_PATH`      | `/app/data/babel.sqlite`                             |
+| `NODE_ENV`           | `production`                                         |
 
 Mount a Railway volume at `/app/data`, generate a public domain, then log in and finish provider setup from the dashboard. See [Railway deployment](docs/operations/railway.md) for the template publishing checklist and transparent kickback disclosure wording.
 
@@ -460,6 +547,7 @@ docker run -d \
 ```
 
 The Dockerfile uses a **multi-stage build** with Node.js `22-alpine`:
+
 - Build stage compiles TypeScript
 - Runtime stage runs `npm ci --omit=dev` (no devDependencies in the image)
 - Runs as non-root user `babel`
@@ -468,12 +556,12 @@ The Dockerfile uses a **multi-stage build** with Node.js `22-alpine`:
 
 ### Health Endpoints
 
-| Endpoint | Purpose | Use As |
-|---|---|---|
-| `GET /livez` | Process health + config repository check | Container **liveness** probe |
-| `GET /readyz` | Setup completeness + live Vertex AI probe | Container **readiness** probe |
-| `GET /healthz` | Combined liveness + readiness with degraded/ok status | Operator **monitoring** |
-| `GET /metrics` | Prometheus text metrics with version, translation, provider, queue, cache, and budget counters | Alerting and dashboards |
+| Endpoint       | Purpose                                                                                        | Use As                        |
+| -------------- | ---------------------------------------------------------------------------------------------- | ----------------------------- |
+| `GET /livez`   | Process health + config repository check                                                       | Container **liveness** probe  |
+| `GET /readyz`  | Setup completeness + live Vertex AI probe                                                      | Container **readiness** probe |
+| `GET /healthz` | Combined liveness + readiness with degraded/ok status                                          | Operator **monitoring**       |
+| `GET /metrics` | Prometheus text metrics with version, translation, provider, queue, cache, and budget counters | Alerting and dashboards       |
 
 ### Operations Guides
 
@@ -513,35 +601,35 @@ User Request
 
 ## Security Model
 
-| Layer | Mechanism |
-|---|---|
-| **Password Storage** | `crypto.scryptSync` with random 16-byte salt, 64-byte key |
-| **Password Comparison** | Timing-safe via `crypto.timingSafeEqual` |
-| **Session Tokens** | `crypto.randomBytes(32)`, HttpOnly + SameSite=Strict cookies |
-| **CSRF** | Per-session CSRF token required on all mutation endpoints |
-| **Login Throttle** | `express-rate-limit` — 5 attempts / 15 min per IP |
-| **Security Headers** | Dashboard responses include CSP, `X-Frame-Options`, `X-Content-Type-Options`, and Referrer Policy |
-| **Error Sanitization** | API keys, tokens, and URLs redacted from user-facing errors |
-| **Log Redaction** | Automatic redaction of secrets matching known patterns |
-| **Process Safety** | Global `unhandledRejection` / `uncaughtException` handlers |
-| **SQL Safety** | Table name whitelist in dynamic queries; parameterized queries throughout |
-| **Docker** | Non-root user, prod-only dependencies, no devDeps in image |
+| Layer                   | Mechanism                                                                                         |
+| ----------------------- | ------------------------------------------------------------------------------------------------- |
+| **Password Storage**    | `crypto.scryptSync` with random 16-byte salt, 64-byte key                                         |
+| **Password Comparison** | Timing-safe via `crypto.timingSafeEqual`                                                          |
+| **Session Tokens**      | `crypto.randomBytes(32)`, HttpOnly + SameSite=Strict cookies                                      |
+| **CSRF**                | Per-session CSRF token required on all mutation endpoints                                         |
+| **Login Throttle**      | `express-rate-limit` — 5 attempts / 15 min per IP                                                 |
+| **Security Headers**    | Dashboard responses include CSP, `X-Frame-Options`, `X-Content-Type-Options`, and Referrer Policy |
+| **Error Sanitization**  | API keys, tokens, and URLs redacted from user-facing errors                                       |
+| **Log Redaction**       | Automatic redaction of secrets matching known patterns                                            |
+| **Process Safety**      | Global `unhandledRejection` / `uncaughtException` handlers                                        |
+| **SQL Safety**          | Table name whitelist in dynamic queries; parameterized queries throughout                         |
+| **Docker**              | Non-root user, prod-only dependencies, no devDeps in image                                        |
 
 ---
 
 ## Tech Stack
 
-| Technology | Version | Role |
-|---|---|---|
-| [TypeScript](https://www.typescriptlang.org) | 5.9 | Strict mode with `noUncheckedIndexedAccess` |
-| [Node.js](https://nodejs.org) | 22.12+ | Runtime with native `node:sqlite` |
-| [discord.js](https://discord.js.org) | v14 | Discord gateway client |
-| [Express](https://expressjs.com) | v4 | Dashboard & API server |
-| [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) | v8 | Login throttling |
-| [Vertex AI Gemini](https://cloud.google.com/vertex-ai) | — | Translation engine |
-| [Vitest](https://vitest.dev) | v4 | 249 tests, 30 test files, v8 coverage |
-| [ESLint](https://eslint.org) + [Prettier](https://prettier.io) | v9 / v3 | Code quality |
-| [husky](https://typicode.github.io/husky/) + [lint-staged](https://github.com/lint-staged/lint-staged) | v9 / v16 | Pre-commit hooks |
+| Technology                                                                                             | Version  | Role                                        |
+| ------------------------------------------------------------------------------------------------------ | -------- | ------------------------------------------- |
+| [TypeScript](https://www.typescriptlang.org)                                                           | 5.9      | Strict mode with `noUncheckedIndexedAccess` |
+| [Node.js](https://nodejs.org)                                                                          | 22.12+   | Runtime with native `node:sqlite`           |
+| [discord.js](https://discord.js.org)                                                                   | v14      | Discord gateway client                      |
+| [Express](https://expressjs.com)                                                                       | v4       | Dashboard & API server                      |
+| [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit)                         | v8       | Login throttling                            |
+| [Vertex AI Gemini](https://cloud.google.com/vertex-ai)                                                 | —        | Translation engine                          |
+| [Vitest](https://vitest.dev)                                                                           | v4       | 249 tests, 30 test files, v8 coverage       |
+| [ESLint](https://eslint.org) + [Prettier](https://prettier.io)                                         | v9 / v3  | Code quality                                |
+| [husky](https://typicode.github.io/husky/) + [lint-staged](https://github.com/lint-staged/lint-staged) | v9 / v16 | Pre-commit hooks                            |
 
 ---
 

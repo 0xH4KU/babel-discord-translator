@@ -6,6 +6,7 @@ import { ProviderOrchestratorError } from '../src/infra/provider-orchestrator.js
 import { TranslationLog } from '../src/log.js';
 import { createTranslationService, _test } from '../src/services/translation-service.js';
 import { TranslationRuntimeLimiter } from '../src/translation-runtime-limiter.js';
+import type { AccessMode } from '../src/apps/app-profile.js';
 import type { BotStats, StoreData, TranslationResult } from '../src/types.js';
 
 function createStructuredLoggerMock(base: Record<string, unknown> = {}) {
@@ -39,12 +40,14 @@ function createStoreMock(overrides: Partial<StoreData> = {}) {
         gcpLocation: 'global',
         geminiModel: 'gemini-2.5-flash-lite',
         allowedGuildIds: ['guild-1'],
+        allowedUserIds: [],
         cooldownSeconds: 0,
         cacheMaxSize: 2000,
         setupComplete: true,
         inputPricePerMillion: 0,
         outputPricePerMillion: 0,
         dailyBudgetUsd: 0,
+        defaultUserDailyBudgetUsd: 0,
         tokenUsage: null,
         usageHistory: [],
         translationPrompt: '',
@@ -59,6 +62,9 @@ function createStoreMock(overrides: Partial<StoreData> = {}) {
         guildBudgets: {},
         guildTokenUsage: {},
         guildUsageHistory: {},
+        userBudgets: {},
+        userTokenUsage: {},
+        userUsageHistory: {},
         ...overrides,
     };
 
@@ -70,12 +76,14 @@ function createStoreMock(overrides: Partial<StoreData> = {}) {
             gcpLocation: data.gcpLocation,
             geminiModel: data.geminiModel,
             allowedGuildIds: [...data.allowedGuildIds],
+            allowedUserIds: [...data.allowedUserIds],
             cooldownSeconds: data.cooldownSeconds,
             cacheMaxSize: data.cacheMaxSize,
             setupComplete: data.setupComplete,
             inputPricePerMillion: data.inputPricePerMillion,
             outputPricePerMillion: data.outputPricePerMillion,
             dailyBudgetUsd: data.dailyBudgetUsd,
+            defaultUserDailyBudgetUsd: data.defaultUserDailyBudgetUsd,
             translationPrompt: data.translationPrompt,
             maxInputLength: data.maxInputLength,
             maxOutputTokens: data.maxOutputTokens,
@@ -101,6 +109,7 @@ function createUserPreferenceStoreMock(overrides: Partial<StoreData> = {}) {
 function createUsageMock() {
     return {
         isBudgetExceeded: vi.fn(() => false),
+        wouldExceedBudget: vi.fn(() => false),
         record: vi.fn(),
     };
 }
@@ -137,6 +146,9 @@ function createService({
     glossaryRepository = createGlossaryRepositoryMock(),
     loggerState = createStructuredLoggerMock(),
     runtimeLimiter,
+    accessMode,
+    pendingUserInstallOwnerRepository,
+    enableGuildGlossary,
 }: {
     storeOverrides?: Partial<StoreData>;
     translator?: ReturnType<typeof vi.fn>;
@@ -144,6 +156,9 @@ function createService({
     glossaryRepository?: ReturnType<typeof createGlossaryRepositoryMock>;
     loggerState?: ReturnType<typeof createStructuredLoggerMock>;
     runtimeLimiter?: TranslationRuntimeLimiter;
+    accessMode?: AccessMode;
+    pendingUserInstallOwnerRepository?: { recordSeen: ReturnType<typeof vi.fn> };
+    enableGuildGlossary?: boolean;
 } = {}) {
     const cache = new TranslationCache(100);
     const cooldown = new CooldownManager(0);
@@ -165,6 +180,9 @@ function createService({
         translator,
         metrics,
         runtimeLimiter,
+        accessMode,
+        enableGuildGlossary,
+        pendingUserInstallOwnerRepository,
         logger: loggerState.logger as never,
     });
 
@@ -231,7 +249,10 @@ describe('TranslationService', () => {
         );
         expect(Object.prototype.propertyIsEnumerable.call(translatorOptions, 'metrics')).toBe(true);
         expect(translatorOptions?.metrics).toBe(metrics);
-        expect(usageTracker.record).toHaveBeenCalledWith(12, 6, 'guild-1');
+        expect(usageTracker.record).toHaveBeenCalledWith(12, 6, {
+            guildId: 'guild-1',
+            userId: null,
+        });
         expect(log.size).toBe(1);
         expect(stats.totalTranslations).toBe(1);
         expect(stats.apiCalls).toBe(1);
@@ -440,6 +461,56 @@ describe('TranslationService', () => {
         });
     });
 
+    it('should ignore guild glossary entries when guild glossary is disabled', async () => {
+        const translator = vi.fn(
+            async (): Promise<TranslationResult> => ({
+                text: 'こんにちは',
+                inputTokens: 12,
+                outputTokens: 6,
+            }),
+        );
+        const glossaryRepository = createGlossaryRepositoryMock({
+            'guild-1': [
+                {
+                    id: 1,
+                    guildId: 'guild-1',
+                    sourceText: 'OpenAI',
+                    targetText: 'OpenAI',
+                    notes: 'Preserve brand name',
+                    createdAt: '2026-06-01T00:00:00.000Z',
+                    updatedAt: '2026-06-01T00:00:00.000Z',
+                },
+            ],
+        });
+        const { service } = createService({
+            storeOverrides: {
+                allowedGuildIds: [],
+                allowedUserIds: ['user-owner'],
+                userLanguagePrefs: { 'user-owner': 'ja' },
+            },
+            translator,
+            glossaryRepository,
+            accessMode: 'user-install',
+            enableGuildGlossary: false,
+        });
+
+        const result = await service.process({
+            command: 'babel',
+            commandLabel: 'Babel Pocket (context menu)',
+            guildId: 'guild-1',
+            guildName: 'Test Guild',
+            userId: 'actor',
+            billingUserId: 'user-owner',
+            userTag: 'actor#0001',
+            locale: 'en-US',
+            text: 'Hello OpenAI',
+        });
+
+        expect(result.status).toBe('success');
+        expect(glossaryRepository.listEntries).not.toHaveBeenCalled();
+        expect(translator.mock.calls[0]?.[2]).not.toHaveProperty('glossaryEntries');
+    });
+
     it('should block requests when the guild budget is exceeded', async () => {
         const usageTracker = createUsageMock();
         usageTracker.isBudgetExceeded.mockReturnValue(true);
@@ -463,6 +534,92 @@ describe('TranslationService', () => {
         });
         expect(translator).not.toHaveBeenCalled();
         expect(metrics.snapshot().budgetExceededTotal).toBe(1);
+    });
+
+    it('should allow whitelisted user-install owners without a guild id', async () => {
+        const { service, usageTracker } = createService({
+            storeOverrides: {
+                allowedGuildIds: [],
+                allowedUserIds: ['user-owner'],
+                userLanguagePrefs: { 'user-owner': 'ja' },
+            },
+            accessMode: 'user-install',
+        });
+
+        const result = await service.process({
+            command: 'babel',
+            commandLabel: 'Babel Pocket (context menu)',
+            guildId: null,
+            userId: 'user-owner',
+            billingUserId: 'user-owner',
+            userTag: 'owner#0001',
+            locale: 'en-US',
+            text: 'Hello',
+        });
+
+        expect(result.status).toBe('success');
+        expect(usageTracker.record).toHaveBeenCalledWith(12, 6, {
+            guildId: null,
+            userId: 'user-owner',
+        });
+    });
+
+    it('should bill the actor user when a user-install request has no explicit billing owner', async () => {
+        const { service, usageTracker } = createService({
+            storeOverrides: {
+                allowedGuildIds: [],
+                allowedUserIds: ['actor'],
+                userLanguagePrefs: { actor: 'ja' },
+            },
+            accessMode: 'user-install',
+        });
+
+        const result = await service.process({
+            command: 'babel',
+            commandLabel: 'Babel Pocket (context menu)',
+            guildId: null,
+            userId: 'actor',
+            userTag: 'actor#0001',
+            locale: 'en-US',
+            text: 'Hello',
+        });
+
+        expect(result.status).toBe('success');
+        expect(usageTracker.record).toHaveBeenCalledWith(12, 6, {
+            guildId: null,
+            userId: 'actor',
+        });
+    });
+
+    it('records unauthorized user-install owners as pending access users', async () => {
+        const pendingUserInstallOwnerRepository = {
+            recordSeen: vi.fn(),
+        };
+        const { service } = createService({
+            storeOverrides: {
+                allowedGuildIds: [],
+                allowedUserIds: ['user-allowed'],
+            },
+            accessMode: 'user-install',
+            pendingUserInstallOwnerRepository,
+        });
+
+        const result = await service.process({
+            command: 'babel',
+            commandLabel: 'Babel Pocket (context menu)',
+            guildId: null,
+            userId: 'interaction-user',
+            billingUserId: 'install-owner',
+            userTag: 'actor#0001',
+            locale: 'en-US',
+            text: 'Hello',
+        });
+
+        expect(result).toEqual({
+            status: 'blocked',
+            message: 'This user is not authorized.',
+        });
+        expect(pendingUserInstallOwnerRepository.recordSeen).toHaveBeenCalledWith('install-owner');
     });
 
     it('should return a sanitized error result and diagnostic log when translation fails', async () => {

@@ -24,12 +24,14 @@ vi.mock('../src/store.js', () => {
         openaiModel: '',
         translationProvider: 'vertex',
         allowedGuildIds: [],
+        allowedUserIds: [],
         cooldownSeconds: 5,
         cacheMaxSize: 2000,
         setupComplete: true,
         inputPricePerMillion: 0,
         outputPricePerMillion: 0,
         dailyBudgetUsd: 0,
+        defaultUserDailyBudgetUsd: 0,
         translationPrompt: '',
         userLanguagePrefs: { user1: 'ja', user2: 'ko' },
         maxInputLength: 2000,
@@ -44,6 +46,9 @@ vi.mock('../src/store.js', () => {
         guildBudgets: {},
         guildTokenUsage: {},
         guildUsageHistory: {},
+        userBudgets: {},
+        userTokenUsage: {},
+        userUsageHistory: {},
     };
     const glossary: Record<
         string,
@@ -175,6 +180,7 @@ import { TranslationRuntimeLimiter } from '../src/translation-runtime-limiter.js
 import { _test as healthTest } from '../src/shared/health.js';
 import { createSqliteDatabase } from '../src/persistence/sqlite-database.js';
 import { DiscordUserProfileRepository } from '../src/modules/dashboard/discord-user-profile-repository.js';
+import { BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE } from '../src/apps/app-profile.js';
 import type { Client } from 'discord.js';
 import type { DatabaseSync } from 'node:sqlite';
 
@@ -268,6 +274,19 @@ function requestText(
     });
 }
 
+function createMinimalClient(): Client {
+    return {
+        user: null,
+        guilds: {
+            cache: {
+                size: 0,
+                map: () => [],
+                [Symbol.iterator]: function* () {},
+            },
+        },
+    } as unknown as Client;
+}
+
 describe('Dashboard API', () => {
     let app: ReturnType<typeof createDashboardApp>;
     let cache: TranslationCache;
@@ -293,12 +312,12 @@ describe('Dashboard API', () => {
         });
         healthCheck = vi.fn().mockResolvedValue({ healthy: true, latencyMs: 24 });
         versionCheck = vi.fn().mockResolvedValue({
-            version: '0.1.2',
+            version: '0.1.3',
             repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator',
             update: {
                 status: 'current',
-                latestVersion: '0.1.2',
-                latestUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases/tag/v0.1.2',
+                latestVersion: '0.1.3',
+                latestUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases/tag/v0.1.3',
             },
         });
         const cooldown = new CooldownManager(5);
@@ -678,12 +697,12 @@ describe('Dashboard API', () => {
 
         expect(res.status).toBe(200);
         expect(res.body).toEqual({
-            version: '0.1.2',
+            version: '0.1.3',
             repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator',
             update: {
                 status: 'current',
-                latestVersion: '0.1.2',
-                latestUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases/tag/v0.1.2',
+                latestVersion: '0.1.3',
+                latestUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases/tag/v0.1.3',
             },
         });
         expect(versionCheck).toHaveBeenCalled();
@@ -692,7 +711,7 @@ describe('Dashboard API', () => {
     it('should force-refresh release metadata for authenticated admins with CSRF', async () => {
         versionCheck.mockClear();
         versionCheck.mockResolvedValueOnce({
-            version: '0.1.2',
+            version: '0.1.3',
             repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator',
             update: {
                 status: 'outdated',
@@ -708,7 +727,7 @@ describe('Dashboard API', () => {
 
         expect(res.status).toBe(200);
         expect(res.body).toEqual({
-            version: '0.1.2',
+            version: '0.1.3',
             repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator',
             update: {
                 status: 'outdated',
@@ -765,7 +784,7 @@ describe('Dashboard API', () => {
             expect(res.status).toBe(200);
             expect(res.headers['content-type']).toContain('text/plain');
             expect(res.text).toContain(
-                'babel_app_version_info{version="0.1.2",repository_url="https://github.com/0xH4KU/babel-discord-translator"} 1',
+                'babel_app_version_info{version="0.1.3",repository_url="https://github.com/0xH4KU/babel-discord-translator"} 1',
             );
             expect(res.text).toContain('babel_translations_total');
             expect(res.text).toContain('babel_translation_failures_total');
@@ -1308,6 +1327,158 @@ describe('Dashboard API', () => {
 
         expect(res.status).toBe(400);
         expect(res.body).toEqual({ error: 'Glossary source and target are required' });
+    });
+
+    it('should not expose guild glossary routes for Babel Pocket', async () => {
+        const pocketApp = createDashboardApp({
+            cache,
+            cooldown: new CooldownManager(5),
+            log,
+            client: createMinimalClient(),
+            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
+            metrics,
+            runtimeLimiter,
+            profile: BABEL_POCKET_PROFILE,
+            sessionRepository: new InMemorySessionRepository(),
+            userProfileRepository,
+        });
+        const pocketServer = startDashboardServer(pocketApp, 0);
+
+        try {
+            const login = await request(pocketServer, 'POST', '/api/login', {
+                body: { password: 'test-pass-123' },
+            });
+            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
+            const res = await requestText(pocketServer, 'GET', '/api/guild-glossary/guild-1', {
+                cookie,
+            });
+
+            expect(res.status).toBe(404);
+        } finally {
+            stopDashboardApp(pocketApp);
+            pocketServer.close();
+        }
+    });
+
+    it('should not expose pending user-install owners for Babel Guild', async () => {
+        const guildApp = createDashboardApp({
+            cache,
+            cooldown: new CooldownManager(5),
+            log,
+            client: createMinimalClient(),
+            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
+            metrics,
+            runtimeLimiter,
+            profile: BABEL_GUILD_PROFILE,
+            sessionRepository: new InMemorySessionRepository(),
+            userProfileRepository,
+        });
+        const guildServer = startDashboardServer(guildApp, 0);
+
+        try {
+            const login = await request(guildServer, 'POST', '/api/login', {
+                body: { password: 'test-pass-123' },
+            });
+            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
+            const res = await requestText(guildServer, 'GET', '/api/access/pending-users', {
+                cookie,
+            });
+
+            expect(res.status).toBe(404);
+        } finally {
+            stopDashboardApp(guildApp);
+            guildServer.close();
+        }
+    });
+
+    it('should expose dashboard capabilities for Babel Guild', async () => {
+        const guildApp = createDashboardApp({
+            cache,
+            cooldown: new CooldownManager(5),
+            log,
+            client: createMinimalClient(),
+            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
+            metrics,
+            runtimeLimiter,
+            profile: BABEL_GUILD_PROFILE,
+            sessionRepository: new InMemorySessionRepository(),
+            userProfileRepository,
+        });
+        const guildServer = startDashboardServer(guildApp, 0);
+
+        try {
+            const login = await request(guildServer, 'POST', '/api/login', {
+                body: { password: 'test-pass-123' },
+            });
+            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
+            const res = await requestText(guildServer, 'GET', '/api/capabilities', {
+                cookie,
+            });
+
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.text)).toEqual({
+                profile: {
+                    id: 'babel-guild',
+                    productName: 'Babel Guild',
+                    commandName: 'Babel',
+                    accessMode: 'guild',
+                },
+                capabilities: {
+                    guildAccess: true,
+                    userAccess: false,
+                    guildGlossary: true,
+                    pendingUserInstallOwners: false,
+                },
+            });
+        } finally {
+            stopDashboardApp(guildApp);
+            guildServer.close();
+        }
+    });
+
+    it('should expose dashboard capabilities for Babel Pocket', async () => {
+        const pocketApp = createDashboardApp({
+            cache,
+            cooldown: new CooldownManager(5),
+            log,
+            client: createMinimalClient(),
+            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
+            metrics,
+            runtimeLimiter,
+            profile: BABEL_POCKET_PROFILE,
+            sessionRepository: new InMemorySessionRepository(),
+            userProfileRepository,
+        });
+        const pocketServer = startDashboardServer(pocketApp, 0);
+
+        try {
+            const login = await request(pocketServer, 'POST', '/api/login', {
+                body: { password: 'test-pass-123' },
+            });
+            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
+            const res = await requestText(pocketServer, 'GET', '/api/capabilities', {
+                cookie,
+            });
+
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.text)).toEqual({
+                profile: {
+                    id: 'babel-pocket',
+                    productName: 'Babel Pocket',
+                    commandName: 'Babel Pocket',
+                    accessMode: 'user-install',
+                },
+                capabilities: {
+                    guildAccess: false,
+                    userAccess: true,
+                    guildGlossary: false,
+                    pendingUserInstallOwners: true,
+                },
+            });
+        } finally {
+            stopDashboardApp(pocketApp);
+            pocketServer.close();
+        }
     });
 
     // --- Logout ---
