@@ -24,6 +24,7 @@ import type {
     StoreData,
     TokenUsage,
     UsageHistoryEntry,
+    UserBudgetConfig,
 } from './types.js';
 
 interface ConfigStoreOptions {
@@ -52,9 +53,23 @@ function cloneGuildBudgets(
     );
 }
 
+function cloneUserBudgets(
+    budgets: Record<string, UserBudgetConfig>,
+): Record<string, UserBudgetConfig> {
+    return Object.fromEntries(
+        Object.entries(budgets).map(([userId, budget]) => [userId, { ...budget }]),
+    );
+}
+
 function cloneGuildUsage(usage: Record<string, TokenUsage>): Record<string, TokenUsage> {
     return Object.fromEntries(
         Object.entries(usage).map(([guildId, entry]) => [guildId, { ...entry }]),
+    );
+}
+
+function cloneUserUsage(usage: Record<string, TokenUsage>): Record<string, TokenUsage> {
+    return Object.fromEntries(
+        Object.entries(usage).map(([userId, entry]) => [userId, { ...entry }]),
     );
 }
 
@@ -63,6 +78,14 @@ function cloneGuildUsageHistory(
 ): Record<string, UsageHistoryEntry[]> {
     return Object.fromEntries(
         Object.entries(history).map(([guildId, entries]) => [guildId, cloneUsageHistory(entries)]),
+    );
+}
+
+function cloneUserUsageHistory(
+    history: Record<string, UsageHistoryEntry[]>,
+): Record<string, UsageHistoryEntry[]> {
+    return Object.fromEntries(
+        Object.entries(history).map(([userId, entries]) => [userId, cloneUsageHistory(entries)]),
     );
 }
 
@@ -124,6 +147,12 @@ export class ConfigStore {
                 return this.getGuildTokenUsage() as StoreData[K];
             case 'guildUsageHistory':
                 return this.getAllGuildUsageHistory() as StoreData[K];
+            case 'userBudgets':
+                return {} as StoreData[K];
+            case 'userTokenUsage':
+                return {} as StoreData[K];
+            case 'userUsageHistory':
+                return {} as StoreData[K];
             default:
                 return DEFAULT_STORE_DATA[key];
         }
@@ -185,6 +214,9 @@ export class ConfigStore {
             guildBudgets: cloneGuildBudgets(this.getAllGuildBudgets()),
             guildTokenUsage: cloneGuildUsage(this.getGuildTokenUsage()),
             guildUsageHistory: cloneGuildUsageHistory(this.getAllGuildUsageHistory()),
+            userBudgets: cloneUserBudgets({}),
+            userTokenUsage: cloneUserUsage({}),
+            userUsageHistory: cloneUserUsageHistory({}),
         };
     }
 

@@ -94,6 +94,18 @@ describe('ConfigStore', () => {
         store.close();
     });
 
+    it('should include empty user-install collections in snapshots', async () => {
+        const { ConfigStore } = await importStoreModule();
+        const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+
+        const snapshot = store.getAll();
+
+        expect(snapshot.userBudgets).toEqual({});
+        expect(snapshot.userTokenUsage).toEqual({});
+        expect(snapshot.userUsageHistory).toEqual({});
+        store.close();
+    });
+
     it('should return only requested config keys and preserve defensive copies', async () => {
         const { ConfigStore } = await importStoreModule();
         const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });

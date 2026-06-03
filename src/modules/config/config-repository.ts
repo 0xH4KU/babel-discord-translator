@@ -9,12 +9,14 @@ export type RuntimeConfig = Pick<
     | 'gcpLocation'
     | 'geminiModel'
     | 'allowedGuildIds'
+    | 'allowedUserIds'
     | 'cooldownSeconds'
     | 'cacheMaxSize'
     | 'setupComplete'
     | 'inputPricePerMillion'
     | 'outputPricePerMillion'
     | 'dailyBudgetUsd'
+    | 'defaultUserDailyBudgetUsd'
     | 'translationPrompt'
     | 'maxInputLength'
     | 'maxOutputTokens'
@@ -35,12 +37,14 @@ const RUNTIME_CONFIG_KEYS: (keyof RuntimeConfig)[] = [
     'gcpLocation',
     'geminiModel',
     'allowedGuildIds',
+    'allowedUserIds',
     'cooldownSeconds',
     'cacheMaxSize',
     'setupComplete',
     'inputPricePerMillion',
     'outputPricePerMillion',
     'dailyBudgetUsd',
+    'defaultUserDailyBudgetUsd',
     'translationPrompt',
     'maxInputLength',
     'maxOutputTokens',

@@ -25,6 +25,16 @@ export interface GuildBudgetConfig {
     dailyBudgetUsd: number;
 }
 
+export interface UserBudgetConfig {
+    dailyBudgetUsd: number;
+}
+
+export interface TranslationScope {
+    guildId?: string | null;
+    actorUserId: string;
+    billingUserId?: string | null;
+}
+
 export interface DiscordUserProfile {
     userId: string;
     username: string;
@@ -58,12 +68,14 @@ export interface StoreData {
     gcpLocation: string;
     geminiModel: string;
     allowedGuildIds: string[];
+    allowedUserIds: string[];
     cooldownSeconds: number;
     cacheMaxSize: number;
     setupComplete: boolean;
     inputPricePerMillion: number;
     outputPricePerMillion: number;
     dailyBudgetUsd: number;
+    defaultUserDailyBudgetUsd: number;
     tokenUsage: TokenUsage | null;
     usageHistory: UsageHistoryEntry[];
     translationPrompt: string;
@@ -84,6 +96,10 @@ export interface StoreData {
     guildBudgets: Record<string, GuildBudgetConfig>;
     guildTokenUsage: Record<string, TokenUsage>;
     guildUsageHistory: Record<string, UsageHistoryEntry[]>;
+    // Per-user budget & usage
+    userBudgets: Record<string, UserBudgetConfig>;
+    userTokenUsage: Record<string, TokenUsage>;
+    userUsageHistory: Record<string, UsageHistoryEntry[]>;
 }
 
 export interface TokenUsage {
