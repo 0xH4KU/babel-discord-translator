@@ -8,6 +8,7 @@ services:
       - .env
     environment:
       NODE_ENV: production
+      BABEL_APP: guild
       DASHBOARD_PORT: 3000
       DASHBOARD_HOST: 0.0.0.0
       BABEL_DB_PATH: /app/data/babel.sqlite
