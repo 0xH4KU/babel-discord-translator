@@ -32,6 +32,20 @@ vi.mock('../src/store.js', () => ({
             delete budgets[guildId];
             return true;
         }),
+        getUserBudget: vi.fn((userId: string) => {
+            const budgets = mockData.userBudgets as Record<string, unknown>;
+            return budgets[userId] ?? null;
+        }),
+        setUserBudget: vi.fn((userId: string, dailyBudgetUsd: number) => {
+            const budgets = mockData.userBudgets as Record<string, unknown>;
+            budgets[userId] = { dailyBudgetUsd };
+        }),
+        clearUserBudget: vi.fn((userId: string) => {
+            const budgets = mockData.userBudgets as Record<string, unknown>;
+            if (!(userId in budgets)) return false;
+            delete budgets[userId];
+            return true;
+        }),
         getGuildDailyUsage: vi.fn((guildId: string) => {
             const usage = mockData.guildTokenUsage as Record<string, unknown>;
             return usage[guildId] ?? null;
@@ -47,6 +61,22 @@ vi.mock('../src/store.js', () => ({
         saveGuildUsageHistory: vi.fn((guildId: string, history: unknown) => {
             const allHistory = mockData.guildUsageHistory as Record<string, unknown>;
             allHistory[guildId] = history;
+        }),
+        getUserDailyUsage: vi.fn((userId: string) => {
+            const usage = mockData.userTokenUsage as Record<string, unknown>;
+            return usage[userId] ?? null;
+        }),
+        saveUserDailyUsage: vi.fn((userId: string, usage: unknown) => {
+            const allUsage = mockData.userTokenUsage as Record<string, unknown>;
+            allUsage[userId] = usage;
+        }),
+        getUserUsageHistory: vi.fn((userId: string) => {
+            const history = mockData.userUsageHistory as Record<string, unknown>;
+            return history[userId] ?? [];
+        }),
+        saveUserUsageHistory: vi.fn((userId: string, history: unknown) => {
+            const allHistory = mockData.userUsageHistory as Record<string, unknown>;
+            allHistory[userId] = history;
         }),
     },
 }));
@@ -68,7 +98,9 @@ describe('UsageTracker', () => {
         mockData.inputPricePerMillion = 0;
         mockData.outputPricePerMillion = 0;
         mockData.dailyBudgetUsd = 0;
+        mockData.defaultUserDailyBudgetUsd = 0;
         mockData.allowedGuildIds = [];
+        mockData.allowedUserIds = [];
         mockData.cooldownSeconds = 5;
         mockData.cacheMaxSize = 2000;
         mockData.setupComplete = true;
@@ -83,6 +115,9 @@ describe('UsageTracker', () => {
         mockData.guildBudgets = {};
         mockData.guildTokenUsage = {};
         mockData.guildUsageHistory = {};
+        mockData.userBudgets = {};
+        mockData.userTokenUsage = {};
+        mockData.userUsageHistory = {};
 
         mockedStore.getAll.mockClear();
         mockedStore.getConfigValues.mockClear();
@@ -505,6 +540,158 @@ describe('UsageTracker', () => {
                     estimatedInputTokens: 50_000,
                     estimatedOutputTokens: 100_000,
                     guildId: 'guild-estimate',
+                }),
+            ).toBe(true);
+        });
+    });
+
+    describe('Per-User Budget', () => {
+        it('should record both global and user usage', () => {
+            usage.record(100, 50, { userId: 'user-123' });
+
+            const global = mockData.tokenUsage as { inputTokens: number; requests: number };
+            expect(global.inputTokens).toBe(100);
+            expect(global.requests).toBe(1);
+
+            const userUsage = mockData.userTokenUsage as Record<
+                string,
+                { inputTokens: number; requests: number }
+            >;
+            expect(userUsage['user-123'].inputTokens).toBe(100);
+            expect(userUsage['user-123'].requests).toBe(1);
+        });
+
+        it('should keep legacy guild string scope working', () => {
+            usage.record(100, 50, 'guild-legacy');
+
+            const guildUsage = mockData.guildTokenUsage as Record<
+                string,
+                { inputTokens: number; requests: number }
+            >;
+            expect(guildUsage['guild-legacy'].inputTokens).toBe(100);
+            expect(guildUsage['guild-legacy'].requests).toBe(1);
+        });
+
+        it('should use user budget before default user budget', () => {
+            mockData.defaultUserDailyBudgetUsd = 10.0;
+            mockData.userBudgets = { 'user-123': { dailyBudgetUsd: 1.0 } };
+            mockData.inputPricePerMillion = 1.0;
+            mockData.outputPricePerMillion = 0;
+
+            usage.record(1_000_000, 0, { userId: 'user-123' });
+
+            expect(usage.isBudgetExceeded({ userId: 'user-123' })).toBe(true);
+        });
+
+        it('should use default user budget when no custom user budget exists', () => {
+            mockData.defaultUserDailyBudgetUsd = 1.0;
+            mockData.inputPricePerMillion = 1.0;
+            mockData.outputPricePerMillion = 0;
+
+            usage.record(1_000_000, 0, { userId: 'user-default' });
+
+            expect(usage.isBudgetExceeded({ userId: 'user-default' })).toBe(true);
+        });
+
+        it('should enforce the global budget as a user-install safety cap', () => {
+            mockData.dailyBudgetUsd = 1.0;
+            mockData.defaultUserDailyBudgetUsd = 10.0;
+            mockData.inputPricePerMillion = 1.0;
+            mockData.outputPricePerMillion = 0;
+
+            usage.record(1_000_000, 0, { userId: 'user-capped' });
+
+            expect(usage.isBudgetExceeded({ userId: 'user-capped' })).toBe(true);
+        });
+
+        it('should return user stats with user budget', () => {
+            mockData.userBudgets = { 'user-X': { dailyBudgetUsd: 2.0 } };
+            mockData.inputPricePerMillion = 1.0;
+            mockData.outputPricePerMillion = 0;
+
+            usage.record(500_000, 0, { userId: 'user-X' });
+
+            const stats = usage.getUserStats('user-X');
+            expect(stats.inputTokens).toBe(500_000);
+            expect(stats.requests).toBe(1);
+            expect(stats.totalCost).toBe(0.5);
+            expect(stats.dailyBudget).toBe(2.0);
+            expect(stats.budgetUsedPercent).toBe(25);
+        });
+
+        it('should archive user history on date change', () => {
+            const today = new Date().toISOString().slice(0, 10);
+            mockData.userTokenUsage = {
+                'user-A': { date: '2025-01-01', inputTokens: 300, outputTokens: 200, requests: 3 },
+            };
+
+            usage.ensureToday();
+
+            const userHistory = mockData.userUsageHistory as Record<
+                string,
+                Array<{ date: string; inputTokens: number }>
+            >;
+            expect(userHistory['user-A']).toHaveLength(1);
+            expect(userHistory['user-A'][0].date).toBe('2025-01-01');
+            expect(userHistory['user-A'][0].inputTokens).toBe(300);
+
+            const userUsage = mockData.userTokenUsage as Record<
+                string,
+                { date: string; inputTokens: number }
+            >;
+            expect(userUsage['user-A'].date).toBe(today);
+            expect(userUsage['user-A'].inputTokens).toBe(0);
+        });
+
+        it('should return user history with costs', () => {
+            mockData.inputPricePerMillion = 1.0;
+            mockData.outputPricePerMillion = 2.0;
+            mockData.userUsageHistory = {
+                'user-Y': [
+                    {
+                        date: '2025-01-01',
+                        inputTokens: 1_000_000,
+                        outputTokens: 500_000,
+                        requests: 5,
+                    },
+                ],
+            };
+
+            const history = usage.getUserHistory('user-Y');
+            expect(history).toHaveLength(1);
+            expect(history[0].cost).toBe(2.0);
+            expect(history[0].totalTokens).toBe(1_500_000);
+        });
+
+        it('should block estimated requests that would exceed a user budget', () => {
+            mockData.userBudgets = { 'user-estimate': { dailyBudgetUsd: 1.0 } };
+            mockData.inputPricePerMillion = 1.0;
+            mockData.outputPricePerMillion = 1.0;
+
+            usage.record(900_000, 0, { userId: 'user-estimate' });
+
+            expect(
+                usage.wouldExceedBudget({
+                    estimatedInputTokens: 50_000,
+                    estimatedOutputTokens: 100_000,
+                    userId: 'user-estimate',
+                }),
+            ).toBe(true);
+        });
+
+        it('should block estimated user requests that would exceed the global safety cap', () => {
+            mockData.dailyBudgetUsd = 1.0;
+            mockData.defaultUserDailyBudgetUsd = 10.0;
+            mockData.inputPricePerMillion = 1.0;
+            mockData.outputPricePerMillion = 0;
+
+            usage.record(600_000, 0, { userId: 'user-estimate-global' });
+
+            expect(
+                usage.wouldExceedBudget({
+                    estimatedInputTokens: 400_000,
+                    estimatedOutputTokens: 0,
+                    userId: 'user-estimate-global',
                 }),
             ).toBe(true);
         });
