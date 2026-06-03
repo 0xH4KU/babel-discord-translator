@@ -4,6 +4,8 @@ import {
     cloneGuildDailyUsage,
     cloneGuildUsageHistory,
     cloneTokenUsage,
+    cloneUserDailyUsage,
+    cloneUserUsageHistory,
     cloneUsageHistory,
 } from '../../repositories/store-data-normalizer.js';
 
@@ -20,6 +22,14 @@ export interface UsageRepository {
     saveGuildUsageHistory(guildId: string, history: UsageHistoryEntry[]): void;
     getAllGuildUsageHistory(): Record<string, UsageHistoryEntry[]>;
     saveAllGuildUsageHistory(history: Record<string, UsageHistoryEntry[]>): void;
+    getUserDailyUsage(userId: string): TokenUsage | null;
+    saveUserDailyUsage(userId: string, usage: TokenUsage): void;
+    getAllUserDailyUsage(): Record<string, TokenUsage>;
+    saveAllUserDailyUsage(usage: Record<string, TokenUsage>): void;
+    getUserUsageHistory(userId: string): UsageHistoryEntry[];
+    saveUserUsageHistory(userId: string, history: UsageHistoryEntry[]): void;
+    getAllUserUsageHistory(): Record<string, UsageHistoryEntry[]>;
+    saveAllUserUsageHistory(history: Record<string, UsageHistoryEntry[]>): void;
 }
 
 class StoreBackedUsageRepository implements UsageRepository {
@@ -71,12 +81,44 @@ class StoreBackedUsageRepository implements UsageRepository {
     saveAllGuildUsageHistory(history: Record<string, UsageHistoryEntry[]>): void {
         store.set('guildUsageHistory', cloneGuildUsageHistory(history));
     }
+
+    getUserDailyUsage(userId: string): TokenUsage | null {
+        return cloneTokenUsage(store.getUserDailyUsage(userId));
+    }
+
+    saveUserDailyUsage(userId: string, usage: TokenUsage): void {
+        store.saveUserDailyUsage(userId, normalizeTokenUsage(usage, 'user'));
+    }
+
+    getAllUserDailyUsage(): Record<string, TokenUsage> {
+        return cloneUserDailyUsage(store.get('userTokenUsage') ?? {});
+    }
+
+    saveAllUserDailyUsage(usage: Record<string, TokenUsage>): void {
+        store.set('userTokenUsage', cloneUserDailyUsage(usage));
+    }
+
+    getUserUsageHistory(userId: string): UsageHistoryEntry[] {
+        return cloneUsageHistory(store.getUserUsageHistory(userId));
+    }
+
+    saveUserUsageHistory(userId: string, history: UsageHistoryEntry[]): void {
+        store.saveUserUsageHistory(userId, cloneUsageHistory(history));
+    }
+
+    getAllUserUsageHistory(): Record<string, UsageHistoryEntry[]> {
+        return cloneUserUsageHistory(store.get('userUsageHistory') ?? {});
+    }
+
+    saveAllUserUsageHistory(history: Record<string, UsageHistoryEntry[]>): void {
+        store.set('userUsageHistory', cloneUserUsageHistory(history));
+    }
 }
 
-function normalizeTokenUsage(usage: TokenUsage): TokenUsage {
+function normalizeTokenUsage(usage: TokenUsage, scopeName = 'guild'): TokenUsage {
     const cloned = cloneTokenUsage(usage);
     if (!cloned) {
-        throw new Error('Cannot save empty guild usage entry');
+        throw new Error(`Cannot save empty ${scopeName} usage entry`);
     }
     return cloned;
 }

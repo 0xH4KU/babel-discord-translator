@@ -104,6 +104,38 @@ const MIGRATIONS: Migration[] = [
         },
     },
     {
+        id: 3,
+        name: 'user_budgets_and_usage',
+        up(db) {
+            db.exec(`
+                CREATE TABLE IF NOT EXISTS user_budgets (
+                    user_id TEXT PRIMARY KEY,
+                    daily_budget_usd REAL NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS user_daily_usage (
+                    user_id TEXT PRIMARY KEY,
+                    date TEXT NOT NULL,
+                    input_tokens INTEGER NOT NULL,
+                    output_tokens INTEGER NOT NULL,
+                    requests INTEGER NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS user_usage_history (
+                    user_id TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    input_tokens INTEGER NOT NULL,
+                    output_tokens INTEGER NOT NULL,
+                    requests INTEGER NOT NULL,
+                    PRIMARY KEY (user_id, date)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_user_usage_history_lookup
+                    ON user_usage_history (user_id, date);
+            `);
+        },
+    },
+    {
         id: 4,
         name: 'discord_user_profiles',
         up(db) {
@@ -117,6 +149,23 @@ const MIGRATIONS: Migration[] = [
                     fetched_at TEXT NOT NULL,
                     last_seen_at TEXT
                 );
+            `);
+        },
+    },
+    {
+        id: 5,
+        name: 'pending_user_install_owners',
+        up(db) {
+            db.exec(`
+                CREATE TABLE IF NOT EXISTS pending_user_install_owners (
+                    user_id TEXT PRIMARY KEY,
+                    first_seen_at TEXT NOT NULL,
+                    last_seen_at TEXT NOT NULL,
+                    source TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_pending_user_install_owners_last_seen
+                    ON pending_user_install_owners (last_seen_at);
             `);
         },
     },
@@ -221,7 +270,11 @@ const STORE_TABLES = new Set([
     'usage_history',
     'guild_usage_history',
     'guild_glossary',
+    'user_budgets',
+    'user_daily_usage',
+    'user_usage_history',
     'discord_user_profiles',
+    'pending_user_install_owners',
 ]);
 
 export function isSqliteStoreEmpty(db: DatabaseSync): boolean {
