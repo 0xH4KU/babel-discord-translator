@@ -298,13 +298,15 @@
     padding: 1rem;
 }
 
-.add-guild-row {
+.add-guild-row,
+.access-add-row {
     display: flex;
     gap: 0.5rem;
     margin-top: 0.75rem;
 }
 
-.add-guild-row input {
+.add-guild-row input,
+.access-add-row input {
     flex: 1;
     min-width: 0;
     padding: 0.65rem 0.85rem;
@@ -318,12 +320,29 @@
     transition: border-color 0.2s;
 }
 
-.add-guild-row input:focus {
+.add-guild-row input:focus,
+.access-add-row input:focus {
     border-color: var(--accent);
 }
 
-.add-guild-row input::placeholder {
+.add-guild-row input::placeholder,
+.access-add-row input::placeholder {
     color: #3a3a4a;
+}
+
+.user-access-list {
+    margin-bottom: 1rem;
+}
+
+.user-access-item {
+    min-height: 44px;
+}
+
+.user-access-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    white-space: nowrap;
 }
 
 /* --- Prompt Editor --- */

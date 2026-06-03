@@ -326,8 +326,22 @@
                 <div class="settings-section" data-capability="pendingUserInstallOwners" hidden>
                     <h3>User Access</h3>
                     <div class="desc-text">
-                        User-install owners appear here when they try Babel Pocket before being
-                        added to the allowed user list.
+                        Only <strong>enabled</strong> user-install owners can use Babel Pocket.
+                        New users are disabled by default and appear as pending until approved.
+                    </div>
+                    <div id="allowed-users-count" class="prefs-count">Loading allowed users...</div>
+                    <div id="allowed-users-container">
+                        <div class="empty-state">Loading allowed users...</div>
+                    </div>
+                    <div class="access-add-row">
+                        <input
+                            type="text"
+                            id="add-user-input"
+                            placeholder="Paste a User ID to add manually"
+                        />
+                        <button class="btn btn-primary btn-sm" onclick="addManualUser()">
+                            Add
+                        </button>
                     </div>
                     <div id="pending-users-count" class="prefs-count">Loading...</div>
                     <div id="pending-users-container">
@@ -434,6 +448,19 @@
                         class="btn btn-primary"
                         data-access-save-button
                         onclick="saveGuildWhitelist()"
+                        disabled
+                    >
+                        Save Changes
+                    </button>
+                </div>
+                <div class="save-bar" data-capability="pendingUserInstallOwners">
+                    <span class="save-status" data-user-access-save-status
+                        >No unsaved user access changes</span
+                    >
+                    <button
+                        class="btn btn-primary"
+                        data-user-access-save-button
+                        onclick="saveUserAllowlist()"
                         disabled
                     >
                         Save Changes

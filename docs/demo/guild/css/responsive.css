@@ -113,11 +113,13 @@
         width: 100%;
     }
 
-    .add-guild-row {
+    .add-guild-row,
+    .access-add-row {
         flex-direction: column;
     }
 
-    .add-guild-row input {
+    .add-guild-row input,
+    .access-add-row input {
         width: 100%;
     }
 

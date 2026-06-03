@@ -30,6 +30,20 @@ describe('dashboard static assets', () => {
         expect(accessJs).toContain("api('/access/pending-users')");
     });
 
+    it('gives Babel Pocket operators button-based user approval controls', () => {
+        const html = readFileSync('src/public/index.html', 'utf-8');
+        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+
+        expect(html).toContain('id="allowed-users-container"');
+        expect(html).toContain('id="add-user-input"');
+        expect(html).toContain('data-user-access-save-status');
+        expect(html).toContain('data-user-access-save-button');
+        expect(accessJs).toContain('accessAllowedUserIdsDraft');
+        expect(accessJs).toContain('approvePendingUser');
+        expect(accessJs).toContain('saveUserAllowlist');
+        expect(accessJs).toContain('body: JSON.stringify({ allowedUserIds })');
+    });
+
     it('labels overview usage scope from the active app profile instead of hard-coded servers', () => {
         const dashboardJs = readFileSync('src/public/js/dashboard.js', 'utf-8');
 

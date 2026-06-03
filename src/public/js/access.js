@@ -10,17 +10,36 @@ let manualGuildIds = [];
 let accessAllowedGuildIdsDraft = [];
 let accessWhitelistDirty = false;
 let accessWhitelistLoaded = false;
+let accessAllowedUserIdsDraft = [];
+let accessUserAllowlistDirty = false;
+let accessUserAllowlistLoaded = false;
 let glossaryGuildId = '';
 let glossaryEntries = [];
 let pendingUsers = [];
 
-function normalizeGuildIds(ids) {
+function normalizeNumericIds(ids) {
     return [...new Set((ids || []).map((id) => String(id).trim()).filter(Boolean))];
+}
+
+function normalizeGuildIds(ids) {
+    return normalizeNumericIds(ids);
+}
+
+function normalizeUserIds(ids) {
+    return normalizeNumericIds(ids);
 }
 
 function sameGuildIds(a, b) {
     const left = normalizeGuildIds(a).sort();
     const right = normalizeGuildIds(b).sort();
+
+    if (left.length !== right.length) return false;
+    return left.every((id, index) => id === right[index]);
+}
+
+function sameUserIds(a, b) {
+    const left = normalizeUserIds(a).sort();
+    const right = normalizeUserIds(b).sort();
 
     if (left.length !== right.length) return false;
     return left.every((id, index) => id === right[index]);
@@ -41,6 +60,21 @@ function updateAccessSaveState() {
     });
 }
 
+function updateUserAccessSaveState() {
+    const status = accessUserAllowlistDirty
+        ? `${accessAllowedUserIdsDraft.length} enabled user(s) pending save`
+        : 'No unsaved user access changes';
+
+    document.querySelectorAll('[data-user-access-save-status]').forEach((node) => {
+        node.textContent = status;
+        node.classList.toggle('dirty', accessUserAllowlistDirty);
+    });
+
+    document.querySelectorAll('[data-user-access-save-button]').forEach((button) => {
+        button.disabled = !accessUserAllowlistDirty;
+    });
+}
+
 function setAccessWhitelistDraft(allowedGuildIds) {
     accessAllowedGuildIdsDraft = normalizeGuildIds(allowedGuildIds);
     accessWhitelistDirty = !sameGuildIds(
@@ -48,6 +82,15 @@ function setAccessWhitelistDraft(allowedGuildIds) {
         currentConfig.allowedGuildIds || [],
     );
     updateAccessSaveState();
+}
+
+function setUserAllowlistDraft(allowedUserIds) {
+    accessAllowedUserIdsDraft = normalizeUserIds(allowedUserIds);
+    accessUserAllowlistDirty = !sameUserIds(
+        accessAllowedUserIdsDraft,
+        currentConfig.allowedUserIds || [],
+    );
+    updateUserAccessSaveState();
 }
 
 async function loadAccess() {
@@ -72,10 +115,15 @@ async function loadAccess() {
         ]);
         currentConfig = await cfgRes.json();
         currentConfig.allowedGuildIds = normalizeGuildIds(currentConfig.allowedGuildIds || []);
+        currentConfig.allowedUserIds = normalizeUserIds(currentConfig.allowedUserIds || []);
         if (!accessWhitelistLoaded || !accessWhitelistDirty) {
             accessAllowedGuildIdsDraft = [...currentConfig.allowedGuildIds];
         }
+        if (!accessUserAllowlistLoaded || !accessUserAllowlistDirty) {
+            accessAllowedUserIdsDraft = [...currentConfig.allowedUserIds];
+        }
         accessWhitelistLoaded = true;
+        accessUserAllowlistLoaded = true;
         allGuilds = guildRes ? await guildRes.json() : [];
         guildBudgetData = budgetRes ? await budgetRes.json() : {};
         if (guildAccess) {
@@ -87,9 +135,11 @@ async function loadAccess() {
         if (pendingUserInstallOwners) {
             const data = await pendingUsersRes.json();
             pendingUsers = data.users || [];
+            renderAllowedUsers();
             renderPendingUsers(data.count ?? pendingUsers.length);
         }
         updateAccessSaveState();
+        updateUserAccessSaveState();
         loadUserPrefs();
     } catch {}
 }
@@ -111,6 +161,28 @@ async function saveGuildWhitelist() {
         updateAccessSaveState();
         renderGuilds();
         showToast('Access settings saved!');
+    } else {
+        showToast('Save failed', true);
+    }
+}
+
+async function saveUserAllowlist() {
+    if (!hasDashboardCapability('pendingUserInstallOwners')) return;
+
+    const allowedUserIds = normalizeUserIds(accessAllowedUserIdsDraft);
+
+    const res = await api('/config', {
+        method: 'POST',
+        body: JSON.stringify({ allowedUserIds }),
+    });
+
+    if (res.ok) {
+        currentConfig.allowedUserIds = [...allowedUserIds];
+        accessAllowedUserIdsDraft = [...allowedUserIds];
+        accessUserAllowlistDirty = false;
+        updateUserAccessSaveState();
+        renderAllowedUsers();
+        showToast('User access settings saved!');
     } else {
         showToast('Save failed', true);
     }
@@ -510,22 +582,61 @@ async function deleteGlossaryEntry(entryId) {
 
 // ===== Pending User Installs =====
 
+function renderAllowedUsers() {
+    if (!hasDashboardCapability('pendingUserInstallOwners')) return;
+
+    const container = document.getElementById('allowed-users-container');
+    const countEl = document.getElementById('allowed-users-count');
+    if (!container) return;
+
+    const allowed = accessAllowedUserIdsDraft;
+
+    if (countEl) {
+        countEl.textContent = `${allowed.length} enabled user(s)`;
+    }
+
+    if (allowed.length === 0) {
+        container.innerHTML =
+            '<div class="empty-state">No users enabled yet. Approve a pending user or paste a User ID below.</div>';
+        return;
+    }
+
+    const rows = allowed
+        .map(
+            (userId) => `<div class="guild-item user-access-item">
+      <span class="guild-name mono">${escapeHtml(userId)}</span>
+      <span class="guild-members">enabled</span>
+      <label class="toggle"><input type="checkbox" data-user-id="${escapeHtml(userId)}" onchange="toggleUserAllowed('${escapeHtml(userId)}', this.checked)" checked><span class="slider"></span></label>
+    </div>`,
+        )
+        .join('');
+
+    container.innerHTML = `<div class="guild-list user-access-list">${rows}</div>`;
+}
+
 function renderPendingUsers(count = pendingUsers.length) {
+    if (!hasDashboardCapability('pendingUserInstallOwners')) return;
+
     const container = document.getElementById('pending-users-container');
     const countEl = document.getElementById('pending-users-count');
     if (!container) return;
 
+    const visiblePendingUsers = pendingUsers.filter(
+        (user) => !accessAllowedUserIdsDraft.includes(String(user.userId)),
+    );
+    const visibleCount = Math.min(count, visiblePendingUsers.length);
+
     if (countEl) {
-        countEl.textContent = `${count} pending user(s)`;
+        countEl.textContent = `${visibleCount} pending user(s)`;
     }
 
-    if (pendingUsers.length === 0) {
+    if (visiblePendingUsers.length === 0) {
         container.innerHTML =
             '<div class="empty-state">No pending user installs. New unauthorized user-installs will appear here.</div>';
         return;
     }
 
-    const rows = pendingUsers
+    const rows = visiblePendingUsers
         .map((user) => {
             const firstSeen = user.firstSeenAt
                 ? new Date(user.firstSeenAt).toLocaleString()
@@ -538,7 +649,10 @@ function renderPendingUsers(count = pendingUsers.length) {
       <td class="mono">${escapeHtml(user.userId)}</td>
       <td>${escapeHtml(firstSeen)}</td>
       <td>${escapeHtml(lastSeen)}</td>
-      <td><button class="btn-danger" onclick="clearPendingUser('${escapeHtml(user.userId)}')">Dismiss</button></td>
+      <td class="user-access-actions">
+        <button class="btn btn-primary btn-xs" onclick="approvePendingUser('${escapeHtml(user.userId)}')">Approve</button>
+        <button class="btn-danger" onclick="clearPendingUser('${escapeHtml(user.userId)}')">Dismiss</button>
+      </td>
     </tr>`;
         })
         .join('');
@@ -547,6 +661,62 @@ function renderPendingUsers(count = pendingUsers.length) {
       <thead><tr><th>User ID</th><th>First Seen</th><th>Last Seen</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>`;
+}
+
+function toggleUserAllowed(userId, checked) {
+    if (!hasDashboardCapability('pendingUserInstallOwners')) return;
+
+    const nextAllowed = new Set(accessAllowedUserIdsDraft);
+
+    if (checked) {
+        nextAllowed.add(userId);
+    } else {
+        nextAllowed.delete(userId);
+    }
+
+    setUserAllowlistDraft([...nextAllowed]);
+    renderAllowedUsers();
+    renderPendingUsers();
+}
+
+function approvePendingUser(userId) {
+    if (!hasDashboardCapability('pendingUserInstallOwners')) return;
+
+    const nextAllowed = new Set(accessAllowedUserIdsDraft);
+    if (nextAllowed.has(userId)) {
+        showToast('User already in access draft');
+        return;
+    }
+
+    nextAllowed.add(userId);
+    setUserAllowlistDraft([...nextAllowed]);
+    renderAllowedUsers();
+    renderPendingUsers();
+    showToast('User approved — click Save to apply');
+}
+
+function addManualUser() {
+    if (!hasDashboardCapability('pendingUserInstallOwners')) return;
+
+    const input = document.getElementById('add-user-input');
+    const id = input.value.trim();
+    if (!id || !/^\d+$/.test(id)) {
+        showToast('Please enter a valid User ID (numbers only)', true);
+        return;
+    }
+
+    const nextAllowed = new Set(accessAllowedUserIdsDraft);
+    if (nextAllowed.has(id)) {
+        showToast('User already in access draft');
+        return;
+    }
+
+    nextAllowed.add(id);
+    setUserAllowlistDraft([...nextAllowed]);
+    input.value = '';
+    renderAllowedUsers();
+    renderPendingUsers();
+    showToast('User added — click Save to apply');
 }
 
 async function clearPendingUser(userId) {
