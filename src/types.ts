@@ -14,6 +14,8 @@ import type { TranslationRuntimeLimiter } from './modules/translation/translatio
 import type { TranslationWebhookService } from './modules/translation/webhook-service.js';
 import type { VersionMetadataWithUpdate } from './shared/version.js';
 import type { DiscordUserProfileRepository } from './modules/dashboard/discord-user-profile-repository.js';
+import type { PendingUserInstallOwnerRepository } from './modules/dashboard/pending-user-install-owner-repository.js';
+import type { AppProfile } from './apps/app-profile.js';
 
 // --- Provider ---
 
@@ -218,6 +220,8 @@ export interface DashboardDeps {
     versionCheck?: (options?: { forceRefresh?: boolean }) => Promise<VersionMetadataWithUpdate>;
     sessionRepository?: SessionRepository;
     userProfileRepository?: DiscordUserProfileRepository;
+    profile?: AppProfile;
+    pendingUserInstallOwnerRepository?: PendingUserInstallOwnerRepository;
 }
 
 // --- Usage ---

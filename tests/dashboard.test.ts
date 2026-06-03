@@ -24,12 +24,14 @@ vi.mock('../src/store.js', () => {
         openaiModel: '',
         translationProvider: 'vertex',
         allowedGuildIds: [],
+        allowedUserIds: [],
         cooldownSeconds: 5,
         cacheMaxSize: 2000,
         setupComplete: true,
         inputPricePerMillion: 0,
         outputPricePerMillion: 0,
         dailyBudgetUsd: 0,
+        defaultUserDailyBudgetUsd: 0,
         translationPrompt: '',
         userLanguagePrefs: { user1: 'ja', user2: 'ko' },
         maxInputLength: 2000,
@@ -44,6 +46,9 @@ vi.mock('../src/store.js', () => {
         guildBudgets: {},
         guildTokenUsage: {},
         guildUsageHistory: {},
+        userBudgets: {},
+        userTokenUsage: {},
+        userUsageHistory: {},
     };
     const glossary: Record<
         string,
@@ -175,6 +180,7 @@ import { TranslationRuntimeLimiter } from '../src/translation-runtime-limiter.js
 import { _test as healthTest } from '../src/shared/health.js';
 import { createSqliteDatabase } from '../src/persistence/sqlite-database.js';
 import { DiscordUserProfileRepository } from '../src/modules/dashboard/discord-user-profile-repository.js';
+import { BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE } from '../src/apps/app-profile.js';
 import type { Client } from 'discord.js';
 import type { DatabaseSync } from 'node:sqlite';
 
@@ -266,6 +272,19 @@ function requestText(
         req.on('error', reject);
         req.end();
     });
+}
+
+function createMinimalClient(): Client {
+    return {
+        user: null,
+        guilds: {
+            cache: {
+                size: 0,
+                map: () => [],
+                [Symbol.iterator]: function* () {},
+            },
+        },
+    } as unknown as Client;
 }
 
 describe('Dashboard API', () => {
@@ -1308,6 +1327,68 @@ describe('Dashboard API', () => {
 
         expect(res.status).toBe(400);
         expect(res.body).toEqual({ error: 'Glossary source and target are required' });
+    });
+
+    it('should not expose guild glossary routes for Babel Pocket', async () => {
+        const pocketApp = createDashboardApp({
+            cache,
+            cooldown: new CooldownManager(5),
+            log,
+            client: createMinimalClient(),
+            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
+            metrics,
+            runtimeLimiter,
+            profile: BABEL_POCKET_PROFILE,
+            sessionRepository: new InMemorySessionRepository(),
+            userProfileRepository,
+        });
+        const pocketServer = startDashboardServer(pocketApp, 0);
+
+        try {
+            const login = await request(pocketServer, 'POST', '/api/login', {
+                body: { password: 'test-pass-123' },
+            });
+            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
+            const res = await requestText(pocketServer, 'GET', '/api/guild-glossary/guild-1', {
+                cookie,
+            });
+
+            expect(res.status).toBe(404);
+        } finally {
+            stopDashboardApp(pocketApp);
+            pocketServer.close();
+        }
+    });
+
+    it('should not expose pending user-install owners for Babel Guild', async () => {
+        const guildApp = createDashboardApp({
+            cache,
+            cooldown: new CooldownManager(5),
+            log,
+            client: createMinimalClient(),
+            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
+            metrics,
+            runtimeLimiter,
+            profile: BABEL_GUILD_PROFILE,
+            sessionRepository: new InMemorySessionRepository(),
+            userProfileRepository,
+        });
+        const guildServer = startDashboardServer(guildApp, 0);
+
+        try {
+            const login = await request(guildServer, 'POST', '/api/login', {
+                body: { password: 'test-pass-123' },
+            });
+            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
+            const res = await requestText(guildServer, 'GET', '/api/access/pending-users', {
+                cookie,
+            });
+
+            expect(res.status).toBe(404);
+        } finally {
+            stopDashboardApp(guildApp);
+            guildServer.close();
+        }
     });
 
     // --- Logout ---

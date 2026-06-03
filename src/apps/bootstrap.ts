@@ -114,6 +114,7 @@ export async function startBabelApp(profile: AppProfile): Promise<void> {
             getStats: () => stats,
             metrics,
             runtimeLimiter,
+            profile,
         });
         dashboardServer = startDashboardServer(
             dashboardApp,

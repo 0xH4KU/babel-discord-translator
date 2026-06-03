@@ -28,6 +28,9 @@ import { dashboardMessages } from '../../shared/messages/dashboard-messages.js';
 import { getVersionMetadata, getVersionMetadataWithUpdate } from '../../shared/version.js';
 import { DiscordUserProfileRepository } from './discord-user-profile-repository.js';
 import { resolveDiscordUserProfiles } from './discord-user-profile-resolver.js';
+import { BABEL_GUILD_PROFILE } from '../../apps/app-profile.js';
+import { getDashboardCapabilities } from './capabilities.js';
+import { PendingUserInstallOwnerRepository } from './pending-user-install-owner-repository.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import type { DashboardDeps, StoreData, TranslationProviderMode } from '../../types.js';
@@ -600,9 +603,12 @@ export function createDashboardApp({
     versionCheck = getVersionMetadataWithUpdate,
     sessionRepository,
     userProfileRepository = new DiscordUserProfileRepository(),
+    profile = BABEL_GUILD_PROFILE,
+    pendingUserInstallOwnerRepository = new PendingUserInstallOwnerRepository(),
     healthProbeCacheTtlMs = 5_000,
 }: DashboardDeps): express.Express {
     const app = express();
+    const capabilities = getDashboardCapabilities(profile);
     const config = getConfig();
     const auth = createDashboardAuth({
         password: config.dashboardPassword,
@@ -943,68 +949,97 @@ export function createDashboardApp({
         },
     );
 
-    app.get('/api/guild-glossary/:guildId', auth.requireAuth, (req: Request, res: Response) => {
-        const guildId = String(req.params.guildId ?? '').trim();
-        if (!guildId) {
-            res.status(400).json({ error: 'Guild id is required' });
-            return;
-        }
-
-        const entries = guildGlossaryRepository.listEntries(guildId);
-        res.json({ entries, count: entries.length });
-    });
-
-    app.post(
-        '/api/guild-glossary/:guildId',
-        auth.requireAuth,
-        auth.requireCsrf,
-        (req: Request, res: Response) => {
+    if (capabilities.guildGlossary) {
+        app.get('/api/guild-glossary/:guildId', auth.requireAuth, (req: Request, res: Response) => {
             const guildId = String(req.params.guildId ?? '').trim();
             if (!guildId) {
                 res.status(400).json({ error: 'Guild id is required' });
                 return;
             }
 
-            const input = sanitizeGlossaryInput(req.body ?? {});
-            if (!input.ok) {
-                res.status(400).json({ error: input.error });
-                return;
-            }
+            const entries = guildGlossaryRepository.listEntries(guildId);
+            res.json({ entries, count: entries.length });
+        });
 
-            try {
-                const entry = guildGlossaryRepository.upsertEntry(guildId, input.value);
+        app.post(
+            '/api/guild-glossary/:guildId',
+            auth.requireAuth,
+            auth.requireCsrf,
+            (req: Request, res: Response) => {
+                const guildId = String(req.params.guildId ?? '').trim();
+                if (!guildId) {
+                    res.status(400).json({ error: 'Guild id is required' });
+                    return;
+                }
+
+                const input = sanitizeGlossaryInput(req.body ?? {});
+                if (!input.ok) {
+                    res.status(400).json({ error: input.error });
+                    return;
+                }
+
+                try {
+                    const entry = guildGlossaryRepository.upsertEntry(guildId, input.value);
+                    cache.clear();
+                    res.json({ ok: true, entry, cacheCleared: true });
+                } catch (error) {
+                    res.status(404).json({ error: (error as Error).message });
+                }
+            },
+        );
+
+        app.delete(
+            '/api/guild-glossary/:guildId/:entryId',
+            auth.requireAuth,
+            auth.requireCsrf,
+            (req: Request, res: Response) => {
+                const guildId = String(req.params.guildId ?? '').trim();
+                const entryId = Number.parseInt(String(req.params.entryId ?? ''), 10);
+
+                if (!guildId || !Number.isInteger(entryId) || entryId < 1) {
+                    res.status(400).json({
+                        error: 'Valid guild id and glossary entry id are required',
+                    });
+                    return;
+                }
+
+                if (!guildGlossaryRepository.deleteEntry(guildId, entryId)) {
+                    res.status(404).json({ error: 'Glossary entry not found' });
+                    return;
+                }
+
                 cache.clear();
-                res.json({ ok: true, entry, cacheCleared: true });
-            } catch (error) {
-                res.status(404).json({ error: (error as Error).message });
-            }
-        },
-    );
+                res.json({ ok: true, deleted: entryId });
+            },
+        );
+    }
 
-    app.delete(
-        '/api/guild-glossary/:guildId/:entryId',
-        auth.requireAuth,
-        auth.requireCsrf,
-        (req: Request, res: Response) => {
-            const guildId = String(req.params.guildId ?? '').trim();
-            const entryId = Number.parseInt(String(req.params.entryId ?? ''), 10);
+    if (capabilities.pendingUserInstallOwners) {
+        app.get('/api/access/pending-users', auth.requireAuth, (_req: Request, res: Response) => {
+            const users = pendingUserInstallOwnerRepository.list();
+            res.json({ users, count: users.length });
+        });
 
-            if (!guildId || !Number.isInteger(entryId) || entryId < 1) {
-                res.status(400).json({
-                    error: 'Valid guild id and glossary entry id are required',
-                });
-                return;
-            }
+        app.delete(
+            '/api/access/pending-users/:userId',
+            auth.requireAuth,
+            auth.requireCsrf,
+            (req: Request, res: Response) => {
+                const userId = String(req.params.userId ?? '').trim();
+                if (!userId) {
+                    res.status(400).json({ error: 'User id is required' });
+                    return;
+                }
 
-            if (!guildGlossaryRepository.deleteEntry(guildId, entryId)) {
-                res.status(404).json({ error: 'Glossary entry not found' });
-                return;
-            }
+                if (!pendingUserInstallOwnerRepository.clear(userId)) {
+                    res.status(404).json({ error: 'Pending user not found' });
+                    return;
+                }
 
-            cache.clear();
-            res.json({ ok: true, deleted: entryId });
-        },
-    );
+                res.json({ ok: true, deleted: userId });
+            },
+        );
+    }
 
     app.get('/api/logs', auth.requireAuth, (req: Request, res: Response) => {
         const count = Math.min(parseInt(req.query.count as string) || 50, 200);
