@@ -12,6 +12,7 @@ import { checkVertexAiHealth } from '../../infra/vertex-ai-client.js';
 import { checkOpenAiHealth } from '../../infra/openai-client.js';
 import { configRepository } from '../config/config-repository.js';
 import { guildBudgetRepository } from '../usage/guild-budget-repository.js';
+import { userBudgetRepository } from '../usage/user-budget-repository.js';
 import { userPreferenceRepository } from '../translation/user-preference-repository.js';
 import { guildGlossaryRepository } from '../translation/guild-glossary-repository.js';
 import { applyConfigUpdateEffects } from '../config/config-runtime-effects.js';
@@ -424,6 +425,78 @@ export function createDashboardApp({
         res.json(result);
     });
 
+    if (capabilities.userAccess) {
+        app.get(
+            '/api/user-budgets',
+            auth.requireAuth,
+            asyncHandler(async (_req: Request, res: Response) => {
+                const userBudgets = userBudgetRepository.listBudgets();
+                const cfg = configRepository.getDashboardConfig();
+                const allowedUserIds = new Set(cfg.allowedUserIds);
+                const pendingUserIds = new Set(pendingUserInstallOwnerRepository.listUserIds());
+                const userIds = [
+                    ...new Set([
+                        ...cfg.allowedUserIds,
+                        ...pendingUserIds,
+                        ...Object.keys(userBudgets),
+                    ]),
+                ];
+                const result: Record<
+                    string,
+                    { budget: number; isCustom: boolean; allowed: boolean; pending: boolean }
+                > = {};
+
+                for (const userId of userIds) {
+                    const customBudget = userBudgets[userId];
+                    result[userId] = {
+                        budget: customBudget?.dailyBudgetUsd ?? cfg.defaultUserDailyBudgetUsd,
+                        isCustom: customBudget !== undefined,
+                        allowed: allowedUserIds.has(userId),
+                        pending: pendingUserIds.has(userId) && !allowedUserIds.has(userId),
+                    };
+                }
+
+                const profiles = await resolveDiscordUserProfiles({
+                    client,
+                    repository: userProfileRepository,
+                    userIds: Object.keys(result),
+                });
+
+                res.json({ budgets: result, profiles });
+            }),
+        );
+
+        app.post(
+            '/api/user-budgets/:userId',
+            auth.requireAuth,
+            auth.requireCsrf,
+            (req: Request, res: Response) => {
+                const userId = String(req.params.userId ?? '').trim();
+                const { dailyBudgetUsd } = req.body;
+
+                if (!userId) {
+                    res.status(400).json({ error: 'User id is required' });
+                    return;
+                }
+
+                if (dailyBudgetUsd === null || dailyBudgetUsd === undefined) {
+                    userBudgetRepository.clearBudget(userId);
+                    res.json({ ok: true, mode: 'default' });
+                    return;
+                }
+
+                const v = parseFloat(String(dailyBudgetUsd));
+                if (isNaN(v) || v < 0) {
+                    res.status(400).json({ error: dashboardMessages.validation.dailyBudgetUsd });
+                    return;
+                }
+
+                userBudgetRepository.setBudget(userId, v);
+                res.json({ ok: true, budget: v });
+            },
+        );
+    }
+
     app.post(
         '/api/guild-budgets/:guildId',
         auth.requireAuth,
@@ -510,33 +583,6 @@ export function createDashboardApp({
 
                 cache.clear();
                 res.json({ ok: true, deleted: entryId });
-            },
-        );
-    }
-
-    if (capabilities.pendingUserInstallOwners) {
-        app.get('/api/access/pending-users', auth.requireAuth, (_req: Request, res: Response) => {
-            const users = pendingUserInstallOwnerRepository.list();
-            res.json({ users, count: users.length });
-        });
-
-        app.delete(
-            '/api/access/pending-users/:userId',
-            auth.requireAuth,
-            auth.requireCsrf,
-            (req: Request, res: Response) => {
-                const userId = String(req.params.userId ?? '').trim();
-                if (!userId) {
-                    res.status(400).json({ error: 'User id is required' });
-                    return;
-                }
-
-                if (!pendingUserInstallOwnerRepository.clear(userId)) {
-                    res.status(404).json({ error: 'Pending user not found' });
-                    return;
-                }
-
-                res.json({ ok: true, deleted: userId });
             },
         );
     }

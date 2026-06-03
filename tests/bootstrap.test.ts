@@ -32,6 +32,11 @@ const mocks = vi.hoisted(() => {
         })),
         createGracefulShutdownHandler: vi.fn(() => vi.fn(async () => undefined)),
         closeSqliteDatabase: vi.fn(),
+        getSqliteDatabase: vi.fn(() => ({
+            prepare: vi.fn(() => ({
+                all: vi.fn(() => []),
+            })),
+        })),
     };
 });
 
@@ -97,6 +102,7 @@ vi.mock('../src/shared/shutdown.js', () => ({
 
 vi.mock('../src/persistence/sqlite-database.js', () => ({
     closeSqliteDatabase: mocks.closeSqliteDatabase,
+    getSqliteDatabase: mocks.getSqliteDatabase,
 }));
 
 describe('startBabelApp', () => {

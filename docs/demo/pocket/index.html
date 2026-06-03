@@ -325,28 +325,24 @@
                 </div>
 
                 <div class="settings-section" data-capability="pendingUserInstallOwners" hidden>
-                    <h3>User Access</h3>
+                    <h3>User Whitelist</h3>
                     <div class="desc-text">
-                        Only <strong>enabled</strong> user-install owners can use Babel Pocket.
-                        New users are disabled by default and appear as pending until approved.
+                        Only whitelisted Discord users can use Babel Pocket. New users are disabled
+                        by default.
                     </div>
-                    <div id="allowed-users-count" class="prefs-count">Loading allowed users...</div>
-                    <div id="allowed-users-container">
-                        <div class="empty-state">Loading allowed users...</div>
+                    <div id="user-access-list" class="guild-list">
+                        <div class="no-guilds">Loading users...</div>
                     </div>
-                    <div class="access-add-row">
+                    <div id="user-access-pagination"></div>
+                    <div class="add-guild-row">
                         <input
                             type="text"
                             id="add-user-input"
-                            placeholder="Paste a User ID to add manually"
+                            placeholder="Paste a Discord User ID"
                         />
-                        <button class="btn btn-primary btn-sm" onclick="addManualUser()">
+                        <button class="btn btn-primary btn-sm" onclick="addAllowedUser()">
                             Add
                         </button>
-                    </div>
-                    <div id="pending-users-count" class="prefs-count">Loading...</div>
-                    <div id="pending-users-container">
-                        <div class="empty-state">Loading pending users...</div>
                     </div>
                 </div>
 
@@ -455,13 +451,13 @@
                     </button>
                 </div>
                 <div class="save-bar" data-capability="pendingUserInstallOwners">
-                    <span class="save-status" data-user-access-save-status
-                        >No unsaved user access changes</span
+                    <span class="save-status" data-access-save-status
+                        >No unsaved whitelist changes</span
                     >
                     <button
                         class="btn btn-primary"
-                        data-user-access-save-button
-                        onclick="saveUserAllowlist()"
+                        data-access-save-button
+                        onclick="saveUserWhitelist()"
                         disabled
                     >
                         Save Changes

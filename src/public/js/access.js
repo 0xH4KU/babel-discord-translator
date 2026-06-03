@@ -1,21 +1,22 @@
 /**
- * Access tab: guild whitelist management, pending Pocket users, and user language preferences.
+ * Access tab: guild whitelist management, Pocket user access, and user language preferences.
  */
 
 let allGuilds = [];
 let guildBudgetData = {};
+let userBudgetData = {};
+let accessUserIds = [];
 let guildPage = 1,
     guildPageSize = 15;
+let allowedUsersPage = 1,
+    allowedUsersPageSize = 15;
 let manualGuildIds = [];
 let accessAllowedGuildIdsDraft = [];
+let accessAllowedUserIdsDraft = [];
 let accessWhitelistDirty = false;
 let accessWhitelistLoaded = false;
-let accessAllowedUserIdsDraft = [];
-let accessUserAllowlistDirty = false;
-let accessUserAllowlistLoaded = false;
 let glossaryGuildId = '';
 let glossaryEntries = [];
-let pendingUsers = [];
 
 function normalizeNumericIds(ids) {
     return [...new Set((ids || []).map((id) => String(id).trim()).filter(Boolean))];
@@ -46,32 +47,22 @@ function sameUserIds(a, b) {
 }
 
 function updateAccessSaveState() {
-    const status = accessWhitelistDirty
-        ? `${accessAllowedGuildIdsDraft.length} enabled server(s) pending save`
+    const userAccess = hasDashboardCapability('pendingUserInstallOwners');
+    const count = userAccess
+        ? accessAllowedUserIdsDraft.length
+        : accessAllowedGuildIdsDraft.length;
+    const dirty = accessWhitelistDirty;
+    const status = dirty
+        ? `${count} enabled ${userAccess ? 'user' : 'server'}(s) pending save`
         : 'No unsaved whitelist changes';
 
     document.querySelectorAll('[data-access-save-status]').forEach((node) => {
         node.textContent = status;
-        node.classList.toggle('dirty', accessWhitelistDirty);
+        node.classList.toggle('dirty', dirty);
     });
 
     document.querySelectorAll('[data-access-save-button]').forEach((button) => {
-        button.disabled = !accessWhitelistDirty;
-    });
-}
-
-function updateUserAccessSaveState() {
-    const status = accessUserAllowlistDirty
-        ? `${accessAllowedUserIdsDraft.length} enabled user(s) pending save`
-        : 'No unsaved user access changes';
-
-    document.querySelectorAll('[data-user-access-save-status]').forEach((node) => {
-        node.textContent = status;
-        node.classList.toggle('dirty', accessUserAllowlistDirty);
-    });
-
-    document.querySelectorAll('[data-user-access-save-button]').forEach((button) => {
-        button.disabled = !accessUserAllowlistDirty;
+        button.disabled = !dirty;
     });
 }
 
@@ -86,11 +77,18 @@ function setAccessWhitelistDraft(allowedGuildIds) {
 
 function setUserAllowlistDraft(allowedUserIds) {
     accessAllowedUserIdsDraft = normalizeUserIds(allowedUserIds);
-    accessUserAllowlistDirty = !sameUserIds(
+    accessWhitelistDirty = !sameUserIds(
         accessAllowedUserIdsDraft,
         currentConfig.allowedUserIds || [],
     );
-    updateUserAccessSaveState();
+    updateAccessSaveState();
+}
+
+function updateAccessUsersFromBudgetPayload(payload) {
+    userBudgetData = payload.budgets || payload || {};
+    const ids = normalizeUserIds(Object.keys(userBudgetData));
+    const merged = new Set([...ids, ...accessAllowedUserIdsDraft]);
+    accessUserIds = [...merged];
 }
 
 async function loadAccess() {
@@ -102,28 +100,25 @@ async function loadAccess() {
             config: api('/config'),
             guilds: guildAccess ? api('/guilds') : Promise.resolve(null),
             budgets: guildAccess ? api('/guild-budgets') : Promise.resolve(null),
-            pendingUsers: pendingUserInstallOwners
-                ? api('/access/pending-users')
-                : Promise.resolve(null),
+            userBudgets: pendingUserInstallOwners ? api('/user-budgets') : Promise.resolve(null),
         };
 
-        const [cfgRes, guildRes, budgetRes, pendingUsersRes] = await Promise.all([
+        const [cfgRes, guildRes, budgetRes, userBudgetRes] = await Promise.all([
             requests.config,
             requests.guilds,
             requests.budgets,
-            requests.pendingUsers,
+            requests.userBudgets,
         ]);
         currentConfig = await cfgRes.json();
         currentConfig.allowedGuildIds = normalizeGuildIds(currentConfig.allowedGuildIds || []);
         currentConfig.allowedUserIds = normalizeUserIds(currentConfig.allowedUserIds || []);
-        if (!accessWhitelistLoaded || !accessWhitelistDirty) {
+        if (guildAccess && (!accessWhitelistLoaded || !accessWhitelistDirty)) {
             accessAllowedGuildIdsDraft = [...currentConfig.allowedGuildIds];
         }
-        if (!accessUserAllowlistLoaded || !accessUserAllowlistDirty) {
+        if (pendingUserInstallOwners && (!accessWhitelistLoaded || !accessWhitelistDirty)) {
             accessAllowedUserIdsDraft = [...currentConfig.allowedUserIds];
         }
         accessWhitelistLoaded = true;
-        accessUserAllowlistLoaded = true;
         allGuilds = guildRes ? await guildRes.json() : [];
         guildBudgetData = budgetRes ? await budgetRes.json() : {};
         if (guildAccess) {
@@ -133,13 +128,12 @@ async function loadAccess() {
             renderGlossaryGuildSelect();
         }
         if (pendingUserInstallOwners) {
-            const data = await pendingUsersRes.json();
-            pendingUsers = data.users || [];
+            const budgetPayload = await userBudgetRes.json();
+            updateAccessUsersFromBudgetPayload(budgetPayload);
+            userProfiles = { ...userProfiles, ...(budgetPayload.profiles || {}) };
             renderAllowedUsers();
-            renderPendingUsers(data.count ?? pendingUsers.length);
         }
         updateAccessSaveState();
-        updateUserAccessSaveState();
         loadUserPrefs();
     } catch {}
 }
@@ -166,7 +160,7 @@ async function saveGuildWhitelist() {
     }
 }
 
-async function saveUserAllowlist() {
+async function saveUserWhitelist() {
     if (!hasDashboardCapability('pendingUserInstallOwners')) return;
 
     const allowedUserIds = normalizeUserIds(accessAllowedUserIdsDraft);
@@ -179,10 +173,14 @@ async function saveUserAllowlist() {
     if (res.ok) {
         currentConfig.allowedUserIds = [...allowedUserIds];
         accessAllowedUserIdsDraft = [...allowedUserIds];
-        accessUserAllowlistDirty = false;
-        updateUserAccessSaveState();
+        accessWhitelistDirty = false;
+        const budgetRes = await api('/user-budgets');
+        const budgetPayload = await budgetRes.json();
+        updateAccessUsersFromBudgetPayload(budgetPayload);
+        userProfiles = { ...userProfiles, ...(budgetPayload.profiles || {}) };
+        updateAccessSaveState();
         renderAllowedUsers();
-        showToast('User access settings saved!');
+        showToast('Access settings saved!');
     } else {
         showToast('Save failed', true);
     }
@@ -580,158 +578,184 @@ async function deleteGlossaryEntry(entryId) {
     }
 }
 
-// ===== Pending User Installs =====
+// ===== Pocket User Whitelist =====
 
 function renderAllowedUsers() {
     if (!hasDashboardCapability('pendingUserInstallOwners')) return;
 
-    const container = document.getElementById('allowed-users-container');
-    const countEl = document.getElementById('allowed-users-count');
+    const container = document.getElementById('user-access-list');
     if (!container) return;
 
-    const allowed = accessAllowedUserIdsDraft;
-
-    if (countEl) {
-        countEl.textContent = `${allowed.length} enabled user(s)`;
-    }
+    const allowed = accessUserIds;
+    const enabledIds = new Set(accessAllowedUserIdsDraft);
+    const defaultBudget = currentConfig.defaultUserDailyBudgetUsd || 0;
 
     if (allowed.length === 0) {
         container.innerHTML =
-            '<div class="empty-state">No users enabled yet. Approve a pending user or paste a User ID below.</div>';
+            '<div class="no-guilds">No users have requested access yet. Paste a Discord User ID below to add one.</div>';
+        document.getElementById('user-access-pagination').innerHTML = '';
         return;
     }
 
-    const rows = allowed
-        .map(
-            (userId) => `<div class="guild-item user-access-item">
-      <span class="guild-name mono">${escapeHtml(userId)}</span>
-      <span class="guild-members">enabled</span>
-      <label class="toggle"><input type="checkbox" data-user-id="${escapeHtml(userId)}" onchange="toggleUserAllowed('${escapeHtml(userId)}', this.checked)" checked><span class="slider"></span></label>
-    </div>`,
-        )
-        .join('');
+    const totalPages = Math.max(Math.ceil(allowed.length / allowedUsersPageSize), 1);
+    allowedUsersPage = Math.min(allowedUsersPage, totalPages);
+    const start = (allowedUsersPage - 1) * allowedUsersPageSize;
+    const pageItems = allowed.slice(start, start + allowedUsersPageSize);
 
-    container.innerHTML = `<div class="guild-list user-access-list">${rows}</div>`;
-}
+    container.innerHTML = pageItems
+        .map((userId) => {
+            const budgetData = userBudgetData[userId];
+            const enabled = enabledIds.has(userId);
+            const pending = Boolean(budgetData?.pending) && !enabled;
+            const hasCustomBudget = budgetData && budgetData.isCustom;
+            const effectiveBudget = hasCustomBudget ? budgetData.budget : defaultBudget;
+            const budgetLabel = hasCustomBudget
+                ? formatUsd(effectiveBudget)
+                : defaultBudget > 0
+                  ? formatUsd(defaultBudget) + ' (default)'
+                  : 'Unlimited';
 
-function renderPendingUsers(count = pendingUsers.length) {
-    if (!hasDashboardCapability('pendingUserInstallOwners')) return;
-
-    const container = document.getElementById('pending-users-container');
-    const countEl = document.getElementById('pending-users-count');
-    if (!container) return;
-
-    const visiblePendingUsers = pendingUsers.filter(
-        (user) => !accessAllowedUserIdsDraft.includes(String(user.userId)),
-    );
-    const visibleCount = Math.min(count, visiblePendingUsers.length);
-
-    if (countEl) {
-        countEl.textContent = `${visibleCount} pending user(s)`;
-    }
-
-    if (visiblePendingUsers.length === 0) {
-        container.innerHTML =
-            '<div class="empty-state">No pending user installs. New unauthorized user-installs will appear here.</div>';
-        return;
-    }
-
-    const rows = visiblePendingUsers
-        .map((user) => {
-            const firstSeen = user.firstSeenAt
-                ? new Date(user.firstSeenAt).toLocaleString()
-                : 'Unknown';
-            const lastSeen = user.lastSeenAt
-                ? new Date(user.lastSeenAt).toLocaleString()
-                : 'Unknown';
-
-            return `<tr>
-      <td class="mono">${escapeHtml(user.userId)}</td>
-      <td>${escapeHtml(firstSeen)}</td>
-      <td>${escapeHtml(lastSeen)}</td>
-      <td class="user-access-actions">
-        <button class="btn btn-primary btn-xs" onclick="approvePendingUser('${escapeHtml(user.userId)}')">Approve</button>
-        <button class="btn-danger" onclick="clearPendingUser('${escapeHtml(user.userId)}')">Dismiss</button>
-      </td>
-    </tr>`;
+            return `<div class="guild-item guild-item-col">
+      <div class="guild-item-row">
+        <img src="${escapeHtml(userAvatar(userId))}" alt="">
+        <span class="guild-name">${renderUserIdentity(userId)}</span>
+        <span class="guild-members user-access-state">
+          <span class="badge ${enabled ? 'badge-green' : pending ? 'badge-yellow' : 'badge-red'}">
+            ${enabled ? 'Enabled' : pending ? 'Pending' : 'Disabled'}
+          </span>
+        </span>
+        <label class="toggle user-access-toggle" title="${enabled ? 'Disable this user' : 'Enable this user'}">
+          <input type="checkbox" ${enabled ? 'checked' : ''} onchange="setAllowedUserEnabled('${escapeHtml(userId)}', this.checked)">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="guild-budget-row">
+        <div class="guild-budget-info">
+          <span class="guild-budget-label">Budget: ${budgetLabel}</span>
+        </div>
+        <div class="guild-budget-actions">
+          <input type="number" class="guild-budget-input" id="ub-${escapeHtml(userId)}" min="0" step="0.1"
+            placeholder="${hasCustomBudget ? effectiveBudget : 'Default'}"
+            value="${hasCustomBudget ? effectiveBudget : ''}"
+            title="Set per-user budget (USD). Empty = use default.">
+          <button class="btn btn-secondary btn-xs" onclick="saveUserBudget('${escapeHtml(userId)}')">Set</button>
+          ${hasCustomBudget ? `<button class="btn-danger btn-xs" onclick="resetUserBudget('${escapeHtml(userId)}')" title="Reset to default">↺</button>` : ''}
+        </div>
+      </div>
+    </div>`;
         })
         .join('');
 
-    container.innerHTML = `<div class="table-scroll"><table class="data-table">
-      <thead><tr><th>User ID</th><th>First Seen</th><th>Last Seen</th><th></th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table></div>`;
+    renderPagination('user-access-pagination', {
+        total: allowed.length,
+        page: allowedUsersPage,
+        pageSize: allowedUsersPageSize,
+        onPageChange: 'setAllowedUsersPage',
+        onSizeChange: 'setAllowedUsersPageSize',
+    });
 }
 
-function toggleUserAllowed(userId, checked) {
-    if (!hasDashboardCapability('pendingUserInstallOwners')) return;
-
-    const nextAllowed = new Set(accessAllowedUserIdsDraft);
-
-    if (checked) {
-        nextAllowed.add(userId);
-    } else {
-        nextAllowed.delete(userId);
-    }
-
-    setUserAllowlistDraft([...nextAllowed]);
+function setAllowedUsersPage(p) {
+    allowedUsersPage = p;
     renderAllowedUsers();
-    renderPendingUsers();
 }
-
-function approvePendingUser(userId) {
-    if (!hasDashboardCapability('pendingUserInstallOwners')) return;
-
-    const nextAllowed = new Set(accessAllowedUserIdsDraft);
-    if (nextAllowed.has(userId)) {
-        showToast('User already in access draft');
-        return;
-    }
-
-    nextAllowed.add(userId);
-    setUserAllowlistDraft([...nextAllowed]);
+function setAllowedUsersPageSize(s) {
+    allowedUsersPageSize = s;
+    allowedUsersPage = 1;
     renderAllowedUsers();
-    renderPendingUsers();
-    showToast('User approved — click Save to apply');
 }
 
-function addManualUser() {
+function addAllowedUser() {
     if (!hasDashboardCapability('pendingUserInstallOwners')) return;
 
     const input = document.getElementById('add-user-input');
     const id = input.value.trim();
     if (!id || !/^\d+$/.test(id)) {
-        showToast('Please enter a valid User ID (numbers only)', true);
+        showToast('Please enter a valid Discord User ID (numbers only)', true);
         return;
     }
 
     const nextAllowed = new Set(accessAllowedUserIdsDraft);
     if (nextAllowed.has(id)) {
-        showToast('User already in access draft');
+        showToast('User already in whitelist draft');
         return;
     }
 
     nextAllowed.add(id);
     setUserAllowlistDraft([...nextAllowed]);
+    accessUserIds = normalizeUserIds([...accessUserIds, id]);
+    allowedUsersPage = Math.max(Math.ceil(accessUserIds.length / allowedUsersPageSize), 1);
     input.value = '';
     renderAllowedUsers();
-    renderPendingUsers();
     showToast('User added — click Save to apply');
 }
 
-async function clearPendingUser(userId) {
+function setAllowedUserEnabled(id, enabled) {
     if (!hasDashboardCapability('pendingUserInstallOwners')) return;
 
-    const res = await api('/access/pending-users/' + encodeURIComponent(userId), {
-        method: 'DELETE',
+    const nextAllowed = new Set(accessAllowedUserIdsDraft);
+    if (enabled) {
+        nextAllowed.add(id);
+    } else {
+        nextAllowed.delete(id);
+    }
+
+    accessUserIds = normalizeUserIds([...accessUserIds, id]);
+    setUserAllowlistDraft([...nextAllowed]);
+    renderAllowedUsers();
+    showToast(`${enabled ? 'User enabled' : 'User disabled'} — click Save to apply`);
+}
+
+async function saveUserBudget(userId) {
+    if (!hasDashboardCapability('pendingUserInstallOwners')) return;
+
+    const input = document.getElementById('ub-' + userId);
+    const val = input.value.trim();
+
+    if (val === '') {
+        return resetUserBudget(userId);
+    }
+
+    const budget = parseFloat(val);
+    if (isNaN(budget) || budget < 0) {
+        showToast('Invalid budget value', true);
+        return;
+    }
+
+    const res = await api('/user-budgets/' + userId, {
+        method: 'POST',
+        body: JSON.stringify({ dailyBudgetUsd: budget }),
     });
 
     if (res.ok) {
-        pendingUsers = pendingUsers.filter((user) => user.userId !== userId);
-        renderPendingUsers();
-        showToast('Pending user dismissed');
+        showToast('User budget saved!');
+        const budgetRes = await api('/user-budgets');
+        const budgetPayload = await budgetRes.json();
+        updateAccessUsersFromBudgetPayload(budgetPayload);
+        userProfiles = { ...userProfiles, ...(budgetPayload.profiles || {}) };
+        renderAllowedUsers();
     } else {
-        showToast('Dismiss failed', true);
+        showToast('Save failed', true);
+    }
+}
+
+async function resetUserBudget(userId) {
+    if (!hasDashboardCapability('pendingUserInstallOwners')) return;
+
+    const res = await api('/user-budgets/' + userId, {
+        method: 'POST',
+        body: JSON.stringify({ dailyBudgetUsd: null }),
+    });
+
+    if (res.ok) {
+        showToast('Reset to default user budget');
+        const budgetRes = await api('/user-budgets');
+        const budgetPayload = await budgetRes.json();
+        updateAccessUsersFromBudgetPayload(budgetPayload);
+        userProfiles = { ...userProfiles, ...(budgetPayload.profiles || {}) };
+        renderAllowedUsers();
+    } else {
+        showToast('Reset failed', true);
     }
 }
 
@@ -820,7 +844,7 @@ async function loadUserPrefs() {
         if (!res.ok) return;
         const { prefs, count, profiles } = await res.json();
         allPrefsData = prefs;
-        userProfiles = profiles || {};
+        userProfiles = { ...userProfiles, ...(profiles || {}) };
         document.getElementById('prefs-count').textContent =
             count + ' user(s) with custom settings';
         prefsPage = 1;

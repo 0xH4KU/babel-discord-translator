@@ -157,6 +157,18 @@ const usageMock = vi.hoisted(() => ({
     getGuildStatsForGuilds: vi.fn(() => ({})),
     getHistory: vi.fn(() => []),
     record: vi.fn(),
+    getUserStats: vi.fn((userId: string) => ({
+        date: '2025-03-01',
+        inputTokens: userId === 'user-1' ? 1000 : 0,
+        outputTokens: 0,
+        requests: userId === 'user-1' ? 1 : 0,
+        inputCost: userId === 'user-1' ? 0.01 : 0,
+        outputCost: 0,
+        totalCost: userId === 'user-1' ? 0.01 : 0,
+        dailyBudget: 0.5,
+        budgetUsedPercent: userId === 'user-1' ? 2 : 0,
+        budgetExceeded: false,
+    })),
 }));
 
 vi.mock('../src/modules/usage/usage.js', () => ({
@@ -180,6 +192,7 @@ import { TranslationRuntimeLimiter } from '../src/translation-runtime-limiter.js
 import { _test as healthTest } from '../src/shared/health.js';
 import { createSqliteDatabase } from '../src/persistence/sqlite-database.js';
 import { DiscordUserProfileRepository } from '../src/modules/dashboard/discord-user-profile-repository.js';
+import { PendingUserInstallOwnerRepository } from '../src/modules/dashboard/pending-user-install-owner-repository.js';
 import { BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE } from '../src/apps/app-profile.js';
 import type { Client } from 'discord.js';
 import type { DatabaseSync } from 'node:sqlite';
@@ -300,6 +313,8 @@ describe('Dashboard API', () => {
     let log: TranslationLog;
     let profileDb: DatabaseSync;
     let userProfileRepository: DiscordUserProfileRepository;
+    let pendingOwnerDb: DatabaseSync;
+    let pendingUserInstallOwnerRepository: PendingUserInstallOwnerRepository;
 
     beforeAll(async () => {
         cache = new TranslationCache(100);
@@ -333,6 +348,20 @@ describe('Dashboard API', () => {
             fetchedAt: '2026-06-02T10:00:00.000Z',
             lastSeenAt: null,
         });
+        userProfileRepository.upsertProfile({
+            userId: 'pending-owner',
+            username: 'pending-user',
+            globalName: 'Pending User',
+            displayName: 'Pending User',
+            avatarUrl: 'https://cdn.discordapp.com/avatars/pending-owner/avatar.png',
+            fetchedAt: '2026-06-02T10:00:00.000Z',
+            lastSeenAt: null,
+        });
+        pendingOwnerDb = createSqliteDatabase(':memory:');
+        pendingUserInstallOwnerRepository = new PendingUserInstallOwnerRepository({
+            db: pendingOwnerDb,
+        });
+        pendingUserInstallOwnerRepository.recordSeen('pending-owner');
         const guilds = [
             { id: 'guild-1', name: 'Guild One', iconURL: () => '', memberCount: 10 },
             { id: 'guild-2', name: 'Guild Two', iconURL: () => '', memberCount: 20 },
@@ -365,6 +394,7 @@ describe('Dashboard API', () => {
             versionCheck,
             sessionRepository: new InMemorySessionRepository(),
             userProfileRepository,
+            pendingUserInstallOwnerRepository,
         });
 
         server = startDashboardServer(app, 0);
@@ -381,6 +411,9 @@ describe('Dashboard API', () => {
         server?.close();
         if (profileDb.isOpen) {
             profileDb.close();
+        }
+        if (pendingOwnerDb.isOpen) {
+            pendingOwnerDb.close();
         }
     });
 
@@ -678,6 +711,76 @@ describe('Dashboard API', () => {
             });
         } finally {
             store.update({ guildBudgets: previousGuildBudgets });
+        }
+    });
+
+    it('should include allowed and pending user-install owners in user budget access data', async () => {
+        const { store } = await import('../src/store.js');
+        const previousAllowedUserIds = store.get('allowedUserIds');
+        const previousDefaultUserBudget = store.get('defaultUserDailyBudgetUsd');
+        const previousUserBudgets = store.get('userBudgets');
+        const pocketApp = createDashboardApp({
+            cache,
+            cooldown: new CooldownManager(5),
+            log,
+            client: createMinimalClient(),
+            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
+            metrics,
+            runtimeLimiter,
+            profile: BABEL_POCKET_PROFILE,
+            sessionRepository: new InMemorySessionRepository(),
+            userProfileRepository,
+            pendingUserInstallOwnerRepository,
+        });
+        const pocketServer = startDashboardServer(pocketApp, 0);
+
+        try {
+            store.update({
+                allowedUserIds: ['user-1'],
+                defaultUserDailyBudgetUsd: 0.5,
+                userBudgets: { 'user-1': { dailyBudgetUsd: 1.25 } },
+            });
+
+            const login = await request(pocketServer, 'POST', '/api/login', {
+                body: { password: 'test-pass-123' },
+            });
+            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
+            const res = await request(pocketServer, 'GET', '/api/user-budgets', {
+                cookie,
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.body).toEqual({
+                budgets: {
+                    'user-1': {
+                        budget: 1.25,
+                        isCustom: true,
+                        allowed: true,
+                        pending: false,
+                    },
+                    'pending-owner': {
+                        budget: 0.5,
+                        isCustom: false,
+                        allowed: false,
+                        pending: true,
+                    },
+                },
+                profiles: {
+                    'pending-owner': expect.objectContaining({
+                        userId: 'pending-owner',
+                        displayName: 'Pending User',
+                        avatarUrl: 'https://cdn.discordapp.com/avatars/pending-owner/avatar.png',
+                    }),
+                },
+            });
+        } finally {
+            store.update({
+                allowedUserIds: previousAllowedUserIds,
+                defaultUserDailyBudgetUsd: previousDefaultUserBudget,
+                userBudgets: previousUserBudgets,
+            });
+            stopDashboardApp(pocketApp);
+            pocketServer.close();
         }
     });
 
@@ -1364,7 +1467,46 @@ describe('Dashboard API', () => {
         }
     });
 
-    it('should not expose pending user-install owners for Babel Guild', async () => {
+    it('should not expose the legacy pending user-install owner routes', async () => {
+        const createAppForProfile = (profile: typeof BABEL_GUILD_PROFILE) =>
+            createDashboardApp({
+                cache,
+                cooldown: new CooldownManager(5),
+                log,
+                client: createMinimalClient(),
+                getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
+                metrics,
+                runtimeLimiter,
+                profile,
+                sessionRepository: new InMemorySessionRepository(),
+                userProfileRepository,
+            });
+        const guildApp = createAppForProfile(BABEL_GUILD_PROFILE);
+        const pocketApp = createAppForProfile(BABEL_POCKET_PROFILE);
+        const guildServer = startDashboardServer(guildApp, 0);
+        const pocketServer = startDashboardServer(pocketApp, 0);
+
+        try {
+            for (const appServer of [guildServer, pocketServer]) {
+                const login = await request(appServer, 'POST', '/api/login', {
+                    body: { password: 'test-pass-123' },
+                });
+                const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
+                const res = await requestText(appServer, 'GET', '/api/access/pending-users', {
+                    cookie,
+                });
+
+                expect(res.status).toBe(404);
+            }
+        } finally {
+            stopDashboardApp(guildApp);
+            stopDashboardApp(pocketApp);
+            guildServer.close();
+            pocketServer.close();
+        }
+    });
+
+    it('should not expose user budget access data for Babel Guild', async () => {
         const guildApp = createDashboardApp({
             cache,
             cooldown: new CooldownManager(5),
@@ -1384,7 +1526,7 @@ describe('Dashboard API', () => {
                 body: { password: 'test-pass-123' },
             });
             const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
-            const res = await requestText(guildServer, 'GET', '/api/access/pending-users', {
+            const res = await requestText(guildServer, 'GET', '/api/user-budgets', {
                 cookie,
             });
 

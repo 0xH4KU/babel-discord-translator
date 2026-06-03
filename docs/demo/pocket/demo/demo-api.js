@@ -14,7 +14,7 @@
     '/usage/history': 'history.json',
     '/logs': 'logs.json',
     '/user-prefs': 'user-prefs.json',
-    '/access/pending-users': 'pending-users.json',
+    '/user-budgets': 'user-budgets.json',
     '/guild-glossary/100000000000000001': { error: 'No demo fixture for /guild-glossary/100000000000000001', status: 404 },
     '/sessions': 'sessions.json'
   };

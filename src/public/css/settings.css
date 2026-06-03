@@ -173,6 +173,15 @@
     white-space: nowrap;
 }
 
+.guild-item .user-access-state {
+    min-width: 4.75rem;
+    text-align: right;
+}
+
+.user-access-toggle {
+    margin-left: 0.15rem;
+}
+
 /* --- Guild Budget Layout --- */
 .guild-item.guild-item-col {
     flex-direction: column;

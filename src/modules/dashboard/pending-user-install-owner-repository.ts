@@ -1,3 +1,4 @@
+import type { DatabaseSync } from 'node:sqlite';
 import { getSqliteDatabase } from '../../persistence/sqlite-database.js';
 
 export interface PendingUserInstallOwner {
@@ -7,11 +8,21 @@ export interface PendingUserInstallOwner {
     source: 'user-install';
 }
 
+interface PendingUserInstallOwnerRepositoryOptions {
+    db?: DatabaseSync;
+}
+
 export class PendingUserInstallOwnerRepository {
+    private readonly db: DatabaseSync;
+
+    constructor({ db = getSqliteDatabase() }: PendingUserInstallOwnerRepositoryOptions = {}) {
+        this.db = db;
+    }
+
     recordSeen(userId: string): void {
         const now = new Date().toISOString();
 
-        getSqliteDatabase()
+        this.db
             .prepare(
                 `
                 INSERT INTO pending_user_install_owners (
@@ -29,7 +40,7 @@ export class PendingUserInstallOwnerRepository {
     }
 
     list(): PendingUserInstallOwner[] {
-        const rows = getSqliteDatabase()
+        const rows = this.db
             .prepare(
                 `
                 SELECT
@@ -49,8 +60,12 @@ export class PendingUserInstallOwnerRepository {
         }));
     }
 
+    listUserIds(): string[] {
+        return this.list().map((owner) => owner.userId);
+    }
+
     clear(userId: string): boolean {
-        const result = getSqliteDatabase()
+        const result = this.db
             .prepare('DELETE FROM pending_user_install_owners WHERE user_id = ?')
             .run(userId);
 

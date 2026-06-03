@@ -23,8 +23,9 @@
         section.style.display = 'none';
       }
     });
-    const saveBar = accessTab.querySelector('.save-bar');
-    if (saveBar) saveBar.style.display = 'none';
+    accessTab.querySelectorAll('.save-bar[data-capability="guildAccess"]').forEach((saveBar) => {
+      saveBar.style.display = 'none';
+    });
 
     const summary = document.createElement('div');
     summary.className = 'demo-only-section';

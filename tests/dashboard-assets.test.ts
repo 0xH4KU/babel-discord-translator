@@ -17,7 +17,7 @@ describe('dashboard static assets', () => {
         expect(html).toContain('data-capability="guildAccess"');
         expect(html).toContain('data-capability="guildGlossary"');
         expect(html).toContain('data-capability="pendingUserInstallOwners"');
-        expect(html).toContain('id="pending-users-container"');
+        expect(html).toContain('id="user-access-list"');
     });
 
     it('keeps Access tab network calls aligned with the current app capabilities', () => {
@@ -27,20 +27,26 @@ describe('dashboard static assets', () => {
         expect(accessJs).toContain("hasDashboardCapability('guildAccess')");
         expect(accessJs).toContain("hasDashboardCapability('guildGlossary')");
         expect(accessJs).toContain("hasDashboardCapability('pendingUserInstallOwners')");
-        expect(accessJs).toContain("api('/access/pending-users')");
+        expect(accessJs).toContain("api('/user-budgets')");
     });
 
-    it('gives Babel Pocket operators button-based user approval controls', () => {
+    it('uses the original Babel Pocket user whitelist controls', () => {
         const html = readFileSync('src/public/index.html', 'utf-8');
         const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const settingsCss = readFileSync('src/public/css/settings.css', 'utf-8');
 
-        expect(html).toContain('id="allowed-users-container"');
+        expect(html).toContain('User Whitelist');
+        expect(html).toContain('id="user-access-list"');
+        expect(html).toContain('id="user-access-pagination"');
         expect(html).toContain('id="add-user-input"');
-        expect(html).toContain('data-user-access-save-status');
-        expect(html).toContain('data-user-access-save-button');
+        expect(html).toContain('onclick="saveUserWhitelist()"');
         expect(accessJs).toContain('accessAllowedUserIdsDraft');
-        expect(accessJs).toContain('approvePendingUser');
-        expect(accessJs).toContain('saveUserAllowlist');
+        expect(accessJs).toContain("api('/user-budgets')");
+        expect(accessJs).toContain('setAllowedUserEnabled');
+        expect(accessJs).toContain('saveUserBudget');
+        expect(accessJs).toContain('badge-yellow');
+        expect(settingsCss).toContain('.guild-item .user-access-state');
+        expect(settingsCss).toContain('.user-access-toggle');
         expect(accessJs).toContain('body: JSON.stringify({ allowedUserIds })');
     });
 

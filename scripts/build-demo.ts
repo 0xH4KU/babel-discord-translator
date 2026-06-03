@@ -575,24 +575,51 @@ const DEMO_USER_PROFILES = {
     },
 };
 
+const DEMO_PENDING_USER = {
+    userId: '200000000000000006',
+    firstSeenAt: '2026-06-01T09:20:00.000Z',
+    lastSeenAt: '2026-06-01T11:45:00.000Z',
+    source: 'user-install',
+    profile: {
+        userId: '200000000000000006',
+        username: 'waiting-operator',
+        globalName: 'Waiting Operator',
+        displayName: 'Waiting Operator',
+        avatarUrl:
+            'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2228%22 height=%2228%22%3E%3Crect width=%2228%22 height=%2228%22 rx=%2214%22 fill=%22%230ea5e9%22/%3E%3Ctext x=%2214%22 y=%2219%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2214%22%3EW%3C/text%3E%3C/svg%3E',
+    },
+};
+
 const DEMO_PENDING_USERS = {
-    users: [
-        {
-            userId: '200000000000000006',
-            firstSeenAt: '2026-06-01T09:20:00.000Z',
-            lastSeenAt: '2026-06-01T11:45:00.000Z',
-            source: 'user-install',
-            profile: {
-                userId: '200000000000000006',
-                username: 'waiting-operator',
-                globalName: 'Waiting Operator',
-                displayName: 'Waiting Operator',
-                avatarUrl:
-                    'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2228%22 height=%2228%22%3E%3Crect width=%2228%22 height=%2228%22 rx=%2214%22 fill=%22%230ea5e9%22/%3E%3Ctext x=%2214%22 y=%2219%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2214%22%3EW%3C/text%3E%3C/svg%3E',
-            },
-        },
-    ],
+    users: [DEMO_PENDING_USER],
     count: 1,
+};
+
+const DEMO_USER_BUDGETS = {
+    budgets: {
+        '200000000000000001': {
+            budget: 1.25,
+            isCustom: true,
+            allowed: true,
+            pending: false,
+        },
+        '200000000000000002': {
+            budget: 0.5,
+            isCustom: false,
+            allowed: true,
+            pending: false,
+        },
+        '200000000000000006': {
+            budget: 0.5,
+            isCustom: false,
+            allowed: false,
+            pending: true,
+        },
+    },
+    profiles: {
+        ...DEMO_USER_PROFILES,
+        '200000000000000006': DEMO_PENDING_USER.profile,
+    },
 };
 
 const DEMO_GLOSSARY = {
@@ -766,7 +793,7 @@ function createDemoApiJs(variant: DemoVariant): string {
     const userOnlyRoutes =
         variant.kind === 'pocket'
             ? `
-    '/access/pending-users': 'pending-users.json',
+    '/user-budgets': 'user-budgets.json',
     '/guild-glossary/100000000000000001': { error: 'No demo fixture for /guild-glossary/100000000000000001', status: 404 },`
             : `
     '/guild-glossary/100000000000000001': 'guild-glossary.json',
@@ -905,7 +932,7 @@ function buildDemoVariant(publicDir: string, demoDir: string, variant: DemoVaria
     if (variant.kind === 'guild') {
         writeJson(join(fixtureDir, 'guild-glossary.json'), DEMO_GLOSSARY);
     } else {
-        writeJson(join(fixtureDir, 'pending-users.json'), DEMO_PENDING_USERS);
+        writeJson(join(fixtureDir, 'user-budgets.json'), DEMO_USER_BUDGETS);
     }
     writeJson(join(fixtureDir, 'sessions.json'), {
         sessions: [
@@ -1075,8 +1102,9 @@ function createDemoReadonlyJs(variant: DemoVariant): string {
         section.style.display = 'none';
       }
     });
-    const saveBar = accessTab.querySelector('.save-bar');
-    if (saveBar) saveBar.style.display = 'none';
+    accessTab.querySelectorAll('.save-bar[data-capability="guildAccess"]').forEach((saveBar) => {
+      saveBar.style.display = 'none';
+    });
 
     const summary = document.createElement('div');
     summary.className = 'demo-only-section';

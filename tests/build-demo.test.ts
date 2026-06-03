@@ -107,11 +107,18 @@ describe('build-dashboard-demo', () => {
         expect(
             readFileSync(join(demoDir, 'guild', 'demo', 'fixtures', 'user-prefs.json'), 'utf-8'),
         ).toContain('Alex Chen');
-        expect(
-            readFileSync(
-                join(demoDir, 'pocket', 'demo', 'fixtures', 'pending-users.json'),
-                'utf-8',
-            ),
-        ).toContain('Waiting Operator');
+        const pocketUserBudgets = JSON.parse(
+            readFileSync(join(demoDir, 'pocket', 'demo', 'fixtures', 'user-budgets.json'), 'utf-8'),
+        ) as {
+            budgets: Record<string, { allowed: boolean; pending: boolean }>;
+            profiles: Record<string, { displayName?: string }>;
+        };
+        expect(pocketUserBudgets.budgets['200000000000000006']).toMatchObject({
+            allowed: false,
+            pending: true,
+        });
+        expect(pocketUserBudgets.profiles['200000000000000006'].displayName).toBe(
+            'Waiting Operator',
+        );
     });
 });
