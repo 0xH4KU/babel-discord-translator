@@ -16,6 +16,16 @@ import {
     DEFAULT_STORE_DATA,
     type ConfigValueKey,
 } from './persistence/store-defaults.js';
+import {
+    cloneGuildBudgets,
+    cloneGuildDailyUsage,
+    cloneGuildUsageHistory,
+    cloneTokenUsage,
+    cloneUsageHistory,
+    cloneUserBudgets,
+    cloneUserDailyUsage,
+    cloneUserUsageHistory,
+} from './repositories/store-data-normalizer.js';
 import { appLogger, type StructuredLogger } from './shared/structured-logger.js';
 import type {
     GuildBudgetConfig,
@@ -36,58 +46,6 @@ interface ConfigStoreOptions {
 }
 
 const CONFIG_KEYS = new Set<keyof StoreData>(CONFIG_VALUE_KEYS);
-
-function cloneTokenUsage(usage: TokenUsage | null): TokenUsage | null {
-    return usage ? { ...usage } : null;
-}
-
-function cloneUsageHistory(history: UsageHistoryEntry[]): UsageHistoryEntry[] {
-    return history.map((entry) => ({ ...entry }));
-}
-
-function cloneGuildBudgets(
-    budgets: Record<string, GuildBudgetConfig>,
-): Record<string, GuildBudgetConfig> {
-    return Object.fromEntries(
-        Object.entries(budgets).map(([guildId, budget]) => [guildId, { ...budget }]),
-    );
-}
-
-function cloneUserBudgets(
-    budgets: Record<string, UserBudgetConfig>,
-): Record<string, UserBudgetConfig> {
-    return Object.fromEntries(
-        Object.entries(budgets).map(([userId, budget]) => [userId, { ...budget }]),
-    );
-}
-
-function cloneGuildUsage(usage: Record<string, TokenUsage>): Record<string, TokenUsage> {
-    return Object.fromEntries(
-        Object.entries(usage).map(([guildId, entry]) => [guildId, { ...entry }]),
-    );
-}
-
-function cloneUserUsage(usage: Record<string, TokenUsage>): Record<string, TokenUsage> {
-    return Object.fromEntries(
-        Object.entries(usage).map(([userId, entry]) => [userId, { ...entry }]),
-    );
-}
-
-function cloneGuildUsageHistory(
-    history: Record<string, UsageHistoryEntry[]>,
-): Record<string, UsageHistoryEntry[]> {
-    return Object.fromEntries(
-        Object.entries(history).map(([guildId, entries]) => [guildId, cloneUsageHistory(entries)]),
-    );
-}
-
-function cloneUserUsageHistory(
-    history: Record<string, UsageHistoryEntry[]>,
-): Record<string, UsageHistoryEntry[]> {
-    return Object.fromEntries(
-        Object.entries(history).map(([userId, entries]) => [userId, cloneUsageHistory(entries)]),
-    );
-}
 
 function cloneConfigValue<K extends ConfigValueKey>(value: StoreData[K]): StoreData[K] {
     return Array.isArray(value) ? ([...value] as StoreData[K]) : value;
@@ -212,10 +170,10 @@ export class ConfigStore {
             usageHistory: cloneUsageHistory(this.getUsageHistory()),
             userLanguagePrefs: { ...this.getUserLanguagePrefs() },
             guildBudgets: cloneGuildBudgets(this.getAllGuildBudgets()),
-            guildTokenUsage: cloneGuildUsage(this.getGuildTokenUsage()),
+            guildTokenUsage: cloneGuildDailyUsage(this.getGuildTokenUsage()),
             guildUsageHistory: cloneGuildUsageHistory(this.getAllGuildUsageHistory()),
             userBudgets: cloneUserBudgets(this.getAllUserBudgets()),
-            userTokenUsage: cloneUserUsage(this.getUserTokenUsage()),
+            userTokenUsage: cloneUserDailyUsage(this.getUserTokenUsage()),
             userUsageHistory: cloneUserUsageHistory(this.getAllUserUsageHistory()),
         };
     }
