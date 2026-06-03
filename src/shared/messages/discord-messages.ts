@@ -37,7 +37,8 @@ const TRANSLATION_COMMAND_MESSAGES: Record<TranslationCommand, TranslationComman
         sameLanguage: 'This message is already in your language!',
         budgetExceeded: 'Daily budget exceeded, try again tomorrow!',
         userBusy: 'You already have a translation in progress. Please wait a moment.',
-        guildBusy: 'This server is handling too many translations right now. Please try again shortly.',
+        guildBusy:
+            'This server is handling too many translations right now. Please try again shortly.',
         serviceBusy: 'Translation service is busy right now. Please try again in a moment.',
     },
     translate: {
@@ -46,7 +47,8 @@ const TRANSLATION_COMMAND_MESSAGES: Record<TranslationCommand, TranslationComman
         sameLanguage: 'This text is already in your target language!',
         budgetExceeded: 'Daily budget exceeded',
         userBusy: 'You already have a translation in progress. Please wait a moment.',
-        guildBusy: 'This server is handling too many translations right now. Please try again shortly.',
+        guildBusy:
+            'This server is handling too many translations right now. Please try again shortly.',
         serviceBusy: 'Translation service is busy right now. Please try again in a moment.',
     },
 };
@@ -55,13 +57,18 @@ export function getDiscordLanguageName(languageCode: string): string {
     return LANGUAGE_NAMES[languageCode] || languageCode;
 }
 
-export function getDiscordTranslationCommandMessages(command: TranslationCommand): TranslationCommandMessages {
+export function getDiscordTranslationCommandMessages(
+    command: TranslationCommand,
+): TranslationCommandMessages {
     return TRANSLATION_COMMAND_MESSAGES[command];
 }
 
 export const discordMessages = {
     unauthorizedGuild(): string {
         return 'This server is not authorized.';
+    },
+    unauthorizedUser(): string {
+        return 'This user is not authorized.';
     },
     cooldownRemaining(seconds: number): string {
         return `Please wait ${seconds}s`;
@@ -79,17 +86,23 @@ export const discordMessages = {
         return `Translation target set to: **${languageCode}**`;
     },
     currentLanguageFromPreference(languageName: string, languageCode: string): string {
-        return `Your translation language: **${languageName}** (\`${languageCode}\`), set via /setlang\n` +
-            'Use `/setlang auto` to reset to auto-detect.';
+        return (
+            `Your translation language: **${languageName}** (\`${languageCode}\`), set via /setlang\n` +
+            'Use `/setlang auto` to reset to auto-detect.'
+        );
     },
     currentLanguageFromLocale(languageName: string, locale: string): string {
-        return `Your translation language: **${languageName}** (auto-detected from Discord locale: \`${locale}\`)\n` +
-            'Use `/setlang` to set a custom language.';
+        return (
+            `Your translation language: **${languageName}** (auto-detected from Discord locale: \`${locale}\`)\n` +
+            'Use `/setlang` to set a custom language.'
+        );
     },
     currentLanguageAuto(locale: string): string {
-        return 'Your translation language: **Auto** (Chinese ↔ English based on content)\n' +
+        return (
+            'Your translation language: **Auto** (Chinese ↔ English based on content)\n' +
             `Discord locale: \`${locale}\`\n` +
-            'Use `/setlang` to set a specific target language.';
+            'Use `/setlang` to set a specific target language.'
+        );
     },
     quotedTranslation(originalText: string, translatedText: string): string {
         const preview = originalText.length > 200 ? originalText.slice(0, 200) + '…' : originalText;
