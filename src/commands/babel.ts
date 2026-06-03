@@ -3,6 +3,15 @@ import { buildTranslationMessages } from '../shared/discord-message-format.js';
 import { extractTranslatableMessageText } from '../shared/message-extraction.js';
 import { createRequestId } from '../shared/structured-logger.js';
 import type { CommandDeps } from '../types.js';
+import { BABEL_GUILD_PROFILE, type AppProfile } from '../apps/app-profile.js';
+
+interface BabelCommandDeps extends CommandDeps {
+    profile?: AppProfile;
+}
+
+function getUserInstallOwnerId(interaction: MessageContextMenuCommandInteraction): string | null {
+    return interaction.authorizingIntegrationOwners?.['1'] ?? null;
+}
 
 async function editReplyWithChunks(
     interaction: MessageContextMenuCommandInteraction,
@@ -20,15 +29,20 @@ async function editReplyWithChunks(
  */
 export async function handleBabel(
     interaction: MessageContextMenuCommandInteraction,
-    { translationService }: CommandDeps,
+    { translationService, profile = BABEL_GUILD_PROFILE }: BabelCommandDeps,
 ): Promise<void> {
     const requestId = createRequestId();
+    const billingUserId =
+        profile.accessMode === 'user-install'
+            ? (getUserInstallOwnerId(interaction) ?? interaction.user.id)
+            : null;
     const result = await translationService.process({
         command: 'babel',
-        commandLabel: 'Babel (context menu)',
+        commandLabel: `${profile.commandName} (context menu)`,
         guildId: interaction.guildId,
         guildName: interaction.guild?.name,
         userId: interaction.user.id,
+        billingUserId,
         userTag: interaction.user.tag,
         locale: interaction.locale,
         text: extractTranslatableMessageText(interaction.targetMessage),
