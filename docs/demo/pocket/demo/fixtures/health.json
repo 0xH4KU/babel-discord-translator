@@ -1,0 +1,22 @@
+{
+  "healthy": true,
+  "readiness": "ready",
+  "vertexAi": {
+    "status": "pass",
+    "latencyMs": 582
+  },
+  "checks": {
+    "configuration": {
+      "status": "pass",
+      "detail": "Demo configuration complete"
+    },
+    "vertexAi": {
+      "status": "pass",
+      "latencyMs": 582
+    },
+    "openAi": {
+      "status": "pass",
+      "latencyMs": 771
+    }
+  }
+}

@@ -32,7 +32,7 @@ Right-click any message → **Apps** → **Babel** or **Babel Pocket** → get a
 [![Node.js](https://img.shields.io/badge/Node.js-22.12%2B-green.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
 [![discord.js](https://img.shields.io/badge/discord.js-v14-blue.svg)](https://discord.js.org)
-[![Version](https://img.shields.io/badge/version-0.1.2-brightgreen.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-0.1.3-brightgreen.svg)](package.json)
 [![CI](https://github.com/0xH4KU/babel-discord-translator/actions/workflows/ci.yml/badge.svg)](https://github.com/0xH4KU/babel-discord-translator/actions)
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/babel-discord-tran-1?referralCode=euhy-o&utm_medium=integration&utm_source=template&utm_campaign=generic)
@@ -59,7 +59,7 @@ Babel is for Discord communities and trusted individual installs that want trans
 - **Guild glossaries** — Babel Guild can define server-specific term mappings for names, brands, game terms, and community vocabulary
 - **Operations ready** — health endpoints, Prometheus metrics, runtime queue limits, provider fallback diagnostics, and backup docs
 
-Try the [read-only dashboard demo](https://0xh4ku.github.io/babel-discord-translator/demo/) with mock data before deploying.
+Try the [read-only dashboard demos](https://0xh4ku.github.io/babel-discord-translator/demo/) with Guild and Pocket mock data before deploying.
 
 ## Products
 
@@ -437,7 +437,7 @@ npm run build:guild     # Build Babel Guild
 npm run build:pocket    # Build Babel Pocket
 npm run register:guild  # Register Babel Guild commands
 npm run register:pocket # Register Babel Pocket commands
-npm run demo:build      # Mirror dashboard assets into docs/demo for GitHub Pages
+npm run demo:build      # Build Guild and Pocket dashboard demos into docs/demo for GitHub Pages
 npm start               # Run production root app, selected by BABEL_APP
 npm run start:guild     # Run Babel Guild production artifact
 npm run start:pocket    # Run Babel Pocket production artifact
@@ -454,7 +454,7 @@ Hooks are installed automatically on normal local Git checkouts. The `prepare` s
 
 ### Test Coverage
 
-275 tests across 33 suites covering all modules:
+295 tests across 38 suites covering all modules:
 
 | Suite                                           | Tests | Covers                                                                                                                                      |
 | ----------------------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -469,7 +469,7 @@ Hooks are installed automatically on normal local Git checkouts. The `prepare` s
 | `lang.test.ts`                                  | 29    | Script detection (CJK/Cyrillic/Arabic/Thai/Hindi), locale mapping, same-language check                                                      |
 | `dashboard-auth.test.ts`                        | 4     | scrypt auth flow, CSRF enforcement, session expiry cleanup                                                                                  |
 | `prepare-husky.test.ts`                         | 5     | Husky prepare skip logic for CI, missing git metadata, Windows/local execution                                                              |
-| `build-demo.test.ts`                            | 1     | Static dashboard demo mirroring and fixture injection                                                                                       |
+| `build-demo.test.ts`                            | 1     | Static Guild/Pocket dashboard demo mirroring and fixture injection                                                                          |
 | `sqlite-session-repository.test.ts`             | 2     | Persistent session storage, enumeration, delete/clear                                                                                       |
 | `dashboard.test.ts`                             | 42    | Auth flow, session revoke, metrics, health endpoints, stats, config protection, version refresh, async error handling, app capability gates |
 | `deployment-config.test.ts`                     | 3     | Root app selection scripts, Docker workspace build context, Compose default app                                                             |
@@ -480,13 +480,13 @@ Hooks are installed automatically on normal local Git checkouts. The `prepare` s
 | `translation-runtime-limiter.test.ts`           | 4     | FIFO queueing, per-user outstanding cap, queue wait timeout, per-guild/global queue shedding                                                |
 | `register.test.ts`                              | 3     | Guild/Pocket command registration surfaces and app profile selection                                                                        |
 | `pending-user-install-owner-repository.test.ts` | 1     | Pending Pocket owner persistence                                                                                                            |
-| `translation-service.test.ts`                   | 14    | Shared workflow, cache hits, runtime shedding, budget/error handling, runtime config access pattern, Guild/Pocket authorization             |
+| `translation-service.test.ts`                   | 15    | Shared workflow, cache hits, runtime shedding, budget/error handling, runtime config access pattern, Guild/Pocket authorization             |
 | `translate-command.test.ts`                     | 2     | `/translate` public/private delivery behavior                                                                                               |
 | `translate.test.ts`                             | 24    | Retry logic, prompt building, API errors, URL routing, provider metadata                                                                    |
 | `usage.test.ts`                                 | 40    | Cost calculation, budget estimate guard, global/guild/user budget enforcement, day rollover, runtime config access pattern                  |
 | `webhook-service.test.ts`                       | 4     | Stale webhook recovery, error classification, LRU webhook cache eviction                                                                    |
 | `vertex-ai-client.test.ts`                      | 6     | Shared transport, timeout wiring, structured provider errors, health checks, endpoint resolution                                            |
-| `version.test.ts`                               | 4     | Release metadata, GitHub latest-release checks, cache refresh, and update status fallback                                                   |
+| `version.test.ts`                               | 5     | Release metadata, synced app versions, GitHub latest-release checks, cache refresh, and update status fallback                              |
 | `sqlite-database.test.ts`                       | 5     | SQLite connection, migrations, and pragma setup                                                                                             |
 | `store.test.ts`                                 | 13    | SQLite persistence, legacy JSON import, defaults, copy safety, config-only reads, direct guild/user row operations                          |
 | `structured-logger.test.ts`                     | 2     | JSON shape, inherited request context, secret redaction                                                                                     |

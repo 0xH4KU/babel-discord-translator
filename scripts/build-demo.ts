@@ -15,9 +15,91 @@ interface BuildDashboardDemoOptions {
     demoDir?: string;
 }
 
+type DemoAppKind = 'guild' | 'pocket';
+
+interface DemoVariant {
+    kind: DemoAppKind;
+    pathSegment: string;
+    title: string;
+    productName: string;
+    commandName: string;
+    accessMode: 'guild' | 'user-install';
+    botName: string;
+}
+
+interface DemoConfigFixture {
+    vertexAiApiKey: string;
+    hasApiKey: boolean;
+    gcpProject: string;
+    gcpLocation: string;
+    geminiModel: string;
+    allowedGuildIds: string[];
+    allowedUserIds: string[];
+    cooldownSeconds: number;
+    cacheMaxSize: number;
+    setupComplete: boolean;
+    inputPricePerMillion: number;
+    outputPricePerMillion: number;
+    dailyBudgetUsd: number;
+    defaultUserDailyBudgetUsd: number;
+    translationPrompt: string;
+    maxInputLength: number;
+    maxOutputTokens: number;
+    translationMaxConcurrent: number;
+    translationMaxGlobalQueue: number;
+    translationMaxGuildQueue: number;
+    translationMaxUserOutstanding: number;
+    translationMaxQueueWaitMs: number;
+    openaiApiKey: string;
+    hasOpenaiApiKey: boolean;
+    openaiBaseUrl: string;
+    openaiModel: string;
+    translationProvider: string;
+}
+
+type DemoLogFixture = Array<{
+    type: string;
+    guildId: string | null;
+    guildName: string | null;
+    userId: string;
+    userTag: string;
+    contentPreview?: string;
+    cached?: boolean;
+    targetLanguage?: string;
+    langSource?: string;
+    error?: string;
+    command?: string;
+    requestId?: string;
+    provider?: string;
+    errorType?: string;
+    suggestedAction?: string;
+    timestamp: number;
+}>;
+
+const DEMO_VARIANTS: DemoVariant[] = [
+    {
+        kind: 'guild',
+        pathSegment: 'guild',
+        title: 'Babel Guild — Dashboard Demo',
+        productName: 'Babel Guild',
+        commandName: 'Babel',
+        accessMode: 'guild',
+        botName: 'Babel Guild Demo#0110',
+    },
+    {
+        kind: 'pocket',
+        pathSegment: 'pocket',
+        title: 'Babel Pocket — Dashboard Demo',
+        productName: 'Babel Pocket',
+        commandName: 'Babel Pocket',
+        accessMode: 'user-install',
+        botName: 'Babel Pocket Demo#0110',
+    },
+];
+
 const DEMO_STATS = {
     bot: {
-        name: 'Babel Demo#0110',
+        name: 'Babel Guild Demo#0110',
         avatar: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2264%22 height=%2264%22 viewBox=%220 0 64 64%22%3E%3Crect width=%2264%22 height=%2264%22 rx=%2218%22 fill=%22%235865f2%22/%3E%3Ctext x=%2232%22 y=%2240%22 text-anchor=%22middle%22 font-family=%22Arial%22 font-size=%2228%22 font-weight=%22700%22 fill=%22white%22%3EB%3C/text%3E%3C/svg%3E',
         uptime: 342_720,
         memoryMB: '86.3',
@@ -196,19 +278,21 @@ const DEMO_STATS = {
     errors: 9,
 };
 
-const DEMO_CONFIG = {
+const DEMO_CONFIG: DemoConfigFixture = {
     vertexAiApiKey: '••••demo12',
     hasApiKey: true,
     gcpProject: 'babel-demo-project',
     gcpLocation: 'global',
     geminiModel: 'gemini-2.5-flash-lite',
     allowedGuildIds: ['100000000000000001', '100000000000000002'],
+    allowedUserIds: [],
     cooldownSeconds: 5,
     cacheMaxSize: 2000,
     setupComplete: true,
     inputPricePerMillion: 0.1,
     outputPricePerMillion: 0.4,
     dailyBudgetUsd: 0.75,
+    defaultUserDailyBudgetUsd: 0,
     translationPrompt: '',
     maxInputLength: 2000,
     maxOutputTokens: 1000,
@@ -363,7 +447,7 @@ const DEMO_HISTORY = [
     { date: '2026-06-01', inputTokens: 918_420, outputTokens: 304_880, requests: 713, cost: 0.214 },
 ];
 
-const DEMO_LOGS = [
+const DEMO_LOGS: DemoLogFixture = [
     {
         type: 'translation',
         guildId: '100000000000000001',
@@ -491,6 +575,26 @@ const DEMO_USER_PROFILES = {
     },
 };
 
+const DEMO_PENDING_USERS = {
+    users: [
+        {
+            userId: '200000000000000006',
+            firstSeenAt: '2026-06-01T09:20:00.000Z',
+            lastSeenAt: '2026-06-01T11:45:00.000Z',
+            source: 'user-install',
+            profile: {
+                userId: '200000000000000006',
+                username: 'waiting-operator',
+                globalName: 'Waiting Operator',
+                displayName: 'Waiting Operator',
+                avatarUrl:
+                    'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2228%22 height=%2228%22%3E%3Crect width=%2228%22 height=%2228%22 rx=%2214%22 fill=%22%230ea5e9%22/%3E%3Ctext x=%2214%22 y=%2219%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2214%22%3EW%3C/text%3E%3C/svg%3E',
+            },
+        },
+    ],
+    count: 1,
+};
+
 const DEMO_GLOSSARY = {
     entries: [
         {
@@ -525,12 +629,12 @@ const DEMO_GLOSSARY = {
 };
 
 const DEMO_VERSION = {
-    version: '0.1.2',
+    version: '0.1.3',
     repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator',
     update: {
         status: 'current',
-        latestVersion: '0.1.2',
-        latestUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases/tag/v0.1.2',
+        latestVersion: '0.1.3',
+        latestUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases/tag/v0.1.3',
     },
 };
 
@@ -561,9 +665,177 @@ function writeJson(path: string, data: unknown): void {
     writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`);
 }
 
-function injectDemoAssets(html: string): string {
+function createCapabilitiesFixture(variant: DemoVariant): unknown {
+    const isPocket = variant.kind === 'pocket';
+
+    return {
+        profile: {
+            id: isPocket ? 'babel-pocket' : 'babel-guild',
+            productName: variant.productName,
+            commandName: variant.commandName,
+            accessMode: variant.accessMode,
+        },
+        capabilities: {
+            guildAccess: !isPocket,
+            userAccess: isPocket,
+            guildGlossary: !isPocket,
+            pendingUserInstallOwners: isPocket,
+        },
+    };
+}
+
+function createStatsFixture(variant: DemoVariant): typeof DEMO_STATS {
+    if (variant.kind === 'guild') {
+        return {
+            ...DEMO_STATS,
+            bot: {
+                ...DEMO_STATS.bot,
+                name: variant.botName,
+            },
+        };
+    }
+
+    return {
+        ...DEMO_STATS,
+        bot: {
+            ...DEMO_STATS.bot,
+            name: variant.botName,
+            guilds: 0,
+        },
+        usage: {
+            ...DEMO_STATS.usage,
+            inputTokens: 318_420,
+            outputTokens: 104_880,
+            requests: 241,
+            inputCost: 0.0318,
+            outputCost: 0.042,
+            totalCost: 0.0738,
+            dailyBudget: 0.5,
+            budgetUsedPercent: 14.76,
+        },
+        guildBudgets: [],
+        operations: {
+            ...DEMO_STATS.operations,
+            budgetRisk: {
+                warningCount: 0,
+                exceededCount: 0,
+                warnings: [],
+                exceeded: [],
+            },
+            guidance: [
+                {
+                    area: 'budget',
+                    severity: 'info',
+                    title: 'User budget is healthy',
+                    action: 'Babel Pocket is tracking usage against the installing user.',
+                },
+                ...DEMO_STATS.operations.guidance.filter((item) => item.area !== 'budget'),
+            ],
+        },
+    };
+}
+
+function createConfigFixture(variant: DemoVariant): typeof DEMO_CONFIG {
+    if (variant.kind === 'guild') {
+        return { ...DEMO_CONFIG };
+    }
+
+    return {
+        ...DEMO_CONFIG,
+        allowedGuildIds: [],
+        allowedUserIds: ['200000000000000001', '200000000000000002'],
+        dailyBudgetUsd: 0.25,
+        defaultUserDailyBudgetUsd: 0.5,
+    };
+}
+
+function createLogsFixture(variant: DemoVariant): DemoLogFixture {
+    if (variant.kind === 'guild') {
+        return DEMO_LOGS;
+    }
+
+    return DEMO_LOGS.map((entry) => ({
+        ...entry,
+        guildId: null,
+        guildName: null,
+        command: entry.command === 'Babel' ? 'Babel Pocket' : entry.command,
+    }));
+}
+
+function createDemoApiJs(variant: DemoVariant): string {
+    const userOnlyRoutes =
+        variant.kind === 'pocket'
+            ? `
+    '/access/pending-users': 'pending-users.json',
+    '/guild-glossary/100000000000000001': { error: 'No demo fixture for /guild-glossary/100000000000000001', status: 404 },`
+            : `
+    '/guild-glossary/100000000000000001': 'guild-glossary.json',
+    '/guild-glossary/100000000000000002': { entries: [], count: 0 },
+    '/guild-glossary/100000000000000003': { entries: [], count: 0 },
+    '/guild-glossary/100000000000000004': { entries: [], count: 0 },`;
+
+    return `
+(function () {
+  const fixtureMap = {
+    '/auth/check': { authenticated: true, csrfToken: 'demo-csrf-token' },
+    '/setup-status': { complete: true },
+    '/capabilities': 'capabilities.json',
+    '/stats': 'stats.json',
+    '/health': 'health.json',
+    '/version': 'version.json',
+    '/version/refresh': 'version.json',
+    '/config': 'config.json',
+    '/guilds': 'guilds.json',
+    '/guild-budgets': 'guild-budgets.json',
+    '/usage/history': 'history.json',
+    '/logs': 'logs.json',
+    '/user-prefs': 'user-prefs.json',${userOnlyRoutes}
+    '/sessions': 'sessions.json'
+  };
+
+  function jsonResponse(data, status) {
+    return new Response(JSON.stringify(data), {
+      status: status || data.status || 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+
+  function normalizePath(path) {
+    return String(path).split('?')[0];
+  }
+
+  async function loadFixture(name) {
+    const response = await fetch('demo/fixtures/' + name);
+    return response.json();
+  }
+
+  window.BABEL_DEMO = true;
+  window.BABEL_DEMO_APP = ${JSON.stringify(variant.kind)};
+  window.api = async function demoApi(path, opts) {
+    const method = (opts && opts.method ? opts.method : 'GET').toUpperCase();
+    const route = normalizePath(path);
+    const fixture = fixtureMap[route];
+    if (!fixture) {
+      return jsonResponse({ error: 'No demo fixture for ' + route }, 404);
+    }
+
+    if (method !== 'GET' && route !== '/version/refresh') {
+      return jsonResponse({ ok: true, demo: true, message: 'Demo mode: changes are disabled.' });
+    }
+
+    if (typeof fixture === 'string') {
+      return jsonResponse(await loadFixture(fixture));
+    }
+
+    return jsonResponse(fixture);
+  };
+})();
+`;
+}
+
+function injectDemoAssets(html: string, variant: DemoVariant): string {
     const withTitle = html
-        .replace('<title>Babel — Dashboard</title>', '<title>Babel — Dashboard Demo</title>')
+        .replace('<title>Babel — Dashboard</title>', `<title>${variant.title}</title>`)
         .replace(
             '<script src="js/utils.js"></script>',
             '<script src="js/utils.js"></script>\n        <script src="demo/demo-api.js"></script>',
@@ -592,35 +864,53 @@ export function buildDashboardDemo({
 }: BuildDashboardDemoOptions = {}): void {
     rmSync(demoDir, { recursive: true, force: true });
     mkdirSync(demoDir, { recursive: true });
-    cpSync(publicDir, demoDir, { recursive: true });
 
-    const demoAssetsDir = join(demoDir, 'demo');
+    writeFileSync(join(demoDir, 'index.html'), createDemoLandingPage());
+
+    for (const variant of DEMO_VARIANTS) {
+        buildDemoVariant(publicDir, demoDir, variant);
+    }
+}
+
+function buildDemoVariant(publicDir: string, demoDir: string, variant: DemoVariant): void {
+    const variantDir = join(demoDir, variant.pathSegment);
+    cpSync(publicDir, variantDir, { recursive: true });
+
+    const demoAssetsDir = join(variantDir, 'demo');
     const fixtureDir = join(demoAssetsDir, 'fixtures');
     mkdirSync(fixtureDir, { recursive: true });
 
-    const htmlPath = join(demoDir, 'index.html');
-    writeFileSync(htmlPath, injectDemoAssets(readFileSync(htmlPath, 'utf-8')));
+    const htmlPath = join(variantDir, 'index.html');
+    writeFileSync(htmlPath, injectDemoAssets(readFileSync(htmlPath, 'utf-8'), variant));
 
     writeFileSync(join(demoAssetsDir, 'demo.css'), DEMO_CSS);
-    writeFileSync(join(demoAssetsDir, 'demo-api.js'), DEMO_API_JS);
-    writeFileSync(join(demoAssetsDir, 'demo-readonly.js'), DEMO_READONLY_JS);
+    writeFileSync(join(demoAssetsDir, 'demo-api.js'), createDemoApiJs(variant));
+    writeFileSync(join(demoAssetsDir, 'demo-readonly.js'), createDemoReadonlyJs(variant));
 
-    writeJson(join(fixtureDir, 'stats.json'), DEMO_STATS);
-    writeJson(join(fixtureDir, 'config.json'), DEMO_CONFIG);
-    writeJson(join(fixtureDir, 'guilds.json'), DEMO_GUILDS);
-    writeJson(join(fixtureDir, 'guild-budgets.json'), DEMO_GUILD_BUDGETS);
+    writeJson(join(fixtureDir, 'capabilities.json'), createCapabilitiesFixture(variant));
+    writeJson(join(fixtureDir, 'stats.json'), createStatsFixture(variant));
+    writeJson(join(fixtureDir, 'config.json'), createConfigFixture(variant));
+    writeJson(join(fixtureDir, 'guilds.json'), variant.kind === 'guild' ? DEMO_GUILDS : []);
+    writeJson(
+        join(fixtureDir, 'guild-budgets.json'),
+        variant.kind === 'guild' ? DEMO_GUILD_BUDGETS : {},
+    );
     writeJson(join(fixtureDir, 'history.json'), DEMO_HISTORY);
-    writeJson(join(fixtureDir, 'logs.json'), DEMO_LOGS);
+    writeJson(join(fixtureDir, 'logs.json'), createLogsFixture(variant));
     writeJson(join(fixtureDir, 'user-prefs.json'), {
         prefs: DEMO_USER_PREFS,
         count: Object.keys(DEMO_USER_PREFS).length,
         profiles: DEMO_USER_PROFILES,
     });
-    writeJson(join(fixtureDir, 'guild-glossary.json'), DEMO_GLOSSARY);
+    if (variant.kind === 'guild') {
+        writeJson(join(fixtureDir, 'guild-glossary.json'), DEMO_GLOSSARY);
+    } else {
+        writeJson(join(fixtureDir, 'pending-users.json'), DEMO_PENDING_USERS);
+    }
     writeJson(join(fixtureDir, 'sessions.json'), {
         sessions: [
             {
-                id: 'demo-current-session',
+                id: `${variant.kind}-demo-current-session`,
                 current: true,
                 expiresAt: '2026-06-02T00:00:00.000Z',
                 expiresInMs: 86_400_000,
@@ -629,6 +919,86 @@ export function buildDashboardDemo({
     });
     writeJson(join(fixtureDir, 'version.json'), DEMO_VERSION);
     writeJson(join(fixtureDir, 'health.json'), DEMO_HEALTH);
+}
+
+function createDemoLandingPage(): string {
+    return `<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Babel Dashboard Demos</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #0f172a;
+        color: #e5e7eb;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 2rem;
+      }
+      main {
+        width: min(880px, 100%);
+      }
+      h1 {
+        margin: 0 0 0.75rem;
+        font-size: 2rem;
+      }
+      p {
+        margin: 0 0 1.5rem;
+        color: #94a3b8;
+      }
+      .demo-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 1rem;
+      }
+      a {
+        display: block;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        padding: 1.25rem;
+        background: #111827;
+        color: inherit;
+        text-decoration: none;
+      }
+      a:hover {
+        border-color: #60a5fa;
+      }
+      strong {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-size: 1.15rem;
+      }
+      span {
+        color: #94a3b8;
+        line-height: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Babel dashboard demos</h1>
+      <p>Choose the product surface you want to preview. Both demos are read-only and use fixture data.</p>
+      <div class="demo-grid">
+        <a href="guild/index.html">
+          <strong>Babel Guild demo</strong>
+          <span>Server-install dashboard with guild access, per-server budgets, and glossary fixtures.</span>
+        </a>
+        <a href="pocket/index.html">
+          <strong>Babel Pocket demo</strong>
+          <span>User-install dashboard with user allowlist and pending owner fixtures.</span>
+        </a>
+      </div>
+    </main>
+  </body>
+</html>
+`;
 }
 
 const DEMO_CSS = `
@@ -671,80 +1041,70 @@ const DEMO_CSS = `
 .demo-disabled {
   cursor: not-allowed !important;
 }
+
+.demo-only-section {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.45);
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.demo-only-section h3 {
+  margin-top: 0;
+}
+
+.demo-only-section ul {
+  margin: 0.75rem 0 0;
+  padding-left: 1.25rem;
+  color: var(--text-dim);
+}
 `;
 
-const DEMO_API_JS = `
-(function () {
-  const fixtureMap = {
-    '/auth/check': { authenticated: true, csrfToken: 'demo-csrf-token' },
-    '/setup-status': { complete: true },
-    '/stats': 'stats.json',
-    '/health': 'health.json',
-    '/version': 'version.json',
-    '/version/refresh': 'version.json',
-    '/config': 'config.json',
-    '/guilds': 'guilds.json',
-    '/guild-budgets': 'guild-budgets.json',
-    '/usage/history': 'history.json',
-    '/logs': 'logs.json',
-    '/user-prefs': 'user-prefs.json',
-    '/guild-glossary/100000000000000001': 'guild-glossary.json',
-    '/guild-glossary/100000000000000002': { entries: [], count: 0 },
-    '/guild-glossary/100000000000000003': { entries: [], count: 0 },
-    '/guild-glossary/100000000000000004': { entries: [], count: 0 },
-    '/sessions': 'sessions.json'
-  };
+function createDemoReadonlyJs(variant: DemoVariant): string {
+    const pocketSummary =
+        variant.kind === 'pocket'
+            ? `
+  async function installPocketDemoSections() {
+    const accessTab = document.getElementById('tab-access');
+    if (!accessTab || accessTab.querySelector('[data-pocket-demo-summary]')) return;
 
-  function jsonResponse(data, status) {
-    return new Response(JSON.stringify(data), {
-      status: status || 200,
-      headers: { 'Content-Type': 'application/json' }
+    accessTab.querySelectorAll('.settings-section').forEach((section) => {
+      const heading = section.querySelector('h3')?.textContent || '';
+      if (heading.includes('Server Whitelist') || heading.includes('Server Glossary')) {
+        section.style.display = 'none';
+      }
     });
-  }
+    const saveBar = accessTab.querySelector('.save-bar');
+    if (saveBar) saveBar.style.display = 'none';
 
-  function normalizePath(path) {
-    return String(path).split('?')[0];
-  }
+    const summary = document.createElement('div');
+    summary.className = 'demo-only-section';
+    summary.dataset.pocketDemoSummary = 'true';
+    summary.innerHTML =
+      '<h3>User Install Access</h3>' +
+      '<div class="desc-text">Babel Pocket uses user allowlists and per-user budgets. The demo fixtures include approved installing users and one pending owner request.</div>' +
+      '<ul><li>Approved users: Alex Chen, Mei Lin</li><li>Pending user-install owner: Waiting Operator</li><li>Default user budget: $0.50/day</li></ul>';
+    accessTab.prepend(summary);
+  }`
+            : `
+  async function installPocketDemoSections() {}`;
 
-  async function loadFixture(name) {
-    const response = await fetch('demo/fixtures/' + name);
-    return response.json();
-  }
-
-  window.BABEL_DEMO = true;
-  window.api = async function demoApi(path, opts) {
-    const method = (opts && opts.method ? opts.method : 'GET').toUpperCase();
-    const route = normalizePath(path);
-    const fixture = fixtureMap[route];
-    if (!fixture) {
-      return jsonResponse({ error: 'No demo fixture for ' + route }, 404);
-    }
-
-    if (method !== 'GET' && route !== '/version/refresh') {
-      return jsonResponse({ ok: true, demo: true, message: 'Demo mode: changes are disabled.' });
-    }
-
-    if (typeof fixture === 'string') {
-      return jsonResponse(await loadFixture(fixture));
-    }
-
-    return jsonResponse(fixture);
-  };
-})();
-`;
-
-const DEMO_READONLY_JS = `
+    return `
 (function () {
+  const appName = ${JSON.stringify(variant.productName)};
+
   function installDemoBanner() {
     if (document.querySelector('.demo-banner')) return;
 
     const banner = document.createElement('div');
     banner.className = 'demo-banner';
     banner.innerHTML =
-      '<div><strong>Babel dashboard demo</strong><span>Mock data only. No Discord or AI provider is connected.</span></div>' +
+      '<div><strong>' + appName + ' dashboard demo</strong><span>Mock data only. No Discord or AI provider is connected.</span></div>' +
       '<div class="demo-badge">Read-only demo</div>';
     document.body.prepend(banner);
   }
+${pocketSummary}
 
   function disableMutations() {
     const selectors = [
@@ -781,12 +1141,14 @@ const DEMO_READONLY_JS = `
 
   window.addEventListener('DOMContentLoaded', () => {
     installDemoBanner();
+    installPocketDemoSections();
     wrapToast();
     setTimeout(disableMutations, 100);
     setInterval(disableMutations, 1000);
   });
 })();
 `;
+}
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
     buildDashboardDemo();

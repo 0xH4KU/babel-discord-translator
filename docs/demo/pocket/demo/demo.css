@@ -1,0 +1,58 @@
+
+.demo-banner {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  background: rgba(15, 23, 42, 0.96);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+
+.demo-banner strong {
+  display: inline-block;
+  margin-right: 0.45rem;
+  font-size: 0.9rem;
+}
+
+.demo-banner span {
+  color: var(--text-dim);
+  font-size: 0.82rem;
+}
+
+.demo-badge {
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  border-radius: 999px;
+  color: var(--yellow);
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.demo-disabled {
+  cursor: not-allowed !important;
+}
+
+.demo-only-section {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.45);
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.demo-only-section h3 {
+  margin-top: 0;
+}
+
+.demo-only-section ul {
+  margin: 0.75rem 0 0;
+  padding-left: 1.25rem;
+  color: var(--text-dim);
+}

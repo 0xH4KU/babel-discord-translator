@@ -1,0 +1,187 @@
+
+/**
+ * Settings tab: load/save configuration, translation test, prompt editor.
+ */
+
+let currentConfig = {};
+
+function onProviderModeChange() {
+  const mode = document.getElementById('cfg-provider').value;
+  const vertexSection = document.getElementById('section-vertex');
+  const openaiSection = document.getElementById('section-openai');
+
+  const showVertex = mode === 'vertex' || mode === 'vertex+openai' || mode === 'openai+vertex';
+  const showOpenai = mode === 'openai' || mode === 'vertex+openai' || mode === 'openai+vertex';
+
+  vertexSection.style.display = showVertex ? '' : 'none';
+  openaiSection.style.display = showOpenai ? '' : 'none';
+}
+
+function renderSessions(sessions) {
+  const container = document.getElementById('session-list');
+  if (!container) return;
+
+  if (!sessions || sessions.length === 0) {
+    container.innerHTML = '<div class="session-empty">No active sessions</div>';
+    return;
+  }
+
+  container.innerHTML = sessions.map((session) => {
+    const expires = session.expiresAt ? new Date(session.expiresAt).toLocaleString() : 'Unknown';
+    const currentBadge = session.current ? '<span class="session-badge">Current</span>' : '';
+    const action = session.current
+      ? '<span class="session-muted">This browser</span>'
+      : `<button class="btn-danger btn-xs" onclick="revokeSession('${session.id}')">Revoke</button>`;
+
+    return `<div class="session-item">
+      <div>
+        <div class="session-title">Session ${session.id} ${currentBadge}</div>
+        <div class="session-meta">Expires ${expires}</div>
+      </div>
+      ${action}
+    </div>`;
+  }).join('');
+}
+
+async function loadSessions() {
+  try {
+    const res = await api('/sessions');
+    if (!res.ok) return;
+
+    const data = await res.json();
+    renderSessions(data.sessions || []);
+  } catch { }
+}
+
+async function loadSettings() {
+  try {
+    const [cfgRes, guildRes] = await Promise.all([api('/config'), api('/guilds')]);
+    currentConfig = await cfgRes.json();
+    allGuilds = await guildRes.json();
+
+    document.getElementById('cfg-apikey').value = '';
+    document.getElementById('cfg-apikey').placeholder =
+      currentConfig.hasApiKey ? currentConfig.vertexAiApiKey + ' (leave blank to keep)' : 'Not set';
+    document.getElementById('cfg-project').value = currentConfig.gcpProject || '';
+    document.getElementById('cfg-location').value = currentConfig.gcpLocation || 'global';
+    document.getElementById('cfg-model').value = currentConfig.geminiModel || '';
+    document.getElementById('cfg-cooldown').value = currentConfig.cooldownSeconds || 5;
+    document.getElementById('cfg-cache').value = currentConfig.cacheMaxSize || 2000;
+    document.getElementById('cfg-max-input').value = currentConfig.maxInputLength || 2000;
+    document.getElementById('cfg-max-output').value = currentConfig.maxOutputTokens || 1000;
+    document.getElementById('cfg-input-price').value = currentConfig.inputPricePerMillion || 0;
+    document.getElementById('cfg-output-price').value = currentConfig.outputPricePerMillion || 0;
+    document.getElementById('cfg-budget').value = currentConfig.dailyBudgetUsd || 0;
+    document.getElementById('cfg-prompt').value = currentConfig.translationPrompt || '';
+
+    // Provider settings
+    document.getElementById('cfg-provider').value = currentConfig.translationProvider || 'vertex';
+    document.getElementById('cfg-openai-apikey').value = '';
+    document.getElementById('cfg-openai-apikey').placeholder =
+      currentConfig.hasOpenaiApiKey ? currentConfig.openaiApiKey + ' (leave blank to keep)' : 'Not set';
+    document.getElementById('cfg-openai-baseurl').value = currentConfig.openaiBaseUrl || '';
+    document.getElementById('cfg-openai-model').value = currentConfig.openaiModel || '';
+    onProviderModeChange();
+    loadSessions();
+  } catch { }
+}
+
+async function saveSettings() {
+  const updates = {};
+
+  const newKey = document.getElementById('cfg-apikey').value.trim();
+  if (newKey) updates.vertexAiApiKey = newKey;
+
+  updates.gcpProject = document.getElementById('cfg-project').value.trim();
+  updates.gcpLocation = document.getElementById('cfg-location').value.trim() || 'global';
+  updates.geminiModel = document.getElementById('cfg-model').value.trim();
+  updates.cooldownSeconds = parseInt(document.getElementById('cfg-cooldown').value) || 5;
+  updates.cacheMaxSize = parseInt(document.getElementById('cfg-cache').value) || 2000;
+  updates.maxInputLength = parseInt(document.getElementById('cfg-max-input').value) || 2000;
+  updates.maxOutputTokens = parseInt(document.getElementById('cfg-max-output').value) || 1000;
+  updates.inputPricePerMillion = parseFloat(document.getElementById('cfg-input-price').value) || 0;
+  updates.outputPricePerMillion = parseFloat(document.getElementById('cfg-output-price').value) || 0;
+  updates.dailyBudgetUsd = parseFloat(document.getElementById('cfg-budget').value) || 0;
+  updates.translationPrompt = document.getElementById('cfg-prompt').value;
+
+  // Provider settings
+  updates.translationProvider = document.getElementById('cfg-provider').value;
+  const newOpenaiKey = document.getElementById('cfg-openai-apikey').value.trim();
+  if (newOpenaiKey) updates.openaiApiKey = newOpenaiKey;
+  updates.openaiBaseUrl = document.getElementById('cfg-openai-baseurl').value.trim();
+  updates.openaiModel = document.getElementById('cfg-openai-model').value.trim();
+
+  const res = await api('/config', {
+    method: 'POST',
+    body: JSON.stringify(updates),
+  });
+
+  if (res.ok) {
+    showToast('Settings saved!');
+    loadSettings();
+  } else {
+    showToast('Save failed', true);
+  }
+}
+
+async function clearCache() {
+  const res = await api('/cache/clear', { method: 'POST' });
+  if (res.ok) {
+    const data = await res.json();
+    showToast(`Cache cleared (${data.cleared} entries removed)`);
+    loadStats();
+  } else {
+    showToast('Clear failed', true);
+  }
+}
+
+async function testTranslate() {
+  const text = document.getElementById('test-text').value.trim();
+  const lang = document.getElementById('test-lang').value;
+  if (!text) { showToast('Enter some text first', true); return; }
+
+  const btn = document.getElementById('test-btn');
+  btn.disabled = true;
+  btn.textContent = '...';
+  const resultDiv = document.getElementById('test-result');
+  resultDiv.classList.remove('show');
+
+  try {
+    const res = await api('/translate/test', {
+      method: 'POST',
+      body: JSON.stringify({ text, targetLanguage: lang }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      document.getElementById('test-output').textContent = data.translation;
+      document.getElementById('test-meta').textContent =
+        `${data.latencyMs}ms · ${data.inputTokens} in / ${data.outputTokens} out tokens`;
+      resultDiv.classList.add('show');
+    } else {
+      showToast('Test failed: ' + data.error, true);
+    }
+  } catch (err) {
+    showToast('Test failed: ' + err.message, true);
+  }
+  btn.disabled = false;
+  btn.textContent = 'Test';
+}
+
+function restoreDefaultPrompt() {
+  document.getElementById('cfg-prompt').value = '';
+  showToast('Default prompt will be used — click Save to apply');
+}
+
+async function revokeSession(id) {
+  const res = await api('/sessions/revoke', {
+    method: 'POST',
+    body: JSON.stringify({ id }),
+  });
+
+  if (res.ok) {
+    showToast('Session revoked');
+    loadSessions();
+  } else {
+    showToast('Revoke failed', true);
+  }
+}

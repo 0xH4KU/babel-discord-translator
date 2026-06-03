@@ -38,3 +38,21 @@
 .demo-disabled {
   cursor: not-allowed !important;
 }
+
+.demo-only-section {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.45);
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.demo-only-section h3 {
+  margin-top: 0;
+}
+
+.demo-only-section ul {
+  margin: 0.75rem 0 0;
+  padding-left: 1.25rem;
+  color: var(--text-dim);
+}

@@ -1,0 +1,212 @@
+[
+  {
+    "date": "2026-05-03",
+    "inputTokens": 220100,
+    "outputTokens": 73200,
+    "requests": 184,
+    "cost": 0.058
+  },
+  {
+    "date": "2026-05-04",
+    "inputTokens": 261900,
+    "outputTokens": 91400,
+    "requests": 205,
+    "cost": 0.073
+  },
+  {
+    "date": "2026-05-05",
+    "inputTokens": 198000,
+    "outputTokens": 64100,
+    "requests": 163,
+    "cost": 0.052
+  },
+  {
+    "date": "2026-05-06",
+    "inputTokens": 344400,
+    "outputTokens": 121000,
+    "requests": 279,
+    "cost": 0.097
+  },
+  {
+    "date": "2026-05-07",
+    "inputTokens": 410200,
+    "outputTokens": 139600,
+    "requests": 331,
+    "cost": 0.117
+  },
+  {
+    "date": "2026-05-08",
+    "inputTokens": 292500,
+    "outputTokens": 103300,
+    "requests": 248,
+    "cost": 0.083
+  },
+  {
+    "date": "2026-05-09",
+    "inputTokens": 331700,
+    "outputTokens": 112900,
+    "requests": 267,
+    "cost": 0.091
+  },
+  {
+    "date": "2026-05-10",
+    "inputTokens": 456100,
+    "outputTokens": 151200,
+    "requests": 356,
+    "cost": 0.129
+  },
+  {
+    "date": "2026-05-11",
+    "inputTokens": 498000,
+    "outputTokens": 172500,
+    "requests": 389,
+    "cost": 0.149
+  },
+  {
+    "date": "2026-05-12",
+    "inputTokens": 377300,
+    "outputTokens": 119000,
+    "requests": 298,
+    "cost": 0.101
+  },
+  {
+    "date": "2026-05-13",
+    "inputTokens": 529900,
+    "outputTokens": 188700,
+    "requests": 421,
+    "cost": 0.159
+  },
+  {
+    "date": "2026-05-14",
+    "inputTokens": 582400,
+    "outputTokens": 201100,
+    "requests": 462,
+    "cost": 0.174
+  },
+  {
+    "date": "2026-05-15",
+    "inputTokens": 468300,
+    "outputTokens": 160400,
+    "requests": 374,
+    "cost": 0.141
+  },
+  {
+    "date": "2026-05-16",
+    "inputTokens": 612800,
+    "outputTokens": 209300,
+    "requests": 489,
+    "cost": 0.186
+  },
+  {
+    "date": "2026-05-17",
+    "inputTokens": 690100,
+    "outputTokens": 244200,
+    "requests": 538,
+    "cost": 0.217
+  },
+  {
+    "date": "2026-05-18",
+    "inputTokens": 532000,
+    "outputTokens": 188000,
+    "requests": 416,
+    "cost": 0.159
+  },
+  {
+    "date": "2026-05-19",
+    "inputTokens": 744300,
+    "outputTokens": 260000,
+    "requests": 587,
+    "cost": 0.231
+  },
+  {
+    "date": "2026-05-20",
+    "inputTokens": 601500,
+    "outputTokens": 214400,
+    "requests": 469,
+    "cost": 0.196
+  },
+  {
+    "date": "2026-05-21",
+    "inputTokens": 788800,
+    "outputTokens": 284100,
+    "requests": 622,
+    "cost": 0.263
+  },
+  {
+    "date": "2026-05-22",
+    "inputTokens": 700300,
+    "outputTokens": 240900,
+    "requests": 551,
+    "cost": 0.226
+  },
+  {
+    "date": "2026-05-23",
+    "inputTokens": 819900,
+    "outputTokens": 303300,
+    "requests": 648,
+    "cost": 0.303
+  },
+  {
+    "date": "2026-05-24",
+    "inputTokens": 884400,
+    "outputTokens": 328700,
+    "requests": 695,
+    "cost": 0.329
+  },
+  {
+    "date": "2026-05-25",
+    "inputTokens": 772100,
+    "outputTokens": 279400,
+    "requests": 612,
+    "cost": 0.289
+  },
+  {
+    "date": "2026-05-26",
+    "inputTokens": 905000,
+    "outputTokens": 338000,
+    "requests": 721,
+    "cost": 0.341
+  },
+  {
+    "date": "2026-05-27",
+    "inputTokens": 811400,
+    "outputTokens": 292500,
+    "requests": 643,
+    "cost": 0.315
+  },
+  {
+    "date": "2026-05-28",
+    "inputTokens": 951300,
+    "outputTokens": 360900,
+    "requests": 759,
+    "cost": 0.371
+  },
+  {
+    "date": "2026-05-29",
+    "inputTokens": 1022100,
+    "outputTokens": 392700,
+    "requests": 814,
+    "cost": 0.399
+  },
+  {
+    "date": "2026-05-30",
+    "inputTokens": 873400,
+    "outputTokens": 318200,
+    "requests": 693,
+    "cost": 0.346
+  },
+  {
+    "date": "2026-05-31",
+    "inputTokens": 1114600,
+    "outputTokens": 430800,
+    "requests": 884,
+    "cost": 0.442
+  },
+  {
+    "date": "2026-06-01",
+    "inputTokens": 918420,
+    "outputTokens": 304880,
+    "requests": 713,
+    "cost": 0.214
+  }
+]

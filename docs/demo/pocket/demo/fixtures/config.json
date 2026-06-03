@@ -1,0 +1,32 @@
+{
+  "vertexAiApiKey": "••••demo12",
+  "hasApiKey": true,
+  "gcpProject": "babel-demo-project",
+  "gcpLocation": "global",
+  "geminiModel": "gemini-2.5-flash-lite",
+  "allowedGuildIds": [],
+  "allowedUserIds": [
+    "200000000000000001",
+    "200000000000000002"
+  ],
+  "cooldownSeconds": 5,
+  "cacheMaxSize": 2000,
+  "setupComplete": true,
+  "inputPricePerMillion": 0.1,
+  "outputPricePerMillion": 0.4,
+  "dailyBudgetUsd": 0.25,
+  "defaultUserDailyBudgetUsd": 0.5,
+  "translationPrompt": "",
+  "maxInputLength": 2000,
+  "maxOutputTokens": 1000,
+  "translationMaxConcurrent": 4,
+  "translationMaxGlobalQueue": 25,
+  "translationMaxGuildQueue": 5,
+  "translationMaxUserOutstanding": 1,
+  "translationMaxQueueWaitMs": 30000,
+  "openaiApiKey": "••••demoai",
+  "hasOpenaiApiKey": true,
+  "openaiBaseUrl": "https://api.openai.com",
+  "openaiModel": "gpt-4o-mini",
+  "translationProvider": "vertex+openai"
+}

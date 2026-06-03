@@ -1,0 +1,18 @@
+{
+  "users": [
+    {
+      "userId": "200000000000000006",
+      "firstSeenAt": "2026-06-01T09:20:00.000Z",
+      "lastSeenAt": "2026-06-01T11:45:00.000Z",
+      "source": "user-install",
+      "profile": {
+        "userId": "200000000000000006",
+        "username": "waiting-operator",
+        "globalName": "Waiting Operator",
+        "displayName": "Waiting Operator",
+        "avatarUrl": "data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2228%22 height=%2228%22%3E%3Crect width=%2228%22 height=%2228%22 rx=%2214%22 fill=%22%230ea5e9%22/%3E%3Ctext x=%2214%22 y=%2219%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2214%22%3EW%3C/text%3E%3C/svg%3E"
+      }
+    }
+  ],
+  "count": 1
+}

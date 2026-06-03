@@ -1,7 +1,7 @@
 {
   "sessions": [
     {
-      "id": "demo-current-session",
+      "id": "pocket-demo-current-session",
       "current": true,
       "expiresAt": "2026-06-02T00:00:00.000Z",
       "expiresInMs": 86400000

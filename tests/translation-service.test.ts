@@ -564,6 +564,33 @@ describe('TranslationService', () => {
         });
     });
 
+    it('should bill the actor user when a user-install request has no explicit billing owner', async () => {
+        const { service, usageTracker } = createService({
+            storeOverrides: {
+                allowedGuildIds: [],
+                allowedUserIds: ['actor'],
+                userLanguagePrefs: { actor: 'ja' },
+            },
+            accessMode: 'user-install',
+        });
+
+        const result = await service.process({
+            command: 'babel',
+            commandLabel: 'Babel Pocket (context menu)',
+            guildId: null,
+            userId: 'actor',
+            userTag: 'actor#0001',
+            locale: 'en-US',
+            text: 'Hello',
+        });
+
+        expect(result.status).toBe('success');
+        expect(usageTracker.record).toHaveBeenCalledWith(12, 6, {
+            guildId: null,
+            userId: 'actor',
+        });
+    });
+
     it('records unauthorized user-install owners as pending access users', async () => {
         const pendingUserInstallOwnerRepository = {
             recordSeen: vi.fn(),

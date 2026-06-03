@@ -148,7 +148,7 @@ The public dashboard demo is generated from the real dashboard assets with mock 
 npm run demo:build
 ```
 
-The generated site lives in `docs/demo/`, so GitHub Pages can publish it from the `docs` folder. The demo is read-only, uses fixture JSON, and does not connect to Discord or any AI provider.
+The generated site lives in `docs/demo/`, so GitHub Pages can publish it from the `docs` folder. The landing page links to separate read-only Guild and Pocket dashboard demos, both using fixture JSON without connecting to Discord or any AI provider.
 
 When the dashboard UI changes, run `npm run demo:build` before committing to refresh the mirrored demo.
 

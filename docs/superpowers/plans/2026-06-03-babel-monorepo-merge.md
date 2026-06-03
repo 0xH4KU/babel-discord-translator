@@ -1,6 +1,6 @@
 # Babel Monorepo Merge Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking.
 
 **Goal:** Merge Babel Pocket into `babel-discord-translator` as a two-app monorepo with shared translation, provider, persistence, logging, metrics, and dashboard foundations.
 
@@ -70,7 +70,7 @@ The design includes multiple subsystems. This plan implements the main merge sli
 - Modify: `tests/register.test.ts`
 - Modify: `scripts/register.ts`
 
-- [ ] **Step 1: Write failing command surface tests**
+- [x] **Step 1: Write failing command surface tests**
 
 Create `tests/register.test.ts`:
 
@@ -110,13 +110,13 @@ describe('Discord command registration profiles', () => {
 });
 ```
 
-- [ ] **Step 2: Run the new test and verify red**
+- [x] **Step 2: Run the new test and verify red**
 
 Run: `npm test -- tests/register.test.ts`
 
 Expected: FAIL because `src/apps/commands.ts` and `src/apps/app-profile.ts` do not exist.
 
-- [ ] **Step 3: Implement app profiles**
+- [x] **Step 3: Implement app profiles**
 
 Create `src/apps/app-profile.ts`:
 
@@ -303,7 +303,7 @@ export function getCommandsForProfile(profile: AppProfile): DiscordCommand[] {
 }
 ```
 
-- [ ] **Step 4: Update register script**
+- [x] **Step 4: Update register script**
 
 Modify `scripts/register.ts` to export `registerCommands` and use the profile command list:
 
@@ -355,13 +355,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 }
 ```
 
-- [ ] **Step 5: Verify green**
+- [x] **Step 5: Verify green**
 
 Run: `npm test -- tests/register.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 Run:
 
@@ -382,7 +382,7 @@ git commit -m "feat: add babel app command profiles"
 - Modify: `tests/config-repository.test.ts`
 - Modify: `tests/store.test.ts`
 
-- [ ] **Step 1: Write failing config/default tests**
+- [x] **Step 1: Write failing config/default tests**
 
 Update the test fixtures in `tests/config-repository.test.ts` and `tests/store.test.ts` so every `StoreData` factory includes:
 
@@ -417,13 +417,13 @@ it('includes empty user-install collections in snapshots', () => {
 });
 ```
 
-- [ ] **Step 2: Run tests and verify red**
+- [x] **Step 2: Run tests and verify red**
 
 Run: `npm test -- tests/config-repository.test.ts tests/store.test.ts`
 
 Expected: FAIL because `StoreData` and defaults do not include user-install fields.
 
-- [ ] **Step 3: Add shared types**
+- [x] **Step 3: Add shared types**
 
 Modify `src/types.ts`:
 
@@ -449,7 +449,7 @@ userTokenUsage: Record<string, TokenUsage>;
 userUsageHistory: Record<string, UsageHistoryEntry[]>;
 ```
 
-- [ ] **Step 4: Add defaults and normalization**
+- [x] **Step 4: Add defaults and normalization**
 
 Modify `src/persistence/store-defaults.ts` so `DEFAULT_STORE_DATA` includes:
 
@@ -484,7 +484,7 @@ export function cloneUserBudgets(
 }
 ```
 
-- [ ] **Step 5: Include user-install config keys**
+- [x] **Step 5: Include user-install config keys**
 
 Modify `src/modules/config/config-repository.ts`:
 
@@ -518,13 +518,13 @@ type RuntimeConfigKey =
 
 Ensure `RUNTIME_CONFIG_KEYS` includes `allowedUserIds` and `defaultUserDailyBudgetUsd`.
 
-- [ ] **Step 6: Verify green**
+- [x] **Step 6: Verify green**
 
 Run: `npm test -- tests/config-repository.test.ts tests/store.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 Run:
 
@@ -546,7 +546,7 @@ git commit -m "feat: add user-install store fields"
 - Modify: `tests/sqlite-database.test.ts`
 - Create: `tests/pending-user-install-owner-repository.test.ts`
 
-- [ ] **Step 1: Write failing SQLite migration test**
+- [x] **Step 1: Write failing SQLite migration test**
 
 Add to `tests/sqlite-database.test.ts`:
 
@@ -572,7 +572,7 @@ it('creates user-install usage and pending owner tables', () => {
 });
 ```
 
-- [ ] **Step 2: Write failing pending owner repository test**
+- [x] **Step 2: Write failing pending owner repository test**
 
 Create `tests/pending-user-install-owner-repository.test.ts`:
 
@@ -604,13 +604,13 @@ describe('PendingUserInstallOwnerRepository', () => {
 });
 ```
 
-- [ ] **Step 3: Run tests and verify red**
+- [x] **Step 3: Run tests and verify red**
 
 Run: `npm test -- tests/sqlite-database.test.ts tests/pending-user-install-owner-repository.test.ts`
 
 Expected: FAIL because tables and repository do not exist.
 
-- [ ] **Step 4: Add SQLite migrations**
+- [x] **Step 4: Add SQLite migrations**
 
 Modify `src/persistence/sqlite-database.ts` by adding migrations after existing guild usage/glossary migrations:
 
@@ -675,7 +675,7 @@ Add these names to the table allowlist used by `isSqliteStoreEmpty`:
 'pending_user_install_owners',
 ```
 
-- [ ] **Step 5: Add user budget repository**
+- [x] **Step 5: Add user budget repository**
 
 Create `src/modules/usage/user-budget-repository.ts`:
 
@@ -705,7 +705,7 @@ export class UserBudgetRepository {
 export const userBudgetRepository = new UserBudgetRepository();
 ```
 
-- [ ] **Step 6: Add pending owner repository**
+- [x] **Step 6: Add pending owner repository**
 
 Create `src/modules/dashboard/pending-user-install-owner-repository.ts`:
 
@@ -767,7 +767,7 @@ export class PendingUserInstallOwnerRepository {
 }
 ```
 
-- [ ] **Step 7: Add store methods and usage repository user methods**
+- [x] **Step 7: Add store methods and usage repository user methods**
 
 Modify `src/store.ts` with methods equivalent to the existing guild budget and guild usage methods:
 
@@ -791,13 +791,13 @@ getUserUsageHistory(userId: string): UsageHistoryEntry[];
 saveUserUsageHistory(userId: string, history: UsageHistoryEntry[]): void;
 ```
 
-- [ ] **Step 8: Verify green**
+- [x] **Step 8: Verify green**
 
 Run: `npm test -- tests/sqlite-database.test.ts tests/pending-user-install-owner-repository.test.ts tests/store.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 Run:
 
@@ -817,7 +817,7 @@ git commit -m "feat: add user-install persistence"
 - Modify: `src/modules/usage/usage.ts`
 - Modify: `tests/usage.test.ts`
 
-- [ ] **Step 1: Write failing usage scope tests**
+- [x] **Step 1: Write failing usage scope tests**
 
 Add to `tests/usage.test.ts`:
 
@@ -845,13 +845,13 @@ it('keeps legacy guild string scope working', () => {
 });
 ```
 
-- [ ] **Step 2: Run tests and verify red**
+- [x] **Step 2: Run tests and verify red**
 
 Run: `npm test -- tests/usage.test.ts`
 
 Expected: FAIL because usage scope does not support user ids.
 
-- [ ] **Step 3: Add scope helper**
+- [x] **Step 3: Add scope helper**
 
 Create `src/modules/usage/usage-scope.ts`:
 
@@ -879,7 +879,7 @@ export function normalizeUsageScope(scope: LegacyUsageScope): UsageScope {
 }
 ```
 
-- [ ] **Step 4: Extract cost helpers**
+- [x] **Step 4: Extract cost helpers**
 
 Create `src/modules/usage/usage-cost.ts` with the existing cost formulas from `usage.ts`:
 
@@ -934,7 +934,7 @@ export function toUsageHistoryDay(
 
 If the current `UsageStats` shape differs, keep the existing field names and move the existing formulas exactly.
 
-- [ ] **Step 5: Add budget selection helper**
+- [x] **Step 5: Add budget selection helper**
 
 Create `src/modules/usage/budget-scope.ts`:
 
@@ -985,7 +985,7 @@ export function resolveBudgetScope(
 }
 ```
 
-- [ ] **Step 6: Update usage tracker**
+- [x] **Step 6: Update usage tracker**
 
 Modify `src/modules/usage/usage.ts`:
 
@@ -1004,13 +1004,13 @@ record(inputTokens: number, outputTokens: number, scopeInput?: LegacyUsageScope)
 
 Keep legacy guild string support through `normalizeUsageScope`.
 
-- [ ] **Step 7: Verify green**
+- [x] **Step 7: Verify green**
 
 Run: `npm test -- tests/usage.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 Run:
 
@@ -1031,7 +1031,7 @@ git commit -m "feat: support user usage budgets"
 - Modify: `src/shared/messages/discord-messages.ts`
 - Modify: `tests/translation-service.test.ts`
 
-- [ ] **Step 1: Write failing translation service tests**
+- [x] **Step 1: Write failing translation service tests**
 
 Add Pocket tests from the Pocket repository into `tests/translation-service.test.ts`:
 
@@ -1103,13 +1103,13 @@ accessMode?: AccessMode;
 pendingUserInstallOwnerRepository?: { recordSeen: ReturnType<typeof vi.fn> };
 ```
 
-- [ ] **Step 2: Run tests and verify red**
+- [x] **Step 2: Run tests and verify red**
 
 Run: `npm test -- tests/translation-service.test.ts`
 
 Expected: FAIL because translation service has no user-install access mode.
 
-- [ ] **Step 3: Add unauthorized user message**
+- [x] **Step 3: Add unauthorized user message**
 
 Modify `src/shared/messages/discord-messages.ts`:
 
@@ -1117,7 +1117,7 @@ Modify `src/shared/messages/discord-messages.ts`:
 unauthorizedUser: () => 'This user is not authorized.',
 ```
 
-- [ ] **Step 4: Add translation scope helper**
+- [x] **Step 4: Add translation scope helper**
 
 Create `src/modules/translation/translation-scope.ts`:
 
@@ -1145,7 +1145,7 @@ export function getRuntimeLimiterUserId(scope: TranslationScope): string {
 }
 ```
 
-- [ ] **Step 5: Add access policy**
+- [x] **Step 5: Add access policy**
 
 Create `src/modules/translation/access-policy.ts`:
 
@@ -1190,7 +1190,7 @@ export function decideTranslationAccess(
 }
 ```
 
-- [ ] **Step 6: Extract target language helper**
+- [x] **Step 6: Extract target language helper**
 
 Create `src/modules/translation/target-language.ts` by moving the existing target-language decision from `translation-service.ts` without changing behavior. The public function should be:
 
@@ -1209,7 +1209,7 @@ export function decideTargetLanguage(input: {
 
 Use the same priority as the current service: command option, stored `/setlang`, locale, then auto.
 
-- [ ] **Step 7: Update translation service dependencies**
+- [x] **Step 7: Update translation service dependencies**
 
 Modify `TranslationServiceDeps` in `src/modules/translation/translation-service.ts`:
 
@@ -1231,13 +1231,13 @@ const usageScope = {
 
 Use `getRuntimeLimiterUserId(scope)` for runtime limiter and provider logging user id.
 
-- [ ] **Step 8: Verify green**
+- [x] **Step 8: Verify green**
 
 Run: `npm test -- tests/translation-service.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 Run:
 
@@ -1257,7 +1257,7 @@ git commit -m "feat: add user-install translation access"
 - Modify: `src/commands/help.ts`
 - Modify: `tests/babel-command.test.ts`
 
-- [ ] **Step 1: Write failing Babel command test**
+- [x] **Step 1: Write failing Babel command test**
 
 Add to `tests/babel-command.test.ts`:
 
@@ -1290,13 +1290,13 @@ it('passes user-install billing owner for Babel Pocket interactions', async () =
 
 Import `BABEL_POCKET_PROFILE` from `src/apps/app-profile.ts`. Extend the test interaction factory to include `authorizingIntegrationOwners`.
 
-- [ ] **Step 2: Run test and verify red**
+- [x] **Step 2: Run test and verify red**
 
 Run: `npm test -- tests/babel-command.test.ts`
 
 Expected: FAIL because `handleBabel` does not accept profiles or billing owner.
 
-- [ ] **Step 3: Update Babel command handler**
+- [x] **Step 3: Update Babel command handler**
 
 Modify `src/commands/babel.ts`:
 
@@ -1328,7 +1328,7 @@ const billingUserId =
 
 Pass `commandLabel: `${profile.commandName} (context menu)``, `billingUserId`, and existing fields to `translationService.process`.
 
-- [ ] **Step 4: Add shared bootstrap**
+- [x] **Step 4: Add shared bootstrap**
 
 Create `src/apps/bootstrap.ts` by moving the body of `src/index.ts` into:
 
@@ -1346,7 +1346,7 @@ export async function startBabelApp(profile: AppProfile): Promise<void> {
 
 The moved code must preserve existing startup logging, health/dashboard startup, graceful shutdown, and Discord interaction handling.
 
-- [ ] **Step 5: Keep root index backward compatible**
+- [x] **Step 5: Keep root index backward compatible**
 
 Modify `src/index.ts`:
 
@@ -1357,7 +1357,7 @@ import { startBabelApp } from './apps/bootstrap.js';
 await startBabelApp(BABEL_GUILD_PROFILE);
 ```
 
-- [ ] **Step 6: Verify green**
+- [x] **Step 6: Verify green**
 
 Run:
 
@@ -1368,7 +1368,7 @@ npm run typecheck
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 Run:
 
@@ -1395,7 +1395,7 @@ git commit -m "feat: add profile-aware app bootstrap"
 - Create: `apps/babel-pocket/src/index.ts`
 - Create: `apps/babel-pocket/scripts/register.ts`
 
-- [ ] **Step 1: Update root workspace metadata**
+- [x] **Step 1: Update root workspace metadata**
 
 Modify root `package.json`:
 
@@ -1430,7 +1430,7 @@ Modify root `package.json`:
 
 Preserve existing dependencies, devDependencies, keywords, license, repository, engines, and lint-staged.
 
-- [ ] **Step 2: Add shared tsconfig**
+- [x] **Step 2: Add shared tsconfig**
 
 Create `tsconfig.base.json`:
 
@@ -1467,14 +1467,14 @@ Modify root `tsconfig.json`:
 }
 ```
 
-- [ ] **Step 3: Add Babel Guild app package**
+- [x] **Step 3: Add Babel Guild app package**
 
 Create `apps/babel-guild/package.json`:
 
 ```json
 {
   "name": "@babel-discord-translator/guild",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Babel Guild server-install Discord translator",
   "type": "module",
   "main": "../../dist/apps/babel-guild/src/index.js",
@@ -1519,14 +1519,14 @@ import { BABEL_GUILD_PROFILE } from '../../../src/apps/app-profile.js';
 await registerCommandsForProfile(BABEL_GUILD_PROFILE);
 ```
 
-- [ ] **Step 4: Add Babel Pocket app package**
+- [x] **Step 4: Add Babel Pocket app package**
 
 Create `apps/babel-pocket/package.json`:
 
 ```json
 {
   "name": "@babel-discord-translator/pocket",
-  "version": "0.1.0",
+  "version": "0.1.3",
   "description": "Babel Pocket user-install Discord translator",
   "type": "module",
   "main": "../../dist/apps/babel-pocket/src/index.js",
@@ -1571,7 +1571,7 @@ import { BABEL_POCKET_PROFILE } from '../../../src/apps/app-profile.js';
 await registerCommandsForProfile(BABEL_POCKET_PROFILE);
 ```
 
-- [ ] **Step 5: Extract register helper**
+- [x] **Step 5: Extract register helper**
 
 Create `src/apps/register.ts` from the logic in `scripts/register.ts`:
 
@@ -1615,13 +1615,13 @@ export async function registerCommandsForProfile(profile: AppProfile): Promise<v
 
 Modify root `scripts/register.ts` to call `registerCommandsForProfile(resolveAppProfile())`.
 
-- [ ] **Step 6: Install workspace lockfile updates**
+- [x] **Step 6: Install workspace lockfile updates**
 
 Run: `npm install`
 
 Expected: command exits 0 and updates `package-lock.json` with workspaces.
 
-- [ ] **Step 7: Verify workspace builds**
+- [x] **Step 7: Verify workspace builds**
 
 Run:
 
@@ -1633,7 +1633,7 @@ npm run build:pocket
 
 Expected: all commands exit 0.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 Run:
 
@@ -1651,7 +1651,7 @@ git commit -m "feat: add guild and pocket workspace apps"
 - Modify: `src/modules/dashboard/dashboard.ts`
 - Modify: `tests/dashboard.test.ts`
 
-- [ ] **Step 1: Write failing dashboard capability tests**
+- [x] **Step 1: Write failing dashboard capability tests**
 
 Add tests:
 
@@ -1679,13 +1679,13 @@ it('does not expose pending user-install owners for Babel Guild', async () => {
 });
 ```
 
-- [ ] **Step 2: Run tests and verify red**
+- [x] **Step 2: Run tests and verify red**
 
 Run: `npm test -- tests/dashboard.test.ts`
 
 Expected: FAIL because dashboard does not accept app profile capability gates.
 
-- [ ] **Step 3: Add dashboard capabilities helper**
+- [x] **Step 3: Add dashboard capabilities helper**
 
 Create `src/modules/dashboard/capabilities.ts`:
 
@@ -1709,7 +1709,7 @@ export function getDashboardCapabilities(profile: AppProfile): DashboardCapabili
 }
 ```
 
-- [ ] **Step 4: Gate dashboard routes**
+- [x] **Step 4: Gate dashboard routes**
 
 Modify `createDashboardApp` deps to accept `profile?: AppProfile`, defaulting to `BABEL_GUILD_PROFILE`.
 
@@ -1734,13 +1734,13 @@ if (capabilities.pendingUserInstallOwners) {
 
 Keep shared routes unchanged.
 
-- [ ] **Step 5: Verify green**
+- [x] **Step 5: Verify green**
 
 Run: `npm test -- tests/dashboard.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 Run:
 
@@ -1761,7 +1761,7 @@ git commit -m "feat: gate dashboard routes by app profile"
 - Modify: `docs/operations/railway.md`
 - Modify: `.env.example`
 
-- [ ] **Step 1: Update README product framing**
+- [x] **Step 1: Update README product framing**
 
 Add this framing near the top of `README.md`:
 
@@ -1785,7 +1785,7 @@ npm run register:guild
 npm run register:pocket
 ```
 
-- [ ] **Step 2: Update environment example**
+- [x] **Step 2: Update environment example**
 
 Add to `.env.example`:
 
@@ -1795,7 +1795,7 @@ Add to `.env.example`:
 BABEL_APP=guild
 ```
 
-- [ ] **Step 3: Update operations docs**
+- [x] **Step 3: Update operations docs**
 
 In deployment docs, add:
 
@@ -1821,7 +1821,7 @@ npm run start -w @babel-discord-translator/pocket
 ```
 ````
 
-- [ ] **Step 4: Verify docs formatting**
+- [x] **Step 4: Verify docs formatting**
 
 Run:
 
@@ -1832,7 +1832,7 @@ npm run typecheck
 
 Expected: both commands exit 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 
@@ -1848,25 +1848,25 @@ git commit -m "docs: document babel guild and pocket apps"
 **Files:**
 - No planned edits.
 
-- [ ] **Step 1: Run full test suite**
+- [x] **Step 1: Run full test suite**
 
 Run: `npm test`
 
 Expected: PASS.
 
-- [ ] **Step 2: Run typecheck**
+- [x] **Step 2: Run typecheck**
 
 Run: `npm run typecheck`
 
 Expected: PASS.
 
-- [ ] **Step 3: Run lint**
+- [x] **Step 3: Run lint**
 
 Run: `npm run lint`
 
 Expected: PASS.
 
-- [ ] **Step 4: Run both builds**
+- [x] **Step 4: Run both builds**
 
 Run:
 
@@ -1877,7 +1877,7 @@ npm run build:pocket
 
 Expected: both commands exit 0 and create `dist/apps/babel-guild` and `dist/apps/babel-pocket`.
 
-- [ ] **Step 5: Inspect final git status**
+- [x] **Step 5: Inspect final git status**
 
 Run: `git status -sb`
 

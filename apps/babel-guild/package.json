@@ -1,6 +1,6 @@
 {
     "name": "@babel-discord-translator/guild",
-    "version": "0.1.2",
+    "version": "0.1.3",
     "description": "Babel Guild server-install Discord translator",
     "type": "module",
     "main": "../../dist/apps/babel-guild/src/index.js",

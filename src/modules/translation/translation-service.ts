@@ -219,7 +219,7 @@ export function createTranslationService({
 
             const usageScope = {
                 guildId: request.guildId ?? null,
-                userId: getBillingUsageUserId(scope),
+                userId: accessMode === 'user-install' ? getBillingUsageUserId(scope) : null,
             };
 
             if (usageTracker.isBudgetExceeded(usageScope)) {
