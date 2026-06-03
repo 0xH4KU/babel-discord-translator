@@ -148,6 +148,7 @@ function createService({
     runtimeLimiter,
     accessMode,
     pendingUserInstallOwnerRepository,
+    enableGuildGlossary,
 }: {
     storeOverrides?: Partial<StoreData>;
     translator?: ReturnType<typeof vi.fn>;
@@ -157,6 +158,7 @@ function createService({
     runtimeLimiter?: TranslationRuntimeLimiter;
     accessMode?: AccessMode;
     pendingUserInstallOwnerRepository?: { recordSeen: ReturnType<typeof vi.fn> };
+    enableGuildGlossary?: boolean;
 } = {}) {
     const cache = new TranslationCache(100);
     const cooldown = new CooldownManager(0);
@@ -179,6 +181,7 @@ function createService({
         metrics,
         runtimeLimiter,
         accessMode,
+        enableGuildGlossary,
         pendingUserInstallOwnerRepository,
         logger: loggerState.logger as never,
     });
@@ -456,6 +459,56 @@ describe('TranslationService', () => {
                 { sourceText: 'raid', targetText: '團本', notes: '' },
             ],
         });
+    });
+
+    it('should ignore guild glossary entries when guild glossary is disabled', async () => {
+        const translator = vi.fn(
+            async (): Promise<TranslationResult> => ({
+                text: 'こんにちは',
+                inputTokens: 12,
+                outputTokens: 6,
+            }),
+        );
+        const glossaryRepository = createGlossaryRepositoryMock({
+            'guild-1': [
+                {
+                    id: 1,
+                    guildId: 'guild-1',
+                    sourceText: 'OpenAI',
+                    targetText: 'OpenAI',
+                    notes: 'Preserve brand name',
+                    createdAt: '2026-06-01T00:00:00.000Z',
+                    updatedAt: '2026-06-01T00:00:00.000Z',
+                },
+            ],
+        });
+        const { service } = createService({
+            storeOverrides: {
+                allowedGuildIds: [],
+                allowedUserIds: ['user-owner'],
+                userLanguagePrefs: { 'user-owner': 'ja' },
+            },
+            translator,
+            glossaryRepository,
+            accessMode: 'user-install',
+            enableGuildGlossary: false,
+        });
+
+        const result = await service.process({
+            command: 'babel',
+            commandLabel: 'Babel Pocket (context menu)',
+            guildId: 'guild-1',
+            guildName: 'Test Guild',
+            userId: 'actor',
+            billingUserId: 'user-owner',
+            userTag: 'actor#0001',
+            locale: 'en-US',
+            text: 'Hello OpenAI',
+        });
+
+        expect(result.status).toBe('success');
+        expect(glossaryRepository.listEntries).not.toHaveBeenCalled();
+        expect(translator.mock.calls[0]?.[2]).not.toHaveProperty('glossaryEntries');
     });
 
     it('should block requests when the guild budget is exceeded', async () => {

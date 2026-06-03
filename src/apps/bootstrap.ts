@@ -85,6 +85,7 @@ export async function startBabelApp(profile: AppProfile): Promise<void> {
         metrics,
         runtimeLimiter,
         accessMode: profile.accessMode,
+        enableGuildGlossary: profile.enableGuildGlossary,
         pendingUserInstallOwnerRepository: profile.enableUserAccess
             ? new PendingUserInstallOwnerRepository()
             : undefined,
@@ -134,7 +135,7 @@ export async function startBabelApp(profile: AppProfile): Promise<void> {
                     }
                     return;
                 case 'help':
-                    return handleHelp(interaction);
+                    return handleHelp(interaction, { profile });
                 case 'mylang':
                     return handleMylang(interaction);
             }

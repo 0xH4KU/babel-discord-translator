@@ -698,6 +698,18 @@ export function createDashboardApp({
         res.json({ complete: configRepository.isSetupComplete() });
     });
 
+    app.get('/api/capabilities', auth.requireAuth, (_req: Request, res: Response) => {
+        res.json({
+            profile: {
+                id: profile.id,
+                productName: profile.productName,
+                commandName: profile.commandName,
+                accessMode: profile.accessMode,
+            },
+            capabilities,
+        });
+    });
+
     app.get(
         '/api/version',
         auth.requireAuth,

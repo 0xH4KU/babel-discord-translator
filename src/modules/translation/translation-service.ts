@@ -136,6 +136,7 @@ export interface TranslationServiceDeps {
     runtimeLimiter?: TranslationRuntimeLimiter;
     logger?: StructuredLogger;
     accessMode?: AccessMode;
+    enableGuildGlossary?: boolean;
     pendingUserInstallOwnerRepository?: PendingUserInstallOwnerRepositoryLike;
 }
 
@@ -239,6 +240,7 @@ export function createTranslationService({
     runtimeLimiter,
     logger = appLogger.child({ component: 'translation_service' }),
     accessMode = 'guild',
+    enableGuildGlossary = true,
     pendingUserInstallOwnerRepository,
 }: TranslationServiceDeps): TranslationService {
     return {
@@ -358,9 +360,10 @@ export function createTranslationService({
             }
 
             const prompt = resolveSystemPrompt(targetLanguage, runtimeConfig.translationPrompt);
-            const glossaryEntries = request.guildId
-                ? glossaryRepository.listEntries(request.guildId)
-                : [];
+            const glossaryEntries =
+                enableGuildGlossary && request.guildId
+                    ? glossaryRepository.listEntries(request.guildId)
+                    : [];
             const glossaryVersion = buildGlossaryVersion(glossaryEntries);
             const cacheKey = buildTranslationCacheKey({
                 sourceText: originalText,

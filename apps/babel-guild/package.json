@@ -7,7 +7,7 @@
     "scripts": {
         "start": "node ../../dist/apps/babel-guild/src/index.js",
         "dev": "tsx watch src/index.ts",
-        "build": "tsc -p tsconfig.json && rm -rf ../../dist/apps/babel-guild/src/locales ../../dist/apps/babel-guild/src/public && cp -r ../../src/locales ../../dist/apps/babel-guild/src/locales && cp -r ../../src/public ../../dist/apps/babel-guild/src/public",
+        "build": "tsc -p tsconfig.json && node ../../scripts/copy-assets.js apps/babel-guild",
         "register": "tsx scripts/register.ts"
     }
 }

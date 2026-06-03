@@ -7,7 +7,7 @@
     "scripts": {
         "start": "node ../../dist/apps/babel-pocket/src/index.js",
         "dev": "tsx watch src/index.ts",
-        "build": "tsc -p tsconfig.json && rm -rf ../../dist/apps/babel-pocket/src/locales ../../dist/apps/babel-pocket/src/public && cp -r ../../src/locales ../../dist/apps/babel-pocket/src/locales && cp -r ../../src/public ../../dist/apps/babel-pocket/src/public",
+        "build": "tsc -p tsconfig.json && node ../../scripts/copy-assets.js apps/babel-pocket",
         "register": "tsx scripts/register.ts"
     }
 }

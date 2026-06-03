@@ -1391,6 +1391,96 @@ describe('Dashboard API', () => {
         }
     });
 
+    it('should expose dashboard capabilities for Babel Guild', async () => {
+        const guildApp = createDashboardApp({
+            cache,
+            cooldown: new CooldownManager(5),
+            log,
+            client: createMinimalClient(),
+            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
+            metrics,
+            runtimeLimiter,
+            profile: BABEL_GUILD_PROFILE,
+            sessionRepository: new InMemorySessionRepository(),
+            userProfileRepository,
+        });
+        const guildServer = startDashboardServer(guildApp, 0);
+
+        try {
+            const login = await request(guildServer, 'POST', '/api/login', {
+                body: { password: 'test-pass-123' },
+            });
+            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
+            const res = await requestText(guildServer, 'GET', '/api/capabilities', {
+                cookie,
+            });
+
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.text)).toEqual({
+                profile: {
+                    id: 'babel-guild',
+                    productName: 'Babel Guild',
+                    commandName: 'Babel',
+                    accessMode: 'guild',
+                },
+                capabilities: {
+                    guildAccess: true,
+                    userAccess: false,
+                    guildGlossary: true,
+                    pendingUserInstallOwners: false,
+                },
+            });
+        } finally {
+            stopDashboardApp(guildApp);
+            guildServer.close();
+        }
+    });
+
+    it('should expose dashboard capabilities for Babel Pocket', async () => {
+        const pocketApp = createDashboardApp({
+            cache,
+            cooldown: new CooldownManager(5),
+            log,
+            client: createMinimalClient(),
+            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
+            metrics,
+            runtimeLimiter,
+            profile: BABEL_POCKET_PROFILE,
+            sessionRepository: new InMemorySessionRepository(),
+            userProfileRepository,
+        });
+        const pocketServer = startDashboardServer(pocketApp, 0);
+
+        try {
+            const login = await request(pocketServer, 'POST', '/api/login', {
+                body: { password: 'test-pass-123' },
+            });
+            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
+            const res = await requestText(pocketServer, 'GET', '/api/capabilities', {
+                cookie,
+            });
+
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.text)).toEqual({
+                profile: {
+                    id: 'babel-pocket',
+                    productName: 'Babel Pocket',
+                    commandName: 'Babel Pocket',
+                    accessMode: 'user-install',
+                },
+                capabilities: {
+                    guildAccess: false,
+                    userAccess: true,
+                    guildGlossary: false,
+                    pendingUserInstallOwners: true,
+                },
+            });
+        } finally {
+            stopDashboardApp(pocketApp);
+            pocketServer.close();
+        }
+    });
+
     // --- Logout ---
 
     it('should logout and clear session', async () => {
