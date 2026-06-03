@@ -508,7 +508,7 @@ This compares `configRepository.getRuntimeConfig()` against `store.getAll()` ove
 
 ### Railway
 
-Babel is Railway-ready for a one-click self-host template: `railway.json` configures the `/livez` healthcheck, Railway's `PORT` is respected automatically, and `/app/data` can be mounted as a volume for SQLite.
+Babel is Railway-ready for a one-click self-host template: `railway.json` configures the `/livez` healthcheck, Railway's `PORT` is respected automatically, and `/app/data` can be mounted as a volume for SQLite. One Railway template can deploy either Babel Guild or Babel Pocket by exposing `BABEL_APP` as a service variable; keep `guild` as the default for existing users and set `pocket` for user-install deployments.
 
 Use these template variables:
 
