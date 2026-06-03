@@ -94,6 +94,8 @@ export function createDashboardApp({
     healthProbeCacheTtlMs = 5_000,
 }: DashboardDeps): express.Express {
     const app = express();
+    app.set('trust proxy', 1);
+
     const capabilities = getDashboardCapabilities(profile);
     const config = getConfig();
     const auth = createDashboardAuth({

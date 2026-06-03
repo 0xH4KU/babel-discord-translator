@@ -1,5 +1,5 @@
 /**
- * Access tab: guild whitelist management, per-guild budgets, and user language preferences.
+ * Access tab: guild whitelist management, pending Pocket users, and user language preferences.
  */
 
 let allGuilds = [];
@@ -12,6 +12,7 @@ let accessWhitelistDirty = false;
 let accessWhitelistLoaded = false;
 let glossaryGuildId = '';
 let glossaryEntries = [];
+let pendingUsers = [];
 
 function normalizeGuildIds(ids) {
     return [...new Set((ids || []).map((id) => String(id).trim()).filter(Boolean))];
@@ -51,10 +52,23 @@ function setAccessWhitelistDraft(allowedGuildIds) {
 
 async function loadAccess() {
     try {
-        const [cfgRes, guildRes, budgetRes] = await Promise.all([
-            api('/config'),
-            api('/guilds'),
-            api('/guild-budgets'),
+        const guildAccess = hasDashboardCapability('guildAccess');
+        const guildGlossary = hasDashboardCapability('guildGlossary');
+        const pendingUserInstallOwners = hasDashboardCapability('pendingUserInstallOwners');
+        const requests = {
+            config: api('/config'),
+            guilds: guildAccess ? api('/guilds') : Promise.resolve(null),
+            budgets: guildAccess ? api('/guild-budgets') : Promise.resolve(null),
+            pendingUsers: pendingUserInstallOwners
+                ? api('/access/pending-users')
+                : Promise.resolve(null),
+        };
+
+        const [cfgRes, guildRes, budgetRes, pendingUsersRes] = await Promise.all([
+            requests.config,
+            requests.guilds,
+            requests.budgets,
+            requests.pendingUsers,
         ]);
         currentConfig = await cfgRes.json();
         currentConfig.allowedGuildIds = normalizeGuildIds(currentConfig.allowedGuildIds || []);
@@ -62,16 +76,27 @@ async function loadAccess() {
             accessAllowedGuildIdsDraft = [...currentConfig.allowedGuildIds];
         }
         accessWhitelistLoaded = true;
-        allGuilds = await guildRes.json();
-        guildBudgetData = await budgetRes.json();
-        renderGuilds();
-        renderGlossaryGuildSelect();
+        allGuilds = guildRes ? await guildRes.json() : [];
+        guildBudgetData = budgetRes ? await budgetRes.json() : {};
+        if (guildAccess) {
+            renderGuilds();
+        }
+        if (guildGlossary) {
+            renderGlossaryGuildSelect();
+        }
+        if (pendingUserInstallOwners) {
+            const data = await pendingUsersRes.json();
+            pendingUsers = data.users || [];
+            renderPendingUsers(data.count ?? pendingUsers.length);
+        }
         updateAccessSaveState();
         loadUserPrefs();
     } catch {}
 }
 
 async function saveGuildWhitelist() {
+    if (!hasDashboardCapability('guildAccess')) return;
+
     const allowedGuildIds = normalizeGuildIds(accessAllowedGuildIdsDraft);
 
     const res = await api('/config', {
@@ -92,6 +117,8 @@ async function saveGuildWhitelist() {
 }
 
 function toggleGuildAllowed(guildId, checked) {
+    if (!hasDashboardCapability('guildAccess')) return;
+
     const nextAllowed = new Set(accessAllowedGuildIdsDraft);
 
     if (checked) {
@@ -105,7 +132,10 @@ function toggleGuildAllowed(guildId, checked) {
 }
 
 function renderGuilds() {
+    if (!hasDashboardCapability('guildAccess')) return;
+
     const container = document.getElementById('guild-list');
+    if (!container) return;
     const allowed = accessAllowedGuildIdsDraft;
     const globalBudget = currentConfig.dailyBudgetUsd || 0;
 
@@ -207,6 +237,8 @@ function setGuildPageSize(s) {
 }
 
 async function saveGuildBudget(guildId) {
+    if (!hasDashboardCapability('guildAccess')) return;
+
     const input = document.getElementById('gb-' + guildId);
     const val = input.value.trim();
 
@@ -238,6 +270,8 @@ async function saveGuildBudget(guildId) {
 }
 
 async function resetGuildBudget(guildId) {
+    if (!hasDashboardCapability('guildAccess')) return;
+
     const res = await api('/guild-budgets/' + guildId, {
         method: 'POST',
         body: JSON.stringify({ dailyBudgetUsd: null }),
@@ -254,6 +288,8 @@ async function resetGuildBudget(guildId) {
 }
 
 function addManualGuild() {
+    if (!hasDashboardCapability('guildAccess')) return;
+
     const input = document.getElementById('add-guild-input');
     const id = input.value.trim();
     if (!id || !/^\d+$/.test(id)) {
@@ -276,6 +312,8 @@ function addManualGuild() {
 }
 
 function removeManualGuild(id) {
+    if (!hasDashboardCapability('guildAccess')) return;
+
     setAccessWhitelistDraft(accessAllowedGuildIdsDraft.filter((g) => g !== id));
     renderGuilds();
     renderGlossaryGuildSelect();
@@ -285,6 +323,8 @@ function removeManualGuild(id) {
 // ===== Server Glossary =====
 
 function getGlossaryGuildOptions() {
+    if (!hasDashboardCapability('guildGlossary')) return [];
+
     const known = allGuilds.map((g) => ({ id: g.id, name: g.name || g.id }));
     const knownIds = new Set(known.map((g) => g.id));
     const manual = accessAllowedGuildIdsDraft
@@ -295,6 +335,8 @@ function getGlossaryGuildOptions() {
 }
 
 function renderGlossaryGuildSelect() {
+    if (!hasDashboardCapability('guildGlossary')) return;
+
     const select = document.getElementById('glossary-guild');
     if (!select) return;
 
@@ -322,12 +364,16 @@ function renderGlossaryGuildSelect() {
 }
 
 async function selectGlossaryGuild(guildId) {
+    if (!hasDashboardCapability('guildGlossary')) return;
+
     glossaryGuildId = guildId || '';
     resetGlossaryForm();
     await loadGlossaryEntries();
 }
 
 async function loadGlossaryEntries() {
+    if (!hasDashboardCapability('guildGlossary')) return;
+
     const container = document.getElementById('glossary-container');
     if (!container || !glossaryGuildId) {
         renderGlossaryEntries();
@@ -350,6 +396,8 @@ async function loadGlossaryEntries() {
 }
 
 function renderGlossaryEntries() {
+    if (!hasDashboardCapability('guildGlossary')) return;
+
     const container = document.getElementById('glossary-container');
     if (!container) return;
 
@@ -384,6 +432,8 @@ function renderGlossaryEntries() {
 }
 
 function resetGlossaryForm() {
+    if (!hasDashboardCapability('guildGlossary')) return;
+
     document.getElementById('glossary-entry-id').value = '';
     document.getElementById('glossary-source').value = '';
     document.getElementById('glossary-target').value = '';
@@ -391,6 +441,8 @@ function resetGlossaryForm() {
 }
 
 function editGlossaryEntry(entryId) {
+    if (!hasDashboardCapability('guildGlossary')) return;
+
     const entry = glossaryEntries.find((item) => item.id === entryId);
     if (!entry) return;
 
@@ -401,6 +453,8 @@ function editGlossaryEntry(entryId) {
 }
 
 async function saveGlossaryEntry() {
+    if (!hasDashboardCapability('guildGlossary')) return;
+
     if (!glossaryGuildId) {
         showToast('Select a server first', true);
         return;
@@ -437,6 +491,8 @@ async function saveGlossaryEntry() {
 }
 
 async function deleteGlossaryEntry(entryId) {
+    if (!hasDashboardCapability('guildGlossary')) return;
+
     if (!glossaryGuildId) return;
 
     const res = await api('/guild-glossary/' + glossaryGuildId + '/' + entryId, {
@@ -449,6 +505,63 @@ async function deleteGlossaryEntry(entryId) {
         showToast('Glossary term deleted');
     } else {
         showToast('Delete failed', true);
+    }
+}
+
+// ===== Pending User Installs =====
+
+function renderPendingUsers(count = pendingUsers.length) {
+    const container = document.getElementById('pending-users-container');
+    const countEl = document.getElementById('pending-users-count');
+    if (!container) return;
+
+    if (countEl) {
+        countEl.textContent = `${count} pending user(s)`;
+    }
+
+    if (pendingUsers.length === 0) {
+        container.innerHTML =
+            '<div class="empty-state">No pending user installs. New unauthorized user-installs will appear here.</div>';
+        return;
+    }
+
+    const rows = pendingUsers
+        .map((user) => {
+            const firstSeen = user.firstSeenAt
+                ? new Date(user.firstSeenAt).toLocaleString()
+                : 'Unknown';
+            const lastSeen = user.lastSeenAt
+                ? new Date(user.lastSeenAt).toLocaleString()
+                : 'Unknown';
+
+            return `<tr>
+      <td class="mono">${escapeHtml(user.userId)}</td>
+      <td>${escapeHtml(firstSeen)}</td>
+      <td>${escapeHtml(lastSeen)}</td>
+      <td><button class="btn-danger" onclick="clearPendingUser('${escapeHtml(user.userId)}')">Dismiss</button></td>
+    </tr>`;
+        })
+        .join('');
+
+    container.innerHTML = `<div class="table-scroll"><table class="data-table">
+      <thead><tr><th>User ID</th><th>First Seen</th><th>Last Seen</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+}
+
+async function clearPendingUser(userId) {
+    if (!hasDashboardCapability('pendingUserInstallOwners')) return;
+
+    const res = await api('/access/pending-users/' + encodeURIComponent(userId), {
+        method: 'DELETE',
+    });
+
+    if (res.ok) {
+        pendingUsers = pendingUsers.filter((user) => user.userId !== userId);
+        renderPendingUsers();
+        showToast('Pending user dismissed');
+    } else {
+        showToast('Dismiss failed', true);
     }
 }
 

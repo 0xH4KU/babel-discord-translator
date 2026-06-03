@@ -23,7 +23,7 @@
         <!-- ===== LOGIN ===== -->
         <div id="login-view" class="view">
             <div class="login-card">
-                <h1>Babel</h1>
+                <h1 data-profile-product-name>Babel</h1>
                 <div class="subtitle">Translation Bot Dashboard</div>
                 <div class="input-group">
                     <label>Password</label>
@@ -170,9 +170,9 @@
 
             <!-- Overview Tab -->
             <div class="tab-content active" id="tab-overview">
-                <div class="budget-card" id="budget-card">
+                <div class="budget-card" id="budget-card" data-capability="guildAccess">
                     <div class="budget-header">
-                        <span class="label">Server Budgets</span>
+                        <span class="label" id="budget-card-label">Server Budgets</span>
                         <span class="amount" id="budget-amount">-</span>
                     </div>
                     <div id="guild-budget-overview"></div>
@@ -301,7 +301,7 @@
 
             <!-- Access Tab -->
             <div class="tab-content" id="tab-access">
-                <div class="settings-section">
+                <div class="settings-section" data-capability="guildAccess">
                     <h3>Server Whitelist</h3>
                     <div class="desc-text">
                         Only <strong>enabled</strong> servers can use translation. New servers are
@@ -320,6 +320,18 @@
                         <button class="btn btn-primary btn-sm" onclick="addManualGuild()">
                             Add
                         </button>
+                    </div>
+                </div>
+
+                <div class="settings-section" data-capability="pendingUserInstallOwners" hidden>
+                    <h3>User Access</h3>
+                    <div class="desc-text">
+                        User-install owners appear here when they try Babel Pocket before being
+                        added to the allowed user list.
+                    </div>
+                    <div id="pending-users-count" class="prefs-count">Loading...</div>
+                    <div id="pending-users-container">
+                        <div class="empty-state">Loading pending users...</div>
                     </div>
                 </div>
 
@@ -348,7 +360,7 @@
                     <div id="prefs-pagination"></div>
                 </div>
 
-                <div class="settings-section">
+                <div class="settings-section" data-capability="guildGlossary">
                     <h3>Server Glossary</h3>
                     <div class="desc-text">
                         Configure server-specific term mappings. Use identical source and target
@@ -414,7 +426,7 @@
                     </div>
                 </div>
 
-                <div class="save-bar">
+                <div class="save-bar" data-capability="guildAccess">
                     <span class="save-status" data-access-save-status
                         >No unsaved whitelist changes</span
                     >
@@ -534,9 +546,9 @@
                     </div>
                     <div class="settings-row">
                         <div class="input-group">
-                            <label>Global Daily Budget (USD, 0 = unlimited)</label>
+                            <label id="cfg-budget-label">Global Daily Budget (USD, 0 = unlimited)</label>
                             <input type="number" id="cfg-budget" min="0" step="0.1" />
-                            <div class="hint">
+                            <div class="hint" id="cfg-budget-hint">
                                 Default for servers without custom budgets. Set per-server budgets
                                 in Access tab.
                             </div>

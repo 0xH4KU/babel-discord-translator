@@ -469,6 +469,10 @@ describe('Dashboard API', () => {
         expect(appListen).toHaveBeenCalledWith(3000, '0.0.0.0', expect.any(Function));
     });
 
+    it('should trust the first reverse proxy for Railway forwarded headers', () => {
+        expect(app.get('trust proxy')).toBe(1);
+    });
+
     it('should report degraded health when Vertex AI readiness fails', async () => {
         healthCheck.mockResolvedValue({ healthy: false, error: 'upstream unavailable' });
 

@@ -249,7 +249,7 @@ function renderOperations(operations) {
 function switchTab(name) {
     document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach((c) => c.classList.remove('active'));
-    document.querySelector(`[onclick="switchTab('${name}')"]`).classList.add('active');
+    document.querySelector(`[onclick="switchTab('${name}')"]`)?.classList.add('active');
     document.getElementById('tab-' + name).classList.add('active');
     if (name === 'settings') loadSettings();
     if (name === 'access') loadAccess();
@@ -281,9 +281,10 @@ async function loadStats() {
         // Budget overview — per-server
         const budgetCard = document.getElementById('budget-card');
         const guilds = d.guildBudgets || [];
+        const hasGuildBudgetCapability = hasDashboardCapability('guildAccess');
         const hasAnyBudget = guilds.some((g) => g.budget > 0);
 
-        if (hasAnyBudget || d.usage.dailyBudget > 0) {
+        if (hasGuildBudgetCapability && (hasAnyBudget || d.usage.dailyBudget > 0)) {
             budgetCard.style.display = '';
             document.getElementById('budget-amount').textContent =
                 'Total: ' + formatUsd(d.usage.totalCost);
@@ -311,7 +312,7 @@ async function loadStats() {
         const memory = d.bot.memory || {};
         const rssMB = memory.rssMB || d.bot.memoryMB || '?';
         document.getElementById('stat-memory').textContent =
-            'RSS ' + rssMB + ' MB · ' + d.bot.guilds + ' servers';
+            'RSS ' + rssMB + ' MB · ' + getDashboardUsageScopeLabel(d);
     } catch {}
 }
 

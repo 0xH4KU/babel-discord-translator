@@ -55,9 +55,12 @@ async function loadSessions() {
 
 async function loadSettings() {
   try {
-    const [cfgRes, guildRes] = await Promise.all([api('/config'), api('/guilds')]);
+    const requests = [api('/config')];
+    if (hasDashboardCapability('guildAccess')) requests.push(api('/guilds'));
+
+    const [cfgRes, guildRes] = await Promise.all(requests);
     currentConfig = await cfgRes.json();
-    allGuilds = await guildRes.json();
+    allGuilds = guildRes ? await guildRes.json() : [];
 
     document.getElementById('cfg-apikey').value = '';
     document.getElementById('cfg-apikey').placeholder =
