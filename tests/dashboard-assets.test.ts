@@ -13,11 +13,13 @@ describe('dashboard static assets', () => {
 
     it('marks Guild-only and Pocket-only dashboard sections with capability gates', () => {
         const html = readFileSync('src/public/index.html', 'utf-8');
+        const variablesCss = readFileSync('src/public/css/variables.css', 'utf-8');
 
         expect(html).toContain('data-capability="guildAccess"');
         expect(html).toContain('data-capability="guildGlossary"');
         expect(html).toContain('data-capability="pendingUserInstallOwners"');
         expect(html).toContain('id="user-access-list"');
+        expect(variablesCss).toMatch(/\[hidden\]\s*\{[^}]*display:\s*none\s*!important/s);
     });
 
     it('keeps Access tab network calls aligned with the current app capabilities', () => {
