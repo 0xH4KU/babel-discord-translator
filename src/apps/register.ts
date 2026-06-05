@@ -1,14 +1,23 @@
 import type { AppProfile } from './app-profile.js';
 import { getCommandsForProfile } from './commands.js';
 
+export function resolveRegistrationEnv(env: NodeJS.ProcessEnv = process.env): {
+    appId?: string;
+    botToken?: string;
+} {
+    return {
+        appId: env.DISCORD_APP_ID,
+        botToken: env.DISCORD_BOT_TOKEN || env.DISCORD_TOKEN,
+    };
+}
+
 export async function registerCommandsForProfile(profile: AppProfile): Promise<void> {
-    const appId = process.env.DISCORD_APP_ID;
-    const botToken = process.env.DISCORD_BOT_TOKEN;
+    const { appId, botToken } = resolveRegistrationEnv();
 
     if (!appId || !botToken) {
         console.error(
             '❌ Missing env vars. Usage:\n' +
-                '   DISCORD_APP_ID=xxx DISCORD_BOT_TOKEN=xxx npm run register',
+                '   DISCORD_APP_ID=xxx DISCORD_TOKEN=xxx npm run register',
         );
         process.exit(1);
     }
