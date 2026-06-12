@@ -44,4 +44,43 @@ describe('message extraction', () => {
             '',
         );
     });
+
+    it('should handle messages with all optional sections missing', () => {
+        expect(extractTranslatableMessageText({})).toBe('');
+        expect(
+            extractTranslatableMessageText({
+                content: '   ',
+                embeds: null,
+                attachments: null,
+                reference: { messageId: '  ' },
+            }),
+        ).toBe('');
+    });
+
+    it('should keep one-sided embed fields and skip blank ones', () => {
+        const text = extractTranslatableMessageText({
+            embeds: [
+                {
+                    fields: [
+                        { name: 'Only name', value: '  ' },
+                        { name: null, value: 'Only value' },
+                        { name: '', value: '' },
+                    ],
+                },
+            ],
+        });
+
+        expect(text).toBe('Only name\nOnly value');
+    });
+
+    it('should accept plain attachment arrays and skip unnamed attachments', () => {
+        const text = extractTranslatableMessageText({
+            attachments: [
+                { filename: 'fallback.txt' },
+                { description: 'description without a name' },
+            ],
+        });
+
+        expect(text).toBe('Attachment: fallback.txt');
+    });
 });
