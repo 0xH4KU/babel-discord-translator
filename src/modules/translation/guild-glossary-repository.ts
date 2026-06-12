@@ -1,5 +1,5 @@
-import { store } from '../../store.js';
-import type { GuildGlossaryEntry, GuildGlossaryInput } from '../../types.js';
+import { store } from '../../persistence/store.js';
+import type { GuildGlossaryEntry, GuildGlossaryInput } from '../../shared/types.js';
 
 export interface GuildGlossaryRepository {
     listEntries(guildId: string): GuildGlossaryEntry[];

@@ -6,7 +6,7 @@ import {
     _test,
 } from '../src/infra/vertex-ai-client.js';
 
-vi.mock('../src/store.js', () => {
+vi.mock('../src/persistence/store.js', () => {
     const data: Record<string, unknown> = {
         geminiModel: 'gemini-2.5-flash-lite',
         gcpProject: 'test-project',
@@ -43,7 +43,7 @@ vi.mock('../src/store.js', () => {
     };
 });
 
-import { store } from '../src/store.js';
+import { store } from '../src/persistence/store.js';
 
 function geminiResponse(text: string, inputTokens = 10, outputTokens = 5) {
     return {

@@ -15,7 +15,7 @@ import type {
     UsageHistoryDay,
     TokenUsage,
     UsageHistoryEntry,
-} from '../../types.js';
+} from '../../shared/types.js';
 
 class UsageTracker {
     private lastEnsuredDate: string | null = null;

@@ -2,7 +2,7 @@
  * Language detection and mapping utilities.
  * Pure functions extracted for testability.
  */
-import type { ScriptFamily } from '../../types.js';
+import type { ScriptFamily } from '../../shared/types.js';
 
 /**
  * Map Discord locale code to a short language code.
@@ -21,7 +21,13 @@ export function localeToLang(locale: string | undefined): string | null {
  * Returns: 'zh', 'ja', 'ko', 'ru', 'ar', 'th', 'hi', or null (Latin/unknown).
  */
 export function detectScript(text: string): ScriptFamily {
-    let cjk = 0, kana = 0, hangul = 0, cyrillic = 0, arabic = 0, thai = 0, devanagari = 0;
+    let cjk = 0,
+        kana = 0,
+        hangul = 0,
+        cyrillic = 0,
+        arabic = 0,
+        thai = 0,
+        devanagari = 0;
 
     for (const char of text) {
         const c = char.codePointAt(0)!;
@@ -50,9 +56,15 @@ export function detectScript(text: string): ScriptFamily {
 export function langToScript(lang: string | null): ScriptFamily {
     if (!lang) return null;
     const map: Record<string, ScriptFamily> = {
-        'zh-TW': 'zh', 'zh-CN': 'zh', zh: 'zh',
-        ja: 'ja', ko: 'ko', ru: 'ru',
-        ar: 'ar', th: 'th', hi: 'hi',
+        'zh-TW': 'zh',
+        'zh-CN': 'zh',
+        zh: 'zh',
+        ja: 'ja',
+        ko: 'ko',
+        ru: 'ru',
+        ar: 'ar',
+        th: 'th',
+        hi: 'hi',
     };
     return map[lang] ?? map[lang.split('-')[0]!] ?? null;
 }
@@ -62,7 +74,11 @@ export function langToScript(lang: string | null): ScriptFamily {
  * Only checks non-Latin scripts (Chinese, Japanese, Korean, etc.)
  * since Latin-script languages can't be reliably distinguished.
  */
-export function isSameLanguage(content: string, targetLanguage: string, userLocale?: string): boolean {
+export function isSameLanguage(
+    content: string,
+    targetLanguage: string,
+    userLocale?: string,
+): boolean {
     const contentScript = detectScript(content);
     if (!contentScript) return false; // Latin/unknown — let it through
 

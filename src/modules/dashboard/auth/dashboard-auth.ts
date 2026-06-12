@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import type { NextFunction, Request, Response } from 'express';
-import type { SessionData } from '../../../types.js';
+import type { SessionData } from '../../../shared/types.js';
 import { dashboardMessages } from '../../../shared/messages/dashboard-messages.js';
 import { InMemorySessionRepository } from './in-memory-session-repository.js';
 import type { SessionRepository } from './session-repository.js';

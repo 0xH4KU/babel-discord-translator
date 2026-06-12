@@ -1,7 +1,7 @@
 import type { StructuredLogFields } from '../shared/structured-logger.js';
 import { appLogger } from '../shared/structured-logger.js';
 import type { AppMetricsCollector } from '../shared/app-metrics.js';
-import type { TranslationProviderMode, TranslationResult } from '../types.js';
+import type { TranslationProviderMode, TranslationResult } from '../shared/types.js';
 
 export interface TranslateOptions {
     logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'>;

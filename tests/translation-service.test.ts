@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AppMetrics } from '../src/app-metrics.js';
-import { TranslationCache } from '../src/cache.js';
-import { CooldownManager } from '../src/cooldown.js';
+import { AppMetrics } from '../src/shared/app-metrics.js';
+import { TranslationCache } from '../src/modules/translation/cache.js';
+import { CooldownManager } from '../src/modules/translation/cooldown.js';
 import { ProviderOrchestratorError } from '../src/infra/provider-orchestrator.js';
-import { TranslationLog } from '../src/log.js';
-import { createTranslationService, _test } from '../src/services/translation-service.js';
-import { TranslationRuntimeLimiter } from '../src/translation-runtime-limiter.js';
+import { TranslationLog } from '../src/shared/log.js';
+import { createTranslationService, _test } from '../src/modules/translation/translation-service.js';
+import { TranslationRuntimeLimiter } from '../src/modules/translation/translation-runtime-limiter.js';
 import type { AccessMode } from '../src/apps/app-profile.js';
-import type { BotStats, StoreData, TranslationResult } from '../src/types.js';
+import type { BotStats, StoreData, TranslationResult } from '../src/shared/types.js';
 
 function createStructuredLoggerMock(base: Record<string, unknown> = {}) {
     const entries: Array<Record<string, unknown>> = [];

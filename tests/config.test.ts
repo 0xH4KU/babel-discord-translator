@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { StructuredLogger } from '../src/structured-logger.js';
+import type { StructuredLogger } from '../src/shared/structured-logger.js';
 
 function createLoggerMock(): StructuredLogger {
     const logger: StructuredLogger = {

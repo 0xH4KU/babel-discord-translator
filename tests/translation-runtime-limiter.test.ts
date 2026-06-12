@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
     RuntimeLimitError,
     TranslationRuntimeLimiter,
-} from '../src/translation-runtime-limiter.js';
+} from '../src/modules/translation/translation-runtime-limiter.js';
 
 function deferred<T>() {
     let resolve!: (value: T | PromiseLike<T>) => void;

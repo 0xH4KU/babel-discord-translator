@@ -1,5 +1,5 @@
 import type { DatabaseSync, StatementSync } from 'node:sqlite';
-import type { SessionData } from '../../../types.js';
+import type { SessionData } from '../../../shared/types.js';
 import { getSqliteDatabase } from '../../../persistence/sqlite-database.js';
 import type { SessionRepository } from './session-repository.js';
 

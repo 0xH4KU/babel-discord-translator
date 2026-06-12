@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { TranslationLog } from '../src/log.js';
-import type { TranslationLogEntry, ErrorLogEntry } from '../src/types.js';
+import { TranslationLog } from '../src/shared/log.js';
+import type { TranslationLogEntry, ErrorLogEntry } from '../src/shared/types.js';
 
 describe('TranslationLog', () => {
     it('should add and retrieve entries', () => {

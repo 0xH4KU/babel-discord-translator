@@ -1,6 +1,6 @@
-import { cloneUserBudgets } from '../../repositories/store-data-normalizer.js';
-import { store } from '../../store.js';
-import type { UserBudgetConfig } from '../../types.js';
+import { cloneUserBudgets } from '../../persistence/store-data-normalizer.js';
+import { store } from '../../persistence/store.js';
+import type { UserBudgetConfig } from '../../shared/types.js';
 
 export interface UserBudgetRepository {
     getBudget(userId: string): UserBudgetConfig | null;

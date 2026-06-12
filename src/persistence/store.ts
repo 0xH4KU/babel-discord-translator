@@ -9,13 +9,9 @@ import {
     getSqliteDatabase,
     inTransaction,
     isSqliteStoreEmpty,
-} from './persistence/sqlite-database.js';
-import { readLegacyStoreData, resolveLegacyConfigPath } from './persistence/legacy-json-store.js';
-import {
-    CONFIG_VALUE_KEYS,
-    DEFAULT_STORE_DATA,
-    type ConfigValueKey,
-} from './persistence/store-defaults.js';
+} from './sqlite-database.js';
+import { readLegacyStoreData, resolveLegacyConfigPath } from './legacy-json-store.js';
+import { CONFIG_VALUE_KEYS, DEFAULT_STORE_DATA, type ConfigValueKey } from './store-defaults.js';
 import {
     cloneGuildBudgets,
     cloneGuildDailyUsage,
@@ -25,8 +21,8 @@ import {
     cloneUserBudgets,
     cloneUserDailyUsage,
     cloneUserUsageHistory,
-} from './repositories/store-data-normalizer.js';
-import { appLogger, type StructuredLogger } from './shared/structured-logger.js';
+} from './store-data-normalizer.js';
+import { appLogger, type StructuredLogger } from '../shared/structured-logger.js';
 import type {
     GuildBudgetConfig,
     GuildGlossaryEntry,
@@ -35,7 +31,7 @@ import type {
     TokenUsage,
     UsageHistoryEntry,
     UserBudgetConfig,
-} from './types.js';
+} from '../shared/types.js';
 
 interface ConfigStoreOptions {
     db?: DatabaseSync;

@@ -35,7 +35,7 @@ import {
 import { createEmptyRuntimeSnapshot, renderPrometheusMetrics } from './prometheus-metrics.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import type { DashboardDeps } from '../../types.js';
+import type { DashboardDeps } from '../../shared/types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BYTES_PER_MB = 1024 * 1024;

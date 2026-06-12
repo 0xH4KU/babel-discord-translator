@@ -1,6 +1,6 @@
 import type { Client, User } from 'discord.js';
 import { appLogger } from '../../shared/structured-logger.js';
-import type { DiscordUserProfile } from '../../types.js';
+import type { DiscordUserProfile } from '../../shared/types.js';
 import type { DiscordUserProfileRepository } from './discord-user-profile-repository.js';
 
 const PROFILE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;

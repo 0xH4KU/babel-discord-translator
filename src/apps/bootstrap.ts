@@ -17,7 +17,7 @@ import { appLogger } from '../shared/structured-logger.js';
 import { TranslationRuntimeLimiter } from '../modules/translation/translation-runtime-limiter.js';
 import { createWebhookService } from '../modules/translation/webhook-service.js';
 import { PendingUserInstallOwnerRepository } from '../modules/dashboard/pending-user-install-owner-repository.js';
-import type { BotStats } from '../types.js';
+import type { BotStats } from '../shared/types.js';
 import type { AppProfile } from './app-profile.js';
 import type express from 'express';
 import type http from 'http';

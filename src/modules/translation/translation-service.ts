@@ -44,7 +44,7 @@ import {
     type ServiceCommand,
     type TranslatorOptions,
 } from './translation-service-helpers.js';
-import type { BotStats, GuildGlossaryEntry, TranslationResult } from '../../types.js';
+import type { BotStats, GuildGlossaryEntry, TranslationResult } from '../../shared/types.js';
 
 interface ConfigRepositoryLike {
     getRuntimeConfig(): RuntimeConfig;

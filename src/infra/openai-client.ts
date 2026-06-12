@@ -2,7 +2,7 @@ import { configRepository } from '../modules/config/config-repository.js';
 import { appLogger, type StructuredLogFields } from '../shared/structured-logger.js';
 import { ProviderHttpError, classifyStatusCode, parseRetryAfterMs } from './provider-errors.js';
 import type { TranslationProvider, TranslateOptions } from './provider-orchestrator.js';
-import type { OpenAIChatResponse, TranslationResult } from '../types.js';
+import type { OpenAIChatResponse, TranslationResult } from '../shared/types.js';
 
 const RETRY_CODES = [429, 500, 502, 503];
 const MAX_RETRIES = 3;

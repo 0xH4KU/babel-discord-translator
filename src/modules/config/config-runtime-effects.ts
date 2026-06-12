@@ -1,6 +1,6 @@
 import type { TranslationCache } from '../translation/cache.js';
 import type { CooldownManager } from '../translation/cooldown.js';
-import type { StoreData } from '../../types.js';
+import type { StoreData } from '../../shared/types.js';
 
 export const MANAGED_RUNTIME_CONFIG_KEYS = [
     'cooldownSeconds',

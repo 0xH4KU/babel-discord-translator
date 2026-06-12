@@ -7,7 +7,7 @@ import { createOpenAiProvider } from '../../infra/openai-client.js';
 import { configRepository } from '../config/config-repository.js';
 import type { StructuredLogFields } from '../../shared/structured-logger.js';
 import type { AppMetricsCollector } from '../../shared/app-metrics.js';
-import type { TranslationProviderMode, TranslationResult } from '../../types.js';
+import type { TranslationProviderMode, TranslationResult } from '../../shared/types.js';
 import type { TranslationProvider } from '../../infra/provider-orchestrator.js';
 
 export interface TranslationGlossaryPromptEntry {

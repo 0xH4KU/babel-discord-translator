@@ -1,5 +1,5 @@
-import { store } from '../../store.js';
-import type { TokenUsage, UsageHistoryEntry } from '../../types.js';
+import { store } from '../../persistence/store.js';
+import type { TokenUsage, UsageHistoryEntry } from '../../shared/types.js';
 import {
     cloneGuildDailyUsage,
     cloneGuildUsageHistory,
@@ -7,7 +7,7 @@ import {
     cloneUserDailyUsage,
     cloneUserUsageHistory,
     cloneUsageHistory,
-} from '../../repositories/store-data-normalizer.js';
+} from '../../persistence/store-data-normalizer.js';
 
 export interface UsageRepository {
     getDailyUsage(): TokenUsage | null;

@@ -1,6 +1,13 @@
-import { ConfigStore } from '../src/store.js';
-import { readLegacyStoreData, resolveLegacyConfigPath } from '../src/persistence/legacy-json-store.js';
-import { createSqliteDatabase, isSqliteStoreEmpty, resolveDatabasePath } from '../src/persistence/sqlite-database.js';
+import { ConfigStore } from '../src/persistence/store.js';
+import {
+    readLegacyStoreData,
+    resolveLegacyConfigPath,
+} from '../src/persistence/legacy-json-store.js';
+import {
+    createSqliteDatabase,
+    isSqliteStoreEmpty,
+    resolveDatabasePath,
+} from '../src/persistence/sqlite-database.js';
 
 const legacyConfigPath = resolveLegacyConfigPath();
 const dbPath = resolveDatabasePath();
@@ -15,7 +22,9 @@ if (!legacyData) {
 const db = createSqliteDatabase(dbPath);
 try {
     if (!force && !isSqliteStoreEmpty(db)) {
-        console.error(`[Migrate] Refusing to overwrite existing SQLite data at ${dbPath}. Re-run with --force if this is intentional.`);
+        console.error(
+            `[Migrate] Refusing to overwrite existing SQLite data at ${dbPath}. Re-run with --force if this is intentional.`,
+        );
         process.exit(1);
     }
 } finally {

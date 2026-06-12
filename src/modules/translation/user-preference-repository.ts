@@ -1,5 +1,5 @@
-import { store } from '../../store.js';
-import { cloneUserLanguagePrefs } from '../../repositories/store-data-normalizer.js';
+import { store } from '../../persistence/store.js';
+import { cloneUserLanguagePrefs } from '../../persistence/store-data-normalizer.js';
 
 export interface UserPreferenceRepository {
     getLanguage(userId: string): string | null;

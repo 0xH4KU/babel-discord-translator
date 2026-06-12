@@ -1,5 +1,8 @@
-import { ConfigStore } from '../src/store.js';
-import { resolveLegacyConfigPath, writeLegacyStoreData } from '../src/persistence/legacy-json-store.js';
+import { ConfigStore } from '../src/persistence/store.js';
+import {
+    resolveLegacyConfigPath,
+    writeLegacyStoreData,
+} from '../src/persistence/legacy-json-store.js';
 import { resolveDatabasePath } from '../src/persistence/sqlite-database.js';
 
 const dbPath = resolveDatabasePath();

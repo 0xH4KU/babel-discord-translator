@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { TranslationCache } from '../src/cache.js';
-import { CooldownManager } from '../src/cooldown.js';
-import { applyConfigUpdateEffects } from '../src/services/config-runtime-effects.js';
-import type { StoreData } from '../src/types.js';
+import { TranslationCache } from '../src/modules/translation/cache.js';
+import { CooldownManager } from '../src/modules/translation/cooldown.js';
+import { applyConfigUpdateEffects } from '../src/modules/config/config-runtime-effects.js';
+import type { StoreData } from '../src/shared/types.js';
 
 function createConfig(overrides: Partial<StoreData> = {}): StoreData {
     return {

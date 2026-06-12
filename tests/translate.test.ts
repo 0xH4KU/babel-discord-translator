@@ -1,12 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { translate, _test } from '../src/translate.js';
+import { translate, _test } from '../src/modules/translation/translate.js';
 import { fetchWithRetry } from '../src/infra/vertex-ai-client.js';
 
-const { getLanguageName, buildTargetedPrompt, LOCALE_MAP, DEFAULT_PROMPT, buildGlossaryPromptSection } =
-    _test;
+const {
+    getLanguageName,
+    buildTargetedPrompt,
+    LOCALE_MAP,
+    DEFAULT_PROMPT,
+    buildGlossaryPromptSection,
+} = _test;
 
 // --- Mock store ---
-vi.mock('../src/store.js', () => {
+vi.mock('../src/persistence/store.js', () => {
     const data: Record<string, unknown> = {
         geminiModel: 'gemini-2.5-flash-lite',
         gcpProject: 'test-project',
@@ -47,7 +52,7 @@ vi.mock('../src/store.js', () => {
 });
 
 // Import mocked store for manipulation
-import { store } from '../src/store.js';
+import { store } from '../src/persistence/store.js';
 
 // --- Helper: build a valid Gemini response ---
 function geminiResponse(text: string, inputTokens = 10, outputTokens = 5) {

@@ -29,7 +29,7 @@ describe('ConfigStore', () => {
         vi.resetModules();
         process.env.BABEL_DB_PATH = dbPath;
         process.env.BABEL_LEGACY_CONFIG_PATH = legacyConfigPath;
-        return import('../src/store.js');
+        return import('../src/persistence/store.js');
     }
 
     it('should initialize with defaults when no database rows exist', async () => {

@@ -1,5 +1,5 @@
 import type { AccessMode } from '../../apps/app-profile.js';
-import type { TranslationScope } from '../../types.js';
+import type { TranslationScope } from '../../shared/types.js';
 import type { RuntimeConfig } from '../config/config-repository.js';
 
 export interface AccessDecision {

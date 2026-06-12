@@ -1,6 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { getSqliteDatabase } from '../../persistence/sqlite-database.js';
-import type { DiscordUserProfile } from '../../types.js';
+import type { DiscordUserProfile } from '../../shared/types.js';
 
 interface DiscordUserProfileRepositoryOptions {
     db?: DatabaseSync;

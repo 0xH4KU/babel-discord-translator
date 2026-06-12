@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // --- Mock store as an in-memory object ---
 const mockData: Record<string, unknown> = vi.hoisted(() => ({}));
 
-vi.mock('../src/store.js', () => ({
+vi.mock('../src/persistence/store.js', () => ({
     store: {
         get: vi.fn((key: string) => mockData[key]),
         getAll: vi.fn(() => ({ ...mockData })),
@@ -81,8 +81,8 @@ vi.mock('../src/store.js', () => ({
     },
 }));
 
-import { store } from '../src/store.js';
-import { usage, _test as usageTest } from '../src/usage.js';
+import { store } from '../src/persistence/store.js';
+import { usage, _test as usageTest } from '../src/modules/usage/usage.js';
 
 describe('UsageTracker', () => {
     const mockedStore = store as unknown as {

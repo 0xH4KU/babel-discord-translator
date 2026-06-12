@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { localeToLang, detectScript, langToScript, isSameLanguage } from '../src/lang.js';
+import {
+    localeToLang,
+    detectScript,
+    langToScript,
+    isSameLanguage,
+} from '../src/modules/translation/lang.js';
 
 describe('localeToLang', () => {
     it('should return null for null/undefined input', () => {

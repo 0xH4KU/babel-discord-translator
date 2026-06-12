@@ -1,6 +1,6 @@
 import { performance } from 'perf_hooks';
 import { configRepository } from '../src/modules/config/config-repository.js';
-import { store } from '../src/store.js';
+import { store } from '../src/persistence/store.js';
 
 const iterations = Number.parseInt(process.argv[2] ?? '10000', 10);
 if (!Number.isFinite(iterations) || iterations <= 0) {

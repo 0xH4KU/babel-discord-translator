@@ -67,7 +67,7 @@ describe('configRepository', () => {
             throw new Error('store.getAll() should not be used for runtime config');
         });
 
-        vi.doMock('../src/store.js', () => ({
+        vi.doMock('../src/persistence/store.js', () => ({
             store: {
                 getConfigValues,
                 getAll,
@@ -86,7 +86,7 @@ describe('configRepository', () => {
     });
 
     it('includes user-install config keys in runtime config', async () => {
-        vi.doMock('../src/store.js', () => ({
+        vi.doMock('../src/persistence/store.js', () => ({
             store: {
                 getConfigValues: vi.fn((keys: string[]) =>
                     Object.fromEntries(

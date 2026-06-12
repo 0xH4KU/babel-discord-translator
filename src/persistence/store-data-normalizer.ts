@@ -5,7 +5,7 @@ import type {
     TranslationProviderMode,
     UsageHistoryEntry,
     UserBudgetConfig,
-} from '../types.js';
+} from '../shared/types.js';
 
 function normalizeNumber(value: unknown, fallback = 0): number {
     return typeof value === 'number' && Number.isFinite(value) ? value : fallback;

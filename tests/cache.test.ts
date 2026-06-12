@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildTranslationCacheKey, TranslationCache } from '../src/cache.js';
+import { buildTranslationCacheKey, TranslationCache } from '../src/modules/translation/cache.js';
 
 describe('TranslationCache', () => {
     it('should return null for cache miss', () => {

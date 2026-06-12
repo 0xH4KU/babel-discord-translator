@@ -2,7 +2,7 @@ import type { TranslationProvider, TranslateOptions } from './provider-orchestra
 import { configRepository } from '../modules/config/config-repository.js';
 import { appLogger, type StructuredLogFields } from '../shared/structured-logger.js';
 import { ProviderHttpError, classifyStatusCode, parseRetryAfterMs } from './provider-errors.js';
-import type { TranslationResult, VertexAIResponse } from '../types.js';
+import type { TranslationResult, VertexAIResponse } from '../shared/types.js';
 
 export { ProviderHttpError } from './provider-errors.js';
 

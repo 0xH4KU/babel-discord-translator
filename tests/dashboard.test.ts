@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import http from 'http';
-import { AppMetrics } from '../src/app-metrics.js';
+import { AppMetrics } from '../src/shared/app-metrics.js';
 
 // --- Mock dependencies ---
 vi.mock('dotenv/config', () => ({}));
@@ -13,7 +13,7 @@ vi.mock('../src/modules/config/config.js', () => ({
     })),
 }));
 
-vi.mock('../src/store.js', () => {
+vi.mock('../src/persistence/store.js', () => {
     const data: Record<string, unknown> = {
         vertexAiApiKey: 'sk-abcdef123456',
         gcpProject: 'test-project',
@@ -198,12 +198,16 @@ vi.mock('../src/modules/translation/translate.js', () => ({
     })),
 }));
 
-import { createDashboardApp, startDashboardServer, stopDashboardApp } from '../src/dashboard.js';
-import { InMemorySessionRepository } from '../src/auth/in-memory-session-repository.js';
-import { TranslationCache } from '../src/cache.js';
-import { CooldownManager } from '../src/cooldown.js';
-import { TranslationLog } from '../src/log.js';
-import { TranslationRuntimeLimiter } from '../src/translation-runtime-limiter.js';
+import {
+    createDashboardApp,
+    startDashboardServer,
+    stopDashboardApp,
+} from '../src/modules/dashboard/dashboard.js';
+import { InMemorySessionRepository } from '../src/modules/dashboard/auth/in-memory-session-repository.js';
+import { TranslationCache } from '../src/modules/translation/cache.js';
+import { CooldownManager } from '../src/modules/translation/cooldown.js';
+import { TranslationLog } from '../src/shared/log.js';
+import { TranslationRuntimeLimiter } from '../src/modules/translation/translation-runtime-limiter.js';
 import { _test as healthTest } from '../src/shared/health.js';
 import { createSqliteDatabase } from '../src/persistence/sqlite-database.js';
 import { DiscordUserProfileRepository } from '../src/modules/dashboard/discord-user-profile-repository.js';
@@ -668,7 +672,7 @@ describe('Dashboard API', () => {
     });
 
     it('should show custom guild budget usage separately from the global budget pool', async () => {
-        const { store } = await import('../src/store.js');
+        const { store } = await import('../src/persistence/store.js');
         const previousGuildBudgets = store.get('guildBudgets');
 
         usageMock.getStats.mockReturnValueOnce({
@@ -730,7 +734,7 @@ describe('Dashboard API', () => {
     });
 
     it('should include allowed and pending user-install owners in user budget access data', async () => {
-        const { store } = await import('../src/store.js');
+        const { store } = await import('../src/persistence/store.js');
         const previousAllowedUserIds = store.get('allowedUserIds');
         const previousDefaultUserBudget = store.get('defaultUserDailyBudgetUsd');
         const previousUserBudgets = store.get('userBudgets');
@@ -952,7 +956,7 @@ describe('Dashboard API', () => {
         expect(providers.openai.configured).toBe(false);
         expect(providers.openai.failureTotal).toEqual(expect.any(Number));
 
-        const { store } = await import('../src/store.js');
+        const { store } = await import('../src/persistence/store.js');
         const previousGcpProject = store.get('gcpProject');
         try {
             store.update({ gcpProject: '' });
@@ -1046,7 +1050,7 @@ describe('Dashboard API', () => {
     // --- Config update protection ---
 
     it('should not overwrite protected fields via POST /api/config', async () => {
-        const { store } = await import('../src/store.js');
+        const { store } = await import('../src/persistence/store.js');
         const res = await request(server, 'POST', '/api/config', {
             cookie: sessionCookie,
             csrf: csrfToken,

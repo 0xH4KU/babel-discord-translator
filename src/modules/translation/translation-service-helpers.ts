@@ -1,5 +1,5 @@
 import type { AppMetricsCollector } from '../../shared/app-metrics.js';
-import type { GuildGlossaryEntry } from '../../types.js';
+import type { GuildGlossaryEntry } from '../../shared/types.js';
 
 export type ServiceCommand = 'babel' | 'translate';
 

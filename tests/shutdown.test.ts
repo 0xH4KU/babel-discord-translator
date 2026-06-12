@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createGracefulShutdownHandler } from '../src/shutdown.js';
+import { createGracefulShutdownHandler } from '../src/shared/shutdown.js';
 
 describe('createGracefulShutdownHandler', () => {
     const originalExitCode = process.exitCode;
@@ -32,13 +32,14 @@ describe('createGracefulShutdownHandler', () => {
                     order.push('client.destroy');
                 }),
             },
-            getDashboardApp: () => ({
-                locals: {
-                    disposeDashboardApp: () => {
-                        order.push('dashboard.dispose');
+            getDashboardApp: () =>
+                ({
+                    locals: {
+                        disposeDashboardApp: () => {
+                            order.push('dashboard.dispose');
+                        },
                     },
-                },
-            }) as never,
+                }) as never,
             getDashboardServer: () => ({
                 listening: true,
                 close: (callback?: (error?: Error) => void) => {
@@ -48,9 +49,11 @@ describe('createGracefulShutdownHandler', () => {
                 },
             }),
             timers: [timer],
-            cleanupTasks: [() => {
-                order.push('cleanup.db');
-            }],
+            cleanupTasks: [
+                () => {
+                    order.push('cleanup.db');
+                },
+            ],
             logger,
             exit: vi.fn(),
         });

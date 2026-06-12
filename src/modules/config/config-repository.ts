@@ -1,6 +1,6 @@
-import { store } from '../../store.js';
-import type { StoreData } from '../../types.js';
-import { normalizeStoreData } from '../../repositories/store-data-normalizer.js';
+import { store } from '../../persistence/store.js';
+import type { StoreData } from '../../shared/types.js';
+import { normalizeStoreData } from '../../persistence/store-data-normalizer.js';
 
 export type RuntimeConfig = Pick<
     StoreData,

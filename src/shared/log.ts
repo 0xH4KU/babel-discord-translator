@@ -2,7 +2,7 @@
  * In-memory ring buffer for translation audit logs.
  * Does NOT persist to disk — privacy by design.
  */
-import type { LogEntry } from '../types.js';
+import type { LogEntry } from './types.js';
 
 export class TranslationLog {
     entries: LogEntry[];
