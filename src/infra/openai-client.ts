@@ -94,22 +94,20 @@ async function fetchWithRetry(
                 signal: buildTimeoutSignal(timeoutMs),
             });
 
-            if (response.ok || !RETRY_CODES.includes(response.status)) {
+            if (response.ok || !RETRY_CODES.includes(response.status) || attempt === retries) {
                 return response;
             }
 
-            if (attempt < retries) {
-                const delay = retryDelayMs(response, attempt);
-                logger.warn('openai.retry_scheduled', {
-                    operation: logPrefix,
-                    attempt: attempt + 1,
-                    retries,
-                    statusCode: response.status,
-                    retryAfterMs: delay,
-                    errorType: classifyOpenAiFailure(response.status),
-                });
-                await sleep(delay);
-            }
+            const delay = retryDelayMs(response, attempt);
+            logger.warn('openai.retry_scheduled', {
+                operation: logPrefix,
+                attempt: attempt + 1,
+                retries,
+                statusCode: response.status,
+                retryAfterMs: delay,
+                errorType: classifyOpenAiFailure(response.status),
+            });
+            await sleep(delay);
         } catch (error) {
             if (attempt < retries) {
                 const delay = Math.pow(2, attempt) * 500;
@@ -130,10 +128,7 @@ async function fetchWithRetry(
         }
     }
 
-    return fetch(url, {
-        ...options,
-        signal: buildTimeoutSignal(timeoutMs),
-    });
+    throw new Error('fetchWithRetry exhausted retries without a response');
 }
 
 async function buildOpenAiError(response: Response): Promise<Error> {
