@@ -66,6 +66,21 @@ vi.mock('../src/store.js', () => {
     return {
         store: {
             get: vi.fn((key: string) => data[key]),
+            getUserLanguage: vi.fn(
+                (userId: string) =>
+                    (data.userLanguagePrefs as Record<string, string>)[userId] ?? null,
+            ),
+            setUserLanguage: vi.fn((userId: string, language: string) => {
+                (data.userLanguagePrefs as Record<string, string>)[userId] = language;
+            }),
+            deleteUserLanguage: vi.fn((userId: string) => {
+                const prefs = data.userLanguagePrefs as Record<string, string>;
+                if (!(userId in prefs)) {
+                    return false;
+                }
+                delete prefs[userId];
+                return true;
+            }),
             set: vi.fn((key: string, val: unknown) => {
                 data[key] = val;
             }),

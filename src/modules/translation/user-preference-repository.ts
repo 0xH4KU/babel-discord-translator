@@ -10,7 +10,7 @@ export interface UserPreferenceRepository {
 
 class StoreBackedUserPreferenceRepository implements UserPreferenceRepository {
     getLanguage(userId: string): string | null {
-        return this.listPreferences()[userId] ?? null;
+        return store.getUserLanguage(userId);
     }
 
     listPreferences(): Record<string, string> {
@@ -18,20 +18,11 @@ class StoreBackedUserPreferenceRepository implements UserPreferenceRepository {
     }
 
     setLanguage(userId: string, language: string): void {
-        const prefs = this.listPreferences();
-        prefs[userId] = language;
-        store.set('userLanguagePrefs', prefs);
+        store.setUserLanguage(userId, language);
     }
 
     clearLanguage(userId: string): boolean {
-        const prefs = this.listPreferences();
-        if (!(userId in prefs)) {
-            return false;
-        }
-
-        delete prefs[userId];
-        store.set('userLanguagePrefs', prefs);
-        return true;
+        return store.deleteUserLanguage(userId);
     }
 }
 

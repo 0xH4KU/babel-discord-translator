@@ -18,6 +18,8 @@ import type {
 } from '../../types.js';
 
 class UsageTracker {
+    private lastEnsuredDate: string | null = null;
+
     constructor() {
         this.ensureToday();
     }
@@ -25,6 +27,10 @@ class UsageTracker {
     /** Reset counters if the date has changed, archiving previous day. */
     ensureToday(): void {
         const today = new Date().toISOString().slice(0, 10);
+        if (this.lastEnsuredDate === today) {
+            return;
+        }
+        this.lastEnsuredDate = today;
 
         const usage = usageRepository.getDailyUsage();
         if (!usage || usage.date !== today) {
@@ -381,3 +387,10 @@ function toHistoryEntry(usage: TokenUsage): UsageHistoryEntry {
 }
 
 export const usage = new UsageTracker();
+
+export const _test = {
+    /** Clear the same-day rollover memo so the next ensureToday() runs a full pass. */
+    resetRolloverMemo(): void {
+        (usage as unknown as { lastEnsuredDate: string | null }).lastEnsuredDate = null;
+    },
+};
