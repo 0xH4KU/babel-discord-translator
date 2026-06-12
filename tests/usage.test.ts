@@ -82,7 +82,7 @@ vi.mock('../src/store.js', () => ({
 }));
 
 import { store } from '../src/store.js';
-import { usage } from '../src/usage.js';
+import { usage, _test as usageTest } from '../src/usage.js';
 
 describe('UsageTracker', () => {
     const mockedStore = store as unknown as {
@@ -91,6 +91,8 @@ describe('UsageTracker', () => {
     };
 
     beforeEach(() => {
+        // Forget the same-day rollover memo so each test exercises a fresh pass
+        usageTest.resetRolloverMemo();
         // Reset mock store data
         const today = new Date().toISOString().slice(0, 10);
         mockData.tokenUsage = { date: today, inputTokens: 0, outputTokens: 0, requests: 0 };

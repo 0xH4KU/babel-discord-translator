@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -76,12 +76,69 @@ describe('deployment configuration', () => {
             'COPY apps/babel-pocket/package.json ./apps/babel-pocket/package.json',
         );
         expect(dockerfile).toContain('COPY apps/ ./apps/');
-        expect(dockerfile).toContain('CMD ["npm", "start"]');
+        expect(dockerfile).toContain(
+            'CMD ["node", "--max-old-space-size=64", "--max-semi-space-size=4", "dist/src/index.js"]',
+        );
     });
 
     it('defaults Docker Compose deployments to Babel Guild', () => {
         const compose = readFileSync('docker-compose.yml', 'utf8');
 
-        expect(compose).toContain('BABEL_APP: guild');
+        expect(compose).toContain('BABEL_APP: ${BABEL_APP:-guild}');
+    });
+
+    it('lets Docker Compose deployment settings be controlled from the environment file', () => {
+        const compose = readFileSync('docker-compose.yml', 'utf8');
+
+        expect(compose).toContain('DASHBOARD_PORT: ${DASHBOARD_PORT:-3000}');
+        expect(compose).toContain('DASHBOARD_HOST: ${DASHBOARD_HOST:-0.0.0.0}');
+        expect(compose).toContain('BABEL_DB_PATH: ${BABEL_DB_PATH:-/app/data/babel.sqlite}');
+        expect(compose).toContain('"${DASHBOARD_PORT:-3000}:${DASHBOARD_PORT:-3000}"');
+        expect(compose).toContain('http://localhost:$${DASHBOARD_PORT:-3000}/livez');
+    });
+
+    it('provides a conservative VPS installer for Docker Compose deployments', () => {
+        const scriptPath = 'scripts/vps-install.sh';
+        const script = readFileSync(scriptPath, 'utf8');
+        const mode = statSync(scriptPath).mode;
+
+        expect(mode & 0o111).not.toBe(0);
+        expect(script).toContain('set -euo pipefail');
+        expect(script).toContain('docker compose up -d --build');
+        expect(script).toContain('cp .env.example .env');
+        expect(script).toContain('Refusing to overwrite existing .env');
+        expect(script).toContain('/livez');
+        expect(script).toContain('npm run register:guild');
+        expect(script).toContain('npm run register:pocket');
+        expect(script).toContain('DASHBOARD_PASSWORD is still the example value');
+        expect(script).toContain('Open .env in your editor, then rerun this script');
+        expect(script).toContain('exit 1');
+        expect(script).not.toContain('npm run register:guild\n');
+    });
+
+    it('leads the Docker operations guide with a quick VPS deploy path', () => {
+        const dockerGuide = readFileSync('docs/operations/docker.md', 'utf8');
+        const quickDeployIndex = dockerGuide.indexOf('## Quick VPS Deploy');
+        const installDockerIndex = dockerGuide.indexOf('## Install Docker');
+
+        expect(quickDeployIndex).toBeGreaterThan(0);
+        expect(installDockerIndex).toBeGreaterThan(quickDeployIndex);
+        expect(dockerGuide).toContain('bash scripts/vps-install.sh');
+        expect(dockerGuide).toContain('docker compose exec babel npm run register:guild');
+        expect(dockerGuide).toContain('docker compose exec babel npm run register:pocket');
+        expect(dockerGuide).toContain('DISCORD_APP_ID');
+        expect(dockerGuide).toContain('DISCORD_TOKEN');
+        expect(dockerGuide).toContain('The script does not register Discord commands for you');
+    });
+
+    it('documents Docker and VPS defaults in the example environment file', () => {
+        const envExample = readFileSync('.env.example', 'utf8');
+
+        expect(envExample).toContain('BABEL_APP=guild');
+        expect(envExample).toContain('DISCORD_APP_ID=your_app_id_here');
+        expect(envExample).toContain('Set BABEL_APP=pocket');
+        expect(envExample).toContain('BABEL_DB_PATH=/app/data/babel.sqlite');
+        expect(envExample).toContain('NODE_ENV=production');
+        expect(envExample).toContain('Required for VPS/Docker deployments');
     });
 });

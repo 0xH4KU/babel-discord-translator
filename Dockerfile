@@ -34,4 +34,7 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD wget -qO- "http://localhost:${PORT:-3000}/livez" || exit 1
 
-CMD ["npm", "start"]
+# Run node directly: `npm start` would keep a resident npm process (~40MB RSS)
+# in the container for the whole lifetime, roughly doubling billed memory on
+# usage-priced hosts. The V8 heap cap keeps GC aggressive for this small workload.
+CMD ["node", "--max-old-space-size=64", "--max-semi-space-size=4", "dist/src/index.js"]

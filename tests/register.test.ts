@@ -5,6 +5,7 @@ import {
     resolveAppProfile,
 } from '../src/apps/app-profile.js';
 import { getCommandsForProfile } from '../src/apps/commands.js';
+import { resolveRegistrationEnv } from '../src/apps/register.js';
 
 describe('Discord command registration profiles', () => {
     it('resolves the default root app profile from BABEL_APP-compatible values', () => {
@@ -40,6 +41,31 @@ describe('Discord command registration profiles', () => {
             type: 3,
             integration_types: [1],
             contexts: [0, 1, 2],
+        });
+    });
+
+    it('can reuse the runtime Discord token for command registration', () => {
+        expect(
+            resolveRegistrationEnv({
+                DISCORD_APP_ID: 'app-123',
+                DISCORD_TOKEN: 'runtime-token',
+            }),
+        ).toEqual({
+            appId: 'app-123',
+            botToken: 'runtime-token',
+        });
+    });
+
+    it('prefers an explicit command registration bot token when both tokens are set', () => {
+        expect(
+            resolveRegistrationEnv({
+                DISCORD_APP_ID: 'app-123',
+                DISCORD_TOKEN: 'runtime-token',
+                DISCORD_BOT_TOKEN: 'registration-token',
+            }),
+        ).toEqual({
+            appId: 'app-123',
+            botToken: 'registration-token',
         });
     });
 });

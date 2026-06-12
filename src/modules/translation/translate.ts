@@ -7,7 +7,7 @@ import { createOpenAiProvider } from '../../infra/openai-client.js';
 import { configRepository } from '../config/config-repository.js';
 import type { StructuredLogFields } from '../../shared/structured-logger.js';
 import type { AppMetricsCollector } from '../../shared/app-metrics.js';
-import type { TranslationResult } from '../../types.js';
+import type { TranslationProviderMode, TranslationResult } from '../../types.js';
 import type { TranslationProvider } from '../../infra/provider-orchestrator.js';
 
 export interface TranslationGlossaryPromptEntry {
@@ -141,6 +141,26 @@ function getProviders(): Map<string, TranslationProvider> {
 }
 
 /**
+ * Memoized orchestrator so circuit-breaker state survives across requests.
+ * Rebuilt only when the provider mode or metrics collector changes.
+ */
+let orchestrator: ReturnType<typeof createProviderOrchestrator> | null = null;
+let orchestratorMode: TranslationProviderMode | null = null;
+let orchestratorMetrics: AppMetricsCollector | undefined;
+
+function getOrchestrator(
+    mode: TranslationProviderMode,
+    metrics?: AppMetricsCollector,
+): ReturnType<typeof createProviderOrchestrator> {
+    if (!orchestrator || orchestratorMode !== mode || orchestratorMetrics !== metrics) {
+        orchestrator = createProviderOrchestrator(mode, getProviders(), { metrics });
+        orchestratorMode = mode;
+        orchestratorMetrics = metrics;
+    }
+    return orchestrator;
+}
+
+/**
  * Translate text using the configured translation provider(s).
  * @param text - Text to translate.
  * @param targetLanguage - Target language code (e.g. 'ja', 'zh-TW') or 'auto'.
@@ -165,10 +185,7 @@ export async function translate(
     const maxOutputTokens = config.maxOutputTokens || 1000;
     const mode = config.translationProvider || 'vertex';
 
-    const orchestrator = createProviderOrchestrator(mode, getProviders(), {
-        metrics: options?.metrics,
-    });
-    return orchestrator.translate(prompt, maxOutputTokens, options);
+    return getOrchestrator(mode, options?.metrics).translate(prompt, maxOutputTokens, options);
 }
 
 export const _test = {
@@ -182,5 +199,8 @@ export const _test = {
     /** Reset providers for testing. */
     resetProviders(): void {
         providers = null;
+        orchestrator = null;
+        orchestratorMode = null;
+        orchestratorMetrics = undefined;
     },
 };
