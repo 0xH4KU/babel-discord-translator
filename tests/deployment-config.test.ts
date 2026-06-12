@@ -76,7 +76,9 @@ describe('deployment configuration', () => {
             'COPY apps/babel-pocket/package.json ./apps/babel-pocket/package.json',
         );
         expect(dockerfile).toContain('COPY apps/ ./apps/');
-        expect(dockerfile).toContain('CMD ["npm", "start"]');
+        expect(dockerfile).toContain(
+            'CMD ["node", "--max-old-space-size=64", "--max-semi-space-size=4", "dist/src/index.js"]',
+        );
     });
 
     it('defaults Docker Compose deployments to Babel Guild', () => {

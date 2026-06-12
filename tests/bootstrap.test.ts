@@ -54,6 +54,10 @@ vi.mock('discord.js', () => ({
     MessageFlags: {
         Ephemeral: 64,
     },
+    Options: {
+        DefaultMakeCacheSettings: {},
+        cacheWithLimits: vi.fn((settings: unknown) => settings),
+    },
 }));
 
 vi.mock('../src/modules/config/config.js', () => ({

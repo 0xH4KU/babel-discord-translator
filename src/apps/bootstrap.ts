@@ -1,4 +1,4 @@
-import { Client, Events, GatewayIntentBits } from 'discord.js';
+import { Client, Events, GatewayIntentBits, Options } from 'discord.js';
 import { AppMetrics } from '../shared/app-metrics.js';
 import { loadConfig } from '../modules/config/config.js';
 import { TranslationCache } from '../modules/translation/cache.js';
@@ -96,7 +96,26 @@ export async function startBabelApp(profile: AppProfile): Promise<void> {
         runtime: runtimeLimiter.snapshot(),
     });
 
-    const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+    // Commands read users/members from the interaction payload, never from these
+    // caches, so they can stay tiny — only guild/channel/role caches (defaults)
+    // are needed for webhook output and the dashboard guild list.
+    const client = new Client({
+        intents: [GatewayIntentBits.Guilds],
+        makeCache: Options.cacheWithLimits({
+            ...Options.DefaultMakeCacheSettings,
+            MessageManager: 0,
+            ReactionManager: 0,
+            PresenceManager: 0,
+            GuildMemberManager: {
+                maxSize: 100,
+                keepOverLimit: (member) => member.id === member.client.user.id,
+            },
+            UserManager: {
+                maxSize: 100,
+                keepOverLimit: (user) => user.id === user.client.user.id,
+            },
+        }),
+    });
 
     let dashboardApp: express.Express | null = null;
     let dashboardServer: http.Server | null = null;
