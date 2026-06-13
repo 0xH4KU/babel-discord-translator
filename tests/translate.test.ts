@@ -227,6 +227,7 @@ describe('translate', () => {
     const mockStore = store as unknown as {
         _setMock: (key: string, val: unknown) => void;
         get: ReturnType<typeof vi.fn>;
+        getConfigValues: ReturnType<typeof vi.fn>;
     };
 
     beforeEach(() => {
@@ -249,6 +250,44 @@ describe('translate', () => {
         expect(result.text).toBe('你好世界');
         expect(result.inputTokens).toBe(15);
         expect(result.outputTokens).toBe(8);
+    });
+
+    it('uses runtime config from options without reading the repository again', async () => {
+        globalThis.fetch = vi.fn().mockResolvedValue(geminiResponse('こんにちは', 12, 6));
+        mockStore.getConfigValues.mockClear();
+
+        const result = await translate('Hello', 'ja', {
+            runtimeConfig: {
+                vertexAiApiKey: 'test-key',
+                gcpProject: 'test-project',
+                gcpLocation: 'global',
+                geminiModel: 'gemini-2.5-flash-lite',
+                allowedGuildIds: [],
+                allowedUserIds: [],
+                cooldownSeconds: 0,
+                cacheMaxSize: 2000,
+                setupComplete: true,
+                inputPricePerMillion: 0,
+                outputPricePerMillion: 0,
+                dailyBudgetUsd: 0,
+                defaultUserDailyBudgetUsd: 0,
+                translationPrompt: '',
+                maxInputLength: 2000,
+                maxOutputTokens: 321,
+                translationMaxConcurrent: 4,
+                translationMaxGlobalQueue: 25,
+                translationMaxGuildQueue: 5,
+                translationMaxUserOutstanding: 1,
+                translationMaxQueueWaitMs: 30000,
+                openaiApiKey: '',
+                openaiBaseUrl: '',
+                openaiModel: '',
+                translationProvider: 'vertex',
+            },
+        });
+
+        expect(result.text).toBe('こんにちは');
+        expect(mockStore.getConfigValues).not.toHaveBeenCalled();
     });
 
     it('should throw when API is not configured', async () => {

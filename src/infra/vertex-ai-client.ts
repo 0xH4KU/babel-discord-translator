@@ -1,5 +1,5 @@
 import type { TranslationProvider, TranslateOptions } from './provider-orchestrator.js';
-import { configRepository } from '../modules/config/config-repository.js';
+import { configRepository, type RuntimeConfig } from '../modules/config/config-repository.js';
 import { appLogger, type StructuredLogFields } from '../shared/structured-logger.js';
 import { ProviderHttpError, classifyStatusCode, parseRetryAfterMs } from './provider-errors.js';
 import type { TranslationResult, VertexAIResponse } from '../shared/types.js';
@@ -34,8 +34,8 @@ function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function getVertexAiConfig(): VertexAiConfig {
-    const config = configRepository.getRuntimeConfig();
+function getVertexAiConfig(runtimeConfig?: RuntimeConfig): VertexAiConfig {
+    const config = runtimeConfig ?? configRepository.getRuntimeConfig();
     const project = config.gcpProject;
     const apiKey = config.vertexAiApiKey;
 
@@ -162,6 +162,7 @@ async function requestGenerateContent(
         timeoutMs = REQUEST_TIMEOUT_MS,
         logPrefix = 'VertexAI',
         logContext,
+        runtimeConfig,
     }: {
         maxOutputTokens: number;
         temperature?: number;
@@ -169,6 +170,7 @@ async function requestGenerateContent(
         timeoutMs?: number;
         logPrefix?: string;
         logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'>;
+        runtimeConfig?: RuntimeConfig;
     },
 ): Promise<{ data: VertexAIResponse; latencyMs: number }> {
     const logger = appLogger.child({
@@ -179,7 +181,7 @@ async function requestGenerateContent(
     let config: VertexAiConfig;
 
     try {
-        config = getVertexAiConfig();
+        config = getVertexAiConfig(runtimeConfig);
     } catch (error) {
         logger.error('vertex_ai.request.failed', {
             operation: logPrefix,
@@ -264,12 +266,14 @@ export async function generateTranslationContent(
     maxOutputTokens: number,
     options?: {
         logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'>;
+        runtimeConfig?: RuntimeConfig;
     },
 ): Promise<TranslationResult> {
     const { data } = await requestGenerateContent(prompt, {
         maxOutputTokens,
         logPrefix: 'Translate',
         logContext: options?.logContext,
+        runtimeConfig: options?.runtimeConfig,
     });
 
     const result = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
@@ -307,8 +311,8 @@ export async function checkVertexAiHealth(): Promise<VertexAiHealthStatus> {
     }
 }
 
-export function isVertexAiConfigured(): boolean {
-    const config = configRepository.getRuntimeConfig();
+export function isVertexAiConfigured(runtimeConfig?: RuntimeConfig): boolean {
+    const config = runtimeConfig ?? configRepository.getRuntimeConfig();
     return !!(config.vertexAiApiKey && config.gcpProject);
 }
 
@@ -322,8 +326,8 @@ export function createVertexAiProvider(): TranslationProvider {
         ): Promise<TranslationResult> {
             return generateTranslationContent(prompt, maxOutputTokens, options);
         },
-        isConfigured(): boolean {
-            return isVertexAiConfigured();
+        isConfigured(options?: TranslateOptions): boolean {
+            return isVertexAiConfigured(options?.runtimeConfig);
         },
     };
 }

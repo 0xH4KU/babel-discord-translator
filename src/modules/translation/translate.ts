@@ -4,7 +4,7 @@
 import { createProviderOrchestrator } from '../../infra/provider-orchestrator.js';
 import { createVertexAiProvider } from '../../infra/vertex-ai-client.js';
 import { createOpenAiProvider } from '../../infra/openai-client.js';
-import { configRepository } from '../config/config-repository.js';
+import { configRepository, type RuntimeConfig } from '../config/config-repository.js';
 import type { StructuredLogFields } from '../../shared/structured-logger.js';
 import type { AppMetricsCollector } from '../../shared/app-metrics.js';
 import type { TranslationProviderMode, TranslationResult } from '../../shared/types.js';
@@ -179,9 +179,10 @@ export async function translate(
         logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'>;
         metrics?: AppMetricsCollector;
         glossaryEntries?: TranslationGlossaryPromptEntry[];
+        runtimeConfig?: RuntimeConfig;
     },
 ): Promise<TranslationResult> {
-    const config = configRepository.getRuntimeConfig();
+    const config = options?.runtimeConfig ?? configRepository.getRuntimeConfig();
     const customPrompt = config.translationPrompt;
     const prompt = buildTranslationPrompt(
         text,

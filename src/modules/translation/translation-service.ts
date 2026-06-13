@@ -473,6 +473,7 @@ export function createTranslationService({
                                     },
                                     metrics,
                                     glossaryEntries,
+                                    runtimeConfig,
                                 ),
                             );
                             cache.set(cacheKey, result.text);
@@ -503,6 +504,7 @@ export function createTranslationService({
                                 },
                                 metrics,
                                 glossaryEntries,
+                                runtimeConfig,
                             ),
                         );
                         translated = result.text;

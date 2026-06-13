@@ -1,11 +1,13 @@
 import type { AppMetricsCollector } from '../../shared/app-metrics.js';
 import type { GuildGlossaryEntry } from '../../shared/types.js';
+import type { RuntimeConfig } from '../config/config-repository.js';
 
 export type ServiceCommand = 'babel' | 'translate';
 
 export type TranslatorOptions = {
     metrics?: AppMetricsCollector;
     glossaryEntries?: Array<Pick<GuildGlossaryEntry, 'sourceText' | 'targetText' | 'notes'>>;
+    runtimeConfig?: RuntimeConfig;
     logContext: {
         requestId: string;
         guildId?: string | null;
@@ -18,11 +20,13 @@ export function createTranslatorOptions(
     logContext: TranslatorOptions['logContext'],
     metrics?: AppMetricsCollector,
     glossaryEntries: TranslatorOptions['glossaryEntries'] = [],
+    runtimeConfig?: RuntimeConfig,
 ): TranslatorOptions {
     return {
         logContext,
         ...(metrics ? { metrics } : {}),
         ...(glossaryEntries.length > 0 ? { glossaryEntries } : {}),
+        ...(runtimeConfig ? { runtimeConfig } : {}),
     };
 }
 

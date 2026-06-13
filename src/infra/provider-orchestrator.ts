@@ -2,9 +2,11 @@ import type { StructuredLogFields } from '../shared/structured-logger.js';
 import { appLogger } from '../shared/structured-logger.js';
 import type { AppMetricsCollector } from '../shared/app-metrics.js';
 import type { TranslationProviderMode, TranslationResult } from '../shared/types.js';
+import type { RuntimeConfig } from '../modules/config/config-repository.js';
 
 export interface TranslateOptions {
     logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'>;
+    runtimeConfig?: RuntimeConfig;
 }
 
 export interface TranslationProvider {
@@ -17,7 +19,7 @@ export interface TranslationProvider {
         options?: TranslateOptions,
     ): Promise<TranslationResult>;
     /** Whether the provider has enough config to attempt a call. */
-    isConfigured(): boolean;
+    isConfigured(options?: TranslateOptions): boolean;
 }
 
 export interface ProviderOrchestratorResult extends TranslationResult {
@@ -134,7 +136,7 @@ export function createProviderOrchestrator(
             options?: TranslateOptions,
         ): Promise<ProviderOrchestratorResult> {
             const ordered = resolveProviderOrder(mode, providers);
-            const configured = ordered.filter((p) => p.isConfigured());
+            const configured = ordered.filter((p) => p.isConfigured(options));
             const available = configured.filter((p) => !isCircuitOpen(p.name));
 
             if (configured.length === 0) {

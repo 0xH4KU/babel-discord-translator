@@ -263,6 +263,10 @@ describe('TranslationService', () => {
         );
         expect(Object.prototype.propertyIsEnumerable.call(translatorOptions, 'metrics')).toBe(true);
         expect(translatorOptions?.metrics).toBe(metrics);
+        expect(translatorOptions?.runtimeConfig).toMatchObject({
+            geminiModel: 'gemini-2.5-flash-lite',
+            maxOutputTokens: 1000,
+        });
         expect(usageTracker.record).toHaveBeenCalledWith(12, 6, {
             guildId: 'guild-1',
             userId: null,
