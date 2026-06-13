@@ -5,6 +5,8 @@ import { TranslationCache } from '../modules/translation/cache.js';
 import { CooldownManager } from '../modules/translation/cooldown.js';
 import { TranslationLog } from '../shared/log.js';
 import { createDashboardApp, startDashboardServer } from '../modules/dashboard/dashboard.js';
+import { resolveDashboardMode } from '../modules/dashboard/dashboard-mode.js';
+import { createHealthDashboardApp } from '../modules/dashboard/health-dashboard.js';
 import { configRepository } from '../modules/config/config-repository.js';
 import { createGracefulShutdownHandler } from '../shared/shutdown.js';
 import { createTranslationService } from '../modules/translation/translation-service.js';
@@ -186,6 +188,7 @@ export async function startBabelApps(profiles: AppProfile[]): Promise<void> {
     });
 
     const shared = createSharedRuntime();
+    const dashboardMode = resolveDashboardMode();
 
     startupLogger.info('translation.runtime_limits.configured', {
         runtime: shared.runtimeLimiter.snapshot(),
@@ -208,9 +211,29 @@ export async function startBabelApps(profiles: AppProfile[]): Promise<void> {
     );
 
     const startDashboardIfReady = () => {
-        if (dashboardApp || readyProfileIds.size !== runtimes.length) {
+        if (dashboardApp || dashboardServer || readyProfileIds.size !== runtimes.length) {
             return;
         }
+
+        if (dashboardMode === 'off') {
+            startupLogger.info('dashboard.server.skipped', { mode: dashboardMode });
+            return;
+        }
+
+        if (dashboardMode === 'health-only') {
+            dashboardApp = createHealthDashboardApp({
+                cache: shared.cache,
+                metrics: shared.metrics,
+                runtimeLimiter: shared.runtimeLimiter,
+            });
+            dashboardServer = startDashboardServer(
+                dashboardApp,
+                shared.config.dashboardPort,
+                shared.config.dashboardHost,
+            );
+            return;
+        }
+
         dashboardApp = createDashboardApp({
             cache: shared.cache,
             cooldown: primaryRuntime.cooldown,

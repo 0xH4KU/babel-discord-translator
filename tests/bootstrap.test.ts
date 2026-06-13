@@ -25,6 +25,8 @@ const mocks = vi.hoisted(() => {
         createClient,
         createTranslationService: vi.fn(() => ({ process: vi.fn() })),
         createDashboardApp: vi.fn(),
+        createHealthDashboardApp: vi.fn(),
+        resolveDashboardMode: vi.fn(() => 'full' as const),
         startDashboardServer: vi.fn(),
         createWebhookService: vi.fn(() => ({ sendTranslation: vi.fn() })),
         loadConfig: vi.fn(() => ({
@@ -95,6 +97,14 @@ vi.mock('../src/modules/dashboard/dashboard.js', () => ({
     startDashboardServer: mocks.startDashboardServer,
 }));
 
+vi.mock('../src/modules/dashboard/health-dashboard.js', () => ({
+    createHealthDashboardApp: mocks.createHealthDashboardApp,
+}));
+
+vi.mock('../src/modules/dashboard/dashboard-mode.js', () => ({
+    resolveDashboardMode: mocks.resolveDashboardMode,
+}));
+
 vi.mock('../src/modules/translation/webhook-service.js', () => ({
     createWebhookService: mocks.createWebhookService,
 }));
@@ -129,6 +139,7 @@ describe('startBabelApp', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mocks.clients.length = 0;
+        mocks.resolveDashboardMode.mockReturnValue('full');
     });
 
     it('passes the profile guild glossary capability to the translation service', async () => {
@@ -194,6 +205,42 @@ describe('startBabelApp', () => {
                     'babel-guild': mocks.clients[0],
                     'babel-pocket': mocks.clients[1],
                 },
+            }),
+        );
+    });
+
+    it('starts a health-only dashboard when dashboard mode is health-only', async () => {
+        mocks.resolveDashboardMode.mockReturnValue('health-only');
+        const { startBabelApp } = await import('../src/apps/bootstrap.js');
+
+        await startBabelApp(BABEL_GUILD_PROFILE);
+        const readyCallback = mocks.clients[0]!.once.mock.calls[0]![1];
+        readyCallback({
+            user: { id: 'guild-bot', tag: 'Guild#0001' },
+        });
+
+        expect(mocks.createDashboardApp).not.toHaveBeenCalled();
+        expect(mocks.createHealthDashboardApp).toHaveBeenCalledTimes(1);
+        expect(mocks.startDashboardServer).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not start a dashboard server when dashboard mode is off', async () => {
+        mocks.resolveDashboardMode.mockReturnValue('off');
+        const { startBabelApp } = await import('../src/apps/bootstrap.js');
+
+        await startBabelApp(BABEL_GUILD_PROFILE);
+        const readyCallback = mocks.clients[0]!.once.mock.calls[0]![1];
+        readyCallback({
+            user: { id: 'guild-bot', tag: 'Guild#0001' },
+        });
+
+        expect(mocks.createDashboardApp).not.toHaveBeenCalled();
+        expect(mocks.createHealthDashboardApp).not.toHaveBeenCalled();
+        expect(mocks.startDashboardServer).not.toHaveBeenCalled();
+        expect(mocks.createGracefulShutdownHandler).toHaveBeenCalledWith(
+            expect.objectContaining({
+                getDashboardApp: expect.any(Function),
+                getDashboardServer: expect.any(Function),
             }),
         );
     });
