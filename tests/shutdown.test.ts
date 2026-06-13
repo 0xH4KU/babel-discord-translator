@@ -122,4 +122,25 @@ describe('createGracefulShutdownHandler', () => {
         expect(close).toHaveBeenCalledTimes(1);
         expect(warn).toHaveBeenCalledTimes(1);
     });
+
+    it('should destroy every Discord client when multiple runtimes share one process', async () => {
+        const guildDestroy = vi.fn();
+        const pocketDestroy = vi.fn();
+
+        const shutdown = createGracefulShutdownHandler({
+            client: { destroy: guildDestroy },
+            clients: [{ destroy: guildDestroy }, { destroy: pocketDestroy }],
+            logger: {
+                info: vi.fn(),
+                warn: vi.fn(),
+                error: vi.fn(),
+            },
+            exit: vi.fn(),
+        });
+
+        await shutdown('SIGTERM');
+
+        expect(guildDestroy).toHaveBeenCalledTimes(1);
+        expect(pocketDestroy).toHaveBeenCalledTimes(1);
+    });
 });

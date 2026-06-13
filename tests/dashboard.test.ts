@@ -804,6 +804,86 @@ describe('Dashboard API', () => {
         }
     });
 
+    it('should resolve combined user budget profiles with the Pocket Discord client', async () => {
+        const { store } = await import('../src/persistence/store.js');
+        const previousAllowedUserIds = store.get('allowedUserIds');
+        const previousDefaultUserBudget = store.get('defaultUserDailyBudgetUsd');
+        const previousUserBudgets = store.get('userBudgets');
+        const emptyProfileDb = createSqliteDatabase(':memory:');
+        const emptyProfileRepository = new DiscordUserProfileRepository({ db: emptyProfileDb });
+        const guildFetch = vi.fn(async () => {
+            throw new Error('guild client should not resolve Pocket users');
+        });
+        const pocketFetch = vi.fn(async (userId: string) => ({
+            id: userId,
+            username: 'pocket-user',
+            globalName: 'Pocket User',
+            displayAvatarURL: () => 'https://cdn.discordapp.com/avatars/pending-owner/pocket.png',
+        }));
+        const guildClient = createMinimalClient();
+        const pocketClient = {
+            ...createMinimalClient(),
+            users: { fetch: pocketFetch },
+        } as unknown as Client;
+        const combinedApp = createDashboardApp({
+            cache,
+            cooldown: new CooldownManager(5),
+            log,
+            client: guildClient,
+            clients: {
+                'babel-guild': {
+                    ...guildClient,
+                    users: { fetch: guildFetch },
+                } as unknown as Client,
+                'babel-pocket': pocketClient,
+            },
+            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
+            metrics,
+            runtimeLimiter,
+            profile: BABEL_GUILD_PROFILE,
+            profiles: [BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE],
+            sessionRepository: new InMemorySessionRepository(),
+            userProfileRepository: emptyProfileRepository,
+            pendingUserInstallOwnerRepository,
+        });
+        const combinedServer = startDashboardServer(combinedApp, 0);
+
+        try {
+            store.update({
+                allowedUserIds: [],
+                defaultUserDailyBudgetUsd: 0.5,
+                userBudgets: {},
+            });
+
+            const login = await request(combinedServer, 'POST', '/api/login', {
+                body: { password: 'test-pass-123' },
+            });
+            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
+            const res = await request(combinedServer, 'GET', '/api/user-budgets', {
+                cookie,
+            });
+
+            expect(res.status).toBe(200);
+            expect(guildFetch).not.toHaveBeenCalled();
+            expect(pocketFetch).toHaveBeenCalledWith('pending-owner');
+            expect(res.body!.profiles).toEqual({
+                'pending-owner': expect.objectContaining({
+                    userId: 'pending-owner',
+                    displayName: 'Pocket User',
+                }),
+            });
+        } finally {
+            store.update({
+                allowedUserIds: previousAllowedUserIds,
+                defaultUserDailyBudgetUsd: previousDefaultUserBudget,
+                userBudgets: previousUserBudgets,
+            });
+            stopDashboardApp(combinedApp);
+            combinedServer.close();
+            emptyProfileDb.close();
+        }
+    });
+
     it('should cache readiness probes within the configured health TTL', async () => {
         healthTest.resetReadinessCache();
         healthCheck.mockClear();
@@ -1589,6 +1669,14 @@ describe('Dashboard API', () => {
                     commandName: 'Babel',
                     accessMode: 'guild',
                 },
+                profiles: [
+                    {
+                        id: 'babel-guild',
+                        productName: 'Babel Guild',
+                        commandName: 'Babel',
+                        accessMode: 'guild',
+                    },
+                ],
                 capabilities: {
                     guildAccess: true,
                     userAccess: false,
@@ -1634,6 +1722,14 @@ describe('Dashboard API', () => {
                     commandName: 'Babel Pocket',
                     accessMode: 'user-install',
                 },
+                profiles: [
+                    {
+                        id: 'babel-pocket',
+                        productName: 'Babel Pocket',
+                        commandName: 'Babel Pocket',
+                        accessMode: 'user-install',
+                    },
+                ],
                 capabilities: {
                     guildAccess: false,
                     userAccess: true,
@@ -1644,6 +1740,66 @@ describe('Dashboard API', () => {
         } finally {
             stopDashboardApp(pocketApp);
             pocketServer.close();
+        }
+    });
+
+    it('should expose combined dashboard capabilities without losing separate app identities', async () => {
+        const combinedApp = createDashboardApp({
+            cache,
+            cooldown: new CooldownManager(5),
+            log,
+            client: createMinimalClient(),
+            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
+            metrics,
+            runtimeLimiter,
+            profile: BABEL_GUILD_PROFILE,
+            profiles: [BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE],
+            sessionRepository: new InMemorySessionRepository(),
+            userProfileRepository,
+        });
+        const combinedServer = startDashboardServer(combinedApp, 0);
+
+        try {
+            const login = await request(combinedServer, 'POST', '/api/login', {
+                body: { password: 'test-pass-123' },
+            });
+            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
+            const res = await requestText(combinedServer, 'GET', '/api/capabilities', {
+                cookie,
+            });
+
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.text)).toEqual({
+                profile: {
+                    id: 'babel-guild',
+                    productName: 'Babel Guild',
+                    commandName: 'Babel',
+                    accessMode: 'guild',
+                },
+                profiles: [
+                    {
+                        id: 'babel-guild',
+                        productName: 'Babel Guild',
+                        commandName: 'Babel',
+                        accessMode: 'guild',
+                    },
+                    {
+                        id: 'babel-pocket',
+                        productName: 'Babel Pocket',
+                        commandName: 'Babel Pocket',
+                        accessMode: 'user-install',
+                    },
+                ],
+                capabilities: {
+                    guildAccess: true,
+                    userAccess: true,
+                    guildGlossary: true,
+                    pendingUserInstallOwners: true,
+                },
+            });
+        } finally {
+            stopDashboardApp(combinedApp);
+            combinedServer.close();
         }
     });
 

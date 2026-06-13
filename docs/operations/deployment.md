@@ -19,10 +19,11 @@ Babel does not require privileged Discord intents.
 
 Select the app profile before you register Discord commands or start the process.
 
-| Product      | Install Model        | Runtime Selector   | Command Registration      |
-| ------------ | -------------------- | ------------------ | ------------------------- |
-| Babel Guild  | Server/Guild Install | `BABEL_APP=guild`  | `npm run register:guild`  |
-| Babel Pocket | User Install         | `BABEL_APP=pocket` | `npm run register:pocket` |
+| Product      | Install Model        | Runtime Selector      | Command Registration      |
+| ------------ | -------------------- | --------------------- | ------------------------- |
+| Babel Guild  | Server/Guild Install | `BABEL_APP=guild`     | `npm run register:guild`  |
+| Babel Pocket | User Install         | `BABEL_APP=pocket`    | `npm run register:pocket` |
+| Both         | Both                 | `BABEL_APP=combined`  | Run both explicit commands |
 
 Babel Guild is the default root profile for backward compatibility. Use Babel Pocket when the Discord application is configured for User Install and you want user-scoped access and budgets.
 
@@ -42,7 +43,7 @@ npm run register:pocket
 npm run start -w @babel-discord-translator/pocket
 ```
 
-Root commands also support `BABEL_APP=guild` or `BABEL_APP=pocket` for Docker, PM2, and simple VPS deployments.
+Root commands also support `BABEL_APP=guild`, `BABEL_APP=pocket`, or `BABEL_APP=combined` for Docker, PM2, Railway, and simple VPS deployments. Combined mode starts one Node.js process, two Discord clients, one dashboard, and one SQLite database. The explicit workspace commands remain the clean management entrypoints for single-product local work and command registration.
 
 ## Discord Setup
 
@@ -65,19 +66,21 @@ This registers the default Babel Guild command set unless `BABEL_APP=pocket` is 
 
 ## Railway
 
-Railway is a good fit for small communities that want a hosted self-deploy without managing a VPS. Babel supports Railway's `PORT` variable, binds the dashboard on `0.0.0.0` by default, and includes `railway.json` for the `/livez` healthcheck. A single Railway template can serve both products by exposing `BABEL_APP` as a service variable.
+Railway is a good fit for small communities that want a hosted self-deploy without managing a VPS. Babel supports Railway's `PORT` variable, binds the dashboard on `0.0.0.0` by default, and includes `railway.json` for the `/livez` healthcheck. A single Railway template can serve either product, or both products together, by exposing `BABEL_APP` as a service variable.
 
 Recommended environment variables:
 
 | Variable             | Value                    |
 | -------------------- | ------------------------ |
-| `DISCORD_TOKEN`      | Your Discord bot token   |
-| `BABEL_APP`          | `guild` or `pocket`      |
+| `DISCORD_TOKEN`      | Your Discord bot token for single-profile deployments |
+| `BABEL_APP`          | `guild`, `pocket`, or `combined` |
 | `DASHBOARD_PASSWORD` | A strong random password |
 | `BABEL_DB_PATH`      | `/app/data/babel.sqlite` |
 | `NODE_ENV`           | `production`             |
 
-Use `BABEL_APP=guild` for Babel Guild, or `BABEL_APP=pocket` for Babel Pocket. Keep the template default at `guild` so existing template users stay on the server-install product unless they intentionally choose Pocket.
+Use `BABEL_APP=guild` for Babel Guild, `BABEL_APP=pocket` for Babel Pocket, or `BABEL_APP=combined` to run both in one Railway service. Keep the template default at `guild` so existing template users stay on the server-install product unless they intentionally choose Pocket or combined mode.
+
+For combined mode, set `BABEL_GUILD_DISCORD_TOKEN` and `BABEL_POCKET_DISCORD_TOKEN`. If Guild and Pocket are separate Discord applications, set `BABEL_GUILD_DISCORD_APP_ID` and `BABEL_POCKET_DISCORD_APP_ID` before running `npm run register:guild` and `npm run register:pocket`.
 
 Use a persistent volume mounted at `/app/data` so SQLite survives restarts and redeploys. If the Railway volume is not writable by the Docker image's non-root user, set `RAILWAY_RUN_UID=0` on the service.
 
@@ -113,6 +116,9 @@ Example `.env`:
 ```env
 DISCORD_TOKEN=your_bot_token_here
 BABEL_APP=guild
+# For BABEL_APP=combined:
+# BABEL_GUILD_DISCORD_TOKEN=your_guild_bot_token_here
+# BABEL_POCKET_DISCORD_TOKEN=your_pocket_bot_token_here
 DASHBOARD_PORT=3000
 DASHBOARD_HOST=0.0.0.0
 DASHBOARD_PASSWORD=replace_with_a_strong_password

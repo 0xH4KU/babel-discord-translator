@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
-import { resolveAppProfile } from '../src/apps/app-profile.js';
-import { registerCommandsForProfile } from '../src/apps/register.js';
+import { resolveAppProfiles } from '../src/apps/app-profile.js';
+import { registerCommandsForProfiles } from '../src/apps/register.js';
 
 export async function registerCommands(): Promise<void> {
-    await registerCommandsForProfile(resolveAppProfile());
+    await registerCommandsForProfiles(resolveAppProfiles());
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

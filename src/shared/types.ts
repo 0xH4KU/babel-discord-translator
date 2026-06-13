@@ -209,6 +209,7 @@ export interface SessionData {
 export interface DashboardDeps {
     cache: TranslationCache;
     cooldown: CooldownManager;
+    cooldowns?: Partial<Record<AppProfile['id'], CooldownManager>>;
     log: TranslationLog;
     client: Client;
     getStats: () => BotStats;
@@ -221,6 +222,8 @@ export interface DashboardDeps {
     sessionRepository?: SessionRepository;
     userProfileRepository?: DiscordUserProfileRepository;
     profile?: AppProfile;
+    profiles?: AppProfile[];
+    clients?: Partial<Record<AppProfile['id'], Client>>;
     pendingUserInstallOwnerRepository?: PendingUserInstallOwnerRepository;
 }
 

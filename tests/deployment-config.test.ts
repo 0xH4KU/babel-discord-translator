@@ -55,6 +55,10 @@ describe('deployment configuration', () => {
         expect(packageJson.scripts.start).toBe('node dist/src/index.js');
         expect(packageJson.scripts.dev).toBe('tsx watch src/index.ts');
         expect(packageJson.scripts.register).toBe('tsx scripts/register.ts');
+        expect(readFileSync('scripts/register.ts', 'utf8')).toContain('resolveAppProfiles');
+        expect(readFileSync('scripts/register.ts', 'utf8')).toContain(
+            'registerCommandsForProfiles',
+        );
         expect(packageJson.scripts['start:guild']).toBe(
             'npm run start -w @babel-discord-translator/guild',
         );
@@ -134,6 +138,9 @@ describe('deployment configuration', () => {
         expect(dockerGuide).toContain('docker compose exec babel npm run register:pocket');
         expect(dockerGuide).toContain('DISCORD_APP_ID');
         expect(dockerGuide).toContain('DISCORD_TOKEN');
+        expect(dockerGuide).toContain('BABEL_APP=combined');
+        expect(dockerGuide).toContain('BABEL_GUILD_DISCORD_TOKEN');
+        expect(dockerGuide).toContain('BABEL_POCKET_DISCORD_TOKEN');
         expect(dockerGuide).toContain('The script does not register Discord commands for you');
     });
 
@@ -142,7 +149,10 @@ describe('deployment configuration', () => {
 
         expect(envExample).toContain('BABEL_APP=guild');
         expect(envExample).toContain('DISCORD_APP_ID=your_app_id_here');
-        expect(envExample).toContain('Set BABEL_APP=pocket');
+        expect(envExample).toContain('Set BABEL_APP=pocket for User Install workflows');
+        expect(envExample).toContain('BABEL_GUILD_DISCORD_TOKEN=');
+        expect(envExample).toContain('BABEL_POCKET_DISCORD_TOKEN=');
+        expect(envExample).toContain('"combined" to run both');
         expect(envExample).toContain('BABEL_DB_PATH=/app/data/babel.sqlite');
         expect(envExample).toContain('NODE_ENV=production');
         expect(envExample).toContain('BABEL_NODE_MAX_OLD_SPACE_MB=64');

@@ -24,6 +24,21 @@ import type http from 'http';
 
 let processHandlersInstalled = false;
 
+interface SharedBabelRuntime {
+    config: ReturnType<typeof loadConfig>;
+    cache: TranslationCache;
+    log: TranslationLog;
+    stats: BotStats;
+    metrics: AppMetrics;
+    runtimeLimiter: TranslationRuntimeLimiter;
+}
+
+interface ProfileBabelRuntime {
+    profile: AppProfile;
+    client: Client;
+    cooldown: CooldownManager;
+}
+
 function installProcessErrorHandlers(): void {
     if (processHandlersInstalled) {
         return;
@@ -49,13 +64,10 @@ function installProcessErrorHandlers(): void {
 }
 
 export async function startBabelApp(profile: AppProfile): Promise<void> {
-    installProcessErrorHandlers();
+    await startBabelApps([profile]);
+}
 
-    const startupLogger = appLogger.child({
-        component: 'startup',
-        app: profile.id,
-    });
-
+function createSharedRuntime(): SharedBabelRuntime {
     const config = (() => {
         try {
             return loadConfig();
@@ -65,41 +77,28 @@ export async function startBabelApp(profile: AppProfile): Promise<void> {
     })();
 
     const runtimeConfig = configRepository.getRuntimeConfig();
-    const cache = new TranslationCache(runtimeConfig.cacheMaxSize);
-    const cooldown = new CooldownManager(runtimeConfig.cooldownSeconds);
-    const log = new TranslationLog();
-    const stats: BotStats = { totalTranslations: 0, apiCalls: 0 };
-    const metrics = new AppMetrics();
-    const runtimeLimiter = new TranslationRuntimeLimiter({
-        maxConcurrent: runtimeConfig.translationMaxConcurrent,
-        maxGlobalQueue: runtimeConfig.translationMaxGlobalQueue,
-        maxGuildQueue: runtimeConfig.translationMaxGuildQueue,
-        maxUserOutstanding: runtimeConfig.translationMaxUserOutstanding,
-        maxQueueWaitMs: runtimeConfig.translationMaxQueueWaitMs,
-    });
-    const translationService = createTranslationService({
-        cache,
-        cooldown,
-        log,
-        stats,
-        metrics,
-        runtimeLimiter,
-        accessMode: profile.accessMode,
-        enableGuildGlossary: profile.enableGuildGlossary,
-        pendingUserInstallOwnerRepository: profile.enableUserAccess
-            ? new PendingUserInstallOwnerRepository()
-            : undefined,
-    });
-    const webhookService = profile.enableWebhookOutput ? createWebhookService({ metrics }) : null;
 
-    startupLogger.info('translation.runtime_limits.configured', {
-        runtime: runtimeLimiter.snapshot(),
-    });
+    return {
+        config,
+        cache: new TranslationCache(runtimeConfig.cacheMaxSize),
+        log: new TranslationLog(),
+        stats: { totalTranslations: 0, apiCalls: 0 },
+        metrics: new AppMetrics(),
+        runtimeLimiter: new TranslationRuntimeLimiter({
+            maxConcurrent: runtimeConfig.translationMaxConcurrent,
+            maxGlobalQueue: runtimeConfig.translationMaxGlobalQueue,
+            maxGuildQueue: runtimeConfig.translationMaxGuildQueue,
+            maxUserOutstanding: runtimeConfig.translationMaxUserOutstanding,
+            maxQueueWaitMs: runtimeConfig.translationMaxQueueWaitMs,
+        }),
+    };
+}
 
+function createDiscordClient(): Client {
     // Commands read users/members from the interaction payload, never from these
     // caches, so they can stay tiny — only guild/channel/role caches (defaults)
     // are needed for webhook output and the dashboard guild list.
-    const client = new Client({
+    return new Client({
         intents: [GatewayIntentBits.Guilds],
         makeCache: Options.cacheWithLimits({
             ...Options.DefaultMakeCacheSettings,
@@ -116,32 +115,32 @@ export async function startBabelApp(profile: AppProfile): Promise<void> {
             },
         }),
     });
+}
 
-    let dashboardApp: express.Express | null = null;
-    let dashboardServer: http.Server | null = null;
-
-    client.once(Events.ClientReady, (c) => {
-        startupLogger.info('discord.client.ready', {
-            botTag: c.user.tag,
-            botUserId: c.user.id,
-        });
-
-        dashboardApp = createDashboardApp({
-            cache,
-            cooldown,
-            log,
-            client,
-            getStats: () => stats,
-            metrics,
-            runtimeLimiter,
-            profile,
-        });
-        dashboardServer = startDashboardServer(
-            dashboardApp,
-            config.dashboardPort,
-            config.dashboardHost,
-        );
+function createProfileRuntime(
+    profile: AppProfile,
+    shared: SharedBabelRuntime,
+): ProfileBabelRuntime {
+    const runtimeConfig = configRepository.getRuntimeConfig();
+    const cooldown = new CooldownManager(runtimeConfig.cooldownSeconds);
+    const translationService = createTranslationService({
+        cache: shared.cache,
+        cooldown,
+        log: shared.log,
+        stats: shared.stats,
+        metrics: shared.metrics,
+        runtimeLimiter: shared.runtimeLimiter,
+        accessMode: profile.accessMode,
+        enableGuildGlossary: profile.enableGuildGlossary,
+        pendingUserInstallOwnerRepository: profile.enableUserAccess
+            ? new PendingUserInstallOwnerRepository()
+            : undefined,
     });
+    const webhookService = profile.enableWebhookOutput
+        ? createWebhookService({ metrics: shared.metrics })
+        : null;
+
+    const client = createDiscordClient();
 
     client.on(Events.InteractionCreate, async (interaction) => {
         if (interaction.isChatInputCommand()) {
@@ -168,13 +167,93 @@ export async function startBabelApp(profile: AppProfile): Promise<void> {
         }
     });
 
-    const cooldownInterval = setInterval(() => cooldown.cleanup(), 60_000);
+    return { profile, client, cooldown };
+}
+
+function resolveDiscordTokenForProfile(
+    profile: AppProfile,
+    config: SharedBabelRuntime['config'],
+): string {
+    return config.discordTokens[profile.id] || config.discordToken;
+}
+
+export async function startBabelApps(profiles: AppProfile[]): Promise<void> {
+    installProcessErrorHandlers();
+
+    const startupLogger = appLogger.child({
+        component: 'startup',
+        app: profiles.map((profile) => profile.id).join('+'),
+    });
+
+    const shared = createSharedRuntime();
+
+    startupLogger.info('translation.runtime_limits.configured', {
+        runtime: shared.runtimeLimiter.snapshot(),
+    });
+
+    const runtimes = profiles.map((profile) => createProfileRuntime(profile, shared));
+    const primaryRuntime = runtimes[0];
+    if (!primaryRuntime) {
+        throw new Error('At least one Babel app profile is required');
+    }
+
+    let dashboardApp: express.Express | null = null;
+    let dashboardServer: http.Server | null = null;
+    const readyProfileIds = new Set<string>();
+    const clientsByProfile = Object.fromEntries(
+        runtimes.map((runtime) => [runtime.profile.id, runtime.client]),
+    );
+    const cooldownsByProfile = Object.fromEntries(
+        runtimes.map((runtime) => [runtime.profile.id, runtime.cooldown]),
+    );
+
+    const startDashboardIfReady = () => {
+        if (dashboardApp || readyProfileIds.size !== runtimes.length) {
+            return;
+        }
+        dashboardApp = createDashboardApp({
+            cache: shared.cache,
+            cooldown: primaryRuntime.cooldown,
+            cooldowns: cooldownsByProfile,
+            log: shared.log,
+            client: primaryRuntime.client,
+            clients: clientsByProfile,
+            getStats: () => shared.stats,
+            metrics: shared.metrics,
+            runtimeLimiter: shared.runtimeLimiter,
+            profile: primaryRuntime.profile,
+            profiles,
+        });
+        dashboardServer = startDashboardServer(
+            dashboardApp,
+            shared.config.dashboardPort,
+            shared.config.dashboardHost,
+        );
+    };
+
+    for (const runtime of runtimes) {
+        runtime.client.once(Events.ClientReady, (c) => {
+            appLogger
+                .child({ component: 'startup', app: runtime.profile.id })
+                .info('discord.client.ready', {
+                    botTag: c.user.tag,
+                    botUserId: c.user.id,
+                });
+            readyProfileIds.add(runtime.profile.id);
+            startDashboardIfReady();
+        });
+    }
+
+    const cooldownIntervals = runtimes.map((runtime) => {
+        return setInterval(() => runtime.cooldown.cleanup(), 60_000);
+    });
 
     const shutdown = createGracefulShutdownHandler({
-        client,
+        client: primaryRuntime.client,
+        clients: runtimes.map((runtime) => runtime.client),
         getDashboardApp: () => dashboardApp,
         getDashboardServer: () => dashboardServer,
-        timers: [cooldownInterval],
+        timers: cooldownIntervals,
         cleanupTasks: [closeSqliteDatabase],
     });
 
@@ -186,10 +265,18 @@ export async function startBabelApp(profile: AppProfile): Promise<void> {
         void shutdown('SIGINT');
     });
 
-    await client.login(config.discordToken).catch((error) => {
-        startupLogger.error('discord.login.failed', {
-            error: (error as Error).message,
-        });
-        process.exit(1);
-    });
+    await Promise.all(
+        runtimes.map(async (runtime) => {
+            try {
+                const token = resolveDiscordTokenForProfile(runtime.profile, shared.config);
+                await runtime.client.login(token);
+            } catch (error) {
+                startupLogger.error('discord.login.failed', {
+                    app: runtime.profile.id,
+                    error: (error as Error).message,
+                });
+                process.exit(1);
+            }
+        }),
+    );
 }

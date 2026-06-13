@@ -12,20 +12,30 @@ The repository is Railway-ready:
 - Babel reads Railway's `PORT` before `DASHBOARD_PORT`.
 - Babel binds the dashboard to `DASHBOARD_HOST`, which defaults to `0.0.0.0`.
 - The Docker image stores SQLite data under `/app/data` when `BABEL_DB_PATH=/app/data/babel.sqlite`.
-- The app profile is selected at runtime with `BABEL_APP`, so the same Railway service can run Babel Guild or Babel Pocket.
+- The app profile is selected at runtime with `BABEL_APP`, so the same Railway service can run Babel Guild, Babel Pocket, or both products in one Node.js process.
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/babel-discord-tran-1?referralCode=euhy-o&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
 ## Choose The Product Profile
 
-Select the app profile before deploying or registering Discord commands. For the published Railway template, expose `BABEL_APP` as a service variable with `guild` as the default. Users who want Babel Pocket should set it to `pocket` during template deploy or before the first production restart.
+Select the app profile before deploying or registering Discord commands. For the published Railway template, expose `BABEL_APP` as a service variable with `guild` as the default. Users who want Babel Pocket should set it to `pocket` during template deploy or before the first production restart. Operators who run both products on the same Railway project can set `BABEL_APP=combined` to keep one Railway service, one dashboard, and one SQLite volume while still managing Guild and Pocket command registration separately.
 
-| Product      | Install Model        | Railway Variable   | Command Registration      |
-| ------------ | -------------------- | ------------------ | ------------------------- |
-| Babel Guild  | Server/Guild Install | `BABEL_APP=guild`  | `npm run register:guild`  |
-| Babel Pocket | User Install         | `BABEL_APP=pocket` | `npm run register:pocket` |
+| Product      | Install Model        | Railway Variable      | Command Registration      |
+| ------------ | -------------------- | --------------------- | ------------------------- |
+| Babel Guild  | Server/Guild Install | `BABEL_APP=guild`     | `npm run register:guild`  |
+| Babel Pocket | User Install         | `BABEL_APP=pocket`    | `npm run register:pocket` |
+| Both         | Both                 | `BABEL_APP=combined`  | Run both explicit commands |
 
 Babel Guild remains the default for existing Railway template users. Babel Pocket uses the same image and persistence layer, but expects a Discord application configured for User Install.
+
+Combined mode is intended for low-cost Railway deployments where Guild and Pocket can share fate. The root process starts both Discord clients and one dashboard. The explicit app entrypoints remain available for local work and isolated deployments:
+
+```bash
+npm run start:guild
+npm run start:pocket
+npm run register:guild
+npm run register:pocket
+```
 
 Railway template variables are configured in Railway's template composer, not in `railway.json`. Keep `railway.json` focused on deploy behavior such as healthchecks and restart policy; use the template/service variable list for the product choice.
 
@@ -45,7 +55,7 @@ npm run register:pocket
 npm run start -w @babel-discord-translator/pocket
 ```
 
-Railway Docker deployments can use the same image for either app. Set `BABEL_APP=guild` for Babel Guild or `BABEL_APP=pocket` for Babel Pocket.
+Railway Docker deployments can use the same image for either app. Set `BABEL_APP=guild` for Babel Guild, `BABEL_APP=pocket` for Babel Pocket, or `BABEL_APP=combined` to run both in one service.
 
 ## Required Variables
 
@@ -53,11 +63,25 @@ Set these in the Railway template or service variables:
 
 | Variable             | Value                    |
 | -------------------- | ------------------------ |
-| `DISCORD_TOKEN`      | Discord bot token        |
-| `BABEL_APP`          | `guild` or `pocket`      |
+| `DISCORD_TOKEN`      | Discord bot token for single-profile deployments |
+| `BABEL_APP`          | `guild`, `pocket`, or `combined` |
 | `DASHBOARD_PASSWORD` | Strong random password   |
 | `NODE_ENV`           | `production`             |
 | `BABEL_DB_PATH`      | `/app/data/babel.sqlite` |
+
+For `BABEL_APP=combined`, set profile-specific tokens instead of relying on one shared `DISCORD_TOKEN`:
+
+| Variable                      | Value                         |
+| ----------------------------- | ----------------------------- |
+| `BABEL_GUILD_DISCORD_TOKEN`   | Babel Guild Discord bot token |
+| `BABEL_POCKET_DISCORD_TOKEN`  | Babel Pocket Discord bot token |
+
+If Guild and Pocket are separate Discord applications, also set profile-specific app ids before command registration:
+
+| Variable                      | Value                         |
+| ----------------------------- | ----------------------------- |
+| `BABEL_GUILD_DISCORD_APP_ID`  | Babel Guild Discord app id    |
+| `BABEL_POCKET_DISCORD_APP_ID` | Babel Pocket Discord app id   |
 
 Recommended template defaults:
 
@@ -136,6 +160,18 @@ DISCORD_APP_ID=your_app_id DISCORD_BOT_TOKEN=your_token npm run register
 
 Or run the same command in a Railway shell with `DISCORD_APP_ID` and `DISCORD_BOT_TOKEN` set. This registers the default Babel Guild command set unless `BABEL_APP=pocket` is set. Use `npm run register:guild` or `npm run register:pocket` when you want the command surface to be explicit.
 
+For combined mode with separate Discord applications:
+
+```bash
+BABEL_GUILD_DISCORD_APP_ID=your_guild_app_id \
+BABEL_GUILD_DISCORD_BOT_TOKEN=your_guild_token \
+npm run register:guild
+
+BABEL_POCKET_DISCORD_APP_ID=your_pocket_app_id \
+BABEL_POCKET_DISCORD_BOT_TOKEN=your_pocket_token \
+npm run register:pocket
+```
+
 ## Template Publishing Checklist
 
 Before publishing the marketplace template:
@@ -143,7 +179,7 @@ Before publishing the marketplace template:
 - Use the GitHub repository as the template source.
 - Confirm Railway detects the root `Dockerfile`.
 - Add required variables with clear descriptions and no static secret defaults.
-- Add `BABEL_APP` with default `guild` and description `guild for Babel Guild, pocket for Babel Pocket`.
+- Add `BABEL_APP` with default `guild` and description `guild for Babel Guild, pocket for Babel Pocket, combined for both in one service`.
 - Add a volume mounted at `/app/data`.
 - Generate a public domain.
 - Verify `/livez` returns `200`.

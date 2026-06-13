@@ -29,6 +29,7 @@ export type ManagedRuntimeConfigKey = (typeof MANAGED_RUNTIME_CONFIG_KEYS)[numbe
 export interface ConfigRuntimeDependencies {
     cache: TranslationCache;
     cooldown: CooldownManager;
+    cooldowns?: CooldownManager[];
     resetProviderState?: () => void;
 }
 
@@ -82,7 +83,7 @@ const CONFIG_EFFECT_DESCRIPTIONS: Record<ManagedRuntimeConfigKey, string> = {
 export function applyConfigUpdateEffects(
     currentConfig: StoreData,
     updates: RuntimeConfigUpdate,
-    { cache, cooldown, resetProviderState }: ConfigRuntimeDependencies,
+    { cache, cooldown, cooldowns = [cooldown], resetProviderState }: ConfigRuntimeDependencies,
 ): ConfigUpdateEffectsResult {
     const changedKeys = MANAGED_RUNTIME_CONFIG_KEYS.filter(
         (key) => updates[key] !== undefined && updates[key] !== currentConfig[key],
@@ -118,7 +119,9 @@ export function applyConfigUpdateEffects(
                 resetProviders();
                 break;
             case 'cooldownSeconds':
-                cooldown.seconds = updates.cooldownSeconds!;
+                for (const manager of [...new Set(cooldowns)]) {
+                    manager.seconds = updates.cooldownSeconds!;
+                }
                 break;
             case 'cacheMaxSize':
                 cache.setMaxSize(updates.cacheMaxSize!);

@@ -121,6 +121,66 @@ describe('config validation', () => {
         });
     });
 
+    it('should resolve shared and profile-specific Discord tokens', async () => {
+        const logger = createLoggerMock();
+        const { validateEnv } = await import('../src/modules/config/config.js');
+
+        const config = validateEnv(
+            {
+                DISCORD_TOKEN: 'shared-token',
+                BABEL_GUILD_DISCORD_TOKEN: 'guild-token',
+                BABEL_POCKET_DISCORD_TOKEN: 'pocket-token',
+                DASHBOARD_PASSWORD: 'strong-password',
+            },
+            { logger, nodeEnv: 'production' },
+        );
+
+        expect(config.discordToken).toBe('shared-token');
+        expect(config.discordTokens).toEqual({
+            'babel-guild': 'guild-token',
+            'babel-pocket': 'pocket-token',
+        });
+    });
+
+    it('should require both profile-specific tokens for combined Railway mode', async () => {
+        const logger = createLoggerMock();
+        const { validateEnv } = await import('../src/modules/config/config.js');
+
+        expect(() =>
+            validateEnv(
+                {
+                    BABEL_APP: 'combined',
+                    BABEL_GUILD_DISCORD_TOKEN: 'guild-token',
+                    DASHBOARD_PASSWORD: 'strong-password',
+                },
+                { logger, nodeEnv: 'production' },
+            ),
+        ).toThrow('Missing required environment variable BABEL_POCKET_DISCORD_TOKEN');
+
+        expect(logger.error).toHaveBeenCalledWith('config.validation.failed', {
+            field: 'BABEL_POCKET_DISCORD_TOKEN',
+            error: 'Missing required environment variable',
+            hint: 'Set BABEL_GUILD_DISCORD_TOKEN and BABEL_POCKET_DISCORD_TOKEN for BABEL_APP=combined',
+        });
+    });
+
+    it('should not use the shared Discord token as a combined-mode profile token', async () => {
+        const logger = createLoggerMock();
+        const { validateEnv } = await import('../src/modules/config/config.js');
+
+        expect(() =>
+            validateEnv(
+                {
+                    BABEL_APP: 'combined',
+                    DISCORD_TOKEN: 'shared-token',
+                    BABEL_GUILD_DISCORD_TOKEN: 'guild-token',
+                    DASHBOARD_PASSWORD: 'strong-password',
+                },
+                { logger, nodeEnv: 'production' },
+            ),
+        ).toThrow('Missing required environment variable BABEL_POCKET_DISCORD_TOKEN');
+    });
+
     it('should log and reject the default dashboard password in production', async () => {
         const logger = createLoggerMock();
         const { validateEnv } = await import('../src/modules/config/config.js');

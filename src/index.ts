@@ -1,4 +1,4 @@
-import { resolveAppProfile } from './apps/app-profile.js';
-import { startBabelApp } from './apps/bootstrap.js';
+import { resolveAppProfiles } from './apps/app-profile.js';
+import { startBabelApps } from './apps/bootstrap.js';
 
-await startBabelApp(resolveAppProfile());
+await startBabelApps(resolveAppProfiles());

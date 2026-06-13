@@ -15,3 +15,12 @@ export function getDashboardCapabilities(profile: AppProfile): DashboardCapabili
         pendingUserInstallOwners: profile.enableUserAccess,
     };
 }
+
+export function getCombinedDashboardCapabilities(profiles: AppProfile[]): DashboardCapabilities {
+    return {
+        guildAccess: profiles.some((profile) => profile.enableGuildAccess),
+        userAccess: profiles.some((profile) => profile.enableUserAccess),
+        guildGlossary: profiles.some((profile) => profile.enableGuildGlossary),
+        pendingUserInstallOwners: profiles.some((profile) => profile.enableUserAccess),
+    };
+}

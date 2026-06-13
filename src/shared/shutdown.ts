@@ -5,6 +5,7 @@ import { appLogger, type StructuredLogger } from './structured-logger.js';
 
 export interface GracefulShutdownDeps {
     client: Pick<Client, 'destroy'>;
+    clients?: Array<Pick<Client, 'destroy'>>;
     getDashboardApp?: () => express.Express | null;
     getDashboardServer?: () => Pick<Server, 'close' | 'listening'> | null;
     timers?: Array<NodeJS.Timeout | null | undefined>;
@@ -43,6 +44,7 @@ function stopTimers(timers: Array<NodeJS.Timeout | null | undefined>): void {
 
 export function createGracefulShutdownHandler({
     client,
+    clients = [client],
     getDashboardApp,
     getDashboardServer,
     timers = [],
@@ -101,15 +103,18 @@ export function createGracefulShutdownHandler({
                     });
                 }
 
-                try {
-                    client.destroy();
-                    logger.info('shutdown.discord_client.destroyed', { signal });
-                } catch (error) {
-                    errors.push(error as Error);
-                    logger.error('shutdown.discord_client.failed', {
-                        signal,
-                        error: (error as Error).message,
-                    });
+                const uniqueClients = [...new Set(clients)];
+                for (const discordClient of uniqueClients) {
+                    try {
+                        discordClient.destroy();
+                        logger.info('shutdown.discord_client.destroyed', { signal });
+                    } catch (error) {
+                        errors.push(error as Error);
+                        logger.error('shutdown.discord_client.failed', {
+                            signal,
+                            error: (error as Error).message,
+                        });
+                    }
                 }
 
                 for (const cleanupTask of cleanupTasks) {
