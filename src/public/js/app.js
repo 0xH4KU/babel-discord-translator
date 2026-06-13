@@ -12,6 +12,23 @@ function getDashboardProfile() {
   return dashboardCapabilities?.profile || null;
 }
 
+function isCombinedDashboard() {
+  const profiles = dashboardCapabilities?.profiles || [];
+  return profiles.some((profile) => profile.id === 'babel-guild')
+    && profiles.some((profile) => profile.id === 'babel-pocket');
+}
+
+function getDashboardPathScope() {
+  const path = window.location.pathname;
+  if (path.startsWith('/guild')) return 'guild';
+  if (path.startsWith('/pocket')) return 'pocket';
+  return 'root';
+}
+
+function shouldShowProfileSelect() {
+  return getDashboardPathScope() === 'root' && isCombinedDashboard();
+}
+
 function getDashboardUsageScopeLabel(stats) {
   if (hasDashboardCapability('guildAccess')) {
     const guildCount = Number(stats?.bot?.guilds || 0);
@@ -78,6 +95,11 @@ async function checkSetup() {
   if (authData.csrfToken) setCsrfToken(authData.csrfToken);
 
   if (!dashboardCapabilities) await loadDashboardCapabilities();
+
+  if (shouldShowProfileSelect()) {
+    show('profile-select-view');
+    return;
+  }
 
   const res = await api('/setup-status');
   const { complete } = await res.json();

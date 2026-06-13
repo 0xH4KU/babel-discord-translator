@@ -172,4 +172,18 @@ describe('deployment configuration', () => {
         );
         expect(deploymentDocs).toContain('BABEL_DASHBOARD_MODE');
     });
+
+    it('documents combined dashboard chooser routing consistently', () => {
+        const readme = readFileSync('README.md', 'utf8');
+        const deploymentDocs = readFileSync('docs/operations/deployment.md', 'utf8');
+        const railwayDocs = readFileSync('docs/operations/railway.md', 'utf8');
+        const dockerDocs = readFileSync('docs/operations/docker.md', 'utf8');
+
+        for (const doc of [readme, deploymentDocs, railwayDocs, dockerDocs]) {
+            expect(doc).toContain('BABEL_APP=combined');
+            expect(doc).toContain('combined dashboard root `/` shows a product chooser');
+            expect(doc).toContain('`/guild` opens the Babel Guild dashboard');
+            expect(doc).toContain('`/pocket` opens the Babel Pocket dashboard');
+        }
+    });
 });

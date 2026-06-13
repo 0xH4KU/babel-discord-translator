@@ -43,7 +43,7 @@ npm run register:pocket
 npm run start -w @babel-discord-translator/pocket
 ```
 
-Root commands also support `BABEL_APP=guild`, `BABEL_APP=pocket`, or `BABEL_APP=combined` for Docker, PM2, Railway, and simple VPS deployments. Combined mode starts one Node.js process, two Discord clients, one dashboard, and one SQLite database. The explicit workspace commands remain the clean management entrypoints for single-product local work and command registration.
+Root commands also support `BABEL_APP=guild`, `BABEL_APP=pocket`, or `BABEL_APP=combined` for Docker, PM2, Railway, and simple VPS deployments. Combined mode starts one Node.js process, two Discord clients, one dashboard, and one SQLite database. In combined mode, the combined dashboard root `/` shows a product chooser; `/guild` opens the Babel Guild dashboard; `/pocket` opens the Babel Pocket dashboard. The explicit workspace commands remain the clean management entrypoints for single-product local work and command registration.
 
 ## Discord Setup
 
@@ -81,6 +81,8 @@ Recommended environment variables:
 Use `BABEL_APP=guild` for Babel Guild, `BABEL_APP=pocket` for Babel Pocket, or `BABEL_APP=combined` to run both in one Railway service. Keep the template default at `guild` so existing template users stay on the server-install product unless they intentionally choose Pocket or combined mode.
 
 For combined mode, set `BABEL_GUILD_DISCORD_TOKEN` and `BABEL_POCKET_DISCORD_TOKEN`. If Guild and Pocket are separate Discord applications, set `BABEL_GUILD_DISCORD_APP_ID` and `BABEL_POCKET_DISCORD_APP_ID` before running `npm run register:guild` and `npm run register:pocket`.
+
+In combined mode, the combined dashboard root `/` shows a product chooser. `/guild` opens the Babel Guild dashboard, and `/pocket` opens the Babel Pocket dashboard.
 
 Use a persistent volume mounted at `/app/data` so SQLite survives restarts and redeploys. If the Railway volume is not writable by the Docker image's non-root user, set `RAILWAY_RUN_UID=0` on the service.
 

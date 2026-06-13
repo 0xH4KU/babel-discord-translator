@@ -861,7 +861,10 @@ function createDemoApiJs(variant: DemoVariant): string {
 }
 
 function injectDemoAssets(html: string, variant: DemoVariant): string {
-    const withTitle = html
+    const relativeHtml = html
+        .replaceAll('href="/css/', 'href="css/')
+        .replaceAll('src="/js/', 'src="js/');
+    const withTitle = relativeHtml
         .replace('<title>Babel — Dashboard</title>', `<title>${variant.title}</title>`)
         .replace(
             '<script src="js/utils.js"></script>',

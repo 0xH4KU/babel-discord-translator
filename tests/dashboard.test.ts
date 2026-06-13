@@ -1890,6 +1890,118 @@ describe('Dashboard API', () => {
         }
     });
 
+    it('should expose Guild-scoped capabilities for combined /guild/api/capabilities', async () => {
+        const combinedApp = createDashboardApp({
+            cache,
+            cooldown: new CooldownManager(5),
+            log,
+            client: createMinimalClient(),
+            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
+            metrics,
+            runtimeLimiter,
+            profile: BABEL_GUILD_PROFILE,
+            profiles: [BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE],
+            sessionRepository: new InMemorySessionRepository(),
+            userProfileRepository,
+        });
+        const combinedServer = startDashboardServer(combinedApp, 0);
+
+        try {
+            const login = await request(combinedServer, 'POST', '/api/login', {
+                body: { password: 'test-pass-123' },
+            });
+            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
+            const res = await requestText(combinedServer, 'GET', '/guild/api/capabilities', {
+                cookie,
+            });
+
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.text)).toMatchObject({
+                profile: { id: 'babel-guild', productName: 'Babel Guild' },
+                capabilities: {
+                    guildAccess: true,
+                    userAccess: false,
+                    guildGlossary: true,
+                    pendingUserInstallOwners: false,
+                },
+            });
+        } finally {
+            stopDashboardApp(combinedApp);
+            combinedServer.close();
+        }
+    });
+
+    it('should expose Pocket-scoped capabilities for combined /pocket/api/capabilities', async () => {
+        const combinedApp = createDashboardApp({
+            cache,
+            cooldown: new CooldownManager(5),
+            log,
+            client: createMinimalClient(),
+            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
+            metrics,
+            runtimeLimiter,
+            profile: BABEL_GUILD_PROFILE,
+            profiles: [BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE],
+            sessionRepository: new InMemorySessionRepository(),
+            userProfileRepository,
+        });
+        const combinedServer = startDashboardServer(combinedApp, 0);
+
+        try {
+            const login = await request(combinedServer, 'POST', '/api/login', {
+                body: { password: 'test-pass-123' },
+            });
+            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
+            const res = await requestText(combinedServer, 'GET', '/pocket/api/capabilities', {
+                cookie,
+            });
+
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.text)).toMatchObject({
+                profile: { id: 'babel-pocket', productName: 'Babel Pocket' },
+                capabilities: {
+                    guildAccess: false,
+                    userAccess: true,
+                    guildGlossary: false,
+                    pendingUserInstallOwners: true,
+                },
+            });
+        } finally {
+            stopDashboardApp(combinedApp);
+            combinedServer.close();
+        }
+    });
+
+    it('should serve dashboard shell for combined /guild and /pocket paths', async () => {
+        const combinedApp = createDashboardApp({
+            cache,
+            cooldown: new CooldownManager(5),
+            log,
+            client: createMinimalClient(),
+            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
+            metrics,
+            runtimeLimiter,
+            profile: BABEL_GUILD_PROFILE,
+            profiles: [BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE],
+            sessionRepository: new InMemorySessionRepository(),
+            userProfileRepository,
+        });
+        const combinedServer = startDashboardServer(combinedApp, 0);
+
+        try {
+            for (const path of ['/guild', '/pocket']) {
+                const res = await requestText(combinedServer, 'GET', path);
+
+                expect(res.status).toBe(200);
+                expect(res.text).toContain('id="login-view"');
+                expect(res.text).toContain('id="profile-select-view"');
+            }
+        } finally {
+            stopDashboardApp(combinedApp);
+            combinedServer.close();
+        }
+    });
+
     // --- Logout ---
 
     it('should logout and clear session', async () => {

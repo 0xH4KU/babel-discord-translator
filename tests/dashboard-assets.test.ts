@@ -11,6 +11,28 @@ describe('dashboard static assets', () => {
         expect(appJs).toMatch(/await\s+loadDashboardCapabilities\(\)/);
     });
 
+    it('offers a combined-mode product chooser with separate management paths', () => {
+        const html = readFileSync('src/public/index.html', 'utf-8');
+        const appJs = readFileSync('src/public/js/app.js', 'utf-8');
+
+        expect(html).toContain('id="profile-select-view"');
+        expect(html).toContain('href="/guild"');
+        expect(html).toContain('href="/pocket"');
+        expect(appJs).toContain('shouldShowProfileSelect');
+        expect(appJs).toContain("show('profile-select-view')");
+    });
+
+    it('routes dashboard API calls through the active product path', () => {
+        const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
+
+        expect(utilsJs).toContain('getDashboardApiBase');
+        expect(utilsJs).toContain("startsWith('/guild')");
+        expect(utilsJs).toContain("startsWith('/pocket')");
+        expect(utilsJs).toContain("return '/guild/api'");
+        expect(utilsJs).toContain("return '/pocket/api'");
+        expect(utilsJs).toContain('getDashboardApiBase() + path');
+    });
+
     it('marks Guild-only and Pocket-only dashboard sections with capability gates', () => {
         const html = readFileSync('src/public/index.html', 'utf-8');
         const variablesCss = readFileSync('src/public/css/variables.css', 'utf-8');

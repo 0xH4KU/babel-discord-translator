@@ -21,10 +21,17 @@ function showToast(msg, isError) {
   setTimeout(() => t.classList.remove('show'), 2500);
 }
 
+function getDashboardApiBase() {
+  const path = window.location.pathname;
+  if (path.startsWith('/guild')) return '/guild/api';
+  if (path.startsWith('/pocket')) return '/pocket/api';
+  return '/api';
+}
+
 async function api(path, opts = {}) {
   const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
   if (_csrfToken) headers['x-csrf-token'] = _csrfToken;
-  const res = await fetch('/api' + path, { ...opts, headers });
+  const res = await fetch(getDashboardApiBase() + path, { ...opts, headers });
   if (res.status === 401 && path !== '/login' && path !== '/auth/check') {
     show('login-view');
     throw new Error('Session expired');
