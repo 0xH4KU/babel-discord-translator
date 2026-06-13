@@ -1,5 +1,5 @@
 import type { RuntimeConfig } from '../config/config-repository.js';
-import type { TokenUsage, UsageCost, UsageStats } from '../../types.js';
+import type { TokenUsage, UsageCost, UsageStats } from '../../shared/types.js';
 
 export function createEmptyUsage(date: string): TokenUsage {
     return {

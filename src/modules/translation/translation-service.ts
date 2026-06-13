@@ -44,7 +44,7 @@ import {
     type ServiceCommand,
     type TranslatorOptions,
 } from './translation-service-helpers.js';
-import type { BotStats, GuildGlossaryEntry, TranslationResult } from '../../types.js';
+import type { BotStats, GuildGlossaryEntry, TranslationResult } from '../../shared/types.js';
 
 interface ConfigRepositoryLike {
     getRuntimeConfig(): RuntimeConfig;
@@ -80,6 +80,10 @@ interface Translator {
         targetLanguage?: string,
         options?: TranslatorOptions,
     ): Promise<TranslationResult>;
+}
+
+interface InFlightTranslation {
+    promise: Promise<TranslationResult>;
 }
 
 export interface TranslationServiceRequest {
@@ -155,6 +159,34 @@ function resolveQueueBusyMessage(reason: RuntimeLimitReason, messages: QueueBusy
     }
 }
 
+function buildProviderFingerprint(config: RuntimeConfig): string {
+    const mode = config.translationProvider || 'vertex';
+    const vertex = [
+        config.gcpProject,
+        config.gcpLocation || 'global',
+        config.geminiModel,
+        config.vertexAiApiKey,
+    ].join('|');
+    const openai = [config.openaiBaseUrl, config.openaiModel, config.openaiApiKey].join('|');
+
+    return [mode, vertex, openai].join('::');
+}
+
+function createInFlightTranslation() {
+    let resolve!: (value: TranslationResult | PromiseLike<TranslationResult>) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<TranslationResult>((res, rej) => {
+        resolve = res;
+        reject = rej;
+    });
+
+    return {
+        entry: { promise },
+        resolve,
+        reject,
+    };
+}
+
 export function createTranslationService({
     cache,
     cooldown,
@@ -172,6 +204,8 @@ export function createTranslationService({
     enableGuildGlossary = true,
     pendingUserInstallOwnerRepository,
 }: TranslationServiceDeps): TranslationService {
+    const inFlightTranslations = new Map<string, InFlightTranslation>();
+
     return {
         async process(request: TranslationServiceRequest): Promise<TranslationServiceResult> {
             const messages = getDiscordTranslationCommandMessages(request.command);
@@ -298,6 +332,7 @@ export function createTranslationService({
                 sourceText: originalText,
                 targetLanguage,
                 geminiModel: runtimeConfig.geminiModel,
+                providerFingerprint: buildProviderFingerprint(runtimeConfig),
                 prompt,
                 maxOutputTokens: runtimeConfig.maxOutputTokens || 1000,
                 glossaryVersion,
@@ -305,6 +340,11 @@ export function createTranslationService({
 
             let deferred = false;
             let reservation: TranslationRuntimeReservation | null = null;
+            let leaderInFlight: InFlightTranslation | null = null;
+            let resolveLeaderInFlight:
+                | ((value: TranslationResult | PromiseLike<TranslationResult>) => void)
+                | null = null;
+            let rejectLeaderInFlight: ((reason?: unknown) => void) | null = null;
 
             try {
                 let translated = cache.get(cacheKey);
@@ -313,10 +353,46 @@ export function createTranslationService({
                 let outputTokens = 0;
                 let provider: string | undefined;
                 let fallback: boolean | undefined;
+                let joinedInFlight = false;
                 requestLogger.info(cached ? 'translation.cache.hit' : 'translation.cache.miss', {
                     targetLanguage,
                     langSource,
                 });
+
+                const inFlight = !cached ? inFlightTranslations.get(cacheKey) : undefined;
+                if (inFlight) {
+                    requestLogger.info('translation.inflight.joined', {
+                        targetLanguage,
+                        langSource,
+                    });
+
+                    if (request.beforeTranslate) {
+                        await request.beforeTranslate();
+                        deferred = true;
+                        requestLogger.info('translation.request.deferred');
+                    }
+
+                    cooldown.set(request.userId);
+                    stats.totalTranslations++;
+
+                    const result = await inFlight.promise;
+                    translated = result.text;
+                    cached = true;
+                    inputTokens = 0;
+                    outputTokens = 0;
+                    provider = result.provider;
+                    fallback = result.fallback;
+                    joinedInFlight = true;
+                }
+
+                if (!cached && !joinedInFlight) {
+                    const inFlightTranslation = createInFlightTranslation();
+                    leaderInFlight = inFlightTranslation.entry;
+                    resolveLeaderInFlight = inFlightTranslation.resolve;
+                    rejectLeaderInFlight = inFlightTranslation.reject;
+                    inFlightTranslations.set(cacheKey, leaderInFlight);
+                    void leaderInFlight.promise.catch(() => undefined);
+                }
 
                 if (!cached && runtimeLimiter) {
                     const admission = runtimeLimiter.acquire({
@@ -346,14 +422,16 @@ export function createTranslationService({
                     );
                 }
 
-                if (request.beforeTranslate) {
+                if (!joinedInFlight && request.beforeTranslate) {
                     await request.beforeTranslate();
                     deferred = true;
                     requestLogger.info('translation.request.deferred');
                 }
 
-                cooldown.set(request.userId);
-                stats.totalTranslations++;
+                if (!joinedInFlight) {
+                    cooldown.set(request.userId);
+                    stats.totalTranslations++;
+                }
 
                 if (!translated) {
                     if (reservation) {
@@ -373,6 +451,11 @@ export function createTranslationService({
                                     waitMs: meta.waitMs,
                                 });
                                 cached = true;
+                                resolveLeaderInFlight?.({
+                                    text: queuedCached,
+                                    inputTokens: 0,
+                                    outputTokens: 0,
+                                });
                                 return queuedCached;
                             }
 
@@ -390,6 +473,7 @@ export function createTranslationService({
                                     },
                                     metrics,
                                     glossaryEntries,
+                                    runtimeConfig,
                                 ),
                             );
                             cache.set(cacheKey, result.text);
@@ -402,6 +486,7 @@ export function createTranslationService({
                                 result.outputTokens,
                                 usageScope,
                             );
+                            resolveLeaderInFlight?.(result);
                             return result.text;
                         });
                     } else {
@@ -419,6 +504,7 @@ export function createTranslationService({
                                 },
                                 metrics,
                                 glossaryEntries,
+                                runtimeConfig,
                             ),
                         );
                         translated = result.text;
@@ -428,6 +514,7 @@ export function createTranslationService({
                         fallback = result.fallback;
                         cache.set(cacheKey, translated);
                         usageTracker.record(result.inputTokens, result.outputTokens, usageScope);
+                        resolveLeaderInFlight?.(result);
                     }
                 }
 
@@ -463,6 +550,7 @@ export function createTranslationService({
                     fallback,
                 };
             } catch (error) {
+                rejectLeaderInFlight?.(error);
                 reservation?.cancel();
                 const caughtError = error instanceof Error ? error : new Error(String(error));
                 const message = caughtError.message;
@@ -500,6 +588,10 @@ export function createTranslationService({
                     deferred,
                     message: discordMessages.translationFailed(sanitizedMessage),
                 };
+            } finally {
+                if (leaderInFlight && inFlightTranslations.get(cacheKey) === leaderInFlight) {
+                    inFlightTranslations.delete(cacheKey);
+                }
             }
         },
     };

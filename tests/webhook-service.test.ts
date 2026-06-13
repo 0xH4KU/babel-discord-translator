@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AppMetrics } from '../src/app-metrics.js';
-import { createWebhookService, _test } from '../src/webhook-service.js';
-import type { WebhookChannelLike, WebhookCollectionLike, WebhookLike } from '../src/webhook-service.js';
+import { AppMetrics } from '../src/shared/app-metrics.js';
+import { createWebhookService, _test } from '../src/modules/translation/webhook-service.js';
+import type {
+    WebhookChannelLike,
+    WebhookCollectionLike,
+    WebhookLike,
+} from '../src/modules/translation/webhook-service.js';
 
 function createWebhookCollection(webhooks: WebhookLike[]): WebhookCollectionLike {
     return {

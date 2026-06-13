@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AppMetrics, createEmptyAppMetricsSnapshot } from '../src/app-metrics.js';
+import { AppMetrics, createEmptyAppMetricsSnapshot } from '../src/shared/app-metrics.js';
 
 describe('AppMetrics', () => {
     it('should compute success, failure, cache, and api call rates from counters', () => {

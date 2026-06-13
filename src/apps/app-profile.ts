@@ -1,7 +1,8 @@
 export type AccessMode = 'guild' | 'user-install';
+export type AppProfileId = 'babel-guild' | 'babel-pocket';
 
 export interface AppProfile {
-    id: 'babel-guild' | 'babel-pocket';
+    id: AppProfileId;
     productName: 'Babel Guild' | 'Babel Pocket';
     commandName: 'Babel' | 'Babel Pocket';
     accessMode: AccessMode;
@@ -40,4 +41,14 @@ export function resolveAppProfile(value = process.env.BABEL_APP): AppProfile {
     return value === 'pocket' || value === 'babel-pocket'
         ? BABEL_POCKET_PROFILE
         : BABEL_GUILD_PROFILE;
+}
+
+export function isCombinedAppProfileValue(value = process.env.BABEL_APP): boolean {
+    return value === 'combined' || value === 'both' || value === 'babel-combined';
+}
+
+export function resolveAppProfiles(value = process.env.BABEL_APP): AppProfile[] {
+    return isCombinedAppProfileValue(value)
+        ? [BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE]
+        : [resolveAppProfile(value)];
 }

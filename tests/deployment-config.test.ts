@@ -55,6 +55,10 @@ describe('deployment configuration', () => {
         expect(packageJson.scripts.start).toBe('node dist/src/index.js');
         expect(packageJson.scripts.dev).toBe('tsx watch src/index.ts');
         expect(packageJson.scripts.register).toBe('tsx scripts/register.ts');
+        expect(readFileSync('scripts/register.ts', 'utf8')).toContain('resolveAppProfiles');
+        expect(readFileSync('scripts/register.ts', 'utf8')).toContain(
+            'registerCommandsForProfiles',
+        );
         expect(packageJson.scripts['start:guild']).toBe(
             'npm run start -w @babel-discord-translator/guild',
         );
@@ -77,7 +81,7 @@ describe('deployment configuration', () => {
         );
         expect(dockerfile).toContain('COPY apps/ ./apps/');
         expect(dockerfile).toContain(
-            'CMD ["node", "--max-old-space-size=64", "--max-semi-space-size=4", "dist/src/index.js"]',
+            'CMD ["sh", "-c", "node --max-old-space-size=${BABEL_NODE_MAX_OLD_SPACE_MB:-64} --max-semi-space-size=${BABEL_NODE_MAX_SEMI_SPACE_MB:-4} dist/src/index.js"]',
         );
     });
 
@@ -93,6 +97,12 @@ describe('deployment configuration', () => {
         expect(compose).toContain('DASHBOARD_PORT: ${DASHBOARD_PORT:-3000}');
         expect(compose).toContain('DASHBOARD_HOST: ${DASHBOARD_HOST:-0.0.0.0}');
         expect(compose).toContain('BABEL_DB_PATH: ${BABEL_DB_PATH:-/app/data/babel.sqlite}');
+        expect(compose).toContain(
+            'BABEL_NODE_MAX_OLD_SPACE_MB: ${BABEL_NODE_MAX_OLD_SPACE_MB:-64}',
+        );
+        expect(compose).toContain(
+            'BABEL_NODE_MAX_SEMI_SPACE_MB: ${BABEL_NODE_MAX_SEMI_SPACE_MB:-4}',
+        );
         expect(compose).toContain('"${DASHBOARD_PORT:-3000}:${DASHBOARD_PORT:-3000}"');
         expect(compose).toContain('http://localhost:$${DASHBOARD_PORT:-3000}/livez');
     });
@@ -128,6 +138,9 @@ describe('deployment configuration', () => {
         expect(dockerGuide).toContain('docker compose exec babel npm run register:pocket');
         expect(dockerGuide).toContain('DISCORD_APP_ID');
         expect(dockerGuide).toContain('DISCORD_TOKEN');
+        expect(dockerGuide).toContain('BABEL_APP=combined');
+        expect(dockerGuide).toContain('BABEL_GUILD_DISCORD_TOKEN');
+        expect(dockerGuide).toContain('BABEL_POCKET_DISCORD_TOKEN');
         expect(dockerGuide).toContain('The script does not register Discord commands for you');
     });
 
@@ -136,9 +149,27 @@ describe('deployment configuration', () => {
 
         expect(envExample).toContain('BABEL_APP=guild');
         expect(envExample).toContain('DISCORD_APP_ID=your_app_id_here');
-        expect(envExample).toContain('Set BABEL_APP=pocket');
+        expect(envExample).toContain('Set BABEL_APP=pocket for User Install workflows');
+        expect(envExample).toContain('BABEL_GUILD_DISCORD_TOKEN=');
+        expect(envExample).toContain('BABEL_POCKET_DISCORD_TOKEN=');
+        expect(envExample).toContain('"combined" to run both');
         expect(envExample).toContain('BABEL_DB_PATH=/app/data/babel.sqlite');
         expect(envExample).toContain('NODE_ENV=production');
+        expect(envExample).toContain('BABEL_NODE_MAX_OLD_SPACE_MB=64');
+        expect(envExample).toContain('BABEL_NODE_MAX_SEMI_SPACE_MB=4');
         expect(envExample).toContain('Required for VPS/Docker deployments');
+    });
+
+    it('documents dashboard runtime mode for constrained deployments', () => {
+        const envExample = readFileSync('.env.example', 'utf8');
+        const dockerDocs = readFileSync('docs/operations/docker.md', 'utf8');
+        const deploymentDocs = readFileSync('docs/operations/deployment.md', 'utf8');
+
+        expect(envExample).toContain('BABEL_DASHBOARD_MODE=full');
+        expect(dockerDocs).toContain('BABEL_DASHBOARD_MODE=health-only');
+        expect(dockerDocs).toContain(
+            'Do not use `off` unless you also replace the Docker or host healthcheck',
+        );
+        expect(deploymentDocs).toContain('BABEL_DASHBOARD_MODE');
     });
 });

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createGracefulShutdownHandler } from '../src/shutdown.js';
+import { createGracefulShutdownHandler } from '../src/shared/shutdown.js';
 
 describe('createGracefulShutdownHandler', () => {
     const originalExitCode = process.exitCode;
@@ -32,13 +32,14 @@ describe('createGracefulShutdownHandler', () => {
                     order.push('client.destroy');
                 }),
             },
-            getDashboardApp: () => ({
-                locals: {
-                    disposeDashboardApp: () => {
-                        order.push('dashboard.dispose');
+            getDashboardApp: () =>
+                ({
+                    locals: {
+                        disposeDashboardApp: () => {
+                            order.push('dashboard.dispose');
+                        },
                     },
-                },
-            }) as never,
+                }) as never,
             getDashboardServer: () => ({
                 listening: true,
                 close: (callback?: (error?: Error) => void) => {
@@ -48,9 +49,11 @@ describe('createGracefulShutdownHandler', () => {
                 },
             }),
             timers: [timer],
-            cleanupTasks: [() => {
-                order.push('cleanup.db');
-            }],
+            cleanupTasks: [
+                () => {
+                    order.push('cleanup.db');
+                },
+            ],
             logger,
             exit: vi.fn(),
         });
@@ -118,5 +121,26 @@ describe('createGracefulShutdownHandler', () => {
 
         expect(close).toHaveBeenCalledTimes(1);
         expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    it('should destroy every Discord client when multiple runtimes share one process', async () => {
+        const guildDestroy = vi.fn();
+        const pocketDestroy = vi.fn();
+
+        const shutdown = createGracefulShutdownHandler({
+            client: { destroy: guildDestroy },
+            clients: [{ destroy: guildDestroy }, { destroy: pocketDestroy }],
+            logger: {
+                info: vi.fn(),
+                warn: vi.fn(),
+                error: vi.fn(),
+            },
+            exit: vi.fn(),
+        });
+
+        await shutdown('SIGTERM');
+
+        expect(guildDestroy).toHaveBeenCalledTimes(1);
+        expect(pocketDestroy).toHaveBeenCalledTimes(1);
     });
 });

@@ -1,5 +1,5 @@
 import { dashboardMessages } from '../../shared/messages/dashboard-messages.js';
-import type { StoreData } from '../../types.js';
+import type { StoreData } from '../../shared/types.js';
 
 const MAX_CACHE_SIZE = 2000;
 

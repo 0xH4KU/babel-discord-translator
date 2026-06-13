@@ -6,7 +6,7 @@ import {
     cloneUsageHistory,
     cloneUserBudgets,
     cloneUserDailyUsage,
-} from '../src/repositories/store-data-normalizer.js';
+} from '../src/persistence/store-data-normalizer.js';
 
 describe('store-data-normalizer clone helpers', () => {
     it('returns defensive copies for store usage snapshots', () => {

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { NextFunction, Request, Response } from 'express';
-import { createDashboardAuth } from '../src/auth/dashboard-auth.js';
-import { InMemorySessionRepository } from '../src/auth/in-memory-session-repository.js';
+import { createDashboardAuth } from '../src/modules/dashboard/auth/dashboard-auth.js';
+import { InMemorySessionRepository } from '../src/modules/dashboard/auth/in-memory-session-repository.js';
 
 function createRequest({
     cookie,

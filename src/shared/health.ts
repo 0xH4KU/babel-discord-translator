@@ -3,7 +3,7 @@ import type { AppMetricsSnapshot } from './app-metrics.js';
 import { createEmptyAppMetricsSnapshot } from './app-metrics.js';
 import { checkVertexAiHealth, type VertexAiHealthStatus } from '../infra/vertex-ai-client.js';
 import { checkOpenAiHealth, type OpenAiHealthStatus } from '../infra/openai-client.js';
-import type { TranslationProviderMode } from '../types.js';
+import type { TranslationProviderMode } from './types.js';
 
 type HealthCheckLevel = 'pass' | 'fail' | 'skip';
 

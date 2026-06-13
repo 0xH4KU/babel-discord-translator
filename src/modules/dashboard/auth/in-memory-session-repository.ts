@@ -1,4 +1,4 @@
-import type { SessionData } from '../../../types.js';
+import type { SessionData } from '../../../shared/types.js';
 import type { SessionRepository } from './session-repository.js';
 
 /**

@@ -1,22 +1,40 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BABEL_POCKET_PROFILE } from '../src/apps/app-profile.js';
+import { BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE } from '../src/apps/app-profile.js';
 
 const mocks = vi.hoisted(() => {
-    const client = {
-        once: vi.fn(),
-        on: vi.fn(),
-        login: vi.fn(async () => undefined),
-        destroy: vi.fn(),
+    const clients: Array<{
+        once: ReturnType<typeof vi.fn>;
+        on: ReturnType<typeof vi.fn>;
+        login: ReturnType<typeof vi.fn>;
+        destroy: ReturnType<typeof vi.fn>;
+    }> = [];
+
+    const createClient = () => {
+        const client = {
+            once: vi.fn(),
+            on: vi.fn(),
+            login: vi.fn(async () => undefined),
+            destroy: vi.fn(),
+        };
+        clients.push(client);
+        return client;
     };
 
     return {
-        client,
+        clients,
+        createClient,
         createTranslationService: vi.fn(() => ({ process: vi.fn() })),
         createDashboardApp: vi.fn(),
+        createHealthDashboardApp: vi.fn(),
+        resolveDashboardMode: vi.fn(() => 'full' as const),
         startDashboardServer: vi.fn(),
         createWebhookService: vi.fn(() => ({ sendTranslation: vi.fn() })),
         loadConfig: vi.fn(() => ({
             discordToken: 'test-token',
+            discordTokens: {
+                'babel-guild': 'guild-token',
+                'babel-pocket': 'pocket-token',
+            },
             dashboardPort: 0,
             dashboardHost: '127.0.0.1',
             dashboardPassword: 'test-password',
@@ -42,7 +60,7 @@ const mocks = vi.hoisted(() => {
 
 vi.mock('discord.js', () => ({
     Client: vi.fn(function Client() {
-        return mocks.client;
+        return mocks.createClient();
     }),
     Events: {
         ClientReady: 'ready',
@@ -79,6 +97,14 @@ vi.mock('../src/modules/dashboard/dashboard.js', () => ({
     startDashboardServer: mocks.startDashboardServer,
 }));
 
+vi.mock('../src/modules/dashboard/health-dashboard.js', () => ({
+    createHealthDashboardApp: mocks.createHealthDashboardApp,
+}));
+
+vi.mock('../src/modules/dashboard/dashboard-mode.js', () => ({
+    resolveDashboardMode: mocks.resolveDashboardMode,
+}));
+
 vi.mock('../src/modules/translation/webhook-service.js', () => ({
     createWebhookService: mocks.createWebhookService,
 }));
@@ -112,7 +138,8 @@ vi.mock('../src/persistence/sqlite-database.js', () => ({
 describe('startBabelApp', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        mocks.client.login.mockResolvedValue(undefined);
+        mocks.clients.length = 0;
+        mocks.resolveDashboardMode.mockReturnValue('full');
     });
 
     it('passes the profile guild glossary capability to the translation service', async () => {
@@ -124,6 +151,96 @@ describe('startBabelApp', () => {
             expect.objectContaining({
                 accessMode: 'user-install',
                 enableGuildGlossary: false,
+            }),
+        );
+    });
+
+    it('logs in the selected single profile with its profile-specific token when present', async () => {
+        const { startBabelApp } = await import('../src/apps/bootstrap.js');
+
+        await startBabelApp(BABEL_POCKET_PROFILE);
+
+        expect(mocks.clients).toHaveLength(1);
+        expect(mocks.clients[0]!.login).toHaveBeenCalledWith('pocket-token');
+    });
+
+    it('starts multiple profiles as separate Discord clients sharing one dashboard runtime', async () => {
+        const { startBabelApps } = await import('../src/apps/bootstrap.js');
+
+        await startBabelApps([BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE]);
+
+        expect(mocks.clients).toHaveLength(2);
+        expect(mocks.clients[0]!.login).toHaveBeenCalledWith('guild-token');
+        expect(mocks.clients[1]!.login).toHaveBeenCalledWith('pocket-token');
+        expect(mocks.createTranslationService).toHaveBeenCalledTimes(2);
+        expect(mocks.createGracefulShutdownHandler).toHaveBeenCalledWith(
+            expect.objectContaining({
+                clients: mocks.clients,
+            }),
+        );
+    });
+
+    it('creates a combined dashboard once all selected Discord clients are ready', async () => {
+        const { startBabelApps } = await import('../src/apps/bootstrap.js');
+
+        await startBabelApps([BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE]);
+        const readyCallbacks = mocks.clients.map((client) => client.once.mock.calls[0]![1]);
+        readyCallbacks[0]!({
+            user: { id: 'guild-bot', tag: 'Guild#0001' },
+        });
+        expect(mocks.createDashboardApp).not.toHaveBeenCalled();
+
+        readyCallbacks[1]!({
+            user: { id: 'pocket-bot', tag: 'Pocket#0001' },
+        });
+
+        expect(mocks.createDashboardApp).toHaveBeenCalledTimes(1);
+        expect(mocks.startDashboardServer).toHaveBeenCalledTimes(1);
+        expect(mocks.createDashboardApp).toHaveBeenCalledWith(
+            expect.objectContaining({
+                profile: BABEL_GUILD_PROFILE,
+                profiles: [BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE],
+                client: mocks.clients[0],
+                clients: {
+                    'babel-guild': mocks.clients[0],
+                    'babel-pocket': mocks.clients[1],
+                },
+            }),
+        );
+    });
+
+    it('starts a health-only dashboard when dashboard mode is health-only', async () => {
+        mocks.resolveDashboardMode.mockReturnValue('health-only');
+        const { startBabelApp } = await import('../src/apps/bootstrap.js');
+
+        await startBabelApp(BABEL_GUILD_PROFILE);
+        const readyCallback = mocks.clients[0]!.once.mock.calls[0]![1];
+        readyCallback({
+            user: { id: 'guild-bot', tag: 'Guild#0001' },
+        });
+
+        expect(mocks.createDashboardApp).not.toHaveBeenCalled();
+        expect(mocks.createHealthDashboardApp).toHaveBeenCalledTimes(1);
+        expect(mocks.startDashboardServer).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not start a dashboard server when dashboard mode is off', async () => {
+        mocks.resolveDashboardMode.mockReturnValue('off');
+        const { startBabelApp } = await import('../src/apps/bootstrap.js');
+
+        await startBabelApp(BABEL_GUILD_PROFILE);
+        const readyCallback = mocks.clients[0]!.once.mock.calls[0]![1];
+        readyCallback({
+            user: { id: 'guild-bot', tag: 'Guild#0001' },
+        });
+
+        expect(mocks.createDashboardApp).not.toHaveBeenCalled();
+        expect(mocks.createHealthDashboardApp).not.toHaveBeenCalled();
+        expect(mocks.startDashboardServer).not.toHaveBeenCalled();
+        expect(mocks.createGracefulShutdownHandler).toHaveBeenCalledWith(
+            expect.objectContaining({
+                getDashboardApp: expect.any(Function),
+                getDashboardServer: expect.any(Function),
             }),
         );
     });

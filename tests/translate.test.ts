@@ -1,12 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { translate, _test } from '../src/translate.js';
+import { translate, _test } from '../src/modules/translation/translate.js';
 import { fetchWithRetry } from '../src/infra/vertex-ai-client.js';
 
-const { getLanguageName, buildTargetedPrompt, LOCALE_MAP, DEFAULT_PROMPT, buildGlossaryPromptSection } =
-    _test;
+const {
+    getLanguageName,
+    buildTargetedPrompt,
+    LOCALE_MAP,
+    DEFAULT_PROMPT,
+    buildGlossaryPromptSection,
+} = _test;
 
 // --- Mock store ---
-vi.mock('../src/store.js', () => {
+vi.mock('../src/persistence/store.js', () => {
     const data: Record<string, unknown> = {
         geminiModel: 'gemini-2.5-flash-lite',
         gcpProject: 'test-project',
@@ -47,7 +52,7 @@ vi.mock('../src/store.js', () => {
 });
 
 // Import mocked store for manipulation
-import { store } from '../src/store.js';
+import { store } from '../src/persistence/store.js';
 
 // --- Helper: build a valid Gemini response ---
 function geminiResponse(text: string, inputTokens = 10, outputTokens = 5) {
@@ -222,6 +227,7 @@ describe('translate', () => {
     const mockStore = store as unknown as {
         _setMock: (key: string, val: unknown) => void;
         get: ReturnType<typeof vi.fn>;
+        getConfigValues: ReturnType<typeof vi.fn>;
     };
 
     beforeEach(() => {
@@ -244,6 +250,44 @@ describe('translate', () => {
         expect(result.text).toBe('你好世界');
         expect(result.inputTokens).toBe(15);
         expect(result.outputTokens).toBe(8);
+    });
+
+    it('uses runtime config from options without reading the repository again', async () => {
+        globalThis.fetch = vi.fn().mockResolvedValue(geminiResponse('こんにちは', 12, 6));
+        mockStore.getConfigValues.mockClear();
+
+        const result = await translate('Hello', 'ja', {
+            runtimeConfig: {
+                vertexAiApiKey: 'test-key',
+                gcpProject: 'test-project',
+                gcpLocation: 'global',
+                geminiModel: 'gemini-2.5-flash-lite',
+                allowedGuildIds: [],
+                allowedUserIds: [],
+                cooldownSeconds: 0,
+                cacheMaxSize: 2000,
+                setupComplete: true,
+                inputPricePerMillion: 0,
+                outputPricePerMillion: 0,
+                dailyBudgetUsd: 0,
+                defaultUserDailyBudgetUsd: 0,
+                translationPrompt: '',
+                maxInputLength: 2000,
+                maxOutputTokens: 321,
+                translationMaxConcurrent: 4,
+                translationMaxGlobalQueue: 25,
+                translationMaxGuildQueue: 5,
+                translationMaxUserOutstanding: 1,
+                translationMaxQueueWaitMs: 30000,
+                openaiApiKey: '',
+                openaiBaseUrl: '',
+                openaiModel: '',
+                translationProvider: 'vertex',
+            },
+        });
+
+        expect(result.text).toBe('こんにちは');
+        expect(mockStore.getConfigValues).not.toHaveBeenCalled();
     });
 
     it('should throw when API is not configured', async () => {

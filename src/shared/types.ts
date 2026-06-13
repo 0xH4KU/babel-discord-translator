@@ -2,20 +2,20 @@
  * Shared type definitions for the Babel Discord Translator.
  */
 import type { Client } from 'discord.js';
-import type { TranslationCache } from './modules/translation/cache.js';
-import type { CooldownManager } from './modules/translation/cooldown.js';
-import type { TranslationLog } from './shared/log.js';
-import type { AppMetricsCollector } from './shared/app-metrics.js';
-import type { VertexAiHealthStatus } from './infra/vertex-ai-client.js';
-import type { OpenAiHealthStatus } from './infra/openai-client.js';
-import type { TranslationService } from './modules/translation/translation-service.js';
-import type { SessionRepository } from './modules/dashboard/auth/session-repository.js';
-import type { TranslationRuntimeLimiter } from './modules/translation/translation-runtime-limiter.js';
-import type { TranslationWebhookService } from './modules/translation/webhook-service.js';
-import type { VersionMetadataWithUpdate } from './shared/version.js';
-import type { DiscordUserProfileRepository } from './modules/dashboard/discord-user-profile-repository.js';
-import type { PendingUserInstallOwnerRepository } from './modules/dashboard/pending-user-install-owner-repository.js';
-import type { AppProfile } from './apps/app-profile.js';
+import type { TranslationCache } from '../modules/translation/cache.js';
+import type { CooldownManager } from '../modules/translation/cooldown.js';
+import type { TranslationLog } from './log.js';
+import type { AppMetricsCollector } from './app-metrics.js';
+import type { VertexAiHealthStatus } from '../infra/vertex-ai-client.js';
+import type { OpenAiHealthStatus } from '../infra/openai-client.js';
+import type { TranslationService } from '../modules/translation/translation-service.js';
+import type { SessionRepository } from '../modules/dashboard/auth/session-repository.js';
+import type { TranslationRuntimeLimiter } from '../modules/translation/translation-runtime-limiter.js';
+import type { TranslationWebhookService } from '../modules/translation/webhook-service.js';
+import type { VersionMetadataWithUpdate } from './version.js';
+import type { DiscordUserProfileRepository } from '../modules/dashboard/discord-user-profile-repository.js';
+import type { PendingUserInstallOwnerRepository } from '../modules/dashboard/pending-user-install-owner-repository.js';
+import type { AppProfile } from '../apps/app-profile.js';
 
 // --- Provider ---
 
@@ -209,6 +209,7 @@ export interface SessionData {
 export interface DashboardDeps {
     cache: TranslationCache;
     cooldown: CooldownManager;
+    cooldowns?: Partial<Record<AppProfile['id'], CooldownManager>>;
     log: TranslationLog;
     client: Client;
     getStats: () => BotStats;
@@ -221,6 +222,8 @@ export interface DashboardDeps {
     sessionRepository?: SessionRepository;
     userProfileRepository?: DiscordUserProfileRepository;
     profile?: AppProfile;
+    profiles?: AppProfile[];
+    clients?: Partial<Record<AppProfile['id'], Client>>;
     pendingUserInstallOwnerRepository?: PendingUserInstallOwnerRepository;
 }
 

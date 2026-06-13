@@ -1,4 +1,4 @@
-import type { StoreData } from '../types.js';
+import type { StoreData } from '../shared/types.js';
 
 export const DEFAULT_STORE_DATA: StoreData = {
     vertexAiApiKey: '',

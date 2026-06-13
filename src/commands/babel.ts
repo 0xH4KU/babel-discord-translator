@@ -2,7 +2,7 @@ import { MessageFlags, type MessageContextMenuCommandInteraction } from 'discord
 import { buildTranslationMessages } from '../shared/discord-message-format.js';
 import { extractTranslatableMessageText } from '../shared/message-extraction.js';
 import { createRequestId } from '../shared/structured-logger.js';
-import type { CommandDeps } from '../types.js';
+import type { CommandDeps } from '../shared/types.js';
 import { BABEL_GUILD_PROFILE, type AppProfile } from '../apps/app-profile.js';
 
 interface BabelCommandDeps extends CommandDeps {

@@ -6,12 +6,13 @@ This guide is for operators who want to run Babel Guild or Babel Pocket as a sel
 
 Select the app profile before you build the image or register Discord commands.
 
-| Product      | Install Model        | Docker Environment | Command Registration      |
-| ------------ | -------------------- | ------------------ | ------------------------- |
-| Babel Guild  | Server/Guild Install | `BABEL_APP=guild`  | `npm run register:guild`  |
-| Babel Pocket | User Install         | `BABEL_APP=pocket` | `npm run register:pocket` |
+| Product      | Install Model        | Docker Environment    | Command Registration      |
+| ------------ | -------------------- | --------------------- | ------------------------- |
+| Babel Guild  | Server/Guild Install | `BABEL_APP=guild`     | `npm run register:guild`  |
+| Babel Pocket | User Install         | `BABEL_APP=pocket`    | `npm run register:pocket` |
+| Both         | Both                 | `BABEL_APP=combined`  | Run both explicit commands |
 
-The same Docker image can run either product. Compose defaults to Babel Guild for backward compatibility.
+The same Docker image can run either product, or both products in one process. Compose defaults to Babel Guild for backward compatibility.
 
 For Guild:
 
@@ -29,7 +30,7 @@ npm run register:pocket
 npm run start -w @babel-discord-translator/pocket
 ```
 
-Set `BABEL_APP=pocket` in `.env` or Compose to run Babel Pocket from the same image.
+Set `BABEL_APP=pocket` in `.env` or Compose to run Babel Pocket from the same image. Set `BABEL_APP=combined` when you want one container with both Discord clients, one dashboard, and one SQLite database.
 
 ## Quick VPS Deploy
 
@@ -49,14 +50,23 @@ Before exposing the dashboard publicly, edit `.env` and set at least:
 DISCORD_TOKEN=your_bot_token_here
 DISCORD_APP_ID=your_app_id_here
 BABEL_APP=guild
+# For BABEL_APP=combined, set both profile-specific tokens:
+# BABEL_GUILD_DISCORD_TOKEN=your_guild_bot_token_here
+# BABEL_GUILD_DISCORD_APP_ID=your_guild_app_id_here
+# BABEL_POCKET_DISCORD_TOKEN=your_pocket_bot_token_here
+# BABEL_POCKET_DISCORD_APP_ID=your_pocket_app_id_here
 DASHBOARD_PASSWORD=replace_with_a_strong_password
 DASHBOARD_PORT=3000
 DASHBOARD_HOST=0.0.0.0
+BABEL_DASHBOARD_MODE=full
 BABEL_DB_PATH=/app/data/babel.sqlite
 NODE_ENV=production
+BABEL_NODE_MAX_OLD_SPACE_MB=64
+BABEL_NODE_MAX_SEMI_SPACE_MB=4
 ```
 
-Use `BABEL_APP=guild` for Babel Guild or `BABEL_APP=pocket` for Babel Pocket.
+Use `BABEL_APP=guild` for Babel Guild, `BABEL_APP=pocket` for Babel Pocket, or `BABEL_APP=combined` for both.
+The `BABEL_NODE_MAX_*` values control the Node.js V8 heap caps inside Docker; keep the defaults for small servers, or raise them if the dashboard or bot needs more memory.
 
 After the container is healthy, register the matching Discord commands. The script does not register Discord commands for you because Guild and Pocket expose different command surfaces.
 
@@ -124,11 +134,15 @@ Set at least:
 DISCORD_TOKEN=your_bot_token_here
 DISCORD_APP_ID=your_app_id_here
 BABEL_APP=guild
+# For BABEL_APP=combined, set BABEL_GUILD_DISCORD_TOKEN and BABEL_POCKET_DISCORD_TOKEN.
 DASHBOARD_PASSWORD=replace_with_a_strong_password
 DASHBOARD_PORT=3000
 DASHBOARD_HOST=0.0.0.0
+BABEL_DASHBOARD_MODE=full
 BABEL_DB_PATH=/app/data/babel.sqlite
 NODE_ENV=production
+BABEL_NODE_MAX_OLD_SPACE_MB=64
+BABEL_NODE_MAX_SEMI_SPACE_MB=4
 ```
 
 Start with Docker Compose:
@@ -158,6 +172,19 @@ curl -fsS http://localhost:3000/readyz
 ```
 
 Open `http://localhost:3000`, log in with `DASHBOARD_PASSWORD`, and complete the setup wizard.
+
+## Memory-Constrained Runtime
+
+For very small instances, keep a single product profile and use the health-only dashboard:
+
+```env
+BABEL_APP=guild
+BABEL_DASHBOARD_MODE=health-only
+BABEL_NODE_MAX_OLD_SPACE_MB=64
+BABEL_NODE_MAX_SEMI_SPACE_MB=4
+```
+
+`health-only` keeps `/livez`, `/readyz`, `/healthz`, and `/metrics`, but skips the authenticated dashboard UI and dashboard API routes. Use `full` when you need to change settings from the browser. Do not use `off` unless you also replace the Docker or host healthcheck because Babel will not expose `/livez`. Avoid `BABEL_APP=combined` unless you need both Guild and Pocket in one process.
 
 ## Updating Babel
 

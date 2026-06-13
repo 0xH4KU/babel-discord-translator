@@ -92,7 +92,7 @@ function guildKey(guildId?: string | null): string {
 export class TranslationRuntimeLimiter {
     private readonly limits: TranslationRuntimeLimits;
     private inflight = 0;
-    private readonly queue: QueueEntry[] = [];
+    private readonly queue = new Map<number, QueueEntry>();
     private readonly outstandingByUser = new Map<string, number>();
     private readonly queuedByGuild = new Map<string, number>();
     private rejectedTotal = 0;
@@ -118,13 +118,13 @@ export class TranslationRuntimeLimiter {
             return this.reject('guild_queue_full');
         }
 
-        if (this.queue.length >= this.limits.maxGlobalQueue) {
+        if (this.queue.size >= this.limits.maxGlobalQueue) {
             return this.reject('global_queue_full');
         }
 
         this.bumpMap(this.outstandingByUser, scope.userId, 1);
 
-        if (this.inflight < this.limits.maxConcurrent && this.queue.length === 0) {
+        if (this.inflight < this.limits.maxConcurrent && this.queue.size === 0) {
             this.inflight += 1;
             return {
                 accepted: true,
@@ -161,7 +161,7 @@ export class TranslationRuntimeLimiter {
             this.expireQueuedEntry(entry);
         }, this.limits.maxQueueWaitMs);
         entry.timeout.unref?.();
-        this.queue.push(entry);
+        this.queue.set(entry.id, entry);
 
         return {
             accepted: true,
@@ -172,7 +172,7 @@ export class TranslationRuntimeLimiter {
     snapshot(): TranslationRuntimeSnapshot {
         return {
             inflight: this.inflight,
-            queued: this.queue.length,
+            queued: this.queue.size,
             rejectedTotal: this.rejectedTotal,
             rejectionCounts: { ...this.rejectionCounts },
             limits: { ...this.limits },
@@ -242,12 +242,10 @@ export class TranslationRuntimeLimiter {
     }
 
     private cancelQueuedEntry(entry: QueueEntry): void {
-        const index = this.queue.findIndex((candidate) => candidate.id === entry.id);
-        if (index === -1) {
+        if (!this.queue.delete(entry.id)) {
             return;
         }
 
-        this.queue.splice(index, 1);
         entry.cancelled = true;
         if (entry.timeout) clearTimeout(entry.timeout);
         this.bumpMap(this.queuedByGuild, entry.guildKey, -1);
@@ -255,12 +253,10 @@ export class TranslationRuntimeLimiter {
     }
 
     private expireQueuedEntry(entry: QueueEntry): void {
-        const index = this.queue.findIndex((candidate) => candidate.id === entry.id);
-        if (index === -1 || entry.cancelled || entry.activeAt !== undefined) {
+        if (!this.queue.delete(entry.id) || entry.cancelled || entry.activeAt !== undefined) {
             return;
         }
 
-        this.queue.splice(index, 1);
         entry.cancelled = true;
         this.bumpMap(this.queuedByGuild, entry.guildKey, -1);
         this.bumpMap(this.outstandingByUser, entry.userId, -1);
@@ -278,9 +274,15 @@ export class TranslationRuntimeLimiter {
     }
 
     private activateQueuedEntries(): void {
-        while (this.inflight < this.limits.maxConcurrent && this.queue.length > 0) {
-            const entry = this.queue.shift();
-            if (!entry || entry.cancelled) {
+        while (this.inflight < this.limits.maxConcurrent && this.queue.size > 0) {
+            const iterator = this.queue.values().next();
+            const entry = iterator.value as QueueEntry | undefined;
+            if (!entry) {
+                return;
+            }
+            this.queue.delete(entry.id);
+
+            if (entry.cancelled) {
                 continue;
             }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createStructuredLogger } from '../src/structured-logger.js';
+import { createStructuredLogger } from '../src/shared/structured-logger.js';
 
 describe('StructuredLogger', () => {
     it('should emit JSON logs with required fields and inherited context', () => {
@@ -41,7 +41,10 @@ describe('StructuredLogger', () => {
             error: 'Vertex AI 500: https://example.com/projects/demo/very-secret-token-value',
         });
 
-        const payload = JSON.parse(sink.error.mock.calls[0][0] as string) as Record<string, unknown>;
+        const payload = JSON.parse(sink.error.mock.calls[0][0] as string) as Record<
+            string,
+            unknown
+        >;
         expect(payload.apiKey).toBe('[REDACTED]');
         expect(payload.error).toContain('[REDACTED_URL]');
         expect(payload.error).not.toContain('https://example.com');

@@ -3,7 +3,7 @@ import { sanitizeError } from './shared.js';
 import { buildTranslationMessages } from '../shared/discord-message-format.js';
 import { discordMessages } from '../shared/messages/discord-messages.js';
 import { appLogger, createRequestId } from '../shared/structured-logger.js';
-import type { TranslateCommandDeps } from '../types.js';
+import type { TranslateCommandDeps } from '../shared/types.js';
 import type { GuildMember } from 'discord.js';
 
 type TranslateVisibility = 'public' | 'private';

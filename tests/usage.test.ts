@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // --- Mock store as an in-memory object ---
 const mockData: Record<string, unknown> = vi.hoisted(() => ({}));
 
-vi.mock('../src/store.js', () => ({
+vi.mock('../src/persistence/store.js', () => ({
     store: {
         get: vi.fn((key: string) => mockData[key]),
         getAll: vi.fn(() => ({ ...mockData })),
@@ -81,11 +81,12 @@ vi.mock('../src/store.js', () => ({
     },
 }));
 
-import { store } from '../src/store.js';
-import { usage, _test as usageTest } from '../src/usage.js';
+import { store } from '../src/persistence/store.js';
+import { usage, _test as usageTest } from '../src/modules/usage/usage.js';
 
 describe('UsageTracker', () => {
     const mockedStore = store as unknown as {
+        get: ReturnType<typeof vi.fn>;
         getAll: ReturnType<typeof vi.fn>;
         getConfigValues: ReturnType<typeof vi.fn>;
     };
@@ -123,6 +124,26 @@ describe('UsageTracker', () => {
 
         mockedStore.getAll.mockClear();
         mockedStore.getConfigValues.mockClear();
+    });
+
+    it('should retry date rollover after a failed ensureToday pass', () => {
+        mockedStore.get.mockImplementationOnce(() => {
+            throw new Error('temporary sqlite failure');
+        });
+        mockData.tokenUsage = {
+            date: '2025-01-01',
+            inputTokens: 500,
+            outputTokens: 300,
+            requests: 5,
+        };
+
+        expect(() => usage.ensureToday()).toThrow('temporary sqlite failure');
+        usage.ensureToday();
+
+        const history = mockData.usageHistory as Array<{ date: string; inputTokens: number }>;
+        expect(history).toHaveLength(1);
+        expect(history[0].date).toBe('2025-01-01');
+        expect(history[0].inputTokens).toBe(500);
     });
 
     it('should record token usage', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CooldownManager } from '../src/cooldown.js';
+import { CooldownManager } from '../src/modules/translation/cooldown.js';
 
 describe('CooldownManager', () => {
     it('should allow first request', () => {

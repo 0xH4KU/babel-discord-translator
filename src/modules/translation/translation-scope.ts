@@ -1,4 +1,4 @@
-import type { TranslationScope } from '../../types.js';
+import type { TranslationScope } from '../../shared/types.js';
 
 export function createTranslationScope(input: {
     guildId?: string | null;

@@ -16,13 +16,14 @@ import { userBudgetRepository } from '../usage/user-budget-repository.js';
 import { userPreferenceRepository } from '../translation/user-preference-repository.js';
 import { guildGlossaryRepository } from '../translation/guild-glossary-repository.js';
 import { applyConfigUpdateEffects } from '../config/config-runtime-effects.js';
+import { resetTranslationProviderState } from '../translation/translate.js';
 import { appLogger } from '../../shared/structured-logger.js';
 import { dashboardMessages } from '../../shared/messages/dashboard-messages.js';
 import { getVersionMetadataWithUpdate } from '../../shared/version.js';
 import { DiscordUserProfileRepository } from './discord-user-profile-repository.js';
 import { resolveDiscordUserProfiles } from './discord-user-profile-resolver.js';
 import { BABEL_GUILD_PROFILE } from '../../apps/app-profile.js';
-import { getDashboardCapabilities } from './capabilities.js';
+import { getCombinedDashboardCapabilities } from './capabilities.js';
 import { PendingUserInstallOwnerRepository } from './pending-user-install-owner-repository.js';
 import { validateConfigUpdate } from './config-validation.js';
 import { sanitizeGlossaryInput } from './glossary-input.js';
@@ -35,10 +36,24 @@ import {
 import { createEmptyRuntimeSnapshot, renderPrometheusMetrics } from './prometheus-metrics.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import type { DashboardDeps } from '../../types.js';
+import type { DashboardDeps } from '../../shared/types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BYTES_PER_MB = 1024 * 1024;
+
+function serializeProfile(profile: NonNullable<DashboardDeps['profile']>): {
+    id: string;
+    productName: string;
+    commandName: string;
+    accessMode: string;
+} {
+    return {
+        id: profile.id,
+        productName: profile.productName,
+        commandName: profile.commandName,
+        accessMode: profile.accessMode,
+    };
+}
 
 function applySecurityHeaders(_req: Request, res: Response, next: NextFunction): void {
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -80,8 +95,10 @@ declare module 'express-serve-static-core' {
 export function createDashboardApp({
     cache,
     cooldown,
+    cooldowns,
     log,
     client,
+    clients,
     getStats,
     metrics,
     runtimeLimiter,
@@ -91,13 +108,16 @@ export function createDashboardApp({
     sessionRepository,
     userProfileRepository = new DiscordUserProfileRepository(),
     profile = BABEL_GUILD_PROFILE,
+    profiles = [profile],
     pendingUserInstallOwnerRepository = new PendingUserInstallOwnerRepository(),
     healthProbeCacheTtlMs = 5_000,
 }: DashboardDeps): express.Express {
     const app = express();
     app.set('trust proxy', 1);
 
-    const capabilities = getDashboardCapabilities(profile);
+    const guildClient = clients?.['babel-guild'] ?? client;
+    const userInstallClient = clients?.['babel-pocket'] ?? client;
+    const capabilities = getCombinedDashboardCapabilities(profiles);
     const config = getConfig();
     const auth = createDashboardAuth({
         password: config.dashboardPassword,
@@ -189,12 +209,8 @@ export function createDashboardApp({
 
     app.get('/api/capabilities', auth.requireAuth, (_req: Request, res: Response) => {
         res.json({
-            profile: {
-                id: profile.id,
-                productName: profile.productName,
-                commandName: profile.commandName,
-                accessMode: profile.accessMode,
-            },
+            profile: serializeProfile(profile),
+            profiles: profiles.map(serializeProfile),
             capabilities,
         });
     });
@@ -258,10 +274,10 @@ export function createDashboardApp({
         const runtimeConfig = configRepository.getRuntimeConfig();
         const providerMode = runtimeConfig.translationProvider || 'vertex';
 
-        const guildIds = client.guilds.cache.map((guild) => guild.id);
+        const guildIds = guildClient.guilds.cache.map((guild) => guild.id);
         const guildBudgetConfigs = guildBudgetRepository.listBudgets();
         const guildStatsById = guildIds.length > 0 ? usage.getGuildStatsForGuilds(guildIds) : {};
-        const guildBudgetList = client.guilds.cache.map((guild) => {
+        const guildBudgetList = guildClient.guilds.cache.map((guild) => {
             const guildCfg = guildBudgetConfigs[guild.id];
             const hasCustom = Boolean(guildCfg && guildCfg.dailyBudgetUsd !== undefined);
             const guildStats = guildStatsById[guild.id];
@@ -321,8 +337,11 @@ export function createDashboardApp({
 
         res.json({
             bot: {
-                name: client.user?.tag || 'Unknown',
-                avatar: client.user?.displayAvatarURL({ size: 64 }) || '',
+                name: guildClient.user?.tag || client.user?.tag || 'Unknown',
+                avatar:
+                    guildClient.user?.displayAvatarURL({ size: 64 }) ||
+                    client.user?.displayAvatarURL({ size: 64 }) ||
+                    '',
                 uptime: Math.floor(process.uptime()),
                 memoryMB: rssMB,
                 memory: {
@@ -330,7 +349,7 @@ export function createDashboardApp({
                     heapUsedMB,
                     externalMB,
                 },
-                guilds: client.guilds.cache.size,
+                guilds: guildClient.guilds.cache.size,
             },
             translations: {
                 total: stats.totalTranslations,
@@ -372,7 +391,12 @@ export function createDashboardApp({
         }
 
         const currentConfig = configRepository.getDashboardConfig();
-        const effects = applyConfigUpdateEffects(currentConfig, sanitized, { cache, cooldown });
+        const effects = applyConfigUpdateEffects(currentConfig, sanitized, {
+            cache,
+            cooldown,
+            cooldowns: cooldowns ? Object.values(cooldowns) : undefined,
+            resetProviderState: resetTranslationProviderState,
+        });
 
         configRepository.updateConfig(sanitized);
 
@@ -385,7 +409,7 @@ export function createDashboardApp({
     });
 
     app.get('/api/guilds', auth.requireAuth, (_req: Request, res: Response) => {
-        const guilds = client.guilds.cache.map((g) => ({
+        const guilds = guildClient.guilds.cache.map((g) => ({
             id: g.id,
             name: g.name,
             icon: g.iconURL({ size: 32 }) || '',
@@ -405,7 +429,7 @@ export function createDashboardApp({
 
     app.get('/api/guild-budgets', auth.requireAuth, (_req: Request, res: Response) => {
         const guildBudgets = guildBudgetRepository.listBudgets();
-        const guilds = client.guilds.cache;
+        const guilds = guildClient.guilds.cache;
         const guildIds = guilds.map((guild) => guild.id);
         const usageStats = usage.getStats();
         const guildStatsById = guildIds.length > 0 ? usage.getGuildStatsForGuilds(guildIds) : {};
@@ -457,7 +481,7 @@ export function createDashboardApp({
                 }
 
                 const profiles = await resolveDiscordUserProfiles({
-                    client,
+                    client: userInstallClient,
                     repository: userProfileRepository,
                     userIds: Object.keys(result),
                 });

@@ -15,7 +15,7 @@ import type {
     UsageHistoryDay,
     TokenUsage,
     UsageHistoryEntry,
-} from '../../types.js';
+} from '../../shared/types.js';
 
 class UsageTracker {
     private lastEnsuredDate: string | null = null;
@@ -30,7 +30,6 @@ class UsageTracker {
         if (this.lastEnsuredDate === today) {
             return;
         }
-        this.lastEnsuredDate = today;
 
         const usage = usageRepository.getDailyUsage();
         if (!usage || usage.date !== today) {
@@ -69,6 +68,8 @@ class UsageTracker {
                 usageRepository.saveUserDailyUsage(userId, createEmptyUsage(today));
             }
         }
+
+        this.lastEnsuredDate = today;
     }
 
     /** Record a translation's token usage (global + optional guild/user). */

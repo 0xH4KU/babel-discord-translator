@@ -1,5 +1,5 @@
 import type { ProviderMetricsSnapshot } from '../../shared/app-metrics.js';
-import type { TranslationProviderMode } from '../../types.js';
+import type { TranslationProviderMode } from '../../shared/types.js';
 
 const BUDGET_WARNING_THRESHOLD = 0.8;
 const EMPTY_PROVIDER_METRICS: ProviderMetricsSnapshot = {

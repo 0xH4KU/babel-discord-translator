@@ -1,8 +1,8 @@
-import { configRepository } from '../modules/config/config-repository.js';
+import { configRepository, type RuntimeConfig } from '../modules/config/config-repository.js';
 import { appLogger, type StructuredLogFields } from '../shared/structured-logger.js';
 import { ProviderHttpError, classifyStatusCode, parseRetryAfterMs } from './provider-errors.js';
 import type { TranslationProvider, TranslateOptions } from './provider-orchestrator.js';
-import type { OpenAIChatResponse, TranslationResult } from '../types.js';
+import type { OpenAIChatResponse, TranslationResult } from '../shared/types.js';
 
 const RETRY_CODES = [429, 500, 502, 503];
 const MAX_RETRIES = 3;
@@ -31,8 +31,8 @@ function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function getOpenAiConfig(): OpenAiConfig {
-    const config = configRepository.getRuntimeConfig();
+function getOpenAiConfig(runtimeConfig?: RuntimeConfig): OpenAiConfig {
+    const config = runtimeConfig ?? configRepository.getRuntimeConfig();
     const apiKey = config.openaiApiKey;
     const baseUrl = config.openaiBaseUrl;
     const model = config.openaiModel;
@@ -151,6 +151,7 @@ async function requestChatCompletion(
         timeoutMs = REQUEST_TIMEOUT_MS,
         logPrefix = 'OpenAI',
         logContext,
+        runtimeConfig,
     }: {
         maxOutputTokens: number;
         temperature?: number;
@@ -158,6 +159,7 @@ async function requestChatCompletion(
         timeoutMs?: number;
         logPrefix?: string;
         logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'>;
+        runtimeConfig?: RuntimeConfig;
     },
 ): Promise<{ data: OpenAIChatResponse; latencyMs: number }> {
     const logger = appLogger.child({
@@ -168,7 +170,7 @@ async function requestChatCompletion(
     let config: OpenAiConfig;
 
     try {
-        config = getOpenAiConfig();
+        config = getOpenAiConfig(runtimeConfig);
     } catch (error) {
         logger.error('openai.request.failed', {
             operation: logPrefix,
@@ -251,12 +253,14 @@ export async function generateTranslationContent(
     maxOutputTokens: number,
     options?: {
         logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'>;
+        runtimeConfig?: RuntimeConfig;
     },
 ): Promise<TranslationResult> {
     const { data } = await requestChatCompletion(prompt, {
         maxOutputTokens,
         logPrefix: 'Translate',
         logContext: options?.logContext,
+        runtimeConfig: options?.runtimeConfig,
     });
 
     const result = data.choices?.[0]?.message?.content?.trim();
@@ -294,8 +298,8 @@ export async function checkOpenAiHealth(): Promise<OpenAiHealthStatus> {
     }
 }
 
-export function isOpenAiConfigured(): boolean {
-    const config = configRepository.getRuntimeConfig();
+export function isOpenAiConfigured(runtimeConfig?: RuntimeConfig): boolean {
+    const config = runtimeConfig ?? configRepository.getRuntimeConfig();
     return !!(config.openaiApiKey && config.openaiBaseUrl && config.openaiModel);
 }
 
@@ -309,8 +313,8 @@ export function createOpenAiProvider(): TranslationProvider {
         ): Promise<TranslationResult> {
             return generateTranslationContent(prompt, maxOutputTokens, options);
         },
-        isConfigured(): boolean {
-            return isOpenAiConfigured();
+        isConfigured(options?: TranslateOptions): boolean {
+            return isOpenAiConfigured(options?.runtimeConfig);
         },
     };
 }

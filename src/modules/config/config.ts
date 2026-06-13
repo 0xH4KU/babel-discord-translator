@@ -3,6 +3,7 @@
  * Validates required variables at startup to fail fast.
  */
 import 'dotenv/config';
+import { isCombinedAppProfileValue, type AppProfileId } from '../../apps/app-profile.js';
 import { appLogger, type StructuredLogger } from '../../shared/structured-logger.js';
 
 const DEFAULT_DASHBOARD_PORT = 3000;
@@ -13,6 +14,8 @@ let loadedConfig: AppConfig | null = null;
 export interface AppConfig {
     /** Discord bot token for authentication. */
     discordToken: string;
+    /** Profile-specific Discord bot tokens, used by combined deployments. */
+    discordTokens: Partial<Record<AppProfileId, string>>;
     /** Port for the web dashboard server. */
     dashboardPort: number;
     /** Host interface for the web dashboard server. */
@@ -34,6 +37,25 @@ function resolveNodeEnv(env: NodeJS.ProcessEnv, nodeEnv?: string): string {
     return nodeEnv ?? env.NODE_ENV ?? 'development';
 }
 
+const PROFILE_TOKEN_FIELDS: Record<AppProfileId, string> = {
+    'babel-guild': 'BABEL_GUILD_DISCORD_TOKEN',
+    'babel-pocket': 'BABEL_POCKET_DISCORD_TOKEN',
+};
+
+function resolveProfileDiscordTokens(
+    env: NodeJS.ProcessEnv,
+    { requireProfileSpecificEnv = false }: { requireProfileSpecificEnv?: boolean } = {},
+): Partial<Record<AppProfileId, string>> {
+    return {
+        'babel-guild':
+            env.BABEL_GUILD_DISCORD_TOKEN ||
+            (requireProfileSpecificEnv ? undefined : env.DISCORD_TOKEN),
+        'babel-pocket':
+            env.BABEL_POCKET_DISCORD_TOKEN ||
+            (requireProfileSpecificEnv ? undefined : env.DISCORD_TOKEN),
+    };
+}
+
 /** Validate that required environment variables are set. */
 export function validateEnv(
     env: NodeJS.ProcessEnv = process.env,
@@ -42,8 +64,30 @@ export function validateEnv(
     const configLogger = getConfigLogger(logger);
     const resolvedNodeEnv = resolveNodeEnv(env, nodeEnv);
     const token = env.DISCORD_TOKEN;
+    const isCombinedApp = isCombinedAppProfileValue(env.BABEL_APP);
+    const discordTokens = resolveProfileDiscordTokens(env, {
+        requireProfileSpecificEnv: isCombinedApp,
+    });
 
-    if (!token) {
+    if (isCombinedApp) {
+        for (const [profileId, field] of Object.entries(PROFILE_TOKEN_FIELDS) as Array<
+            [AppProfileId, string]
+        >) {
+            if (discordTokens[profileId]) {
+                continue;
+            }
+
+            configLogger.error('config.validation.failed', {
+                field,
+                error: 'Missing required environment variable',
+                hint: 'Set BABEL_GUILD_DISCORD_TOKEN and BABEL_POCKET_DISCORD_TOKEN for BABEL_APP=combined',
+            });
+            throw new Error(
+                `Missing required environment variable ${field}. ` +
+                    'Set BABEL_GUILD_DISCORD_TOKEN and BABEL_POCKET_DISCORD_TOKEN for BABEL_APP=combined',
+            );
+        }
+    } else if (!token) {
         configLogger.error('config.validation.failed', {
             field: 'DISCORD_TOKEN',
             error: 'Missing required environment variable',
@@ -93,7 +137,13 @@ export function validateEnv(
         });
     }
 
-    return { discordToken: token, dashboardPort: port, dashboardHost, dashboardPassword: password };
+    return {
+        discordToken: token || '',
+        discordTokens,
+        dashboardPort: port,
+        dashboardHost,
+        dashboardPassword: password,
+    };
 }
 
 export function loadConfig(

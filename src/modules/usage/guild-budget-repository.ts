@@ -1,6 +1,6 @@
-import { store } from '../../store.js';
-import type { GuildBudgetConfig } from '../../types.js';
-import { cloneGuildBudgets } from '../../repositories/store-data-normalizer.js';
+import { store } from '../../persistence/store.js';
+import type { GuildBudgetConfig } from '../../shared/types.js';
+import { cloneGuildBudgets } from '../../persistence/store-data-normalizer.js';
 
 export interface GuildBudgetRepository {
     getBudget(guildId: string): GuildBudgetConfig | null;

@@ -3,7 +3,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createSqliteDatabase } from '../src/persistence/sqlite-database.js';
-import { SQLiteSessionRepository } from '../src/auth/sqlite-session-repository.js';
+import { SQLiteSessionRepository } from '../src/modules/dashboard/auth/sqlite-session-repository.js';
 
 describe('SQLiteSessionRepository', () => {
     let tempDir: string;

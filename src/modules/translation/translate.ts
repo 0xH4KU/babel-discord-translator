@@ -4,10 +4,10 @@
 import { createProviderOrchestrator } from '../../infra/provider-orchestrator.js';
 import { createVertexAiProvider } from '../../infra/vertex-ai-client.js';
 import { createOpenAiProvider } from '../../infra/openai-client.js';
-import { configRepository } from '../config/config-repository.js';
+import { configRepository, type RuntimeConfig } from '../config/config-repository.js';
 import type { StructuredLogFields } from '../../shared/structured-logger.js';
 import type { AppMetricsCollector } from '../../shared/app-metrics.js';
-import type { TranslationProviderMode, TranslationResult } from '../../types.js';
+import type { TranslationProviderMode, TranslationResult } from '../../shared/types.js';
 import type { TranslationProvider } from '../../infra/provider-orchestrator.js';
 
 export interface TranslationGlossaryPromptEntry {
@@ -148,6 +148,13 @@ let orchestrator: ReturnType<typeof createProviderOrchestrator> | null = null;
 let orchestratorMode: TranslationProviderMode | null = null;
 let orchestratorMetrics: AppMetricsCollector | undefined;
 
+export function resetTranslationProviderState(): void {
+    providers = null;
+    orchestrator = null;
+    orchestratorMode = null;
+    orchestratorMetrics = undefined;
+}
+
 function getOrchestrator(
     mode: TranslationProviderMode,
     metrics?: AppMetricsCollector,
@@ -172,9 +179,10 @@ export async function translate(
         logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'>;
         metrics?: AppMetricsCollector;
         glossaryEntries?: TranslationGlossaryPromptEntry[];
+        runtimeConfig?: RuntimeConfig;
     },
 ): Promise<TranslationResult> {
-    const config = configRepository.getRuntimeConfig();
+    const config = options?.runtimeConfig ?? configRepository.getRuntimeConfig();
     const customPrompt = config.translationPrompt;
     const prompt = buildTranslationPrompt(
         text,
@@ -197,10 +205,5 @@ export const _test = {
     buildGlossaryPromptSection,
     buildTranslationPrompt,
     /** Reset providers for testing. */
-    resetProviders(): void {
-        providers = null;
-        orchestrator = null;
-        orchestratorMode = null;
-        orchestratorMetrics = undefined;
-    },
+    resetProviders: resetTranslationProviderState,
 };
