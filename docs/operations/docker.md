@@ -58,6 +58,7 @@ BABEL_APP=guild
 DASHBOARD_PASSWORD=replace_with_a_strong_password
 DASHBOARD_PORT=3000
 DASHBOARD_HOST=0.0.0.0
+BABEL_DASHBOARD_MODE=full
 BABEL_DB_PATH=/app/data/babel.sqlite
 NODE_ENV=production
 BABEL_NODE_MAX_OLD_SPACE_MB=64
@@ -137,6 +138,7 @@ BABEL_APP=guild
 DASHBOARD_PASSWORD=replace_with_a_strong_password
 DASHBOARD_PORT=3000
 DASHBOARD_HOST=0.0.0.0
+BABEL_DASHBOARD_MODE=full
 BABEL_DB_PATH=/app/data/babel.sqlite
 NODE_ENV=production
 BABEL_NODE_MAX_OLD_SPACE_MB=64
@@ -170,6 +172,19 @@ curl -fsS http://localhost:3000/readyz
 ```
 
 Open `http://localhost:3000`, log in with `DASHBOARD_PASSWORD`, and complete the setup wizard.
+
+## Memory-Constrained Runtime
+
+For very small instances, keep a single product profile and use the health-only dashboard:
+
+```env
+BABEL_APP=guild
+BABEL_DASHBOARD_MODE=health-only
+BABEL_NODE_MAX_OLD_SPACE_MB=64
+BABEL_NODE_MAX_SEMI_SPACE_MB=4
+```
+
+`health-only` keeps `/livez`, `/readyz`, `/healthz`, and `/metrics`, but skips the authenticated dashboard UI and dashboard API routes. Use `full` when you need to change settings from the browser. Do not use `off` unless you also replace the Docker or host healthcheck because Babel will not expose `/livez`. Avoid `BABEL_APP=combined` unless you need both Guild and Pocket in one process.
 
 ## Updating Babel
 

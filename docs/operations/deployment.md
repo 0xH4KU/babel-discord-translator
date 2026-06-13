@@ -122,9 +122,12 @@ BABEL_APP=guild
 DASHBOARD_PORT=3000
 DASHBOARD_HOST=0.0.0.0
 DASHBOARD_PASSWORD=replace_with_a_strong_password
+BABEL_DASHBOARD_MODE=full
 BABEL_DB_PATH=/app/data/babel.sqlite
 NODE_ENV=production
 ```
+
+`BABEL_DASHBOARD_MODE` defaults to `full`. Set it to `health-only` on constrained hosts when you only need `/livez`, `/readyz`, `/healthz`, and `/metrics`. Set it to `off` only if your platform healthcheck no longer depends on Babel's HTTP endpoints.
 
 Verify:
 

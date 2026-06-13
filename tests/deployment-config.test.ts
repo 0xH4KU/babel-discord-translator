@@ -159,4 +159,17 @@ describe('deployment configuration', () => {
         expect(envExample).toContain('BABEL_NODE_MAX_SEMI_SPACE_MB=4');
         expect(envExample).toContain('Required for VPS/Docker deployments');
     });
+
+    it('documents dashboard runtime mode for constrained deployments', () => {
+        const envExample = readFileSync('.env.example', 'utf8');
+        const dockerDocs = readFileSync('docs/operations/docker.md', 'utf8');
+        const deploymentDocs = readFileSync('docs/operations/deployment.md', 'utf8');
+
+        expect(envExample).toContain('BABEL_DASHBOARD_MODE=full');
+        expect(dockerDocs).toContain('BABEL_DASHBOARD_MODE=health-only');
+        expect(dockerDocs).toContain(
+            'Do not use `off` unless you also replace the Docker or host healthcheck',
+        );
+        expect(deploymentDocs).toContain('BABEL_DASHBOARD_MODE');
+    });
 });
