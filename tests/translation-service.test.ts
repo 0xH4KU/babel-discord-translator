@@ -33,6 +33,16 @@ function createStructuredLoggerMock(base: Record<string, unknown> = {}) {
     };
 }
 
+function deferred<T>() {
+    let resolve!: (value: T | PromiseLike<T>) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+        resolve = res;
+        reject = rej;
+    });
+    return { promise, resolve, reject };
+}
+
 function createStoreMock(overrides: Partial<StoreData> = {}) {
     const data: StoreData = {
         vertexAiApiKey: 'test-key',
@@ -356,6 +366,195 @@ describe('TranslationService', () => {
             translationCacheHitsTotal: 1,
             translationCacheHitRate: 0.5,
         });
+    });
+
+    it('should join an in-flight translation for identical concurrent requests', async () => {
+        const gate = deferred<TranslationResult>();
+        const translator = vi.fn(() => gate.promise);
+        const { service, usageTracker, metrics } = createService({ translator });
+
+        const first = service.process({
+            command: 'translate',
+            commandLabel: '/translate',
+            guildId: 'guild-1',
+            guildName: 'Test Guild',
+            userId: 'user1',
+            userTag: 'user#0001',
+            locale: 'ko',
+            text: 'Hello world',
+            targetLanguageOption: 'ko',
+        });
+        const second = service.process({
+            command: 'translate',
+            commandLabel: '/translate',
+            guildId: 'guild-1',
+            guildName: 'Test Guild',
+            userId: 'user2',
+            userTag: 'user#0002',
+            locale: 'ko',
+            text: 'Hello world',
+            targetLanguageOption: 'ko',
+        });
+
+        await Promise.resolve();
+        expect(translator).toHaveBeenCalledTimes(1);
+
+        gate.resolve({
+            text: '안녕하세요',
+            inputTokens: 20,
+            outputTokens: 10,
+        });
+
+        const [firstResult, secondResult] = await Promise.all([first, second]);
+
+        expect(firstResult.status).toBe('success');
+        expect(secondResult.status).toBe('success');
+        expect(secondResult.status === 'success' ? secondResult.cached : false).toBe(true);
+        expect(usageTracker.record).toHaveBeenCalledTimes(1);
+        expect(metrics.snapshot()).toMatchObject({
+            translationsTotal: 2,
+            translationApiCallsTotal: 1,
+        });
+    });
+
+    it('should join in-flight translations while the leader is awaiting beforeTranslate', async () => {
+        const deferGate = deferred<void>();
+        const providerGate = deferred<TranslationResult>();
+        const translator = vi.fn(() => providerGate.promise);
+        const beforeTranslate = vi.fn(() => deferGate.promise);
+        const { service, usageTracker, metrics } = createService({ translator });
+
+        const first = service.process({
+            command: 'translate',
+            commandLabel: '/translate',
+            guildId: 'guild-1',
+            guildName: 'Test Guild',
+            userId: 'user1',
+            userTag: 'user#0001',
+            locale: 'ko',
+            text: 'Hello world',
+            targetLanguageOption: 'ko',
+            beforeTranslate,
+        });
+
+        await Promise.resolve();
+
+        const second = service.process({
+            command: 'translate',
+            commandLabel: '/translate',
+            guildId: 'guild-1',
+            guildName: 'Test Guild',
+            userId: 'user2',
+            userTag: 'user#0002',
+            locale: 'ko',
+            text: 'Hello world',
+            targetLanguageOption: 'ko',
+        });
+
+        await Promise.resolve();
+        expect(translator).not.toHaveBeenCalled();
+
+        deferGate.resolve();
+        await Promise.resolve();
+        expect(translator).toHaveBeenCalledTimes(1);
+
+        providerGate.resolve({
+            text: '안녕하세요',
+            inputTokens: 20,
+            outputTokens: 10,
+        });
+
+        const [firstResult, secondResult] = await Promise.all([first, second]);
+
+        expect(firstResult.status).toBe('success');
+        expect(secondResult.status).toBe('success');
+        expect(firstResult.status === 'success' ? firstResult.deferred : false).toBe(true);
+        expect(secondResult.status === 'success' ? secondResult.cached : false).toBe(true);
+        expect(beforeTranslate).toHaveBeenCalledTimes(1);
+        expect(usageTracker.record).toHaveBeenCalledTimes(1);
+        expect(metrics.snapshot()).toMatchObject({
+            translationsTotal: 2,
+            translationApiCallsTotal: 1,
+        });
+    });
+
+    it('should clear failed in-flight translations so a later retry can call the provider', async () => {
+        const translator = vi
+            .fn()
+            .mockRejectedValueOnce(new Error('provider timeout'))
+            .mockResolvedValueOnce({
+                text: '再試行成功',
+                inputTokens: 18,
+                outputTokens: 9,
+            });
+        const { service } = createService({ translator });
+        const request = {
+            command: 'translate' as const,
+            commandLabel: '/translate',
+            guildId: 'guild-1',
+            guildName: 'Test Guild',
+            userId: 'user1',
+            userTag: 'user#0001',
+            locale: 'ja',
+            text: 'Hello retry',
+            targetLanguageOption: 'ja',
+        };
+
+        const failed = await service.process(request);
+        const retried = await service.process({
+            ...request,
+            userId: 'user2',
+            userTag: 'user#0002',
+        });
+
+        expect(failed.status).toBe('error');
+        expect(retried.status).toBe('success');
+        expect(translator).toHaveBeenCalledTimes(2);
+    });
+
+    it('should not join in-flight translations for different cache keys', async () => {
+        const gate = deferred<TranslationResult>();
+        const translator = vi.fn().mockReturnValueOnce(gate.promise).mockResolvedValueOnce({
+            text: '違う翻訳',
+            inputTokens: 22,
+            outputTokens: 11,
+        });
+        const { service } = createService({ translator });
+
+        const first = service.process({
+            command: 'translate',
+            commandLabel: '/translate',
+            guildId: 'guild-1',
+            guildName: 'Test Guild',
+            userId: 'user1',
+            userTag: 'user#0001',
+            locale: 'ja',
+            text: 'Hello world',
+            targetLanguageOption: 'ja',
+        });
+        const second = service.process({
+            command: 'translate',
+            commandLabel: '/translate',
+            guildId: 'guild-1',
+            guildName: 'Test Guild',
+            userId: 'user2',
+            userTag: 'user#0002',
+            locale: 'zh-TW',
+            text: 'Hello world',
+            targetLanguageOption: 'zh-TW',
+        });
+
+        await Promise.resolve();
+        expect(translator).toHaveBeenCalledTimes(2);
+
+        gate.resolve({
+            text: 'こんにちは',
+            inputTokens: 20,
+            outputTokens: 10,
+        });
+
+        await expect(first).resolves.toMatchObject({ status: 'success' });
+        await expect(second).resolves.toMatchObject({ status: 'success' });
     });
 
     it('should separate cached translations by provider connection fingerprint', async () => {
