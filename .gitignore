@@ -4,4 +4,5 @@ dist/
 coverage/
 .env
 .wrangler/
+.superpowers/
 .DS_Store
