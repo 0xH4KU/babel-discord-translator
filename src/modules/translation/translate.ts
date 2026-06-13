@@ -148,6 +148,13 @@ let orchestrator: ReturnType<typeof createProviderOrchestrator> | null = null;
 let orchestratorMode: TranslationProviderMode | null = null;
 let orchestratorMetrics: AppMetricsCollector | undefined;
 
+export function resetTranslationProviderState(): void {
+    providers = null;
+    orchestrator = null;
+    orchestratorMode = null;
+    orchestratorMetrics = undefined;
+}
+
 function getOrchestrator(
     mode: TranslationProviderMode,
     metrics?: AppMetricsCollector,
@@ -197,10 +204,5 @@ export const _test = {
     buildGlossaryPromptSection,
     buildTranslationPrompt,
     /** Reset providers for testing. */
-    resetProviders(): void {
-        providers = null;
-        orchestrator = null;
-        orchestratorMode = null;
-        orchestratorMetrics = undefined;
-    },
+    resetProviders: resetTranslationProviderState,
 };

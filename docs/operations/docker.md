@@ -54,9 +54,12 @@ DASHBOARD_PORT=3000
 DASHBOARD_HOST=0.0.0.0
 BABEL_DB_PATH=/app/data/babel.sqlite
 NODE_ENV=production
+BABEL_NODE_MAX_OLD_SPACE_MB=64
+BABEL_NODE_MAX_SEMI_SPACE_MB=4
 ```
 
 Use `BABEL_APP=guild` for Babel Guild or `BABEL_APP=pocket` for Babel Pocket.
+The `BABEL_NODE_MAX_*` values control the Node.js V8 heap caps inside Docker; keep the defaults for small servers, or raise them if the dashboard or bot needs more memory.
 
 After the container is healthy, register the matching Discord commands. The script does not register Discord commands for you because Guild and Pocket expose different command surfaces.
 
@@ -129,6 +132,8 @@ DASHBOARD_PORT=3000
 DASHBOARD_HOST=0.0.0.0
 BABEL_DB_PATH=/app/data/babel.sqlite
 NODE_ENV=production
+BABEL_NODE_MAX_OLD_SPACE_MB=64
+BABEL_NODE_MAX_SEMI_SPACE_MB=4
 ```
 
 Start with Docker Compose:

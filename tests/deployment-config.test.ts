@@ -77,7 +77,7 @@ describe('deployment configuration', () => {
         );
         expect(dockerfile).toContain('COPY apps/ ./apps/');
         expect(dockerfile).toContain(
-            'CMD ["node", "--max-old-space-size=64", "--max-semi-space-size=4", "dist/src/index.js"]',
+            'CMD ["sh", "-c", "node --max-old-space-size=${BABEL_NODE_MAX_OLD_SPACE_MB:-64} --max-semi-space-size=${BABEL_NODE_MAX_SEMI_SPACE_MB:-4} dist/src/index.js"]',
         );
     });
 
@@ -93,6 +93,12 @@ describe('deployment configuration', () => {
         expect(compose).toContain('DASHBOARD_PORT: ${DASHBOARD_PORT:-3000}');
         expect(compose).toContain('DASHBOARD_HOST: ${DASHBOARD_HOST:-0.0.0.0}');
         expect(compose).toContain('BABEL_DB_PATH: ${BABEL_DB_PATH:-/app/data/babel.sqlite}');
+        expect(compose).toContain(
+            'BABEL_NODE_MAX_OLD_SPACE_MB: ${BABEL_NODE_MAX_OLD_SPACE_MB:-64}',
+        );
+        expect(compose).toContain(
+            'BABEL_NODE_MAX_SEMI_SPACE_MB: ${BABEL_NODE_MAX_SEMI_SPACE_MB:-4}',
+        );
         expect(compose).toContain('"${DASHBOARD_PORT:-3000}:${DASHBOARD_PORT:-3000}"');
         expect(compose).toContain('http://localhost:$${DASHBOARD_PORT:-3000}/livez');
     });
@@ -139,6 +145,8 @@ describe('deployment configuration', () => {
         expect(envExample).toContain('Set BABEL_APP=pocket');
         expect(envExample).toContain('BABEL_DB_PATH=/app/data/babel.sqlite');
         expect(envExample).toContain('NODE_ENV=production');
+        expect(envExample).toContain('BABEL_NODE_MAX_OLD_SPACE_MB=64');
+        expect(envExample).toContain('BABEL_NODE_MAX_SEMI_SPACE_MB=4');
         expect(envExample).toContain('Required for VPS/Docker deployments');
     });
 });

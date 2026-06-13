@@ -2,35 +2,15 @@ import { describe, expect, it, vi } from 'vitest';
 import { TranslationCache } from '../src/modules/translation/cache.js';
 import { CooldownManager } from '../src/modules/translation/cooldown.js';
 import { applyConfigUpdateEffects } from '../src/modules/config/config-runtime-effects.js';
+import { DEFAULT_STORE_DATA } from '../src/persistence/store-defaults.js';
 import type { StoreData } from '../src/shared/types.js';
 
 function createConfig(overrides: Partial<StoreData> = {}): StoreData {
     return {
+        ...DEFAULT_STORE_DATA,
         vertexAiApiKey: 'key',
         gcpProject: 'project',
-        gcpLocation: 'global',
-        geminiModel: 'gemini-2.5-flash-lite',
-        allowedGuildIds: [],
-        cooldownSeconds: 5,
-        cacheMaxSize: 2000,
         setupComplete: true,
-        inputPricePerMillion: 0,
-        outputPricePerMillion: 0,
-        dailyBudgetUsd: 0,
-        tokenUsage: null,
-        usageHistory: [],
-        translationPrompt: '',
-        userLanguagePrefs: {},
-        maxInputLength: 2000,
-        maxOutputTokens: 1000,
-        translationMaxConcurrent: 4,
-        translationMaxGlobalQueue: 25,
-        translationMaxGuildQueue: 5,
-        translationMaxUserOutstanding: 1,
-        translationMaxQueueWaitMs: 30000,
-        guildBudgets: {},
-        guildTokenUsage: {},
-        guildUsageHistory: {},
         ...overrides,
     };
 }
@@ -77,6 +57,30 @@ describe('applyConfigUpdateEffects', () => {
 
         expect(result.cacheCleared).toBe(true);
         expect(clearSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('should clear cache and reset provider state when provider connection settings change', () => {
+        const cache = new TranslationCache(100);
+        const cooldown = new CooldownManager(5);
+        const clearSpy = vi.spyOn(cache, 'clear');
+        const resetProviderState = vi.fn();
+
+        const result = applyConfigUpdateEffects(
+            createConfig({
+                openaiBaseUrl: 'https://old-openai.example',
+                openaiModel: 'gpt-old',
+            }),
+            {
+                openaiBaseUrl: 'https://new-openai.example',
+                openaiModel: 'gpt-new',
+            },
+            { cache, cooldown, resetProviderState },
+        );
+
+        expect(result.cacheCleared).toBe(true);
+        expect(clearSpy).toHaveBeenCalledTimes(1);
+        expect(resetProviderState).toHaveBeenCalledTimes(1);
+        expect(result.changedKeys).toEqual(['openaiBaseUrl', 'openaiModel']);
     });
 
     it('should treat input length and daily budget as read-on-demand settings', () => {

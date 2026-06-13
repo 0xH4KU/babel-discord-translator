@@ -16,6 +16,7 @@ import { userBudgetRepository } from '../usage/user-budget-repository.js';
 import { userPreferenceRepository } from '../translation/user-preference-repository.js';
 import { guildGlossaryRepository } from '../translation/guild-glossary-repository.js';
 import { applyConfigUpdateEffects } from '../config/config-runtime-effects.js';
+import { resetTranslationProviderState } from '../translation/translate.js';
 import { appLogger } from '../../shared/structured-logger.js';
 import { dashboardMessages } from '../../shared/messages/dashboard-messages.js';
 import { getVersionMetadataWithUpdate } from '../../shared/version.js';
@@ -372,7 +373,11 @@ export function createDashboardApp({
         }
 
         const currentConfig = configRepository.getDashboardConfig();
-        const effects = applyConfigUpdateEffects(currentConfig, sanitized, { cache, cooldown });
+        const effects = applyConfigUpdateEffects(currentConfig, sanitized, {
+            cache,
+            cooldown,
+            resetProviderState: resetTranslationProviderState,
+        });
 
         configRepository.updateConfig(sanitized);
 

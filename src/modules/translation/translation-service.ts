@@ -155,6 +155,19 @@ function resolveQueueBusyMessage(reason: RuntimeLimitReason, messages: QueueBusy
     }
 }
 
+function buildProviderFingerprint(config: RuntimeConfig): string {
+    const mode = config.translationProvider || 'vertex';
+    const vertex = [
+        config.gcpProject,
+        config.gcpLocation || 'global',
+        config.geminiModel,
+        config.vertexAiApiKey,
+    ].join('|');
+    const openai = [config.openaiBaseUrl, config.openaiModel, config.openaiApiKey].join('|');
+
+    return [mode, vertex, openai].join('::');
+}
+
 export function createTranslationService({
     cache,
     cooldown,
@@ -298,6 +311,7 @@ export function createTranslationService({
                 sourceText: originalText,
                 targetLanguage,
                 geminiModel: runtimeConfig.geminiModel,
+                providerFingerprint: buildProviderFingerprint(runtimeConfig),
                 prompt,
                 maxOutputTokens: runtimeConfig.maxOutputTokens || 1000,
                 glossaryVersion,

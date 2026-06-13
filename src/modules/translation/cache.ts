@@ -1,11 +1,12 @@
 import crypto from 'crypto';
 
-export const TRANSLATION_CACHE_SCHEMA_VERSION = 'v2';
+export const TRANSLATION_CACHE_SCHEMA_VERSION = 'v3';
 
 export interface TranslationCacheKeyInput {
     sourceText: string;
     targetLanguage: string;
     geminiModel: string;
+    providerFingerprint?: string;
     prompt: string;
     maxOutputTokens: number;
     glossaryVersion?: string;
@@ -19,6 +20,7 @@ export function buildTranslationCacheKey({
     sourceText,
     targetLanguage,
     geminiModel,
+    providerFingerprint = geminiModel,
     prompt,
     maxOutputTokens,
     glossaryVersion = '',
@@ -28,7 +30,7 @@ export function buildTranslationCacheKey({
         TRANSLATION_CACHE_SCHEMA_VERSION,
         hashCachePart(sourceText),
         targetLanguage,
-        geminiModel,
+        hashCachePart(providerFingerprint),
         maxOutputTokens,
         hashCachePart(prompt),
         hashCachePart(glossaryVersion),

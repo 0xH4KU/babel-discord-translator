@@ -92,6 +92,10 @@ function createStoreMock(overrides: Partial<StoreData> = {}) {
             translationMaxGuildQueue: data.translationMaxGuildQueue,
             translationMaxUserOutstanding: data.translationMaxUserOutstanding,
             translationMaxQueueWaitMs: data.translationMaxQueueWaitMs,
+            openaiApiKey: data.openaiApiKey,
+            openaiBaseUrl: data.openaiBaseUrl,
+            openaiModel: data.openaiModel,
+            translationProvider: data.translationProvider,
         })),
         isSetupComplete: vi.fn((): boolean => data.setupComplete),
     };
@@ -352,6 +356,58 @@ describe('TranslationService', () => {
             translationCacheHitsTotal: 1,
             translationCacheHitRate: 0.5,
         });
+    });
+
+    it('should separate cached translations by provider connection fingerprint', async () => {
+        const translator = vi
+            .fn()
+            .mockResolvedValueOnce({
+                text: 'first model translation',
+                inputTokens: 20,
+                outputTokens: 10,
+            })
+            .mockResolvedValueOnce({
+                text: 'second model translation',
+                inputTokens: 22,
+                outputTokens: 11,
+            });
+        const { service, configStore } = createService({
+            translator,
+            storeOverrides: {
+                translationProvider: 'openai',
+                openaiBaseUrl: 'https://openai.example',
+                openaiModel: 'gpt-first',
+            },
+        });
+
+        const first = await service.process({
+            command: 'translate',
+            commandLabel: '/translate',
+            guildId: 'guild-1',
+            guildName: 'Test Guild',
+            userId: 'user1',
+            userTag: 'user#0001',
+            locale: 'ko',
+            text: 'Hello world',
+            targetLanguageOption: 'ko',
+        });
+        configStore.data.openaiModel = 'gpt-second';
+        const second = await service.process({
+            command: 'translate',
+            commandLabel: '/translate',
+            guildId: 'guild-1',
+            guildName: 'Test Guild',
+            userId: 'user2',
+            userTag: 'user#0002',
+            locale: 'ko',
+            text: 'Hello world',
+            targetLanguageOption: 'ko',
+        });
+
+        expect(first.status).toBe('success');
+        expect(second.status).toBe('success');
+        expect(second.status === 'success' ? second.cached : true).toBe(false);
+        expect(translator).toHaveBeenCalledTimes(2);
     });
 
     it('should include per-guild glossary entries in translator options and cache keys', async () => {
