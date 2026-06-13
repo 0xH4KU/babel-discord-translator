@@ -148,4 +148,68 @@ describe('TranslationRuntimeLimiter', () => {
         gate.resolve();
         await first;
     });
+
+    it('should release user and guild counters when queued reservations are cancelled', () => {
+        const limiter = new TranslationRuntimeLimiter({
+            maxConcurrent: 1,
+            maxGlobalQueue: 2,
+            maxGuildQueue: 1,
+            maxUserOutstanding: 1,
+        });
+        const firstAdmission = limiter.acquire({ userId: 'user-1', guildId: 'guild-1' });
+        const secondAdmission = limiter.acquire({ userId: 'user-2', guildId: 'guild-1' });
+
+        expect(firstAdmission.accepted).toBe(true);
+        expect(secondAdmission.accepted).toBe(true);
+        if (!firstAdmission.accepted || !secondAdmission.accepted) {
+            throw new Error('Expected reservations to be accepted');
+        }
+
+        secondAdmission.reservation.cancel();
+
+        const replacement = limiter.acquire({ userId: 'user-2', guildId: 'guild-1' });
+        expect(replacement.accepted).toBe(true);
+        expect(limiter.snapshot().queued).toBe(1);
+
+        if (replacement.accepted) {
+            replacement.reservation.cancel();
+        }
+        firstAdmission.reservation.cancel();
+    });
+
+    it('should skip cancelled queued entries and activate the next queued entry', async () => {
+        const limiter = new TranslationRuntimeLimiter({
+            maxConcurrent: 1,
+            maxGlobalQueue: 3,
+            maxGuildQueue: 3,
+            maxUserOutstanding: 1,
+        });
+        const gate = deferred<void>();
+        const firstAdmission = limiter.acquire({ userId: 'user-1', guildId: 'guild-1' });
+        const secondAdmission = limiter.acquire({ userId: 'user-2', guildId: 'guild-1' });
+        const thirdAdmission = limiter.acquire({ userId: 'user-3', guildId: 'guild-1' });
+        const order: string[] = [];
+
+        if (!firstAdmission.accepted || !secondAdmission.accepted || !thirdAdmission.accepted) {
+            throw new Error('Expected reservations to be accepted');
+        }
+
+        const first = firstAdmission.reservation.run(async () => {
+            await gate.promise;
+        });
+        secondAdmission.reservation.cancel();
+        const third = thirdAdmission.reservation.run(async () => {
+            order.push('third');
+        });
+
+        gate.resolve();
+        await first;
+        await third;
+
+        expect(order).toEqual(['third']);
+        expect(limiter.snapshot()).toMatchObject({
+            inflight: 0,
+            queued: 0,
+        });
+    });
 });
