@@ -204,6 +204,7 @@ import {
     startDashboardServer,
     stopDashboardApp,
 } from '../src/modules/dashboard/dashboard.js';
+import { createHealthDashboardApp } from '../src/modules/dashboard/health-dashboard.js';
 import { resolveDashboardMode } from '../src/modules/dashboard/dashboard-mode.js';
 import { InMemorySessionRepository } from '../src/modules/dashboard/auth/in-memory-session-repository.js';
 import { TranslationCache } from '../src/modules/translation/cache.js';
@@ -531,6 +532,70 @@ describe('Dashboard API', () => {
         expect(health.body!.live).toBe(true);
         expect(health.body!.ready).toBe(true);
         expect(health.body!.strategy).toBeDefined();
+    });
+
+    it('should expose health-only dashboard endpoints without full dashboard API routes', async () => {
+        const healthOnlyApp = createHealthDashboardApp({
+            cache,
+            metrics,
+            runtimeLimiter,
+            healthCheck,
+            healthProbeCacheTtlMs: 0,
+        });
+        const healthOnlyServer = startDashboardServer(healthOnlyApp, 0);
+
+        try {
+            const live = await request(healthOnlyServer, 'GET', '/livez');
+            expect(live.status).toBe(200);
+            expect(live.body!.live).toBe(true);
+
+            const ready = await request(healthOnlyServer, 'GET', '/readyz');
+            expect(ready.status).toBe(200);
+            expect(ready.body!.ready).toBe(true);
+
+            const health = await request(healthOnlyServer, 'GET', '/healthz');
+            expect(health.status).toBe(200);
+            expect(health.body!.live).toBe(true);
+            expect(health.body!.ready).toBe(true);
+            expect(health.body!.strategy).toBeDefined();
+
+            const metricsResponse = await requestText(healthOnlyServer, 'GET', '/metrics');
+            expect(metricsResponse.status).toBe(200);
+            expect(metricsResponse.text).toContain('babel_translations_total');
+
+            const stats = await requestText(healthOnlyServer, 'GET', '/api/stats');
+            expect(stats.status).toBe(404);
+        } finally {
+            healthOnlyServer.close();
+            stopDashboardApp(healthOnlyApp);
+        }
+    });
+
+    it('should expose health-only metrics and health with optional runtime deps omitted', async () => {
+        const fallbackApp = createHealthDashboardApp({
+            cache,
+            healthCheck,
+            healthProbeCacheTtlMs: 0,
+        });
+        const fallbackServer = startDashboardServer(fallbackApp, 0);
+
+        try {
+            const health = await request(fallbackServer, 'GET', '/healthz');
+            expect(health.status).toBe(200);
+            expect(health.body!.live).toBe(true);
+            expect(health.body!.ready).toBe(true);
+            expect((health.body!.metrics as Record<string, unknown>).translationFailureRate).toBe(
+                0,
+            );
+
+            const metricsResponse = await requestText(fallbackServer, 'GET', '/metrics');
+            expect(metricsResponse.status).toBe(200);
+            expect(metricsResponse.text).toContain('babel_translations_total 0');
+            expect(metricsResponse.text).toContain('babel_runtime_queue_depth 0');
+        } finally {
+            fallbackServer.close();
+            stopDashboardApp(fallbackApp);
+        }
     });
 
     it('should bind the dashboard server to the configured host', () => {
