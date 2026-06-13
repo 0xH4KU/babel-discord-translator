@@ -204,6 +204,7 @@ import {
     startDashboardServer,
     stopDashboardApp,
 } from '../src/modules/dashboard/dashboard.js';
+import { resolveDashboardMode } from '../src/modules/dashboard/dashboard-mode.js';
 import { InMemorySessionRepository } from '../src/modules/dashboard/auth/in-memory-session-repository.js';
 import { TranslationCache } from '../src/modules/translation/cache.js';
 import { CooldownManager } from '../src/modules/translation/cooldown.js';
@@ -319,6 +320,27 @@ function createMinimalClient(): Client {
         },
     } as unknown as Client;
 }
+
+describe('dashboard mode parsing', () => {
+    it('defaults to full dashboard mode', () => {
+        expect(resolveDashboardMode(undefined)).toBe('full');
+        expect(resolveDashboardMode('')).toBe('full');
+    });
+
+    it('accepts full, health-only, and off modes', () => {
+        expect(resolveDashboardMode('full')).toBe('full');
+        expect(resolveDashboardMode('health-only')).toBe('health-only');
+        expect(resolveDashboardMode('off')).toBe('off');
+    });
+
+    it('trims and lowercases dashboard mode values', () => {
+        expect(resolveDashboardMode(' HEALTH-ONLY ')).toBe('health-only');
+    });
+
+    it('falls back to full for unknown dashboard mode values', () => {
+        expect(resolveDashboardMode('minimal')).toBe('full');
+    });
+});
 
 describe('Dashboard API', () => {
     let app: ReturnType<typeof createDashboardApp>;
