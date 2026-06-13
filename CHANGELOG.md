@@ -2,9 +2,15 @@
 
 ## Unreleased
 
-- Added the Babel Guild and Babel Pocket monorepo app split so server/guild install and user-install products share translation, provider, cache, usage, metrics, logging, and persistence foundations.
-- Added app-specific command registration scripts and workspace builds for Guild and Pocket deployments.
-- Added user-install persistence, access control, pending owner tracking, and per-user budget/usage support for Babel Pocket.
+## 0.2.0 - 2026-06-13
+
+- Added combined mode with one Node.js process, two Discord clients, one SQLite database, and separate dashboard entrypoints: `/` shows a product chooser, `/guild` manages Babel Guild, and `/pocket` manages Babel Pocket.
+- Added Railway and Docker deployment guidance for `BABEL_APP=combined`, profile-specific Discord tokens, persistent SQLite volumes, and low-cost shared-fate hosting.
+- Added health-only dashboard mode and Docker memory tuning for constrained hosts.
+- Improved runtime performance with in-flight provider call deduplication, cached runtime config reads, queue/counter cleanup, prepared SQLite statement reuse, daily usage fast paths, and bounded Discord.js cache settings.
+- Improved provider resilience by persisting circuit breaker state and avoiding extra exhausted-retry requests.
+- Added OpenAI-compatible provider, config validation, dashboard capability, Discord profile, message extraction, command registration, and deployment regression coverage.
+- Updated the read-only GitHub Pages dashboard demos for Guild and Pocket, including combined chooser-compatible frontend assets.
 
 ## 0.1.2 - 2026-06-01
 

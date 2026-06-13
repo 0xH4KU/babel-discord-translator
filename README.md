@@ -32,7 +32,7 @@ Right-click any message → **Apps** → **Babel** or **Babel Pocket** → get a
 [![Node.js](https://img.shields.io/badge/Node.js-22.12%2B-green.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
 [![discord.js](https://img.shields.io/badge/discord.js-v14-blue.svg)](https://discord.js.org)
-[![Version](https://img.shields.io/badge/version-0.1.3-brightgreen.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-0.2.0-brightgreen.svg)](package.json)
 [![CI](https://github.com/0xH4KU/babel-discord-translator/actions/workflows/ci.yml/badge.svg)](https://github.com/0xH4KU/babel-discord-translator/actions)
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/babel-discord-tran-1?referralCode=euhy-o&utm_medium=integration&utm_source=template&utm_campaign=generic)
