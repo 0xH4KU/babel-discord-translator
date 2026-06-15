@@ -370,12 +370,12 @@ describe('Dashboard API', () => {
         });
         healthCheck = vi.fn().mockResolvedValue({ healthy: true, latencyMs: 24 });
         versionCheck = vi.fn().mockResolvedValue({
-            version: '0.1.3',
+            version: '0.2.0',
             repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator',
             update: {
                 status: 'current',
-                latestVersion: '0.1.3',
-                latestUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases/tag/v0.1.3',
+                latestVersion: '0.2.0',
+                latestUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases/tag/v0.2.0',
             },
         });
         const cooldown = new CooldownManager(5);
@@ -991,12 +991,12 @@ describe('Dashboard API', () => {
 
         expect(res.status).toBe(200);
         expect(res.body).toEqual({
-            version: '0.1.3',
+            version: '0.2.0',
             repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator',
             update: {
                 status: 'current',
-                latestVersion: '0.1.3',
-                latestUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases/tag/v0.1.3',
+                latestVersion: '0.2.0',
+                latestUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases/tag/v0.2.0',
             },
         });
         expect(versionCheck).toHaveBeenCalled();
@@ -1005,12 +1005,12 @@ describe('Dashboard API', () => {
     it('should force-refresh release metadata for authenticated admins with CSRF', async () => {
         versionCheck.mockClear();
         versionCheck.mockResolvedValueOnce({
-            version: '0.1.3',
+            version: '0.2.0',
             repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator',
             update: {
                 status: 'outdated',
-                latestVersion: '0.1.3',
-                latestUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases/tag/v0.1.3',
+                latestVersion: '0.2.0',
+                latestUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases/tag/v0.2.0',
             },
         });
 
@@ -1021,12 +1021,12 @@ describe('Dashboard API', () => {
 
         expect(res.status).toBe(200);
         expect(res.body).toEqual({
-            version: '0.1.3',
+            version: '0.2.0',
             repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator',
             update: {
                 status: 'outdated',
-                latestVersion: '0.1.3',
-                latestUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases/tag/v0.1.3',
+                latestVersion: '0.2.0',
+                latestUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases/tag/v0.2.0',
             },
         });
         expect(versionCheck).toHaveBeenCalledWith({ forceRefresh: true });
@@ -1078,7 +1078,7 @@ describe('Dashboard API', () => {
             expect(res.status).toBe(200);
             expect(res.headers['content-type']).toContain('text/plain');
             expect(res.text).toContain(
-                'babel_app_version_info{version="0.1.3",repository_url="https://github.com/0xH4KU/babel-discord-translator"} 1',
+                'babel_app_version_info{version="0.2.0",repository_url="https://github.com/0xH4KU/babel-discord-translator"} 1',
             );
             expect(res.text).toContain('babel_translations_total');
             expect(res.text).toContain('babel_translation_failures_total');
@@ -1884,6 +1884,118 @@ describe('Dashboard API', () => {
                     pendingUserInstallOwners: true,
                 },
             });
+        } finally {
+            stopDashboardApp(combinedApp);
+            combinedServer.close();
+        }
+    });
+
+    it('should expose Guild-scoped capabilities for combined /guild/api/capabilities', async () => {
+        const combinedApp = createDashboardApp({
+            cache,
+            cooldown: new CooldownManager(5),
+            log,
+            client: createMinimalClient(),
+            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
+            metrics,
+            runtimeLimiter,
+            profile: BABEL_GUILD_PROFILE,
+            profiles: [BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE],
+            sessionRepository: new InMemorySessionRepository(),
+            userProfileRepository,
+        });
+        const combinedServer = startDashboardServer(combinedApp, 0);
+
+        try {
+            const login = await request(combinedServer, 'POST', '/api/login', {
+                body: { password: 'test-pass-123' },
+            });
+            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
+            const res = await requestText(combinedServer, 'GET', '/guild/api/capabilities', {
+                cookie,
+            });
+
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.text)).toMatchObject({
+                profile: { id: 'babel-guild', productName: 'Babel Guild' },
+                capabilities: {
+                    guildAccess: true,
+                    userAccess: false,
+                    guildGlossary: true,
+                    pendingUserInstallOwners: false,
+                },
+            });
+        } finally {
+            stopDashboardApp(combinedApp);
+            combinedServer.close();
+        }
+    });
+
+    it('should expose Pocket-scoped capabilities for combined /pocket/api/capabilities', async () => {
+        const combinedApp = createDashboardApp({
+            cache,
+            cooldown: new CooldownManager(5),
+            log,
+            client: createMinimalClient(),
+            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
+            metrics,
+            runtimeLimiter,
+            profile: BABEL_GUILD_PROFILE,
+            profiles: [BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE],
+            sessionRepository: new InMemorySessionRepository(),
+            userProfileRepository,
+        });
+        const combinedServer = startDashboardServer(combinedApp, 0);
+
+        try {
+            const login = await request(combinedServer, 'POST', '/api/login', {
+                body: { password: 'test-pass-123' },
+            });
+            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
+            const res = await requestText(combinedServer, 'GET', '/pocket/api/capabilities', {
+                cookie,
+            });
+
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.text)).toMatchObject({
+                profile: { id: 'babel-pocket', productName: 'Babel Pocket' },
+                capabilities: {
+                    guildAccess: false,
+                    userAccess: true,
+                    guildGlossary: false,
+                    pendingUserInstallOwners: true,
+                },
+            });
+        } finally {
+            stopDashboardApp(combinedApp);
+            combinedServer.close();
+        }
+    });
+
+    it('should serve dashboard shell for combined /guild and /pocket paths', async () => {
+        const combinedApp = createDashboardApp({
+            cache,
+            cooldown: new CooldownManager(5),
+            log,
+            client: createMinimalClient(),
+            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
+            metrics,
+            runtimeLimiter,
+            profile: BABEL_GUILD_PROFILE,
+            profiles: [BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE],
+            sessionRepository: new InMemorySessionRepository(),
+            userProfileRepository,
+        });
+        const combinedServer = startDashboardServer(combinedApp, 0);
+
+        try {
+            for (const path of ['/guild', '/pocket']) {
+                const res = await requestText(combinedServer, 'GET', path);
+
+                expect(res.status).toBe(200);
+                expect(res.text).toContain('id="login-view"');
+                expect(res.text).toContain('id="profile-select-view"');
+            }
         } finally {
             stopDashboardApp(combinedApp);
             combinedServer.close();

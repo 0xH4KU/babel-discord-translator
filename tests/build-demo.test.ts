@@ -26,10 +26,11 @@ describe('build-dashboard-demo', () => {
             [
                 '<!doctype html>',
                 '<html><head><title>Babel — Dashboard</title></head>',
+                '<link rel="stylesheet" href="/css/responsive.css" />',
                 '<body>',
                 '<div id="dashboard-view"></div>',
-                '<script src="js/utils.js"></script>',
-                '<script src="js/app.js"></script>',
+                '<script src="/js/utils.js"></script>',
+                '<script src="/js/app.js"></script>',
                 '</body></html>',
             ].join('\n'),
         );
@@ -47,6 +48,9 @@ describe('build-dashboard-demo', () => {
 
         const guildHtml = readFileSync(join(demoDir, 'guild', 'index.html'), 'utf-8');
         expect(guildHtml).toContain('<title>Babel Guild — Dashboard Demo</title>');
+        expect(guildHtml).toContain('<link rel="stylesheet" href="css/responsive.css" />');
+        expect(guildHtml).not.toContain('href="/css/');
+        expect(guildHtml).not.toContain('src="/js/');
         expect(guildHtml).toContain('<script src="demo/demo-api.js"></script>');
         expect(guildHtml).toContain('<script src="demo/demo-readonly.js"></script>');
         expect(guildHtml).toContain('<link rel="stylesheet" href="demo/demo.css" />');

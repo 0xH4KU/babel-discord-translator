@@ -656,12 +656,12 @@ const DEMO_GLOSSARY = {
 };
 
 const DEMO_VERSION = {
-    version: '0.1.3',
+    version: '0.2.0',
     repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator',
     update: {
         status: 'current',
-        latestVersion: '0.1.3',
-        latestUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases/tag/v0.1.3',
+        latestVersion: '0.2.0',
+        latestUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases/tag/v0.2.0',
     },
 };
 
@@ -861,7 +861,10 @@ function createDemoApiJs(variant: DemoVariant): string {
 }
 
 function injectDemoAssets(html: string, variant: DemoVariant): string {
-    const withTitle = html
+    const relativeHtml = html
+        .replaceAll('href="/css/', 'href="css/')
+        .replaceAll('src="/js/', 'src="js/');
+    const withTitle = relativeHtml
         .replace('<title>Babel — Dashboard</title>', `<title>${variant.title}</title>`)
         .replace(
             '<script src="js/utils.js"></script>',

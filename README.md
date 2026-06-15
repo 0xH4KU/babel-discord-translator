@@ -32,7 +32,7 @@ Right-click any message → **Apps** → **Babel** or **Babel Pocket** → get a
 [![Node.js](https://img.shields.io/badge/Node.js-22.12%2B-green.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
 [![discord.js](https://img.shields.io/badge/discord.js-v14-blue.svg)](https://discord.js.org)
-[![Version](https://img.shields.io/badge/version-0.1.3-brightgreen.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-0.2.0-brightgreen.svg)](package.json)
 [![CI](https://github.com/0xH4KU/babel-discord-translator/actions/workflows/ci.yml/badge.svg)](https://github.com/0xH4KU/babel-discord-translator/actions)
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/babel-discord-tran-1?referralCode=euhy-o&utm_medium=integration&utm_source=template&utm_campaign=generic)
@@ -284,6 +284,8 @@ All configuration is managed through the web dashboard. The `.env` file only nee
 
 If `DASHBOARD_PASSWORD` is omitted, Babel warns in local development and test environments, but exits during startup when `NODE_ENV=production`.
 
+Set `BABEL_APP=combined` to run both Babel Guild and Babel Pocket in one process. In combined mode, the combined dashboard root `/` shows a product chooser; `/guild` opens the Babel Guild dashboard; `/pocket` opens the Babel Pocket dashboard.
+
 ### Migration & Rollback
 
 Babel auto-imports `data/config.json` into SQLite on first startup. Manual scripts:
@@ -508,14 +510,14 @@ This compares `configRepository.getRuntimeConfig()` against `store.getAll()` ove
 
 ### Railway
 
-Babel is Railway-ready for a one-click self-host template: `railway.json` configures the `/livez` healthcheck, Railway's `PORT` is respected automatically, and `/app/data` can be mounted as a volume for SQLite. One Railway template can deploy either Babel Guild or Babel Pocket by exposing `BABEL_APP` as a service variable; keep `guild` as the default for existing users and set `pocket` for user-install deployments.
+Babel is Railway-ready for a one-click self-host template: `railway.json` configures the `/livez` healthcheck, Railway's `PORT` is respected automatically, and `/app/data` can be mounted as a volume for SQLite. One Railway template can deploy either Babel Guild or Babel Pocket by exposing `BABEL_APP` as a service variable; keep `guild` as the default for existing users and set `pocket` for user-install deployments. Set `BABEL_APP=combined` to run both products in one service; the combined dashboard root `/` shows a product chooser, `/guild` opens the Babel Guild dashboard, and `/pocket` opens the Babel Pocket dashboard.
 
 Use these template variables:
 
 | Variable             | Value                                                |
 | -------------------- | ---------------------------------------------------- |
 | `DISCORD_TOKEN`      | Your Discord bot token                               |
-| `BABEL_APP`          | `guild` for Babel Guild or `pocket` for Babel Pocket |
+| `BABEL_APP`          | `guild` for Babel Guild, `pocket` for Babel Pocket, or `combined` for both |
 | `DASHBOARD_PASSWORD` | A strong random password                             |
 | `BABEL_DB_PATH`      | `/app/data/babel.sqlite`                             |
 | `NODE_ENV`           | `production`                                         |

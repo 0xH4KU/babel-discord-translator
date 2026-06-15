@@ -28,7 +28,7 @@ Select the app profile before deploying or registering Discord commands. For the
 
 Babel Guild remains the default for existing Railway template users. Babel Pocket uses the same image and persistence layer, but expects a Discord application configured for User Install.
 
-Combined mode is intended for low-cost Railway deployments where Guild and Pocket can share fate. The root process starts both Discord clients and one dashboard. The explicit app entrypoints remain available for local work and isolated deployments:
+Combined mode is intended for low-cost Railway deployments where Guild and Pocket can share fate. The root process starts both Discord clients and one dashboard. In combined mode, the combined dashboard root `/` shows a product chooser; `/guild` opens the Babel Guild dashboard; `/pocket` opens the Babel Pocket dashboard. The explicit app entrypoints remain available for local work and isolated deployments:
 
 ```bash
 npm run start:guild

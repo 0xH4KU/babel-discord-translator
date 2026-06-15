@@ -1,4 +1,9 @@
-import express, { type NextFunction, type Request, type Response } from 'express';
+import express, {
+    type NextFunction,
+    type Request,
+    type RequestHandler,
+    type Response,
+} from 'express';
 import http from 'http';
 import rateLimit from 'express-rate-limit';
 import { createEmptyAppMetricsSnapshot } from '../../shared/app-metrics.js';
@@ -22,8 +27,16 @@ import { dashboardMessages } from '../../shared/messages/dashboard-messages.js';
 import { getVersionMetadataWithUpdate } from '../../shared/version.js';
 import { DiscordUserProfileRepository } from './discord-user-profile-repository.js';
 import { resolveDiscordUserProfiles } from './discord-user-profile-resolver.js';
-import { BABEL_GUILD_PROFILE } from '../../apps/app-profile.js';
-import { getCombinedDashboardCapabilities } from './capabilities.js';
+import {
+    BABEL_GUILD_PROFILE,
+    BABEL_POCKET_PROFILE,
+    type AppProfile,
+} from '../../apps/app-profile.js';
+import {
+    getCombinedDashboardCapabilities,
+    getDashboardCapabilities,
+    type DashboardCapabilities,
+} from './capabilities.js';
 import { PendingUserInstallOwnerRepository } from './pending-user-install-owner-repository.js';
 import { validateConfigUpdate } from './config-validation.js';
 import { sanitizeGlossaryInput } from './glossary-input.js';
@@ -40,6 +53,15 @@ import type { DashboardDeps } from '../../shared/types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BYTES_PER_MB = 1024 * 1024;
+
+interface DashboardApiScope {
+    profile: AppProfile;
+    profiles: AppProfile[];
+    capabilities: DashboardCapabilities;
+    client: DashboardDeps['client'];
+}
+
+type DashboardCapabilityName = keyof DashboardCapabilities;
 
 function serializeProfile(profile: NonNullable<DashboardDeps['profile']>): {
     id: string;
@@ -89,6 +111,7 @@ function asyncHandler(
 declare module 'express-serve-static-core' {
     interface Locals {
         disposeDashboardApp?: () => void;
+        dashboardScope?: DashboardApiScope;
     }
 }
 
@@ -118,6 +141,36 @@ export function createDashboardApp({
     const guildClient = clients?.['babel-guild'] ?? client;
     const userInstallClient = clients?.['babel-pocket'] ?? client;
     const capabilities = getCombinedDashboardCapabilities(profiles);
+    const hasGuildProfile = profiles.some((candidate) => candidate.id === 'babel-guild');
+    const hasPocketProfile = profiles.some((candidate) => candidate.id === 'babel-pocket');
+    const isCombinedDashboard = hasGuildProfile && hasPocketProfile;
+    const rootScope: DashboardApiScope = {
+        profile,
+        profiles,
+        capabilities,
+        client: profile.id === 'babel-pocket' ? userInstallClient : guildClient,
+    };
+    const guildScope: DashboardApiScope = {
+        profile:
+            profiles.find((candidate) => candidate.id === 'babel-guild') ?? BABEL_GUILD_PROFILE,
+        profiles: [BABEL_GUILD_PROFILE],
+        capabilities: getDashboardCapabilities(BABEL_GUILD_PROFILE),
+        client: guildClient,
+    };
+    const pocketScope: DashboardApiScope = {
+        profile:
+            profiles.find((candidate) => candidate.id === 'babel-pocket') ?? BABEL_POCKET_PROFILE,
+        profiles: [BABEL_POCKET_PROFILE],
+        capabilities: getDashboardCapabilities(BABEL_POCKET_PROFILE),
+        client: userInstallClient,
+    };
+    const apiScopes = isCombinedDashboard
+        ? [
+              { prefix: '/api', scope: rootScope },
+              { prefix: '/guild/api', scope: guildScope },
+              { prefix: '/pocket/api', scope: pocketScope },
+          ]
+        : [{ prefix: '/api', scope: rootScope }];
     const config = getConfig();
     const auth = createDashboardAuth({
         password: config.dashboardPassword,
@@ -140,7 +193,54 @@ export function createDashboardApp({
         legacyHeaders: false,
     });
 
-    app.post('/api/login', loginLimiter, (req: Request, res: Response) => {
+    const getScope = (res: Response): DashboardApiScope => res.locals.dashboardScope ?? rootScope;
+    const setScope =
+        (scope: DashboardApiScope): RequestHandler =>
+        (_req, res, next) => {
+            res.locals.dashboardScope = scope;
+            next();
+        };
+    const requireDashboardCapability =
+        (capability: DashboardCapabilityName): RequestHandler =>
+        (_req, res, next) => {
+            if (!getScope(res).capabilities[capability]) {
+                res.status(404).json({ error: 'Not found' });
+                return;
+            }
+
+            next();
+        };
+    const registerApiRoute = (
+        method: 'get' | 'post' | 'delete',
+        path: string,
+        handlers: RequestHandler[],
+    ): void => {
+        for (const { prefix, scope } of apiScopes) {
+            app[method](prefix + path, setScope(scope), ...handlers);
+        }
+    };
+    const api = {
+        get(path: string, ...handlers: RequestHandler[]): void {
+            registerApiRoute('get', path, handlers);
+        },
+        post(path: string, ...handlers: RequestHandler[]): void {
+            registerApiRoute('post', path, handlers);
+        },
+        delete(path: string, ...handlers: RequestHandler[]): void {
+            registerApiRoute('delete', path, handlers);
+        },
+        getIf(capability: DashboardCapabilityName, path: string, ...handlers: RequestHandler[]) {
+            registerApiRoute('get', path, [requireDashboardCapability(capability), ...handlers]);
+        },
+        postIf(capability: DashboardCapabilityName, path: string, ...handlers: RequestHandler[]) {
+            registerApiRoute('post', path, [requireDashboardCapability(capability), ...handlers]);
+        },
+        deleteIf(capability: DashboardCapabilityName, path: string, ...handlers: RequestHandler[]) {
+            registerApiRoute('delete', path, [requireDashboardCapability(capability), ...handlers]);
+        },
+    };
+
+    api.post('/login', loginLimiter, (req: Request, res: Response) => {
         const result = auth.login(req.body.password, req);
         if (!result.ok) {
             res.status(401).json({ error: dashboardMessages.auth.wrongPassword });
@@ -151,11 +251,11 @@ export function createDashboardApp({
         res.json({ ok: true, csrfToken: result.csrfToken });
     });
 
-    app.get('/api/auth/check', (req: Request, res: Response) => {
+    api.get('/auth/check', (req: Request, res: Response) => {
         res.json(auth.check(req));
     });
 
-    app.post('/api/logout', (req: Request, res: Response) => {
+    api.post('/logout', (req: Request, res: Response) => {
         res.setHeader('Set-Cookie', auth.logout(req).cookie);
         res.json({ ok: true });
     });
@@ -203,28 +303,29 @@ export function createDashboardApp({
         );
     });
 
-    app.get('/api/setup-status', auth.requireAuth, (_req: Request, res: Response) => {
+    api.get('/setup-status', auth.requireAuth, (_req: Request, res: Response) => {
         res.json({ complete: configRepository.isSetupComplete() });
     });
 
-    app.get('/api/capabilities', auth.requireAuth, (_req: Request, res: Response) => {
+    api.get('/capabilities', auth.requireAuth, (_req: Request, res: Response) => {
+        const scope = getScope(res);
         res.json({
-            profile: serializeProfile(profile),
-            profiles: profiles.map(serializeProfile),
-            capabilities,
+            profile: serializeProfile(scope.profile),
+            profiles: scope.profiles.map(serializeProfile),
+            capabilities: scope.capabilities,
         });
     });
 
-    app.get(
-        '/api/version',
+    api.get(
+        '/version',
         auth.requireAuth,
         asyncHandler(async (_req: Request, res: Response) => {
             res.json(await versionCheck());
         }),
     );
 
-    app.post(
-        '/api/version/refresh',
+    api.post(
+        '/version/refresh',
         auth.requireAuth,
         auth.requireCsrf,
         asyncHandler(async (_req: Request, res: Response) => {
@@ -232,12 +333,12 @@ export function createDashboardApp({
         }),
     );
 
-    app.get('/api/sessions', auth.requireAuth, (req: Request, res: Response) => {
+    api.get('/sessions', auth.requireAuth, (req: Request, res: Response) => {
         res.json({ sessions: auth.listSessions(req) });
     });
 
-    app.post(
-        '/api/sessions/revoke',
+    api.post(
+        '/sessions/revoke',
         auth.requireAuth,
         auth.requireCsrf,
         (req: Request, res: Response) => {
@@ -261,7 +362,9 @@ export function createDashboardApp({
         },
     );
 
-    app.get('/api/stats', auth.requireAuth, (_req: Request, res: Response) => {
+    api.get('/stats', auth.requireAuth, (_req: Request, res: Response) => {
+        const scope = getScope(res);
+        const scopedClient = scope.client;
         const stats = getStats();
         const cacheStats = cache.stats();
         const usageStats = usage.getStats();
@@ -274,29 +377,33 @@ export function createDashboardApp({
         const runtimeConfig = configRepository.getRuntimeConfig();
         const providerMode = runtimeConfig.translationProvider || 'vertex';
 
-        const guildIds = guildClient.guilds.cache.map((guild) => guild.id);
+        const guildIds = scope.capabilities.guildAccess
+            ? scopedClient.guilds.cache.map((guild) => guild.id)
+            : [];
         const guildBudgetConfigs = guildBudgetRepository.listBudgets();
         const guildStatsById = guildIds.length > 0 ? usage.getGuildStatsForGuilds(guildIds) : {};
-        const guildBudgetList = guildClient.guilds.cache.map((guild) => {
-            const guildCfg = guildBudgetConfigs[guild.id];
-            const hasCustom = Boolean(guildCfg && guildCfg.dailyBudgetUsd !== undefined);
-            const guildStats = guildStatsById[guild.id];
-            const scopedStats = hasCustom ? guildStats : usageStats;
-            const budget = hasCustom
-                ? (guildCfg?.dailyBudgetUsd ?? 0)
-                : (scopedStats?.dailyBudget ?? usageStats.dailyBudget);
-            const totalCost = scopedStats?.totalCost ?? 0;
-            const requests = scopedStats?.requests ?? 0;
-            return {
-                id: guild.id,
-                name: guild.name,
-                budget,
-                isCustom: hasCustom,
-                totalCost,
-                requests,
-                exceeded: budget > 0 && totalCost >= budget,
-            };
-        });
+        const guildBudgetList = scope.capabilities.guildAccess
+            ? scopedClient.guilds.cache.map((guild) => {
+                  const guildCfg = guildBudgetConfigs[guild.id];
+                  const hasCustom = Boolean(guildCfg && guildCfg.dailyBudgetUsd !== undefined);
+                  const guildStats = guildStatsById[guild.id];
+                  const scopedStats = hasCustom ? guildStats : usageStats;
+                  const budget = hasCustom
+                      ? (guildCfg?.dailyBudgetUsd ?? 0)
+                      : (scopedStats?.dailyBudget ?? usageStats.dailyBudget);
+                  const totalCost = scopedStats?.totalCost ?? 0;
+                  const requests = scopedStats?.requests ?? 0;
+                  return {
+                      id: guild.id,
+                      name: guild.name,
+                      budget,
+                      isCustom: hasCustom,
+                      totalCost,
+                      requests,
+                      exceeded: budget > 0 && totalCost >= budget,
+                  };
+              })
+            : [];
         const vertexEnabled = providerModeIncludes(providerMode, 'vertex');
         const openAiEnabled = providerModeIncludes(providerMode, 'openai');
         const providers = {
@@ -337,9 +444,9 @@ export function createDashboardApp({
 
         res.json({
             bot: {
-                name: guildClient.user?.tag || client.user?.tag || 'Unknown',
+                name: scopedClient.user?.tag || client.user?.tag || 'Unknown',
                 avatar:
-                    guildClient.user?.displayAvatarURL({ size: 64 }) ||
+                    scopedClient.user?.displayAvatarURL({ size: 64 }) ||
                     client.user?.displayAvatarURL({ size: 64 }) ||
                     '',
                 uptime: Math.floor(process.uptime()),
@@ -349,7 +456,7 @@ export function createDashboardApp({
                     heapUsedMB,
                     externalMB,
                 },
-                guilds: guildClient.guilds.cache.size,
+                guilds: scope.capabilities.guildAccess ? scopedClient.guilds.cache.size : 0,
             },
             translations: {
                 total: stats.totalTranslations,
@@ -372,7 +479,7 @@ export function createDashboardApp({
         });
     });
 
-    app.get('/api/config', auth.requireAuth, (_req: Request, res: Response) => {
+    api.get('/config', auth.requireAuth, (_req: Request, res: Response) => {
         const cfg = configRepository.getDashboardConfig();
         res.json({
             ...cfg,
@@ -383,7 +490,7 @@ export function createDashboardApp({
         });
     });
 
-    app.post('/api/config', auth.requireAuth, auth.requireCsrf, (req: Request, res: Response) => {
+    api.post('/config', auth.requireAuth, auth.requireCsrf, (req: Request, res: Response) => {
         const { valid, error, sanitized } = validateConfigUpdate(req.body);
         if (!valid) {
             res.status(400).json({ error });
@@ -408,8 +515,9 @@ export function createDashboardApp({
         });
     });
 
-    app.get('/api/guilds', auth.requireAuth, (_req: Request, res: Response) => {
-        const guilds = guildClient.guilds.cache.map((g) => ({
+    api.getIf('guildAccess', '/guilds', auth.requireAuth, (_req: Request, res: Response) => {
+        const scope = getScope(res);
+        const guilds = scope.client.guilds.cache.map((g) => ({
             id: g.id,
             name: g.name,
             icon: g.iconURL({ size: 32 }) || '',
@@ -418,7 +526,7 @@ export function createDashboardApp({
         res.json(guilds);
     });
 
-    app.get('/api/usage/history', auth.requireAuth, (req: Request, res: Response) => {
+    api.get('/usage/history', auth.requireAuth, (req: Request, res: Response) => {
         const guildId = req.query.guildId as string | undefined;
         if (guildId) {
             res.json(usage.getGuildHistory(guildId));
@@ -427,9 +535,10 @@ export function createDashboardApp({
         }
     });
 
-    app.get('/api/guild-budgets', auth.requireAuth, (_req: Request, res: Response) => {
+    api.getIf('guildAccess', '/guild-budgets', auth.requireAuth, (_req: Request, res: Response) => {
+        const scope = getScope(res);
         const guildBudgets = guildBudgetRepository.listBudgets();
-        const guilds = guildClient.guilds.cache;
+        const guilds = scope.client.guilds.cache;
         const guildIds = guilds.map((guild) => guild.id);
         const usageStats = usage.getStats();
         const guildStatsById = guildIds.length > 0 ? usage.getGuildStatsForGuilds(guildIds) : {};
@@ -449,80 +558,77 @@ export function createDashboardApp({
         res.json(result);
     });
 
-    if (capabilities.userAccess) {
-        app.get(
-            '/api/user-budgets',
-            auth.requireAuth,
-            asyncHandler(async (_req: Request, res: Response) => {
-                const userBudgets = userBudgetRepository.listBudgets();
-                const cfg = configRepository.getDashboardConfig();
-                const allowedUserIds = new Set(cfg.allowedUserIds);
-                const pendingUserIds = new Set(pendingUserInstallOwnerRepository.listUserIds());
-                const userIds = [
-                    ...new Set([
-                        ...cfg.allowedUserIds,
-                        ...pendingUserIds,
-                        ...Object.keys(userBudgets),
-                    ]),
-                ];
-                const result: Record<
-                    string,
-                    { budget: number; isCustom: boolean; allowed: boolean; pending: boolean }
-                > = {};
+    api.getIf(
+        'userAccess',
+        '/user-budgets',
+        auth.requireAuth,
+        asyncHandler(async (_req: Request, res: Response) => {
+            const userBudgets = userBudgetRepository.listBudgets();
+            const cfg = configRepository.getDashboardConfig();
+            const allowedUserIds = new Set(cfg.allowedUserIds);
+            const pendingUserIds = new Set(pendingUserInstallOwnerRepository.listUserIds());
+            const userIds = [
+                ...new Set([...cfg.allowedUserIds, ...pendingUserIds, ...Object.keys(userBudgets)]),
+            ];
+            const result: Record<
+                string,
+                { budget: number; isCustom: boolean; allowed: boolean; pending: boolean }
+            > = {};
 
-                for (const userId of userIds) {
-                    const customBudget = userBudgets[userId];
-                    result[userId] = {
-                        budget: customBudget?.dailyBudgetUsd ?? cfg.defaultUserDailyBudgetUsd,
-                        isCustom: customBudget !== undefined,
-                        allowed: allowedUserIds.has(userId),
-                        pending: pendingUserIds.has(userId) && !allowedUserIds.has(userId),
-                    };
-                }
+            for (const userId of userIds) {
+                const customBudget = userBudgets[userId];
+                result[userId] = {
+                    budget: customBudget?.dailyBudgetUsd ?? cfg.defaultUserDailyBudgetUsd,
+                    isCustom: customBudget !== undefined,
+                    allowed: allowedUserIds.has(userId),
+                    pending: pendingUserIds.has(userId) && !allowedUserIds.has(userId),
+                };
+            }
 
-                const profiles = await resolveDiscordUserProfiles({
-                    client: userInstallClient,
-                    repository: userProfileRepository,
-                    userIds: Object.keys(result),
-                });
+            const profiles = await resolveDiscordUserProfiles({
+                client: userInstallClient,
+                repository: userProfileRepository,
+                userIds: Object.keys(result),
+            });
 
-                res.json({ budgets: result, profiles });
-            }),
-        );
+            res.json({ budgets: result, profiles });
+        }),
+    );
 
-        app.post(
-            '/api/user-budgets/:userId',
-            auth.requireAuth,
-            auth.requireCsrf,
-            (req: Request, res: Response) => {
-                const userId = String(req.params.userId ?? '').trim();
-                const { dailyBudgetUsd } = req.body;
+    api.postIf(
+        'userAccess',
+        '/user-budgets/:userId',
+        auth.requireAuth,
+        auth.requireCsrf,
+        (req: Request, res: Response) => {
+            const userId = String(req.params.userId ?? '').trim();
+            const { dailyBudgetUsd } = req.body;
 
-                if (!userId) {
-                    res.status(400).json({ error: 'User id is required' });
-                    return;
-                }
+            if (!userId) {
+                res.status(400).json({ error: 'User id is required' });
+                return;
+            }
 
-                if (dailyBudgetUsd === null || dailyBudgetUsd === undefined) {
-                    userBudgetRepository.clearBudget(userId);
-                    res.json({ ok: true, mode: 'default' });
-                    return;
-                }
+            if (dailyBudgetUsd === null || dailyBudgetUsd === undefined) {
+                userBudgetRepository.clearBudget(userId);
+                res.json({ ok: true, mode: 'default' });
+                return;
+            }
 
-                const v = parseFloat(String(dailyBudgetUsd));
-                if (isNaN(v) || v < 0) {
-                    res.status(400).json({ error: dashboardMessages.validation.dailyBudgetUsd });
-                    return;
-                }
+            const v = parseFloat(String(dailyBudgetUsd));
+            if (isNaN(v) || v < 0) {
+                res.status(400).json({ error: dashboardMessages.validation.dailyBudgetUsd });
+                return;
+            }
 
-                userBudgetRepository.setBudget(userId, v);
-                res.json({ ok: true, budget: v });
-            },
-        );
-    }
+            userBudgetRepository.setBudget(userId, v);
+            res.json({ ok: true, budget: v });
+        },
+    );
 
-    app.post(
-        '/api/guild-budgets/:guildId',
+    api.postIf(
+        'guildAccess',
+        '/guild-budgets/:guildId',
         auth.requireAuth,
         auth.requireCsrf,
         (req: Request, res: Response) => {
@@ -546,8 +652,11 @@ export function createDashboardApp({
         },
     );
 
-    if (capabilities.guildGlossary) {
-        app.get('/api/guild-glossary/:guildId', auth.requireAuth, (req: Request, res: Response) => {
+    api.getIf(
+        'guildGlossary',
+        '/guild-glossary/:guildId',
+        auth.requireAuth,
+        (req: Request, res: Response) => {
             const guildId = String(req.params.guildId ?? '').trim();
             if (!guildId) {
                 res.status(400).json({ error: 'Guild id is required' });
@@ -556,62 +665,64 @@ export function createDashboardApp({
 
             const entries = guildGlossaryRepository.listEntries(guildId);
             res.json({ entries, count: entries.length });
-        });
+        },
+    );
 
-        app.post(
-            '/api/guild-glossary/:guildId',
-            auth.requireAuth,
-            auth.requireCsrf,
-            (req: Request, res: Response) => {
-                const guildId = String(req.params.guildId ?? '').trim();
-                if (!guildId) {
-                    res.status(400).json({ error: 'Guild id is required' });
-                    return;
-                }
+    api.postIf(
+        'guildGlossary',
+        '/guild-glossary/:guildId',
+        auth.requireAuth,
+        auth.requireCsrf,
+        (req: Request, res: Response) => {
+            const guildId = String(req.params.guildId ?? '').trim();
+            if (!guildId) {
+                res.status(400).json({ error: 'Guild id is required' });
+                return;
+            }
 
-                const input = sanitizeGlossaryInput(req.body ?? {});
-                if (!input.ok) {
-                    res.status(400).json({ error: input.error });
-                    return;
-                }
+            const input = sanitizeGlossaryInput(req.body ?? {});
+            if (!input.ok) {
+                res.status(400).json({ error: input.error });
+                return;
+            }
 
-                try {
-                    const entry = guildGlossaryRepository.upsertEntry(guildId, input.value);
-                    cache.clear();
-                    res.json({ ok: true, entry, cacheCleared: true });
-                } catch (error) {
-                    res.status(404).json({ error: (error as Error).message });
-                }
-            },
-        );
-
-        app.delete(
-            '/api/guild-glossary/:guildId/:entryId',
-            auth.requireAuth,
-            auth.requireCsrf,
-            (req: Request, res: Response) => {
-                const guildId = String(req.params.guildId ?? '').trim();
-                const entryId = Number.parseInt(String(req.params.entryId ?? ''), 10);
-
-                if (!guildId || !Number.isInteger(entryId) || entryId < 1) {
-                    res.status(400).json({
-                        error: 'Valid guild id and glossary entry id are required',
-                    });
-                    return;
-                }
-
-                if (!guildGlossaryRepository.deleteEntry(guildId, entryId)) {
-                    res.status(404).json({ error: 'Glossary entry not found' });
-                    return;
-                }
-
+            try {
+                const entry = guildGlossaryRepository.upsertEntry(guildId, input.value);
                 cache.clear();
-                res.json({ ok: true, deleted: entryId });
-            },
-        );
-    }
+                res.json({ ok: true, entry, cacheCleared: true });
+            } catch (error) {
+                res.status(404).json({ error: (error as Error).message });
+            }
+        },
+    );
 
-    app.get('/api/logs', auth.requireAuth, (req: Request, res: Response) => {
+    api.deleteIf(
+        'guildGlossary',
+        '/guild-glossary/:guildId/:entryId',
+        auth.requireAuth,
+        auth.requireCsrf,
+        (req: Request, res: Response) => {
+            const guildId = String(req.params.guildId ?? '').trim();
+            const entryId = Number.parseInt(String(req.params.entryId ?? ''), 10);
+
+            if (!guildId || !Number.isInteger(entryId) || entryId < 1) {
+                res.status(400).json({
+                    error: 'Valid guild id and glossary entry id are required',
+                });
+                return;
+            }
+
+            if (!guildGlossaryRepository.deleteEntry(guildId, entryId)) {
+                res.status(404).json({ error: 'Glossary entry not found' });
+                return;
+            }
+
+            cache.clear();
+            res.json({ ok: true, deleted: entryId });
+        },
+    );
+
+    api.get('/logs', auth.requireAuth, (req: Request, res: Response) => {
         const count = Math.min(parseInt(req.query.count as string) || 50, 200);
         const filter = req.query.filter as string | undefined;
         const errorType = req.query.errorType as string | undefined;
@@ -633,13 +744,14 @@ export function createDashboardApp({
         res.json(entries);
     });
 
-    app.get(
-        '/api/user-prefs',
+    api.get(
+        '/user-prefs',
         auth.requireAuth,
         asyncHandler(async (_req: Request, res: Response) => {
+            const scope = getScope(res);
             const prefs = userPreferenceRepository.listPreferences();
             const profiles = await resolveDiscordUserProfiles({
-                client,
+                client: scope.client,
                 repository: userProfileRepository,
                 userIds: Object.keys(prefs),
             });
@@ -652,8 +764,8 @@ export function createDashboardApp({
         }),
     );
 
-    app.post(
-        '/api/user-prefs/batch-delete',
+    api.post(
+        '/user-prefs/batch-delete',
         auth.requireAuth,
         auth.requireCsrf,
         (req: Request, res: Response) => {
@@ -683,8 +795,8 @@ export function createDashboardApp({
         },
     );
 
-    app.delete(
-        '/api/user-prefs/:userId',
+    api.delete(
+        '/user-prefs/:userId',
         auth.requireAuth,
         auth.requireCsrf,
         (req: Request, res: Response) => {
@@ -697,19 +809,14 @@ export function createDashboardApp({
         },
     );
 
-    app.post(
-        '/api/cache/clear',
-        auth.requireAuth,
-        auth.requireCsrf,
-        (_req: Request, res: Response) => {
-            const before = cache.stats();
-            cache.clear();
-            res.json({ ok: true, cleared: before.size });
-        },
-    );
+    api.post('/cache/clear', auth.requireAuth, auth.requireCsrf, (_req: Request, res: Response) => {
+        const before = cache.stats();
+        cache.clear();
+        res.json({ ok: true, cleared: before.size });
+    });
 
-    app.post(
-        '/api/translate/test',
+    api.post(
+        '/translate/test',
         auth.requireAuth,
         auth.requireCsrf,
         asyncHandler(async (req: Request, res: Response) => {
@@ -735,8 +842,8 @@ export function createDashboardApp({
         }),
     );
 
-    app.get(
-        '/api/health',
+    api.get(
+        '/health',
         auth.requireAuth,
         asyncHandler(async (_req: Request, res: Response) => {
             const readiness = await getReadinessStatus({
@@ -752,6 +859,10 @@ export function createDashboardApp({
             });
         }),
     );
+
+    app.get(['/guild', '/guild/', '/pocket', '/pocket/'], (_req: Request, res: Response) => {
+        res.sendFile(join(__dirname, '../../public/index.html'));
+    });
 
     return app;
 }

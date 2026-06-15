@@ -30,7 +30,7 @@ npm run register:pocket
 npm run start -w @babel-discord-translator/pocket
 ```
 
-Set `BABEL_APP=pocket` in `.env` or Compose to run Babel Pocket from the same image. Set `BABEL_APP=combined` when you want one container with both Discord clients, one dashboard, and one SQLite database.
+Set `BABEL_APP=pocket` in `.env` or Compose to run Babel Pocket from the same image. Set `BABEL_APP=combined` when you want one container with both Discord clients, one dashboard, and one SQLite database. In combined mode, the combined dashboard root `/` shows a product chooser; `/guild` opens the Babel Guild dashboard; `/pocket` opens the Babel Pocket dashboard.
 
 ## Quick VPS Deploy
 
@@ -65,7 +65,7 @@ BABEL_NODE_MAX_OLD_SPACE_MB=64
 BABEL_NODE_MAX_SEMI_SPACE_MB=4
 ```
 
-Use `BABEL_APP=guild` for Babel Guild, `BABEL_APP=pocket` for Babel Pocket, or `BABEL_APP=combined` for both.
+Use `BABEL_APP=guild` for Babel Guild, `BABEL_APP=pocket` for Babel Pocket, or `BABEL_APP=combined` for both. In combined mode, the combined dashboard root `/` shows a product chooser, `/guild` opens the Babel Guild dashboard, and `/pocket` opens the Babel Pocket dashboard.
 The `BABEL_NODE_MAX_*` values control the Node.js V8 heap caps inside Docker; keep the defaults for small servers, or raise them if the dashboard or bot needs more memory.
 
 After the container is healthy, register the matching Discord commands. The script does not register Discord commands for you because Guild and Pocket expose different command surfaces.
