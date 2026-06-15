@@ -154,9 +154,11 @@ export function renderPrometheusMetrics({
         '# HELP babel_runtime_queue_depth Current queued translation requests.',
         '# TYPE babel_runtime_queue_depth gauge',
         metricLine('babel_runtime_queue_depth', runtimeSnapshot.queued),
-        '# HELP babel_runtime_rejections_total Translation runtime rejection count.',
+        '# HELP babel_runtime_rejections_all_total Total translation runtime rejection count.',
+        '# TYPE babel_runtime_rejections_all_total counter',
+        metricLine('babel_runtime_rejections_all_total', runtimeSnapshot.rejectedTotal),
+        '# HELP babel_runtime_rejections_total Translation runtime rejection count by reason.',
         '# TYPE babel_runtime_rejections_total counter',
-        metricLine('babel_runtime_rejections_total', runtimeSnapshot.rejectedTotal),
     );
 
     for (const [reason, count] of Object.entries(runtimeSnapshot.rejectionCounts)) {

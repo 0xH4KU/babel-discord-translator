@@ -212,6 +212,7 @@ import { CooldownManager } from '../src/modules/translation/cooldown.js';
 import { TranslationLog } from '../src/shared/log.js';
 import { TranslationRuntimeLimiter } from '../src/modules/translation/translation-runtime-limiter.js';
 import { _test as healthTest } from '../src/shared/health.js';
+import { translate as translateMock } from '../src/modules/translation/translate.js';
 import { createSqliteDatabase } from '../src/persistence/sqlite-database.js';
 import { DiscordUserProfileRepository } from '../src/modules/dashboard/discord-user-profile-repository.js';
 import { PendingUserInstallOwnerRepository } from '../src/modules/dashboard/pending-user-install-owner-repository.js';
@@ -276,7 +277,12 @@ function requestText(
     server: http.Server,
     method: string,
     path: string,
-    { cookie, csrf }: { cookie?: string; csrf?: string } = {},
+    {
+        cookie,
+        csrf,
+        bearerToken,
+        metricsToken,
+    }: { cookie?: string; csrf?: string; bearerToken?: string; metricsToken?: string } = {},
 ): Promise<TextTestResponse> {
     return new Promise((resolve, reject) => {
         const addr = server.address() as { port: number };
@@ -289,6 +295,12 @@ function requestText(
         };
         if (cookie) (options.headers as Record<string, string>)['Cookie'] = cookie;
         if (csrf) (options.headers as Record<string, string>)['x-csrf-token'] = csrf;
+        if (bearerToken) {
+            (options.headers as Record<string, string>).Authorization = `Bearer ${bearerToken}`;
+        }
+        if (metricsToken) {
+            (options.headers as Record<string, string>)['x-metrics-token'] = metricsToken;
+        }
 
         const req = http.request(options, (res) => {
             let data = '';
@@ -1043,7 +1055,7 @@ describe('Dashboard API', () => {
         expect(versionCheck).not.toHaveBeenCalled();
     });
 
-    it('should expose Prometheus metrics without dashboard authentication', async () => {
+    it('should expose Prometheus metrics without dashboard authentication by default', async () => {
         metrics.recordTranslationSuccess({ cached: true });
         metrics.recordTranslationFailure();
         metrics.recordBudgetExceeded();
@@ -1096,6 +1108,43 @@ describe('Dashboard API', () => {
             if (queued.accepted) queued.reservation.cancel();
             if (second.accepted) second.reservation.cancel();
             if (first.accepted) first.reservation.cancel();
+        }
+    });
+
+    it('should require a metrics token when one is configured', async () => {
+        const protectedApp = createHealthDashboardApp({
+            cache,
+            metrics,
+            runtimeLimiter,
+            healthCheck,
+            healthProbeCacheTtlMs: 0,
+            metricsToken: 'metrics-secret',
+        });
+        const protectedServer = startDashboardServer(protectedApp, 0);
+
+        try {
+            const missing = await requestText(protectedServer, 'GET', '/metrics');
+            expect(missing.status).toBe(401);
+            expect(missing.text).toBe('Metrics token required\n');
+
+            const wrong = await requestText(protectedServer, 'GET', '/metrics', {
+                bearerToken: 'wrong-secret',
+            });
+            expect(wrong.status).toBe(401);
+
+            const withBearer = await requestText(protectedServer, 'GET', '/metrics', {
+                bearerToken: 'metrics-secret',
+            });
+            expect(withBearer.status).toBe(200);
+            expect(withBearer.text).toContain('babel_translations_total');
+
+            const withHeader = await requestText(protectedServer, 'GET', '/metrics', {
+                metricsToken: 'metrics-secret',
+            });
+            expect(withHeader.status).toBe(200);
+        } finally {
+            protectedServer.close();
+            stopDashboardApp(protectedApp);
         }
     });
 
@@ -1302,6 +1351,26 @@ describe('Dashboard API', () => {
         expect(res.status).toBe(200);
         expect(res.body!.ok).toBe(true);
         expect(res.body!.translation).toBe('translated: Hello');
+    });
+
+    it('should sanitize translate test errors before returning them', async () => {
+        vi.mocked(translateMock).mockRejectedValueOnce(
+            new Error(
+                'OpenAI 500 at https://api.openai.com/v1/chat/completions with token abcdefghijklmnopqrstuvwxyz1234567890',
+            ),
+        );
+
+        const res = await request(server, 'POST', '/api/translate/test', {
+            cookie: sessionCookie,
+            csrf: csrfToken,
+            body: { text: 'Hello', targetLanguage: 'ja' },
+        });
+
+        expect(res.status).toBe(500);
+        expect(res.body!.error).toContain('[API endpoint]');
+        expect(res.body!.error).toContain('***');
+        expect(res.body!.error).not.toContain('api.openai.com');
+        expect(res.body!.error).not.toContain('abcdefghijklmnopqrstuvwxyz1234567890');
     });
 
     it('should list active dashboard sessions without exposing raw tokens', async () => {

@@ -272,15 +272,16 @@ Babel automatically translates to the language that makes sense for you:
 
 All configuration is managed through the web dashboard. The `.env` file only needs:
 
-| Variable             | Description                                                                         | Default                                           |
-| -------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------- |
-| `DISCORD_TOKEN`      | Discord bot token                                                                   | _required_                                        |
-| `PORT`               | Platform-provided dashboard web server port; takes precedence over `DASHBOARD_PORT` | unset                                             |
-| `DASHBOARD_PORT`     | Dashboard web server port                                                           | `3000`                                            |
-| `DASHBOARD_HOST`     | Dashboard bind host                                                                 | `0.0.0.0`                                         |
-| `DASHBOARD_PASSWORD` | Dashboard login password                                                            | `admin` (development only; refused in production) |
-| `BABEL_DB_PATH`      | SQLite database path                                                                | `data/babel.sqlite`                               |
-| `BABEL_APP`          | Root app selector: `guild` for Babel Guild, `pocket` for Babel Pocket               | `guild`                                           |
+| Variable              | Description                                                                         | Default                                           |
+| --------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `DISCORD_TOKEN`       | Discord bot token                                                                   | _required_                                        |
+| `PORT`                | Platform-provided dashboard web server port; takes precedence over `DASHBOARD_PORT` | unset                                             |
+| `DASHBOARD_PORT`      | Dashboard web server port                                                           | `3000`                                            |
+| `DASHBOARD_HOST`      | Dashboard bind host                                                                 | `0.0.0.0`                                         |
+| `DASHBOARD_PASSWORD`  | Dashboard login password                                                            | `admin` (development only; refused in production) |
+| `BABEL_METRICS_TOKEN` | Optional bearer/header token required by `GET /metrics` when set                    | unset                                             |
+| `BABEL_DB_PATH`       | SQLite database path                                                                | `data/babel.sqlite`                               |
+| `BABEL_APP`           | Root app selector: `guild` for Babel Guild, `pocket` for Babel Pocket               | `guild`                                           |
 
 If `DASHBOARD_PASSWORD` is omitted, Babel warns in local development and test environments, but exits during startup when `NODE_ENV=production`.
 
@@ -514,13 +515,13 @@ Babel is Railway-ready for a one-click self-host template: `railway.json` config
 
 Use these template variables:
 
-| Variable             | Value                                                |
-| -------------------- | ---------------------------------------------------- |
-| `DISCORD_TOKEN`      | Your Discord bot token                               |
+| Variable             | Value                                                                      |
+| -------------------- | -------------------------------------------------------------------------- |
+| `DISCORD_TOKEN`      | Your Discord bot token                                                     |
 | `BABEL_APP`          | `guild` for Babel Guild, `pocket` for Babel Pocket, or `combined` for both |
-| `DASHBOARD_PASSWORD` | A strong random password                             |
-| `BABEL_DB_PATH`      | `/app/data/babel.sqlite`                             |
-| `NODE_ENV`           | `production`                                         |
+| `DASHBOARD_PASSWORD` | A strong random password                                                   |
+| `BABEL_DB_PATH`      | `/app/data/babel.sqlite`                                                   |
+| `NODE_ENV`           | `production`                                                               |
 
 Mount a Railway volume at `/app/data`, generate a public domain, then log in and finish provider setup from the dashboard. See [Railway deployment](docs/operations/railway.md) for the template publishing checklist and transparent kickback disclosure wording.
 
@@ -564,6 +565,8 @@ The Dockerfile uses a **multi-stage build** with Node.js `22-alpine`:
 | `GET /readyz`  | Setup completeness + live Vertex AI probe                                                      | Container **readiness** probe |
 | `GET /healthz` | Combined liveness + readiness with degraded/ok status                                          | Operator **monitoring**       |
 | `GET /metrics` | Prometheus text metrics with version, translation, provider, queue, cache, and budget counters | Alerting and dashboards       |
+
+Set `BABEL_METRICS_TOKEN` before exposing `/metrics` outside a private network. Scrapers can pass it with `Authorization: Bearer <token>` or `x-metrics-token: <token>`.
 
 ### Operations Guides
 

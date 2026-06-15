@@ -147,6 +147,11 @@ describe('dashboard helper modules', () => {
             runtimeSnapshot: {
                 ...runtimeSnapshot,
                 queued: 1,
+                rejectedTotal: 2,
+                rejectionCounts: {
+                    ...runtimeSnapshot.rejectionCounts,
+                    user_queue_full: 2,
+                },
             },
         });
 
@@ -155,6 +160,9 @@ describe('dashboard helper modules', () => {
             'babel_provider_requests_total{provider="vertex",result="success"} 1',
         );
         expect(text).toContain('babel_runtime_queue_depth 1');
+        expect(text).toContain('babel_runtime_rejections_all_total 2');
+        expect(text).toContain('babel_runtime_rejections_total{reason="user_queue_full"} 2');
+        expect(text).not.toContain('\nbabel_runtime_rejections_total 2\n');
         expect(text).toContain('babel_cache_hits_total 3');
     });
 });

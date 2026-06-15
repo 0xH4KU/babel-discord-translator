@@ -19,11 +19,11 @@ Babel does not require privileged Discord intents.
 
 Select the app profile before you register Discord commands or start the process.
 
-| Product      | Install Model        | Runtime Selector      | Command Registration      |
-| ------------ | -------------------- | --------------------- | ------------------------- |
-| Babel Guild  | Server/Guild Install | `BABEL_APP=guild`     | `npm run register:guild`  |
-| Babel Pocket | User Install         | `BABEL_APP=pocket`    | `npm run register:pocket` |
-| Both         | Both                 | `BABEL_APP=combined`  | Run both explicit commands |
+| Product      | Install Model        | Runtime Selector     | Command Registration       |
+| ------------ | -------------------- | -------------------- | -------------------------- |
+| Babel Guild  | Server/Guild Install | `BABEL_APP=guild`    | `npm run register:guild`   |
+| Babel Pocket | User Install         | `BABEL_APP=pocket`   | `npm run register:pocket`  |
+| Both         | Both                 | `BABEL_APP=combined` | Run both explicit commands |
 
 Babel Guild is the default root profile for backward compatibility. Use Babel Pocket when the Discord application is configured for User Install and you want user-scoped access and budgets.
 
@@ -70,13 +70,13 @@ Railway is a good fit for small communities that want a hosted self-deploy witho
 
 Recommended environment variables:
 
-| Variable             | Value                    |
-| -------------------- | ------------------------ |
+| Variable             | Value                                                 |
+| -------------------- | ----------------------------------------------------- |
 | `DISCORD_TOKEN`      | Your Discord bot token for single-profile deployments |
-| `BABEL_APP`          | `guild`, `pocket`, or `combined` |
-| `DASHBOARD_PASSWORD` | A strong random password |
-| `BABEL_DB_PATH`      | `/app/data/babel.sqlite` |
-| `NODE_ENV`           | `production`             |
+| `BABEL_APP`          | `guild`, `pocket`, or `combined`                      |
+| `DASHBOARD_PASSWORD` | A strong random password                              |
+| `BABEL_DB_PATH`      | `/app/data/babel.sqlite`                              |
+| `NODE_ENV`           | `production`                                          |
 
 Use `BABEL_APP=guild` for Babel Guild, `BABEL_APP=pocket` for Babel Pocket, or `BABEL_APP=combined` to run both in one Railway service. Keep the template default at `guild` so existing template users stay on the server-install product unless they intentionally choose Pocket or combined mode.
 
@@ -125,11 +125,14 @@ DASHBOARD_PORT=3000
 DASHBOARD_HOST=0.0.0.0
 DASHBOARD_PASSWORD=replace_with_a_strong_password
 BABEL_DASHBOARD_MODE=full
+BABEL_METRICS_TOKEN=
 BABEL_DB_PATH=/app/data/babel.sqlite
 NODE_ENV=production
 ```
 
 `BABEL_DASHBOARD_MODE` defaults to `full`. Set it to `health-only` on constrained hosts when you only need `/livez`, `/readyz`, `/healthz`, and `/metrics`. Set it to `off` only if your platform healthcheck no longer depends on Babel's HTTP endpoints.
+
+Set `BABEL_METRICS_TOKEN` when `/metrics` is reachable from outside a private network. Prometheus or curl can pass it as `Authorization: Bearer <token>` or `x-metrics-token: <token>`.
 
 Verify:
 
@@ -172,7 +175,7 @@ After any deploy:
 ```bash
 curl -fsS http://localhost:3000/livez
 curl -fsS http://localhost:3000/readyz
-curl -fsS http://localhost:3000/metrics | head
+curl -fsS -H "Authorization: Bearer $BABEL_METRICS_TOKEN" http://localhost:3000/metrics | head
 ```
 
 In the dashboard, check:

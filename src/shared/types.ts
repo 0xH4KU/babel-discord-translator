@@ -225,6 +225,7 @@ export interface DashboardDeps {
     profiles?: AppProfile[];
     clients?: Partial<Record<AppProfile['id'], Client>>;
     pendingUserInstallOwnerRepository?: PendingUserInstallOwnerRepository;
+    metricsToken?: string;
 }
 
 // --- Usage ---

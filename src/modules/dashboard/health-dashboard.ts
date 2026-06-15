@@ -3,6 +3,7 @@ import { createEmptyAppMetricsSnapshot } from '../../shared/app-metrics.js';
 import { getHealthStatus, getLivenessStatus, getReadinessStatus } from '../../shared/health.js';
 import { checkOpenAiHealth } from '../../infra/openai-client.js';
 import { checkVertexAiHealth } from '../../infra/vertex-ai-client.js';
+import { createMetricsAuthMiddleware } from './metrics-auth.js';
 import { createEmptyRuntimeSnapshot, renderPrometheusMetrics } from './prometheus-metrics.js';
 import type { DashboardDeps } from '../../shared/types.js';
 
@@ -14,6 +15,7 @@ type HealthDashboardDeps = Pick<
     | 'healthCheck'
     | 'openAiHealthCheck'
     | 'healthProbeCacheTtlMs'
+    | 'metricsToken'
 >;
 
 function asyncHandler(
@@ -31,6 +33,7 @@ export function createHealthDashboardApp({
     healthCheck = checkVertexAiHealth,
     openAiHealthCheck = checkOpenAiHealth,
     healthProbeCacheTtlMs = 5_000,
+    metricsToken,
 }: HealthDashboardDeps): express.Express {
     const app = express();
     app.set('trust proxy', 1);
@@ -64,19 +67,23 @@ export function createHealthDashboardApp({
         }),
     );
 
-    app.get('/metrics', (_req: Request, res: Response) => {
-        const metricsSnapshot = metrics?.snapshot() ?? createEmptyAppMetricsSnapshot();
-        const runtimeSnapshot = runtimeLimiter?.snapshot() ?? createEmptyRuntimeSnapshot();
+    app.get(
+        '/metrics',
+        createMetricsAuthMiddleware(metricsToken),
+        (_req: Request, res: Response) => {
+            const metricsSnapshot = metrics?.snapshot() ?? createEmptyAppMetricsSnapshot();
+            const runtimeSnapshot = runtimeLimiter?.snapshot() ?? createEmptyRuntimeSnapshot();
 
-        res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
-        res.send(
-            renderPrometheusMetrics({
-                metricsSnapshot,
-                cacheStats: cache.stats(),
-                runtimeSnapshot,
-            }),
-        );
-    });
+            res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+            res.send(
+                renderPrometheusMetrics({
+                    metricsSnapshot,
+                    cacheStats: cache.stats(),
+                    runtimeSnapshot,
+                }),
+            );
+        },
+    );
 
     return app;
 }

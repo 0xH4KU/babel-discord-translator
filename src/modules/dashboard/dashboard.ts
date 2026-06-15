@@ -23,6 +23,7 @@ import { guildGlossaryRepository } from '../translation/guild-glossary-repositor
 import { applyConfigUpdateEffects } from '../config/config-runtime-effects.js';
 import { resetTranslationProviderState } from '../translation/translate.js';
 import { appLogger } from '../../shared/structured-logger.js';
+import { sanitizeError } from '../../shared/errors.js';
 import { dashboardMessages } from '../../shared/messages/dashboard-messages.js';
 import { getVersionMetadataWithUpdate } from '../../shared/version.js';
 import { DiscordUserProfileRepository } from './discord-user-profile-repository.js';
@@ -46,6 +47,7 @@ import {
     providerModeIncludes,
     providerSummary,
 } from './operations-summary.js';
+import { createMetricsAuthMiddleware } from './metrics-auth.js';
 import { createEmptyRuntimeSnapshot, renderPrometheusMetrics } from './prometheus-metrics.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -134,6 +136,7 @@ export function createDashboardApp({
     profiles = [profile],
     pendingUserInstallOwnerRepository = new PendingUserInstallOwnerRepository(),
     healthProbeCacheTtlMs = 5_000,
+    metricsToken,
 }: DashboardDeps): express.Express {
     const app = express();
     app.set('trust proxy', 1);
@@ -289,19 +292,23 @@ export function createDashboardApp({
         }),
     );
 
-    app.get('/metrics', (_req: Request, res: Response) => {
-        const metricsSnapshot = metrics?.snapshot() ?? createEmptyAppMetricsSnapshot();
-        const runtimeSnapshot = runtimeLimiter?.snapshot() ?? createEmptyRuntimeSnapshot();
+    app.get(
+        '/metrics',
+        createMetricsAuthMiddleware(metricsToken),
+        (_req: Request, res: Response) => {
+            const metricsSnapshot = metrics?.snapshot() ?? createEmptyAppMetricsSnapshot();
+            const runtimeSnapshot = runtimeLimiter?.snapshot() ?? createEmptyRuntimeSnapshot();
 
-        res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
-        res.send(
-            renderPrometheusMetrics({
-                metricsSnapshot,
-                cacheStats: cache.stats(),
-                runtimeSnapshot,
-            }),
-        );
-    });
+            res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+            res.send(
+                renderPrometheusMetrics({
+                    metricsSnapshot,
+                    cacheStats: cache.stats(),
+                    runtimeSnapshot,
+                }),
+            );
+        },
+    );
 
     api.get('/setup-status', auth.requireAuth, (_req: Request, res: Response) => {
         res.json({ complete: configRepository.isSetupComplete() });
@@ -837,7 +844,7 @@ export function createDashboardApp({
                     latencyMs: Date.now() - start,
                 });
             } catch (err) {
-                res.status(500).json({ error: (err as Error).message });
+                res.status(500).json({ error: sanitizeError((err as Error).message) });
             }
         }),
     );
