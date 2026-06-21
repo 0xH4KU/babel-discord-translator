@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { createEmptyAppMetricsSnapshot } from '../src/shared/app-metrics.js';
 import { validateConfigUpdate } from '../src/modules/dashboard/config-validation.js';
-import { sanitizeGlossaryInput } from '../src/modules/dashboard/glossary-input.js';
+import {
+    parseGlossaryImport,
+    sanitizeGlossaryImportRequest,
+    sanitizeGlossaryInput,
+} from '../src/modules/dashboard/glossary-input.js';
 import {
     budgetRiskForGuilds,
     buildOperationsGuidance,
@@ -60,6 +64,92 @@ describe('dashboard helper modules', () => {
                 targetText: '團本',
                 notes: 'Game term',
             },
+        });
+    });
+
+    it('parses glossary CSV and TSV imports with optional headers', () => {
+        expect(
+            parseGlossaryImport(
+                'sourceText,targetText,notes\nOpenAI,OpenAI,Preserve brand\n"raid, boss",團本,"Game, term"',
+            ),
+        ).toEqual({
+            ok: true,
+            rows: [
+                {
+                    line: 2,
+                    input: {
+                        sourceText: 'OpenAI',
+                        targetText: 'OpenAI',
+                        notes: 'Preserve brand',
+                    },
+                },
+                {
+                    line: 3,
+                    input: {
+                        sourceText: 'raid, boss',
+                        targetText: '團本',
+                        notes: 'Game, term',
+                    },
+                },
+            ],
+        });
+
+        expect(parseGlossaryImport('OpenAI\tOpenAI\nraid\t團本\tGame term')).toEqual({
+            ok: true,
+            rows: [
+                {
+                    line: 1,
+                    input: { sourceText: 'OpenAI', targetText: 'OpenAI', notes: '' },
+                },
+                {
+                    line: 2,
+                    input: { sourceText: 'raid', targetText: '團本', notes: 'Game term' },
+                },
+            ],
+        });
+    });
+
+    it('returns row-level errors for invalid glossary import rows', () => {
+        expect(parseGlossaryImport('source,target,notes\n,團本\nraid,,Game term')).toEqual({
+            ok: true,
+            rows: [],
+            errors: [
+                { line: 2, error: 'Glossary source and target are required' },
+                { line: 3, error: 'Glossary source and target are required' },
+            ],
+        });
+    });
+
+    it('rejects malformed or oversized glossary import requests', () => {
+        expect(
+            sanitizeGlossaryImportRequest({
+                text: 'source,target\nOpenAI,OpenAI',
+                duplicateMode: 'skip',
+            }),
+        ).toEqual({
+            ok: true,
+            value: {
+                text: 'source,target\nOpenAI,OpenAI',
+                duplicateMode: 'skip',
+            },
+        });
+
+        expect(
+            sanitizeGlossaryImportRequest({
+                text: 'source,target\nOpenAI,OpenAI',
+                duplicateMode: 'replace',
+            }),
+        ).toEqual({ ok: false, error: 'Glossary import duplicate mode must be skip or overwrite' });
+
+        expect(sanitizeGlossaryImportRequest({ text: '', duplicateMode: 'skip' })).toEqual({
+            ok: false,
+            error: 'Glossary import text is required',
+        });
+
+        expect(parseGlossaryImport('"unterminated,OpenAI')).toEqual({
+            ok: true,
+            rows: [],
+            errors: [{ line: 1, error: 'Malformed CSV row' }],
         });
     });
 
