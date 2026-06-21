@@ -373,11 +373,10 @@
 .glossary-import-options .glossary-import-option {
     display: flex;
     align-items: center;
-    gap: 0.65rem;
     min-width: 0;
     min-height: 2.85rem;
     margin-bottom: 0;
-    padding: 0.55rem 0.7rem;
+    padding: 0.7rem 0.85rem;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -392,17 +391,24 @@
     background: rgba(88, 101, 242, 0.12);
 }
 
+.glossary-import-options .glossary-import-option:focus-within {
+    border-color: var(--accent);
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
 .glossary-import-options .glossary-import-option input[type='radio'] {
-    flex: 0 0 1rem;
-    width: 1rem;
-    height: 1rem;
-    margin: 0;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
     padding: 0;
-    background: transparent;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
     border: 0;
-    accent-color: var(--accent);
-    appearance: auto;
-    -webkit-appearance: radio;
+    opacity: 0;
+    white-space: nowrap;
 }
 
 .glossary-import-options .glossary-import-option span {

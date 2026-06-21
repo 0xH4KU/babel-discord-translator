@@ -84,6 +84,9 @@ describe('dashboard static assets', () => {
         expect(settingsCss).toContain(
             ".glossary-import-options .glossary-import-option input[type='radio']",
         );
+        expect(settingsCss).toContain(
+            '.glossary-import-options .glossary-import-option:focus-within',
+        );
         expect(settingsCss).toContain('.glossary-import-textarea');
         expect(settingsCss).toContain('.glossary-import-result');
     });
