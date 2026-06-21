@@ -262,10 +262,12 @@ function request(
                 data += chunk;
             });
             res.on('end', () => {
+                const contentType = String(res.headers['content-type'] ?? '');
                 resolve({
                     status: res.statusCode!,
                     headers: res.headers,
-                    body: data ? JSON.parse(data) : null,
+                    body:
+                        data && contentType.includes('application/json') ? JSON.parse(data) : null,
                     rawHeaders: res.headers,
                 });
             });
@@ -1696,6 +1698,148 @@ describe('Dashboard API', () => {
         expect(res.body).toEqual({ error: 'Glossary source and target are required' });
     });
 
+    it('should import glossary entries with case-insensitive skip and overwrite modes', async () => {
+        cache.set('glossary-cache-key', 'cached translation');
+
+        const initial = await request(server, 'POST', '/api/guild-glossary/guild-import', {
+            cookie: sessionCookie,
+            csrf: csrfToken,
+            body: {
+                sourceText: 'OpenAI',
+                targetText: 'OpenAI',
+                notes: 'Original brand note',
+            },
+        });
+        expect(initial.status).toBe(200);
+        cache.set('glossary-cache-key', 'cached translation');
+
+        const skip = await request(server, 'POST', '/api/guild-glossary/guild-import/import', {
+            cookie: sessionCookie,
+            csrf: csrfToken,
+            body: {
+                duplicateMode: 'skip',
+                text: 'sourceText,targetText,notes\nopenai,Open AI,Changed note\nraid,團本,Game term',
+            },
+        });
+
+        expect(skip.status).toBe(200);
+        expect(skip.body).toMatchObject({
+            ok: true,
+            created: 1,
+            updated: 0,
+            skipped: 1,
+            failed: 0,
+            cacheCleared: true,
+        });
+        expect(cache.stats().size).toBe(0);
+
+        const afterSkip = await request(server, 'GET', '/api/guild-glossary/guild-import', {
+            cookie: sessionCookie,
+        });
+        expect(afterSkip.body!.entries).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    sourceText: 'OpenAI',
+                    targetText: 'OpenAI',
+                    notes: 'Original brand note',
+                }),
+                expect.objectContaining({
+                    sourceText: 'raid',
+                    targetText: '團本',
+                    notes: 'Game term',
+                }),
+            ]),
+        );
+
+        cache.set('glossary-cache-key', 'cached translation');
+        const overwrite = await request(server, 'POST', '/api/guild-glossary/guild-import/import', {
+            cookie: sessionCookie,
+            csrf: csrfToken,
+            body: {
+                duplicateMode: 'overwrite',
+                text: 'source,target,notes\nopenai,Open AI,Changed note\nRAID,レイド,JP term',
+            },
+        });
+
+        expect(overwrite.status).toBe(200);
+        expect(overwrite.body).toMatchObject({
+            ok: true,
+            created: 0,
+            updated: 2,
+            skipped: 0,
+            failed: 0,
+            cacheCleared: true,
+        });
+        expect(cache.stats().size).toBe(0);
+
+        const afterOverwrite = await request(server, 'GET', '/api/guild-glossary/guild-import', {
+            cookie: sessionCookie,
+        });
+        expect(afterOverwrite.body!.entries).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    sourceText: 'openai',
+                    targetText: 'Open AI',
+                    notes: 'Changed note',
+                }),
+                expect.objectContaining({
+                    sourceText: 'RAID',
+                    targetText: 'レイド',
+                    notes: 'JP term',
+                }),
+            ]),
+        );
+    });
+
+    it('should report glossary import row errors and avoid cache clearing when nothing changes', async () => {
+        cache.set('unchanged-cache-key', 'cached translation');
+
+        const res = await request(
+            server,
+            'POST',
+            '/api/guild-glossary/guild-import-errors/import',
+            {
+                cookie: sessionCookie,
+                csrf: csrfToken,
+                body: {
+                    duplicateMode: 'skip',
+                    text: 'source,target\n,團本\nraid,',
+                },
+            },
+        );
+
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({
+            ok: true,
+            created: 0,
+            updated: 0,
+            skipped: 0,
+            failed: 2,
+            errors: [
+                { line: 2, error: 'Glossary source and target are required' },
+                { line: 3, error: 'Glossary source and target are required' },
+            ],
+            cacheCleared: false,
+        });
+        expect(cache.stats().size).toBe(1);
+    });
+
+    it('should validate glossary import requests', async () => {
+        const res = await request(server, 'POST', '/api/guild-glossary/guild-1/import', {
+            cookie: sessionCookie,
+            csrf: csrfToken,
+            body: {
+                duplicateMode: 'replace',
+                text: 'source,target\nOpenAI,OpenAI',
+            },
+        });
+
+        expect(res.status).toBe(400);
+        expect(res.body).toEqual({
+            error: 'Glossary import duplicate mode must be skip or overwrite',
+        });
+    });
+
     it('should not expose guild glossary routes for Babel Pocket', async () => {
         const pocketApp = createDashboardApp({
             cache,
@@ -1721,6 +1865,21 @@ describe('Dashboard API', () => {
             });
 
             expect(res.status).toBe(404);
+
+            const csrfRes = await request(pocketServer, 'GET', '/api/auth/check', {
+                cookie,
+            });
+            const pocketCsrf = csrfRes.body!.csrfToken as string;
+            const importRes = await requestText(
+                pocketServer,
+                'POST',
+                '/api/guild-glossary/guild-1/import',
+                {
+                    cookie,
+                    csrf: pocketCsrf,
+                },
+            );
+            expect(importRes.status).toBe(404);
         } finally {
             stopDashboardApp(pocketApp);
             pocketServer.close();

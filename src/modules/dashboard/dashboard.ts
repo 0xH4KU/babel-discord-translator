@@ -40,7 +40,11 @@ import {
 } from './capabilities.js';
 import { PendingUserInstallOwnerRepository } from './pending-user-install-owner-repository.js';
 import { validateConfigUpdate } from './config-validation.js';
-import { sanitizeGlossaryInput } from './glossary-input.js';
+import {
+    parseGlossaryImport,
+    sanitizeGlossaryImportRequest,
+    sanitizeGlossaryInput,
+} from './glossary-input.js';
 import {
     budgetRiskForGuilds,
     buildOperationsGuidance,
@@ -78,6 +82,10 @@ function serializeProfile(profile: NonNullable<DashboardDeps['profile']>): {
         commandName: profile.commandName,
         accessMode: profile.accessMode,
     };
+}
+
+function normalizeGlossarySource(sourceText: string): string {
+    return sourceText.trim().toLowerCase();
 }
 
 function applySecurityHeaders(_req: Request, res: Response, next: NextFunction): void {
@@ -709,6 +717,77 @@ export function createDashboardApp({
             } catch (error) {
                 res.status(404).json({ error: (error as Error).message });
             }
+        },
+    );
+
+    api.postIf(
+        'guildGlossary',
+        '/guild-glossary/:guildId/import',
+        auth.requireAuth,
+        auth.requireCsrf,
+        (req: Request, res: Response) => {
+            const guildId = String(req.params.guildId ?? '').trim();
+            if (!guildId) {
+                res.status(400).json({ error: 'Guild id is required' });
+                return;
+            }
+
+            const importRequest = sanitizeGlossaryImportRequest(req.body ?? {});
+            if (!importRequest.ok) {
+                res.status(400).json({ error: importRequest.error });
+                return;
+            }
+
+            const parsed = parseGlossaryImport(importRequest.value.text);
+            const existingBySource = new Map(
+                guildGlossaryRepository
+                    .listEntries(guildId)
+                    .map((entry) => [normalizeGlossarySource(entry.sourceText), entry] as const),
+            );
+            let created = 0;
+            let updated = 0;
+            let skipped = 0;
+
+            for (const row of parsed.rows) {
+                const normalizedSource = normalizeGlossarySource(row.input.sourceText);
+                const existing = existingBySource.get(normalizedSource);
+
+                if (existing && importRequest.value.duplicateMode === 'skip') {
+                    skipped++;
+                    continue;
+                }
+
+                if (existing) {
+                    const entry = guildGlossaryRepository.upsertEntry(guildId, {
+                        id: existing.id,
+                        ...row.input,
+                    });
+                    existingBySource.delete(normalizedSource);
+                    existingBySource.set(normalizeGlossarySource(entry.sourceText), entry);
+                    updated++;
+                    continue;
+                }
+
+                const entry = guildGlossaryRepository.upsertEntry(guildId, row.input);
+                existingBySource.set(normalizeGlossarySource(entry.sourceText), entry);
+                created++;
+            }
+
+            const failed = parsed.errors?.length ?? 0;
+            const changed = created + updated > 0;
+            if (changed) {
+                cache.clear();
+            }
+
+            res.json({
+                ok: true,
+                created,
+                updated,
+                skipped,
+                failed,
+                errors: parsed.errors ?? [],
+                cacheCleared: changed,
+            });
         },
     );
 
