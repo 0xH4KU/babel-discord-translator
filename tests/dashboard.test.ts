@@ -2071,6 +2071,157 @@ describe('Dashboard API', () => {
         }
     });
 
+    it('should return product-scoped logs for combined dashboard API paths', async () => {
+        const scopedLog = new TranslationLog(10);
+        scopedLog.add({
+            appProfileId: 'babel-guild',
+            guildId: 'guild-1',
+            guildName: 'Guild Server',
+            userId: 'guild-user',
+            userTag: 'GuildUser#0001',
+            contentPreview: 'guild log',
+        });
+        scopedLog.add({
+            appProfileId: 'babel-pocket',
+            guildId: null,
+            guildName: 'Direct Message',
+            userId: 'pocket-user',
+            userTag: 'PocketUser#0001',
+            contentPreview: 'pocket log',
+        });
+        const combinedApp = createDashboardApp({
+            cache,
+            cooldown: new CooldownManager(5),
+            log: scopedLog,
+            client: createMinimalClient(),
+            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
+            metrics,
+            runtimeLimiter,
+            profile: BABEL_GUILD_PROFILE,
+            profiles: [BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE],
+            sessionRepository: new InMemorySessionRepository(),
+            userProfileRepository,
+        });
+        const combinedServer = startDashboardServer(combinedApp, 0);
+
+        try {
+            const login = await request(combinedServer, 'POST', '/api/login', {
+                body: { password: 'test-pass-123' },
+            });
+            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
+
+            const guildRes = await request(combinedServer, 'GET', '/guild/api/logs', {
+                cookie,
+            });
+            const pocketRes = await request(combinedServer, 'GET', '/pocket/api/logs', {
+                cookie,
+            });
+
+            expect(guildRes.status).toBe(200);
+            expect(pocketRes.status).toBe(200);
+            expect(guildRes.body).toEqual([
+                expect.objectContaining({
+                    appProfileId: 'babel-guild',
+                    contentPreview: 'guild log',
+                }),
+            ]);
+            expect(pocketRes.body).toEqual([
+                expect.objectContaining({
+                    appProfileId: 'babel-pocket',
+                    contentPreview: 'pocket log',
+                }),
+            ]);
+        } finally {
+            stopDashboardApp(combinedApp);
+            combinedServer.close();
+        }
+    });
+
+    it('should apply error type filters within product-scoped combined logs', async () => {
+        const scopedLog = new TranslationLog(10);
+        scopedLog.addError({
+            appProfileId: 'babel-guild',
+            guildId: 'guild-1',
+            guildName: 'Guild Server',
+            userId: 'guild-user',
+            error: 'Guild rate limited',
+            command: '/translate',
+            errorType: 'rate_limit',
+        });
+        scopedLog.addError({
+            appProfileId: 'babel-pocket',
+            guildId: null,
+            guildName: 'Direct Message',
+            userId: 'pocket-user',
+            error: 'Pocket rate limited',
+            command: 'Babel Pocket',
+            errorType: 'rate_limit',
+        });
+        scopedLog.addError({
+            appProfileId: 'babel-guild',
+            guildId: 'guild-1',
+            guildName: 'Guild Server',
+            userId: 'guild-user',
+            error: 'Guild auth failed',
+            command: '/translate',
+            errorType: 'auth',
+        });
+        const combinedApp = createDashboardApp({
+            cache,
+            cooldown: new CooldownManager(5),
+            log: scopedLog,
+            client: createMinimalClient(),
+            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
+            metrics,
+            runtimeLimiter,
+            profile: BABEL_GUILD_PROFILE,
+            profiles: [BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE],
+            sessionRepository: new InMemorySessionRepository(),
+            userProfileRepository,
+        });
+        const combinedServer = startDashboardServer(combinedApp, 0);
+
+        try {
+            const login = await request(combinedServer, 'POST', '/api/login', {
+                body: { password: 'test-pass-123' },
+            });
+            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
+
+            const guildRes = await request(
+                combinedServer,
+                'GET',
+                '/guild/api/logs?errorType=rate_limit',
+                { cookie },
+            );
+            const pocketRes = await request(
+                combinedServer,
+                'GET',
+                '/pocket/api/logs?errorType=rate_limit',
+                { cookie },
+            );
+
+            expect(guildRes.status).toBe(200);
+            expect(pocketRes.status).toBe(200);
+            expect(guildRes.body).toEqual([
+                expect.objectContaining({
+                    appProfileId: 'babel-guild',
+                    error: 'Guild rate limited',
+                    errorType: 'rate_limit',
+                }),
+            ]);
+            expect(pocketRes.body).toEqual([
+                expect.objectContaining({
+                    appProfileId: 'babel-pocket',
+                    error: 'Pocket rate limited',
+                    errorType: 'rate_limit',
+                }),
+            ]);
+        } finally {
+            stopDashboardApp(combinedApp);
+            combinedServer.close();
+        }
+    });
+
     // --- Logout ---
 
     it('should logout and clear session', async () => {

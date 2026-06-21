@@ -163,6 +163,7 @@ function createService({
     accessMode,
     pendingUserInstallOwnerRepository,
     enableGuildGlossary,
+    appProfileId,
 }: {
     storeOverrides?: Partial<StoreData>;
     translator?: ReturnType<typeof vi.fn>;
@@ -173,6 +174,7 @@ function createService({
     accessMode?: AccessMode;
     pendingUserInstallOwnerRepository?: { recordSeen: ReturnType<typeof vi.fn> };
     enableGuildGlossary?: boolean;
+    appProfileId?: 'babel-guild' | 'babel-pocket';
 } = {}) {
     const cache = new TranslationCache(100);
     const cooldown = new CooldownManager(0);
@@ -194,6 +196,7 @@ function createService({
         translator,
         metrics,
         runtimeLimiter,
+        appProfileId,
         accessMode,
         enableGuildGlossary,
         pendingUserInstallOwnerRepository,
@@ -325,6 +328,34 @@ describe('TranslationService', () => {
 
         expect(result.status).toBe('success');
         expect(configStore.getRuntimeConfig).toHaveBeenCalledOnce();
+    });
+
+    it('should tag successful translation logs with the app profile id', async () => {
+        const { service, log } = createService({
+            appProfileId: 'babel-pocket',
+            accessMode: 'user-install',
+            storeOverrides: {
+                allowedUserIds: ['user1'],
+            },
+        });
+
+        const result = await service.process({
+            command: 'babel',
+            commandLabel: 'Babel Pocket (context menu)',
+            guildId: null,
+            guildName: 'Direct Message',
+            userId: 'user1',
+            userTag: 'user#0001',
+            text: 'Hello world',
+            requestId: 'req-pocket-log',
+        });
+
+        expect(result.status).toBe('success');
+        expect(log.getRecent(1)[0]).toMatchObject({
+            type: 'translation',
+            appProfileId: 'babel-pocket',
+            contentPreview: 'Hello world',
+        });
     });
 
     it('should reuse the same cached translation for identical requests', async () => {
@@ -959,6 +990,37 @@ describe('TranslationService', () => {
             requestId: 'req-provider-failure-1',
             provider: 'openai',
             errorType: 'server_error',
+        });
+    });
+
+    it('should tag error logs with the app profile id', async () => {
+        const translator = vi.fn(async () => {
+            throw new Error('OpenAI 429 rate limit');
+        });
+        const { service, log } = createService({
+            translator,
+            appProfileId: 'babel-guild',
+        });
+
+        const result = await service.process({
+            command: 'translate',
+            commandLabel: '/translate',
+            guildId: 'guild-1',
+            guildName: 'Test Guild',
+            userId: 'user1',
+            userTag: 'user#0001',
+            locale: 'en-US',
+            text: 'Hello world',
+            requestId: 'req-guild-error-log',
+            beforeTranslate: async () => undefined,
+        });
+
+        expect(result.status).toBe('error');
+        expect(log.getRecent(1)[0]).toMatchObject({
+            type: 'error',
+            appProfileId: 'babel-guild',
+            requestId: 'req-guild-error-log',
+            errorType: 'rate_limit',
         });
     });
 

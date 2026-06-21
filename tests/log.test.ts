@@ -194,6 +194,78 @@ describe('TranslationLog', () => {
         expect(errors.every((e) => e.type === 'error')).toBe(true);
     });
 
+    it('should return recent entries for one app profile', () => {
+        const log = new TranslationLog(10);
+        log.add({
+            appProfileId: 'babel-guild',
+            guildId: 'g1',
+            userId: 'u1',
+            userTag: 'GuildUser#0001',
+            contentPreview: 'Guild first',
+        });
+        log.add({
+            appProfileId: 'babel-pocket',
+            guildId: null,
+            userId: 'u2',
+            userTag: 'PocketUser#0001',
+            contentPreview: 'Pocket entry',
+        });
+        log.addError({
+            appProfileId: 'babel-guild',
+            guildId: 'g1',
+            userId: 'u1',
+            error: 'Guild failed',
+            command: 'Babel',
+        });
+
+        const guildEntries = log.getRecentForProfile('babel-guild', 10);
+        const pocketEntries = log.getRecentForProfile('babel-pocket', 10);
+
+        expect(guildEntries).toHaveLength(2);
+        expect(guildEntries.map((entry) => entry.appProfileId)).toEqual([
+            'babel-guild',
+            'babel-guild',
+        ]);
+        expect(pocketEntries).toEqual([
+            expect.objectContaining({
+                appProfileId: 'babel-pocket',
+                contentPreview: 'Pocket entry',
+            }),
+        ]);
+    });
+
+    it('should apply type filters within one app profile', () => {
+        const log = new TranslationLog(10);
+        log.add({
+            appProfileId: 'babel-guild',
+            guildId: 'g1',
+            userId: 'u1',
+            userTag: 'GuildUser#0001',
+            contentPreview: 'Guild translation',
+        });
+        log.addError({
+            appProfileId: 'babel-guild',
+            guildId: 'g1',
+            userId: 'u1',
+            error: 'Guild failed',
+            command: 'Babel',
+        });
+        log.addError({
+            appProfileId: 'babel-pocket',
+            guildId: null,
+            userId: 'u2',
+            error: 'Pocket failed',
+            command: 'Babel Pocket',
+        });
+
+        expect(log.getRecentForProfile('babel-guild', 10, 'error')).toEqual([
+            expect.objectContaining({
+                appProfileId: 'babel-guild',
+                error: 'Guild failed',
+            }),
+        ]);
+    });
+
     it('should count errors via errorCount getter', () => {
         const log = new TranslationLog(10);
         log.add({

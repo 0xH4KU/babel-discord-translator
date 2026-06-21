@@ -171,6 +171,7 @@ export interface TranslateCommandDeps extends CommandDeps {
 
 export interface TranslationLogEntry {
     type: 'translation';
+    appProfileId?: AppProfile['id'];
     guildId: string | null;
     guildName: string;
     userId: string;
@@ -184,6 +185,7 @@ export interface TranslationLogEntry {
 
 export interface ErrorLogEntry {
     type: 'error';
+    appProfileId?: AppProfile['id'];
     guildId: string | null;
     guildName: string;
     userId: string;

@@ -61,6 +61,7 @@ interface DashboardApiScope {
     profiles: AppProfile[];
     capabilities: DashboardCapabilities;
     client: DashboardDeps['client'];
+    appProfileIdForLogs?: AppProfile['id'];
 }
 
 type DashboardCapabilityName = keyof DashboardCapabilities;
@@ -159,6 +160,7 @@ export function createDashboardApp({
         profiles: [BABEL_GUILD_PROFILE],
         capabilities: getDashboardCapabilities(BABEL_GUILD_PROFILE),
         client: guildClient,
+        appProfileIdForLogs: 'babel-guild',
     };
     const pocketScope: DashboardApiScope = {
         profile:
@@ -166,6 +168,7 @@ export function createDashboardApp({
         profiles: [BABEL_POCKET_PROFILE],
         capabilities: getDashboardCapabilities(BABEL_POCKET_PROFILE),
         client: userInstallClient,
+        appProfileIdForLogs: 'babel-pocket',
     };
     const apiScopes = isCombinedDashboard
         ? [
@@ -730,6 +733,8 @@ export function createDashboardApp({
     );
 
     api.get('/logs', auth.requireAuth, (req: Request, res: Response) => {
+        const scope = getScope(res);
+        const scopeProfileId = isCombinedDashboard ? scope.appProfileIdForLogs : undefined;
         const count = Math.min(parseInt(req.query.count as string) || 50, 200);
         const filter = req.query.filter as string | undefined;
         const errorType = req.query.errorType as string | undefined;
@@ -739,15 +744,19 @@ export function createDashboardApp({
                 return;
             }
 
-            const entries = log
-                .getRecent(log.size, 'error')
+            const errorEntries = scopeProfileId
+                ? log.getRecentForProfile(scopeProfileId, log.size, 'error')
+                : log.getRecent(log.size, 'error');
+            const entries = errorEntries
                 .filter((entry) => entry.type === 'error' && entry.errorType === errorType)
                 .slice(0, count);
             res.json(entries);
             return;
         }
 
-        const entries = log.getRecent(count, filter);
+        const entries = scopeProfileId
+            ? log.getRecentForProfile(scopeProfileId, count, filter)
+            : log.getRecent(count, filter);
         res.json(entries);
     });
 
