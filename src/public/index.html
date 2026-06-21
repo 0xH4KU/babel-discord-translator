@@ -454,6 +454,61 @@
                             </button>
                         </div>
                     </div>
+                    <div class="glossary-import">
+                        <div class="settings-row">
+                            <div class="input-group">
+                                <label>Import Glossary</label>
+                                <input
+                                    type="file"
+                                    id="glossary-import-file"
+                                    accept=".csv,.tsv,text/csv,text/tab-separated-values,text/plain"
+                                    onchange="readGlossaryImportFile(this)"
+                                />
+                            </div>
+                            <div class="input-group">
+                                <label>Duplicate Terms</label>
+                                <div class="segmented-options">
+                                    <label>
+                                        <input
+                                            type="radio"
+                                            name="glossary-import-mode"
+                                            value="skip"
+                                            checked
+                                        />
+                                        Skip existing
+                                    </label>
+                                    <label>
+                                        <input
+                                            type="radio"
+                                            name="glossary-import-mode"
+                                            value="overwrite"
+                                        />
+                                        Overwrite existing
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="settings-row">
+                            <div class="input-group">
+                                <label>CSV or TSV Text</label>
+                                <textarea
+                                    id="glossary-import-text"
+                                    rows="5"
+                                    maxlength="131072"
+                                    placeholder="sourceText,targetText,notes&#10;OpenAI,OpenAI,Preserve brand name&#10;raid,團本,Game term"
+                                ></textarea>
+                            </div>
+                        </div>
+                        <div class="glossary-actions">
+                            <button class="btn btn-secondary btn-sm" onclick="clearGlossaryImport()">
+                                Clear Import
+                            </button>
+                            <button class="btn btn-primary btn-sm" onclick="importGlossaryEntries()">
+                                Import Terms
+                            </button>
+                        </div>
+                        <div id="glossary-import-result" class="glossary-import-result" hidden></div>
+                    </div>
                     <div id="glossary-container">
                         <div class="empty-state">Select a server to manage glossary terms.</div>
                     </div>

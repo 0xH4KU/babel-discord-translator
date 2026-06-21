@@ -54,6 +54,24 @@ describe('dashboard static assets', () => {
         expect(accessJs).toContain("api('/user-budgets')");
     });
 
+    it('exposes Server Glossary import controls and client import flow', () => {
+        const html = readFileSync('src/public/index.html', 'utf-8');
+        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const settingsCss = readFileSync('src/public/css/settings.css', 'utf-8');
+
+        expect(html).toContain('id="glossary-import-file"');
+        expect(html).toContain('id="glossary-import-text"');
+        expect(html).toContain('name="glossary-import-mode"');
+        expect(html).toContain('onclick="importGlossaryEntries()"');
+        expect(accessJs).toContain('function readGlossaryImportFile');
+        expect(accessJs).toContain('function importGlossaryEntries');
+        expect(accessJs).toContain("api('/guild-glossary/' + glossaryGuildId + '/import'");
+        expect(accessJs).toContain('renderGlossaryImportResult');
+        expect(accessJs).toContain('escapeHtml(error.error)');
+        expect(settingsCss).toContain('.glossary-import');
+        expect(settingsCss).toContain('.glossary-import-result');
+    });
+
     it('uses the original Babel Pocket user whitelist controls', () => {
         const html = readFileSync('src/public/index.html', 'utf-8');
         const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
