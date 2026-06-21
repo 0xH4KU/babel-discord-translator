@@ -277,6 +277,49 @@
     margin-bottom: 1rem;
 }
 
+.glossary-import {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.glossary-import textarea {
+    width: 100%;
+    min-height: 8rem;
+    resize: vertical;
+}
+
+.segmented-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.segmented-options label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: var(--text);
+    font-size: 0.85rem;
+}
+
+.glossary-import-result {
+    margin-top: 0.75rem;
+    padding: 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text);
+    font-size: 0.82rem;
+}
+
+.glossary-import-result ul {
+    margin: 0.5rem 0 0;
+    padding-left: 1.1rem;
+}
+
 .glossary-actions {
     display: flex;
     gap: 0.5rem;

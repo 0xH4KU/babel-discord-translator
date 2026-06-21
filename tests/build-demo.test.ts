@@ -68,6 +68,9 @@ describe('build-dashboard-demo', () => {
         expect(readFileSync(join(demoDir, 'guild', 'demo', 'demo-api.js'), 'utf-8')).toContain(
             'window.BABEL_DEMO',
         );
+        expect(readFileSync(join(demoDir, 'guild', 'demo', 'demo-api.js'), 'utf-8')).toContain(
+            '/guild-glossary/100000000000000001/import',
+        );
         const guildStats = JSON.parse(
             readFileSync(join(demoDir, 'guild', 'demo', 'fixtures', 'stats.json'), 'utf-8'),
         ) as { bot: { name: string }; guildBudgets: unknown[] };

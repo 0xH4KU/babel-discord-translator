@@ -510,6 +510,64 @@ function resetGlossaryForm() {
     document.getElementById('glossary-notes').value = '';
 }
 
+function selectedGlossaryImportMode() {
+    const selected = document.querySelector('input[name="glossary-import-mode"]:checked');
+    return selected?.value === 'overwrite' ? 'overwrite' : 'skip';
+}
+
+function renderGlossaryImportResult(result) {
+    const container = document.getElementById('glossary-import-result');
+    if (!container) return;
+
+    const errors = Array.isArray(result.errors) ? result.errors : [];
+    const summary = [
+        `Created ${result.created || 0}`,
+        `Updated ${result.updated || 0}`,
+        `Skipped ${result.skipped || 0}`,
+        `Failed ${result.failed || 0}`,
+    ].join(' · ');
+    const errorRows = errors
+        .slice(0, 8)
+        .map((error) => `<li>Line ${escapeHtml(error.line)}: ${escapeHtml(error.error)}</li>`)
+        .join('');
+    const more =
+        errors.length > 8 ? `<div class="dim">+${errors.length - 8} more errors</div>` : '';
+
+    container.hidden = false;
+    container.innerHTML = `<strong>${escapeHtml(summary)}</strong>${
+        errorRows ? `<ul>${errorRows}</ul>${more}` : ''
+    }`;
+}
+
+function clearGlossaryImport() {
+    if (!hasDashboardCapability('guildGlossary')) return;
+
+    const file = document.getElementById('glossary-import-file');
+    const text = document.getElementById('glossary-import-text');
+    const result = document.getElementById('glossary-import-result');
+    if (file) file.value = '';
+    if (text) text.value = '';
+    if (result) {
+        result.hidden = true;
+        result.innerHTML = '';
+    }
+}
+
+function readGlossaryImportFile(input) {
+    if (!hasDashboardCapability('guildGlossary')) return;
+
+    const file = input.files && input.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+        const text = document.getElementById('glossary-import-text');
+        if (text) text.value = String(reader.result || '');
+    };
+    reader.onerror = () => showToast('Failed to read import file', true);
+    reader.readAsText(file);
+}
+
 function editGlossaryEntry(entryId) {
     if (!hasDashboardCapability('guildGlossary')) return;
 
@@ -557,6 +615,38 @@ async function saveGlossaryEntry() {
     } else {
         const data = await res.json().catch(() => ({}));
         showToast(data.error || 'Save failed', true);
+    }
+}
+
+async function importGlossaryEntries() {
+    if (!hasDashboardCapability('guildGlossary')) return;
+
+    if (!glossaryGuildId) {
+        showToast('Select a server first', true);
+        return;
+    }
+
+    const text = document.getElementById('glossary-import-text').value.trim();
+    if (!text) {
+        showToast('Import text is required', true);
+        return;
+    }
+
+    const res = await api('/guild-glossary/' + glossaryGuildId + '/import', {
+        method: 'POST',
+        body: JSON.stringify({
+            text,
+            duplicateMode: selectedGlossaryImportMode(),
+        }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+        renderGlossaryImportResult(data);
+        await loadGlossaryEntries();
+        showToast('Glossary import complete' + (data.failed ? ' with errors' : ''));
+    } else {
+        showToast(data.error || 'Import failed', true);
     }
 }
 

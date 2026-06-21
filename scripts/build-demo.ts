@@ -797,6 +797,7 @@ function createDemoApiJs(variant: DemoVariant): string {
     '/guild-glossary/100000000000000001': { error: 'No demo fixture for /guild-glossary/100000000000000001', status: 404 },`
             : `
     '/guild-glossary/100000000000000001': 'guild-glossary.json',
+    '/guild-glossary/100000000000000001/import': { ok: true, created: 0, updated: 0, skipped: 0, failed: 0, errors: [], cacheCleared: false },
     '/guild-glossary/100000000000000002': { entries: [], count: 0 },
     '/guild-glossary/100000000000000003': { entries: [], count: 0 },
     '/guild-glossary/100000000000000004': { entries: [], count: 0 },`;
