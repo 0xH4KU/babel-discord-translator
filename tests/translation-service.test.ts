@@ -854,6 +854,35 @@ describe('TranslationService', () => {
         });
     });
 
+    it('should keep user-install usage out of guild usage buckets when invoked in a guild', async () => {
+        const { service, usageTracker } = createService({
+            storeOverrides: {
+                allowedGuildIds: [],
+                allowedUserIds: ['user-owner'],
+                userLanguagePrefs: { 'user-owner': 'ja' },
+            },
+            accessMode: 'user-install',
+        });
+
+        const result = await service.process({
+            command: 'babel',
+            commandLabel: 'Babel Pocket (context menu)',
+            guildId: 'guild-1',
+            guildName: 'Guild One',
+            userId: 'actor',
+            billingUserId: 'user-owner',
+            userTag: 'actor#0001',
+            locale: 'en-US',
+            text: 'Hello',
+        });
+
+        expect(result.status).toBe('success');
+        expect(usageTracker.record).toHaveBeenCalledWith(12, 6, {
+            guildId: null,
+            userId: 'user-owner',
+        });
+    });
+
     it('should bill the actor user when a user-install request has no explicit billing owner', async () => {
         const { service, usageTracker } = createService({
             storeOverrides: {

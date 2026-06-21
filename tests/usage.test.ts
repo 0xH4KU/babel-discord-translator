@@ -541,6 +541,64 @@ describe('UsageTracker', () => {
             expect(history[0].totalTokens).toBe(1_500_000);
         });
 
+        it('should aggregate history across selected guilds by date', () => {
+            mockData.inputPricePerMillion = 1.0;
+            mockData.outputPricePerMillion = 2.0;
+            mockData.guildUsageHistory = {
+                'guild-A': [
+                    {
+                        date: '2025-01-01',
+                        inputTokens: 1_000_000,
+                        outputTokens: 0,
+                        requests: 2,
+                    },
+                    {
+                        date: '2025-01-02',
+                        inputTokens: 500_000,
+                        outputTokens: 500_000,
+                        requests: 1,
+                    },
+                ],
+                'guild-B': [
+                    {
+                        date: '2025-01-01',
+                        inputTokens: 0,
+                        outputTokens: 500_000,
+                        requests: 3,
+                    },
+                ],
+                'guild-C': [
+                    {
+                        date: '2025-01-01',
+                        inputTokens: 9_000_000,
+                        outputTokens: 9_000_000,
+                        requests: 9,
+                    },
+                ],
+            };
+
+            const history = usage.getGuildHistoryForGuilds(['guild-A', 'guild-B']);
+
+            expect(history).toEqual([
+                {
+                    date: '2025-01-01',
+                    inputTokens: 1_000_000,
+                    outputTokens: 500_000,
+                    totalTokens: 1_500_000,
+                    requests: 5,
+                    cost: 2,
+                },
+                {
+                    date: '2025-01-02',
+                    inputTokens: 500_000,
+                    outputTokens: 500_000,
+                    totalTokens: 1_000_000,
+                    requests: 1,
+                    cost: 1.5,
+                },
+            ]);
+        });
+
         it('should not record guild usage when guildId is null', () => {
             usage.record(100, 50, null);
 
@@ -684,6 +742,56 @@ describe('UsageTracker', () => {
             expect(history).toHaveLength(1);
             expect(history[0].cost).toBe(2.0);
             expect(history[0].totalTokens).toBe(1_500_000);
+        });
+
+        it('should aggregate history across all users by date', () => {
+            mockData.inputPricePerMillion = 1.0;
+            mockData.outputPricePerMillion = 2.0;
+            mockData.userUsageHistory = {
+                'user-A': [
+                    {
+                        date: '2025-01-01',
+                        inputTokens: 1_000_000,
+                        outputTokens: 0,
+                        requests: 2,
+                    },
+                ],
+                'user-B': [
+                    {
+                        date: '2025-01-01',
+                        inputTokens: 0,
+                        outputTokens: 500_000,
+                        requests: 3,
+                    },
+                    {
+                        date: '2025-01-02',
+                        inputTokens: 500_000,
+                        outputTokens: 500_000,
+                        requests: 1,
+                    },
+                ],
+            };
+
+            const history = usage.getAllUserHistory();
+
+            expect(history).toEqual([
+                {
+                    date: '2025-01-01',
+                    inputTokens: 1_000_000,
+                    outputTokens: 500_000,
+                    totalTokens: 1_500_000,
+                    requests: 5,
+                    cost: 2,
+                },
+                {
+                    date: '2025-01-02',
+                    inputTokens: 500_000,
+                    outputTokens: 500_000,
+                    totalTokens: 1_000_000,
+                    requests: 1,
+                    cost: 1.5,
+                },
+            ]);
         });
 
         it('should block estimated requests that would exceed a user budget', () => {

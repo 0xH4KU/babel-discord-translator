@@ -537,9 +537,15 @@ export function createDashboardApp({
     });
 
     api.get('/usage/history', auth.requireAuth, (req: Request, res: Response) => {
+        const scope = getScope(res);
         const guildId = req.query.guildId as string | undefined;
         if (guildId) {
             res.json(usage.getGuildHistory(guildId));
+        } else if (isCombinedDashboard && scope.appProfileIdForLogs === 'babel-guild') {
+            const guildIds = scope.client.guilds.cache.map((guild) => guild.id);
+            res.json(usage.getGuildHistoryForGuilds(guildIds));
+        } else if (isCombinedDashboard && scope.appProfileIdForLogs === 'babel-pocket') {
+            res.json(usage.getAllUserHistory());
         } else {
             res.json(usage.getHistory());
         }

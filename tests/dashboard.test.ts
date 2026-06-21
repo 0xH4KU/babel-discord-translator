@@ -171,6 +171,10 @@ const usageMock = vi.hoisted(() => ({
     })),
     getGuildStatsForGuilds: vi.fn(() => ({})),
     getHistory: vi.fn(() => []),
+    getGuildHistory: vi.fn(() => []),
+    getUserHistory: vi.fn(() => []),
+    getGuildHistoryForGuilds: vi.fn(() => []),
+    getAllUserHistory: vi.fn(() => []),
     record: vi.fn(),
     getUserStats: vi.fn((userId: string) => ({
         date: '2025-03-01',
@@ -2217,6 +2221,125 @@ describe('Dashboard API', () => {
                 }),
             ]);
         } finally {
+            stopDashboardApp(combinedApp);
+            combinedServer.close();
+        }
+    });
+
+    it('should return product-scoped usage history for combined dashboard API paths', async () => {
+        const globalHistory = [
+            {
+                date: '2026-06-01',
+                inputTokens: 3000,
+                outputTokens: 1500,
+                totalTokens: 4500,
+                requests: 3,
+                cost: 0,
+            },
+        ];
+        const guildHistory = [
+            {
+                date: '2026-06-01',
+                inputTokens: 1000,
+                outputTokens: 500,
+                totalTokens: 1500,
+                requests: 1,
+                cost: 0,
+            },
+        ];
+        const pocketHistory = [
+            {
+                date: '2026-06-01',
+                inputTokens: 2000,
+                outputTokens: 1000,
+                totalTokens: 3000,
+                requests: 2,
+                cost: 0,
+            },
+        ];
+        usageMock.getHistory.mockReturnValue(globalHistory);
+        usageMock.getGuildHistory.mockReturnValue(guildHistory);
+        usageMock.getUserHistory.mockReturnValue(pocketHistory);
+        usageMock.getGuildHistoryForGuilds.mockReturnValue(guildHistory);
+        usageMock.getAllUserHistory.mockReturnValue(pocketHistory);
+
+        const guildClient = {
+            ...createMinimalClient(),
+            guilds: {
+                cache: {
+                    size: 1,
+                    map: (fn: Function) =>
+                        [
+                            {
+                                id: 'guild-1',
+                                name: 'Guild One',
+                                iconURL: () => '',
+                                memberCount: 10,
+                            },
+                        ].map(fn),
+                    [Symbol.iterator]: function* () {
+                        yield [
+                            'guild-1',
+                            {
+                                id: 'guild-1',
+                                name: 'Guild One',
+                                iconURL: () => '',
+                                memberCount: 10,
+                            },
+                        ];
+                    },
+                },
+            },
+        } as unknown as Client;
+        const combinedApp = createDashboardApp({
+            cache,
+            cooldown: new CooldownManager(5),
+            log,
+            client: guildClient,
+            clients: {
+                'babel-guild': guildClient,
+                'babel-pocket': createMinimalClient(),
+            },
+            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
+            metrics,
+            runtimeLimiter,
+            profile: BABEL_GUILD_PROFILE,
+            profiles: [BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE],
+            sessionRepository: new InMemorySessionRepository(),
+            userProfileRepository,
+        });
+        const combinedServer = startDashboardServer(combinedApp, 0);
+
+        try {
+            const login = await request(combinedServer, 'POST', '/api/login', {
+                body: { password: 'test-pass-123' },
+            });
+            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
+
+            const rootRes = await request(combinedServer, 'GET', '/api/usage/history', {
+                cookie,
+            });
+            const guildRes = await request(combinedServer, 'GET', '/guild/api/usage/history', {
+                cookie,
+            });
+            const pocketRes = await request(combinedServer, 'GET', '/pocket/api/usage/history', {
+                cookie,
+            });
+
+            expect(rootRes.status).toBe(200);
+            expect(guildRes.status).toBe(200);
+            expect(pocketRes.status).toBe(200);
+            expect(rootRes.body).toEqual(globalHistory);
+            expect(guildRes.body).toEqual(guildHistory);
+            expect(pocketRes.body).toEqual(pocketHistory);
+            expect(usageMock.getGuildHistoryForGuilds).toHaveBeenCalledWith(['guild-1']);
+            expect(usageMock.getAllUserHistory).toHaveBeenCalled();
+        } finally {
+            usageMock.getHistory.mockReturnValue([]);
+            usageMock.getGuildHistory.mockReturnValue([]);
+            usageMock.getUserHistory.mockReturnValue([]);
+            usageMock.getGuildHistoryForGuilds.mockReturnValue([]);
+            usageMock.getAllUserHistory.mockReturnValue([]);
             stopDashboardApp(combinedApp);
             combinedServer.close();
         }

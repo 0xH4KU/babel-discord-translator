@@ -254,7 +254,7 @@ export function createTranslationService({
             }
 
             const usageScope = {
-                guildId: request.guildId ?? null,
+                guildId: accessMode === 'guild' ? (request.guildId ?? null) : null,
                 userId: accessMode === 'user-install' ? getBillingUsageUserId(scope) : null,
             };
 
