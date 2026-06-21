@@ -543,9 +543,11 @@ function clearGlossaryImport() {
     if (!hasDashboardCapability('guildGlossary')) return;
 
     const file = document.getElementById('glossary-import-file');
+    const fileName = document.getElementById('glossary-import-file-name');
     const text = document.getElementById('glossary-import-text');
     const result = document.getElementById('glossary-import-result');
     if (file) file.value = '';
+    if (fileName) fileName.textContent = 'No file selected';
     if (text) text.value = '';
     if (result) {
         result.hidden = true;
@@ -558,6 +560,9 @@ function readGlossaryImportFile(input) {
 
     const file = input.files && input.files[0];
     if (!file) return;
+
+    const fileName = document.getElementById('glossary-import-file-name');
+    if (fileName) fileName.textContent = file.name;
 
     const reader = new FileReader();
     reader.onload = () => {

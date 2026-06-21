@@ -456,49 +456,64 @@
                         </div>
                     </div>
                     <div class="glossary-import">
-                        <div class="settings-row">
-                            <div class="input-group">
+                        <div class="glossary-import-grid">
+                            <div class="input-group glossary-import-file-group">
                                 <label>Import Glossary</label>
-                                <input
-                                    type="file"
-                                    id="glossary-import-file"
-                                    accept=".csv,.tsv,text/csv,text/tab-separated-values,text/plain"
-                                    onchange="readGlossaryImportFile(this)"
-                                />
+                                <div class="glossary-file-picker">
+                                    <input
+                                        type="file"
+                                        id="glossary-import-file"
+                                        class="glossary-file-input"
+                                        accept=".csv,.tsv,text/csv,text/tab-separated-values,text/plain"
+                                        onchange="readGlossaryImportFile(this)"
+                                    />
+                                    <label class="glossary-file-button" for="glossary-import-file">
+                                        Choose CSV/TSV
+                                    </label>
+                                    <span id="glossary-import-file-name" class="glossary-file-name"
+                                        >No file selected</span
+                                    >
+                                </div>
                             </div>
-                            <div class="input-group">
+                            <div class="input-group glossary-import-mode-group">
                                 <label>Duplicate Terms</label>
-                                <div class="segmented-options">
-                                    <label>
+                                <div class="glossary-import-options">
+                                    <label class="glossary-import-option">
                                         <input
                                             type="radio"
                                             name="glossary-import-mode"
                                             value="skip"
                                             checked
                                         />
-                                        Skip existing
+                                        <span>
+                                            <strong>Skip existing</strong>
+                                            <small>Keep current terms unchanged</small>
+                                        </span>
                                     </label>
-                                    <label>
+                                    <label class="glossary-import-option">
                                         <input
                                             type="radio"
                                             name="glossary-import-mode"
                                             value="overwrite"
                                         />
-                                        Overwrite existing
+                                        <span>
+                                            <strong>Overwrite existing</strong>
+                                            <small>Update matching source terms</small>
+                                        </span>
                                     </label>
                                 </div>
                             </div>
                         </div>
-                        <div class="settings-row">
-                            <div class="input-group">
-                                <label>CSV or TSV Text</label>
-                                <textarea
-                                    id="glossary-import-text"
-                                    rows="5"
-                                    maxlength="131072"
-                                    placeholder="sourceText,targetText,notes&#10;OpenAI,OpenAI,Preserve brand name&#10;raid,團本,Game term"
-                                ></textarea>
-                            </div>
+                        <div class="input-group glossary-import-text-group">
+                            <label>CSV or TSV Text</label>
+                            <textarea
+                                id="glossary-import-text"
+                                class="glossary-import-textarea"
+                                rows="5"
+                                maxlength="131072"
+                                spellcheck="false"
+                                placeholder="sourceText,targetText,notes&#10;OpenAI,OpenAI,Preserve brand name&#10;raid,團本,Game term"
+                            ></textarea>
                         </div>
                         <div class="glossary-actions">
                             <button class="btn btn-secondary btn-sm" onclick="clearGlossaryImport()">

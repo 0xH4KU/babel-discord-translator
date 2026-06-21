@@ -60,15 +60,31 @@ describe('dashboard static assets', () => {
         const settingsCss = readFileSync('src/public/css/settings.css', 'utf-8');
 
         expect(html).toContain('id="glossary-import-file"');
+        expect(html).toContain('class="glossary-file-input"');
+        expect(html).toContain('class="glossary-file-button"');
+        expect(html).toContain('id="glossary-import-file-name"');
         expect(html).toContain('id="glossary-import-text"');
+        expect(html).toContain('class="glossary-import-textarea"');
         expect(html).toContain('name="glossary-import-mode"');
+        expect(html).toContain('class="glossary-import-option"');
         expect(html).toContain('onclick="importGlossaryEntries()"');
         expect(accessJs).toContain('function readGlossaryImportFile');
+        expect(accessJs).toContain('glossary-import-file-name');
         expect(accessJs).toContain('function importGlossaryEntries');
         expect(accessJs).toContain("api('/guild-glossary/' + glossaryGuildId + '/import'");
         expect(accessJs).toContain('renderGlossaryImportResult');
         expect(accessJs).toContain('escapeHtml(error.error)');
         expect(settingsCss).toContain('.glossary-import');
+        expect(settingsCss).toContain('.glossary-import-grid');
+        expect(settingsCss).toContain('.glossary-file-picker .glossary-file-input');
+        expect(settingsCss).toContain('clip-path: inset(50%)');
+        expect(settingsCss).toContain('.glossary-file-button');
+        expect(settingsCss).toContain('.glossary-file-picker .glossary-file-button');
+        expect(settingsCss).toContain('.glossary-import-options .glossary-import-option');
+        expect(settingsCss).toContain(
+            ".glossary-import-options .glossary-import-option input[type='radio']",
+        );
+        expect(settingsCss).toContain('.glossary-import-textarea');
         expect(settingsCss).toContain('.glossary-import-result');
     });
 
