@@ -4,7 +4,7 @@ import { localeToLang } from './lang.js';
 export type LangSource = 'option' | 'setlang' | 'locale' | 'auto';
 
 export interface UserPreferenceRepositoryLike {
-    getLanguage(userId: string): string | null;
+    getLanguage(guildId: string, userId: string): string | null;
 }
 
 export interface TargetLanguageDecision {
@@ -13,10 +13,15 @@ export interface TargetLanguageDecision {
 }
 
 export function resolveTargetLanguage(
-    request: Pick<TranslationServiceRequest, 'locale' | 'targetLanguageOption' | 'userId'>,
+    request: Pick<
+        TranslationServiceRequest,
+        'guildId' | 'locale' | 'targetLanguageOption' | 'userId'
+    >,
     preferenceStore: UserPreferenceRepositoryLike,
 ): TargetLanguageDecision {
-    const userPreference = preferenceStore.getLanguage(request.userId);
+    const userPreference = request.guildId
+        ? preferenceStore.getLanguage(request.guildId, request.userId)
+        : null;
     const localeLanguage = localeToLang(request.locale);
 
     if (request.targetLanguageOption && request.targetLanguageOption !== 'auto') {

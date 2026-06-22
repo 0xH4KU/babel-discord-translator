@@ -55,6 +55,70 @@ describe('dashboard static assets', () => {
         expect(accessJs).toContain("api('/user-budgets')");
     });
 
+    it('filters user language preferences by selected guild', () => {
+        const html = readFileSync('src/public/index.html', 'utf-8');
+        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const nodes = {
+            'prefs-count': { textContent: '' },
+            'prefs-guild-filter': { disabled: false, innerHTML: '', value: '' },
+            'prefs-pagination': { innerHTML: '' },
+            'prefs-batch-delete': { disabled: false, textContent: '' },
+            'user-prefs-container': { innerHTML: '' },
+        };
+        const context = {
+            document: {
+                getElementById(id: string) {
+                    return nodes[id as keyof typeof nodes] || null;
+                },
+            },
+            genAvatar(value: string) {
+                return `avatar:${value}`;
+            },
+            renderPagination() {},
+        };
+
+        expect(html).toContain('id="prefs-guild-filter"');
+
+        expect(accessJs).toContain('entry.guildId');
+        expect(accessJs).toContain('entry.userId');
+        expect(accessJs).toContain('setPrefsGuildFilter');
+        expect(accessJs).toContain('renderPrefsGuildFilter');
+        expect(accessJs).toContain('body: JSON.stringify({ entries })');
+        expect(accessJs).toContain("api('/user-prefs/' + encodeURIComponent(userId) + '?guildId='");
+
+        vm.createContext(context);
+        vm.runInContext(
+            [
+                accessJs,
+                `allPrefsData = [
+                    {
+                        guildId: 'guild-1',
+                        guildName: 'Server 1',
+                        guildIcon: '',
+                        userId: 'user-1',
+                        language: 'zh-TW'
+                    },
+                    {
+                        guildId: 'guild-2',
+                        guildName: 'Server 2',
+                        guildIcon: '',
+                        userId: 'user-2',
+                        language: 'ja'
+                    }
+                ];`,
+                'renderUserPrefs();',
+                "setPrefsGuildFilter('guild-2');",
+            ].join('\n'),
+            context,
+        );
+
+        expect(nodes['prefs-guild-filter'].innerHTML).toContain('Server 1');
+        expect(nodes['prefs-guild-filter'].innerHTML).toContain('Server 2');
+        expect(nodes['user-prefs-container'].innerHTML).toContain('user-2');
+        expect(nodes['user-prefs-container'].innerHTML).not.toContain('user-1');
+        expect(nodes['prefs-count'].textContent).toBe('1 shown in Server 2 / 2 total');
+    });
+
     it('exposes Server Glossary import controls and client import flow', () => {
         const html = readFileSync('src/public/index.html', 'utf-8');
         const accessJs = readFileSync('src/public/js/access.js', 'utf-8');

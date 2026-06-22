@@ -33,7 +33,12 @@ vi.mock('../src/persistence/store.js', () => {
         dailyBudgetUsd: 0,
         defaultUserDailyBudgetUsd: 0,
         translationPrompt: '',
-        userLanguagePrefs: { user1: 'ja', user2: 'ko' },
+        userLanguagePrefs: { legacyUser: 'en' },
+        userLanguagePreferenceEntries: [
+            { guildId: 'guild-1', userId: 'user1', language: 'ja' },
+            { guildId: 'guild-2', userId: 'user1', language: 'ko' },
+            { guildId: 'guild-1', userId: 'user2', language: 'zh-TW' },
+        ],
         maxInputLength: 2000,
         maxOutputTokens: 1000,
         translationMaxConcurrent: 4,
@@ -67,19 +72,45 @@ vi.mock('../src/persistence/store.js', () => {
     return {
         store: {
             get: vi.fn((key: string) => data[key]),
-            getUserLanguage: vi.fn(
-                (userId: string) =>
-                    (data.userLanguagePrefs as Record<string, string>)[userId] ?? null,
-            ),
-            setUserLanguage: vi.fn((userId: string, language: string) => {
-                (data.userLanguagePrefs as Record<string, string>)[userId] = language;
+            getUserLanguage: vi.fn((guildId: string, userId: string) => {
+                const prefs = data.userLanguagePreferenceEntries as Array<{
+                    guildId: string;
+                    userId: string;
+                    language: string;
+                }>;
+                return (
+                    prefs.find((entry) => entry.guildId === guildId && entry.userId === userId)
+                        ?.language ?? null
+                );
             }),
-            deleteUserLanguage: vi.fn((userId: string) => {
-                const prefs = data.userLanguagePrefs as Record<string, string>;
-                if (!(userId in prefs)) {
+            setUserLanguage: vi.fn((guildId: string, userId: string, language: string) => {
+                const prefs = data.userLanguagePreferenceEntries as Array<{
+                    guildId: string;
+                    userId: string;
+                    language: string;
+                }>;
+                const existing = prefs.find(
+                    (entry) => entry.guildId === guildId && entry.userId === userId,
+                );
+                if (existing) {
+                    existing.language = language;
+                } else {
+                    prefs.push({ guildId, userId, language });
+                }
+            }),
+            deleteUserLanguage: vi.fn((guildId: string, userId: string) => {
+                const prefs = data.userLanguagePreferenceEntries as Array<{
+                    guildId: string;
+                    userId: string;
+                    language: string;
+                }>;
+                const index = prefs.findIndex(
+                    (entry) => entry.guildId === guildId && entry.userId === userId,
+                );
+                if (index < 0) {
                     return false;
                 }
-                delete prefs[userId];
+                prefs.splice(index, 1);
                 return true;
             }),
             set: vi.fn((key: string, val: unknown) => {
@@ -1588,23 +1619,37 @@ describe('Dashboard API', () => {
         const res = await request(server, 'POST', '/api/user-prefs/batch-delete', {
             cookie: sessionCookie,
             csrf: csrfToken,
-            body: { userIds: ['user1', 'missing-user'] },
+            body: {
+                entries: [
+                    { guildId: 'guild-1', userId: 'user1' },
+                    { guildId: 'guild-3', userId: 'missing-user' },
+                ],
+            },
         });
 
         expect(res.status).toBe(200);
         expect(res.body).toEqual({
             ok: true,
-            deleted: ['user1'],
-            notFound: ['missing-user'],
+            deleted: [{ guildId: 'guild-1', userId: 'user1' }],
+            notFound: [{ guildId: 'guild-3', userId: 'missing-user' }],
         });
 
         const prefsRes = await request(server, 'GET', '/api/user-prefs', {
             cookie: sessionCookie,
         });
-        expect((prefsRes.body!.prefs as Record<string, string>).user1).toBeUndefined();
+        expect(prefsRes.body!.entries).not.toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ guildId: 'guild-1', userId: 'user1' }),
+            ]),
+        );
+        expect(prefsRes.body!.entries).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ guildId: 'guild-2', userId: 'user1' }),
+            ]),
+        );
     });
 
-    it('should include Discord user profiles with user language preferences', async () => {
+    it('should include Discord user profiles and guild metadata with user language preferences', async () => {
         const res = await request(server, 'GET', '/api/user-prefs', {
             cookie: sessionCookie,
         });
@@ -1612,9 +1657,14 @@ describe('Dashboard API', () => {
         expect(res.status).toBe(200);
         expect(res.body).toEqual(
             expect.objectContaining({
-                prefs: expect.objectContaining({
-                    user2: 'ko',
-                }),
+                entries: expect.arrayContaining([
+                    expect.objectContaining({
+                        guildId: 'guild-1',
+                        guildName: 'Guild One',
+                        userId: 'user2',
+                        language: 'zh-TW',
+                    }),
+                ]),
                 count: expect.any(Number),
                 profiles: expect.objectContaining({
                     user2: expect.objectContaining({
@@ -1626,6 +1676,28 @@ describe('Dashboard API', () => {
                     }),
                 }),
             }),
+        );
+    });
+
+    it('should delete one guild-scoped user language preference', async () => {
+        const res = await request(server, 'DELETE', '/api/user-prefs/user1?guildId=guild-2', {
+            cookie: sessionCookie,
+            csrf: csrfToken,
+        });
+
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({
+            ok: true,
+            deleted: { guildId: 'guild-2', userId: 'user1' },
+        });
+
+        const prefsRes = await request(server, 'GET', '/api/user-prefs', {
+            cookie: sessionCookie,
+        });
+        expect(prefsRes.body!.entries).not.toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ guildId: 'guild-2', userId: 'user1' }),
+            ]),
         );
     });
 

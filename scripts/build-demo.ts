@@ -514,13 +514,48 @@ const DEMO_LOGS: DemoLogFixture = [
     },
 ];
 
-const DEMO_USER_PREFS = {
-    '200000000000000001': 'zh-TW',
-    '200000000000000002': 'ja',
-    '200000000000000003': 'ko',
-    '200000000000000004': 'en',
-    '200000000000000005': 'es',
-};
+const DEMO_USER_PREFS = [
+    {
+        guildId: '100000000000000001',
+        guildName: 'Builder Lounge',
+        guildIcon: '',
+        guildMemberCount: 1842,
+        userId: '200000000000000001',
+        language: 'zh-TW',
+    },
+    {
+        guildId: '100000000000000001',
+        guildName: 'Builder Lounge',
+        guildIcon: '',
+        guildMemberCount: 1842,
+        userId: '200000000000000002',
+        language: 'ja',
+    },
+    {
+        guildId: '100000000000000002',
+        guildName: 'Indie Game Dev',
+        guildIcon: '',
+        guildMemberCount: 637,
+        userId: '200000000000000001',
+        language: 'ko',
+    },
+    {
+        guildId: '100000000000000003',
+        guildName: 'Open Source Asia',
+        guildIcon: '',
+        guildMemberCount: 1294,
+        userId: '200000000000000004',
+        language: 'en',
+    },
+    {
+        guildId: '100000000000000004',
+        guildName: 'Polyglot Study',
+        guildIcon: '',
+        guildMemberCount: 483,
+        userId: '200000000000000005',
+        language: 'es',
+    },
+];
 
 const DEMO_USER_PROFILES = {
     '200000000000000001': {
@@ -855,13 +890,13 @@ function createDemoApiJs(variant: DemoVariant): string {
   window.api = async function demoApi(path, opts) {
     const method = (opts && opts.method ? opts.method : 'GET').toUpperCase();
     const route = normalizePath(path);
+    if (method !== 'GET' && route !== '/version/refresh') {
+      return jsonResponse({ ok: true, demo: true, message: 'Demo mode: changes are disabled.' });
+    }
+
     const fixture = fixtureMap[route];
     if (!fixture) {
       return jsonResponse({ error: 'No demo fixture for ' + route }, 404);
-    }
-
-    if (method !== 'GET' && route !== '/version/refresh') {
-      return jsonResponse({ ok: true, demo: true, message: 'Demo mode: changes are disabled.' });
     }
 
     if (typeof fixture === 'string') {
@@ -941,9 +976,10 @@ function buildDemoVariant(publicDir: string, demoDir: string, variant: DemoVaria
     );
     writeJson(join(fixtureDir, 'history.json'), DEMO_HISTORY);
     writeJson(join(fixtureDir, 'logs.json'), createLogsFixture(variant));
+    const userPrefEntries = variant.kind === 'guild' ? DEMO_USER_PREFS : [];
     writeJson(join(fixtureDir, 'user-prefs.json'), {
-        prefs: DEMO_USER_PREFS,
-        count: Object.keys(DEMO_USER_PREFS).length,
+        entries: userPrefEntries,
+        count: userPrefEntries.length,
         profiles: DEMO_USER_PROFILES,
     });
     if (variant.kind === 'guild') {

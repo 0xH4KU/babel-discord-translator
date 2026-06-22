@@ -372,6 +372,13 @@
                     <h3>User Language Preferences</h3>
                     <div class="prefs-count" id="prefs-count">Loading...</div>
                     <div class="prefs-tools">
+                        <select
+                            id="prefs-guild-filter"
+                            aria-label="Filter user language preferences by server"
+                            onchange="setPrefsGuildFilter(this.value)"
+                        >
+                            <option value="">Loading servers...</option>
+                        </select>
                         <input
                             type="search"
                             id="prefs-search"

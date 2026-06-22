@@ -40,13 +40,13 @@
   window.api = async function demoApi(path, opts) {
     const method = (opts && opts.method ? opts.method : 'GET').toUpperCase();
     const route = normalizePath(path);
+    if (method !== 'GET' && route !== '/version/refresh') {
+      return jsonResponse({ ok: true, demo: true, message: 'Demo mode: changes are disabled.' });
+    }
+
     const fixture = fixtureMap[route];
     if (!fixture) {
       return jsonResponse({ error: 'No demo fixture for ' + route }, 404);
-    }
-
-    if (method !== 'GET' && route !== '/version/refresh') {
-      return jsonResponse({ ok: true, demo: true, message: 'Demo mode: changes are disabled.' });
     }
 
     if (typeof fixture === 'string') {

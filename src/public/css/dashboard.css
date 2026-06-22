@@ -701,12 +701,14 @@
 
 .prefs-tools {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.75rem;
   align-items: center;
   margin: 0.75rem 0 1rem;
 }
 
-.prefs-tools input {
+.prefs-tools input,
+.prefs-tools select {
   flex: 1;
   min-width: 0;
   padding: 0.65rem 0.85rem;
@@ -722,7 +724,12 @@
   transition: border-color 0.2s, background 0.2s;
 }
 
-.prefs-tools input:focus {
+.prefs-tools select {
+  flex: 0 1 17rem;
+}
+
+.prefs-tools input:focus,
+.prefs-tools select:focus {
   border-color: var(--accent);
   background: var(--surface);
 }
@@ -743,6 +750,34 @@
 }
 
 .user-prefs-table .mono {
+  overflow-wrap: anywhere;
+}
+
+.user-prefs-selected-server {
+  margin-top: 0;
+}
+
+.user-prefs-guild-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 0.5rem;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.user-prefs-guild-heading img {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.user-prefs-guild-id {
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.78rem;
+  font-weight: 500;
   overflow-wrap: anywhere;
 }
 

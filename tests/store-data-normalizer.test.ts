@@ -6,6 +6,7 @@ import {
     cloneUsageHistory,
     cloneUserBudgets,
     cloneUserDailyUsage,
+    normalizeStoreData,
 } from '../src/persistence/store-data-normalizer.js';
 
 describe('store-data-normalizer clone helpers', () => {
@@ -61,5 +62,21 @@ describe('store-data-normalizer clone helpers', () => {
         guildHistoryCopy['guild-1']![0]!.requests = 99;
 
         expect(guildHistory['guild-1']![0]!.requests).toBe(1);
+    });
+
+    it('normalizes legacy and guild-scoped user language preferences without duplicate keys', () => {
+        const normalized = normalizeStoreData({
+            userLanguagePrefs: { 'user-1': 'ja' },
+            userLanguagePreferenceEntries: [
+                { guildId: '', userId: 'user-1', language: 'ko' },
+                { guildId: 'guild-1', userId: 'user-1', language: 'zh-TW' },
+            ],
+        });
+
+        expect(normalized.userLanguagePrefs).toEqual({ 'user-1': 'ja' });
+        expect(normalized.userLanguagePreferenceEntries).toEqual([
+            { guildId: '', userId: 'user-1', language: 'ko' },
+            { guildId: 'guild-1', userId: 'user-1', language: 'zh-TW' },
+        ]);
     });
 });

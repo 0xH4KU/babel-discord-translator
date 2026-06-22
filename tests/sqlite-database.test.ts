@@ -123,4 +123,28 @@ describe('createSqliteDatabase', () => {
             db.close();
         }
     });
+
+    it('should scope user language preferences by guild id and user id', async () => {
+        const { createSqliteDatabase } = await import('../src/persistence/sqlite-database.js');
+        const db = createSqliteDatabase(':memory:');
+
+        try {
+            const columns = db
+                .prepare('PRAGMA table_info(user_language_preferences)')
+                .all() as Array<{
+                name: string;
+                pk: number;
+            }>;
+
+            expect(columns).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({ name: 'guild_id', pk: 1 }),
+                    expect.objectContaining({ name: 'user_id', pk: 2 }),
+                    expect.objectContaining({ name: 'language' }),
+                ]),
+            );
+        } finally {
+            db.close();
+        }
+    });
 });

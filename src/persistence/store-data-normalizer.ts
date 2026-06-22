@@ -5,6 +5,7 @@ import type {
     TranslationProviderMode,
     UsageHistoryEntry,
     UserBudgetConfig,
+    UserLanguagePreferenceEntry,
 } from '../shared/types.js';
 
 function normalizeNumber(value: unknown, fallback = 0): number {
@@ -69,6 +70,41 @@ export function cloneUserLanguagePrefs(
             normalizeString(language),
         ]),
     );
+}
+
+export function cloneUserLanguagePreferenceEntries(
+    entries: UserLanguagePreferenceEntry[] | undefined,
+): UserLanguagePreferenceEntry[] {
+    if (!Array.isArray(entries)) {
+        return [];
+    }
+
+    return entries.map((entry) => ({
+        guildId: normalizeString(entry?.guildId),
+        userId: normalizeString(entry?.userId),
+        language: normalizeString(entry?.language),
+    }));
+}
+
+function normalizeUserLanguagePreferenceEntries(
+    legacyPrefs: Record<string, string> | undefined,
+    entries: UserLanguagePreferenceEntry[] | undefined,
+): UserLanguagePreferenceEntry[] {
+    const byKey = new Map<string, UserLanguagePreferenceEntry>();
+    const normalizedEntries = [
+        ...Object.entries(cloneUserLanguagePrefs(legacyPrefs)).map(([userId, language]) => ({
+            guildId: '',
+            userId,
+            language,
+        })),
+        ...cloneUserLanguagePreferenceEntries(entries),
+    ];
+
+    for (const entry of normalizedEntries) {
+        byKey.set(`${entry.guildId}\u0000${entry.userId}`, entry);
+    }
+
+    return [...byKey.values()];
 }
 
 export function cloneGuildBudgets(
@@ -164,6 +200,10 @@ export function normalizeStoreData(data: Partial<StoreData> | undefined): StoreD
         usageHistory: cloneUsageHistory(source.usageHistory),
         translationPrompt: normalizeString(source.translationPrompt),
         userLanguagePrefs: cloneUserLanguagePrefs(source.userLanguagePrefs),
+        userLanguagePreferenceEntries: normalizeUserLanguagePreferenceEntries(
+            source.userLanguagePrefs,
+            source.userLanguagePreferenceEntries,
+        ),
         maxInputLength: normalizeNumber(source.maxInputLength, 2000),
         maxOutputTokens: normalizeNumber(source.maxOutputTokens, 1000),
         translationMaxConcurrent: normalizeNumber(source.translationMaxConcurrent, 4),

@@ -20,6 +20,7 @@ import {
     cloneUsageHistory,
     cloneUserBudgets,
     cloneUserDailyUsage,
+    cloneUserLanguagePreferenceEntries,
     cloneUserUsageHistory,
 } from './store-data-normalizer.js';
 import { appLogger, type StructuredLogger } from '../shared/structured-logger.js';
@@ -31,6 +32,7 @@ import type {
     TokenUsage,
     UsageHistoryEntry,
     UserBudgetConfig,
+    UserLanguagePreferenceEntry,
 } from '../shared/types.js';
 
 interface ConfigStoreOptions {
@@ -129,6 +131,8 @@ export class ConfigStore {
                 return this.getUsageHistory() as StoreData[K];
             case 'userLanguagePrefs':
                 return this.getUserLanguagePrefs() as StoreData[K];
+            case 'userLanguagePreferenceEntries':
+                return this.listUserLanguagePreferences() as StoreData[K];
             case 'guildBudgets':
                 return this.getAllGuildBudgets() as StoreData[K];
             case 'guildTokenUsage':
@@ -206,6 +210,9 @@ export class ConfigStore {
             tokenUsage: cloneTokenUsage(this.getDailyUsage()),
             usageHistory: cloneUsageHistory(this.getUsageHistory()),
             userLanguagePrefs: { ...this.getUserLanguagePrefs() },
+            userLanguagePreferenceEntries: cloneUserLanguagePreferenceEntries(
+                this.listUserLanguagePreferences(),
+            ),
             guildBudgets: cloneGuildBudgets(this.getAllGuildBudgets()),
             guildTokenUsage: cloneGuildDailyUsage(this.getGuildTokenUsage()),
             guildUsageHistory: cloneGuildUsageHistory(this.getAllGuildUsageHistory()),
@@ -281,28 +288,32 @@ export class ConfigStore {
         return true;
     }
 
-    getUserLanguage(userId: string): string | null {
+    getUserLanguage(guildId: string, userId: string): string | null {
         const row = this.stmt(
-            'SELECT language FROM user_language_preferences WHERE user_id = ?',
-        ).get(userId) as { language: string } | undefined;
+            `
+            SELECT language
+            FROM user_language_preferences
+            WHERE guild_id = ? AND user_id = ?
+        `,
+        ).get(guildId, userId) as { language: string } | undefined;
 
         return row?.language ?? null;
     }
 
-    setUserLanguage(userId: string, language: string): void {
+    setUserLanguage(guildId: string, userId: string, language: string): void {
         this.stmt(
             `
-            INSERT INTO user_language_preferences (user_id, language)
-            VALUES (?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET language = excluded.language
+            INSERT INTO user_language_preferences (guild_id, user_id, language)
+            VALUES (?, ?, ?)
+            ON CONFLICT(guild_id, user_id) DO UPDATE SET language = excluded.language
         `,
-        ).run(userId, language);
+        ).run(guildId, userId, language);
     }
 
-    deleteUserLanguage(userId: string): boolean {
-        const result = this.stmt('DELETE FROM user_language_preferences WHERE user_id = ?').run(
-            userId,
-        );
+    deleteUserLanguage(guildId: string, userId: string): boolean {
+        const result = this.stmt(
+            'DELETE FROM user_language_preferences WHERE guild_id = ? AND user_id = ?',
+        ).run(guildId, userId);
 
         return result.changes > 0;
     }
@@ -566,11 +577,24 @@ export class ConfigStore {
             `
             SELECT user_id as userId, language
             FROM user_language_preferences
+            WHERE guild_id = ''
             ORDER BY user_id ASC
         `,
         ).all() as Array<{ userId: string; language: string }>;
 
         return Object.fromEntries(rows.map((row) => [row.userId, row.language]));
+    }
+
+    private listUserLanguagePreferences(): UserLanguagePreferenceEntry[] {
+        const rows = this.stmt(
+            `
+            SELECT guild_id as guildId, user_id as userId, language
+            FROM user_language_preferences
+            ORDER BY guild_id ASC, user_id ASC
+        `,
+        ).all() as unknown as UserLanguagePreferenceEntry[];
+
+        return rows.map((row) => ({ ...row }));
     }
 
     private getGuildGlossaryEntry(guildId: string, entryId: number): GuildGlossaryEntry | null {
@@ -706,6 +730,11 @@ export class ConfigStore {
             case 'userLanguagePrefs':
                 this.replaceUserLanguagePrefs(value as StoreData['userLanguagePrefs']);
                 return;
+            case 'userLanguagePreferenceEntries':
+                this.replaceUserLanguagePreferenceEntries(
+                    value as StoreData['userLanguagePreferenceEntries'],
+                );
+                return;
             case 'guildBudgets':
                 this.replaceGuildBudgets(value as StoreData['guildBudgets']);
                 return;
@@ -754,14 +783,26 @@ export class ConfigStore {
     }
 
     private replaceUserLanguagePrefs(prefs: Record<string, string>): void {
-        this.db.exec('DELETE FROM user_language_preferences');
+        this.stmt("DELETE FROM user_language_preferences WHERE guild_id = ''").run();
         const insert = this.stmt(`
-            INSERT INTO user_language_preferences (user_id, language)
-            VALUES (?, ?)
+            INSERT INTO user_language_preferences (guild_id, user_id, language)
+            VALUES ('', ?, ?)
         `);
 
         for (const [userId, language] of Object.entries(prefs)) {
             insert.run(userId, language);
+        }
+    }
+
+    private replaceUserLanguagePreferenceEntries(entries: UserLanguagePreferenceEntry[]): void {
+        this.db.exec('DELETE FROM user_language_preferences');
+        const insert = this.stmt(`
+            INSERT INTO user_language_preferences (guild_id, user_id, language)
+            VALUES (?, ?, ?)
+        `);
+
+        for (const entry of entries) {
+            insert.run(entry.guildId, entry.userId, entry.language);
         }
     }
 

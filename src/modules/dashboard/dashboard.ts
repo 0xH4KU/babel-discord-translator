@@ -96,6 +96,18 @@ function normalizeGlossaryKey(sourceText: string, targetLanguage: string): strin
     return `${normalizeGlossarySource(sourceText)}\u0000${normalizeGlossaryLanguage(targetLanguage)}`;
 }
 
+function sanitizeUserPreferenceRef(value: unknown): { guildId: string; userId: string } | null {
+    if (!value || typeof value !== 'object') {
+        return null;
+    }
+
+    const source = value as { guildId?: unknown; userId?: unknown };
+    const guildId = String(source.guildId ?? '').trim();
+    const userId = String(source.userId ?? '').trim();
+
+    return guildId && userId ? { guildId, userId } : null;
+}
+
 function applySecurityHeaders(_req: Request, res: Response, next: NextFunction): void {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
@@ -880,16 +892,36 @@ export function createDashboardApp({
         auth.requireAuth,
         asyncHandler(async (_req: Request, res: Response) => {
             const scope = getScope(res);
-            const prefs = userPreferenceRepository.listPreferences();
+            const guildsById = new Map(
+                scope.client.guilds.cache.map((guild) => [
+                    guild.id,
+                    {
+                        id: guild.id,
+                        name: guild.name,
+                        icon: guild.iconURL({ size: 32 }) || '',
+                        memberCount: guild.memberCount,
+                    },
+                ]),
+            );
+            const entries = userPreferenceRepository
+                .listPreferences()
+                .filter((entry) => entry.guildId && guildsById.has(entry.guildId))
+                .map((entry) => ({
+                    ...entry,
+                    guildName: guildsById.get(entry.guildId)?.name ?? entry.guildId,
+                    guildIcon: guildsById.get(entry.guildId)?.icon ?? '',
+                    guildMemberCount: guildsById.get(entry.guildId)?.memberCount ?? null,
+                }));
+            const userIds = [...new Set(entries.map((entry) => entry.userId))];
             const profiles = await resolveDiscordUserProfiles({
                 client: scope.client,
                 repository: userProfileRepository,
-                userIds: Object.keys(prefs),
+                userIds,
             });
 
             res.json({
-                prefs,
-                count: Object.keys(prefs).length,
+                entries,
+                count: entries.length,
                 profiles,
             });
         }),
@@ -900,25 +932,33 @@ export function createDashboardApp({
         auth.requireAuth,
         auth.requireCsrf,
         (req: Request, res: Response) => {
-            const userIds: string[] = Array.isArray(req.body.userIds)
-                ? req.body.userIds
-                      .map((userId: unknown) => String(userId).trim())
-                      .filter((userId: string) => userId.length > 0)
+            const refs = Array.isArray(req.body.entries)
+                ? (req.body.entries as unknown[])
+                      .map((entry: unknown) => sanitizeUserPreferenceRef(entry))
+                      .filter((entry): entry is { guildId: string; userId: string } => !!entry)
                 : [];
 
-            if (userIds.length === 0) {
-                res.status(400).json({ error: 'userIds must be a non-empty array' });
+            if (refs.length === 0) {
+                res.status(400).json({
+                    error: 'entries must be a non-empty array of guildId/userId pairs',
+                });
                 return;
             }
 
-            const deleted: string[] = [];
-            const notFound: string[] = [];
+            const deleted: Array<{ guildId: string; userId: string }> = [];
+            const notFound: Array<{ guildId: string; userId: string }> = [];
+            const seen = new Set<string>();
 
-            for (const userId of [...new Set(userIds)]) {
-                if (userPreferenceRepository.clearLanguage(userId)) {
-                    deleted.push(userId);
+            for (const ref of refs) {
+                const key = `${ref.guildId}\u0000${ref.userId}`;
+                if (seen.has(key)) {
+                    continue;
+                }
+                seen.add(key);
+                if (userPreferenceRepository.clearLanguage(ref.guildId, ref.userId)) {
+                    deleted.push(ref);
                 } else {
-                    notFound.push(userId);
+                    notFound.push(ref);
                 }
             }
 
@@ -932,8 +972,14 @@ export function createDashboardApp({
         auth.requireCsrf,
         (req: Request, res: Response) => {
             const userId = req.params.userId as string;
-            if (userPreferenceRepository.clearLanguage(userId)) {
-                res.json({ ok: true, deleted: userId });
+            const guildId = String(req.query.guildId ?? '').trim();
+            if (!guildId) {
+                res.status(400).json({ error: 'guildId is required' });
+                return;
+            }
+
+            if (userPreferenceRepository.clearLanguage(guildId, userId)) {
+                res.json({ ok: true, deleted: { guildId, userId } });
             } else {
                 res.status(404).json({ error: dashboardMessages.userPreferences.notFound });
             }

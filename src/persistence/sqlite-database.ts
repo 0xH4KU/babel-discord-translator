@@ -23,8 +23,10 @@ const MIGRATIONS: Migration[] = [
                 );
 
                 CREATE TABLE IF NOT EXISTS user_language_preferences (
-                    user_id TEXT PRIMARY KEY,
-                    language TEXT NOT NULL
+                    guild_id TEXT NOT NULL DEFAULT '',
+                    user_id TEXT NOT NULL,
+                    language TEXT NOT NULL,
+                    PRIMARY KEY (guild_id, user_id)
                 );
 
                 CREATE TABLE IF NOT EXISTS guild_budgets (
@@ -179,6 +181,27 @@ const MIGRATIONS: Migration[] = [
 
                 CREATE INDEX IF NOT EXISTS idx_guild_glossary_language_lookup
                     ON guild_glossary (guild_id, target_language, source_text);
+            `);
+        },
+    },
+    {
+        id: 7,
+        name: 'guild_scoped_user_language_preferences',
+        up(db) {
+            db.exec(`
+                CREATE TABLE user_language_preferences_new (
+                    guild_id TEXT NOT NULL DEFAULT '',
+                    user_id TEXT NOT NULL,
+                    language TEXT NOT NULL,
+                    PRIMARY KEY (guild_id, user_id)
+                );
+
+                INSERT INTO user_language_preferences_new (guild_id, user_id, language)
+                SELECT '', user_id, language
+                FROM user_language_preferences;
+
+                DROP TABLE user_language_preferences;
+                ALTER TABLE user_language_preferences_new RENAME TO user_language_preferences;
             `);
         },
     },

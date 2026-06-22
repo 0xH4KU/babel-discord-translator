@@ -62,6 +62,7 @@ function createStoreMock(overrides: Partial<StoreData> = {}) {
         usageHistory: [],
         translationPrompt: '',
         userLanguagePrefs: {},
+        userLanguagePreferenceEntries: [],
         maxInputLength: 2000,
         maxOutputTokens: 1000,
         translationMaxConcurrent: 4,
@@ -114,8 +115,12 @@ function createStoreMock(overrides: Partial<StoreData> = {}) {
 function createUserPreferenceStoreMock(overrides: Partial<StoreData> = {}) {
     const configStore = createStoreMock(overrides);
     return {
-        getLanguage(userId: string): string | null {
-            return configStore.data.userLanguagePrefs[userId] ?? null;
+        getLanguage(guildId: string, userId: string): string | null {
+            return (
+                (configStore.data.userLanguagePreferenceEntries ?? []).find(
+                    (entry) => entry.guildId === guildId && entry.userId === userId,
+                )?.language ?? null
+            );
         },
     };
 }
@@ -226,7 +231,9 @@ describe('TranslationService', () => {
         const { service, usageTracker, translator, log, stats, metrics, loggerState } =
             createService({
                 storeOverrides: {
-                    userLanguagePrefs: { user1: 'ja' },
+                    userLanguagePreferenceEntries: [
+                        { guildId: 'guild-1', userId: 'user1', language: 'ja' },
+                    ],
                 },
             });
 
@@ -311,7 +318,9 @@ describe('TranslationService', () => {
     it('should read runtime config once per request', async () => {
         const { service, configStore } = createService({
             storeOverrides: {
-                userLanguagePrefs: { user1: 'ja' },
+                userLanguagePreferenceEntries: [
+                    { guildId: 'guild-1', userId: 'user1', language: 'ja' },
+                ],
             },
         });
 
@@ -1158,7 +1167,9 @@ describe('TranslationService', () => {
         const beforeTranslate = vi.fn(async () => undefined);
         const { service } = createService({
             storeOverrides: {
-                userLanguagePrefs: { user1: 'ja' },
+                userLanguagePreferenceEntries: [
+                    { guildId: 'guild-1', userId: 'user1', language: 'ja' },
+                ],
             },
         });
 
@@ -1187,12 +1198,15 @@ describe('resolveTargetLanguage', () => {
 
     it('should prioritize explicit target option over preferences and locale', () => {
         const preferenceStore = createUserPreferenceStoreMock({
-            userLanguagePrefs: { user1: 'ja' },
+            userLanguagePreferenceEntries: [
+                { guildId: 'guild-1', userId: 'user1', language: 'ja' },
+            ],
         });
 
         expect(
             resolveTargetLanguage(
                 {
+                    guildId: 'guild-1',
                     userId: 'user1',
                     locale: 'ko',
                     targetLanguageOption: 'fr',
@@ -1205,14 +1219,18 @@ describe('resolveTargetLanguage', () => {
         });
     });
 
-    it('should fall back from user preference to locale and then auto', () => {
+    it('should fall back from guild user preference to locale and then auto', () => {
         const preferenceStore = createUserPreferenceStoreMock({
-            userLanguagePrefs: { user1: 'ja' },
+            userLanguagePreferenceEntries: [
+                { guildId: 'guild-1', userId: 'user1', language: 'ja' },
+                { guildId: 'guild-2', userId: 'user1', language: 'ko' },
+            ],
         });
 
         expect(
             resolveTargetLanguage(
                 {
+                    guildId: 'guild-1',
                     userId: 'user1',
                     locale: 'ko',
                 },
@@ -1225,7 +1243,21 @@ describe('resolveTargetLanguage', () => {
         expect(
             resolveTargetLanguage(
                 {
-                    userId: 'user2',
+                    guildId: 'guild-2',
+                    userId: 'user1',
+                    locale: 'ja',
+                },
+                preferenceStore,
+            ),
+        ).toEqual({
+            targetLanguage: 'ko',
+            langSource: 'setlang',
+        });
+        expect(
+            resolveTargetLanguage(
+                {
+                    guildId: 'guild-3',
+                    userId: 'user1',
                     locale: 'ko',
                 },
                 preferenceStore,
@@ -1237,6 +1269,7 @@ describe('resolveTargetLanguage', () => {
         expect(
             resolveTargetLanguage(
                 {
+                    guildId: null,
                     userId: 'user2',
                     locale: 'en-US',
                 },

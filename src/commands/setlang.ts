@@ -6,9 +6,18 @@ import { userPreferenceRepository } from '../modules/translation/user-preference
 /** Handle /setlang command — set user's preferred translation language. */
 export async function handleSetlang(interaction: ChatInputCommandInteraction): Promise<void> {
     const lang = interaction.options.getString('language')!;
+    const guildId = interaction.guildId;
+
+    if (!guildId) {
+        await interaction.reply({
+            content: 'Language preferences can only be changed inside a server.',
+            flags: MessageFlags.Ephemeral,
+        });
+        return;
+    }
 
     if (lang === 'auto') {
-        userPreferenceRepository.clearLanguage(interaction.user.id);
+        userPreferenceRepository.clearLanguage(guildId, interaction.user.id);
         await interaction.reply({
             content: discordMessages.languagePreferenceCleared(),
             flags: MessageFlags.Ephemeral,
@@ -16,7 +25,7 @@ export async function handleSetlang(interaction: ChatInputCommandInteraction): P
         return;
     }
 
-    userPreferenceRepository.setLanguage(interaction.user.id, lang);
+    userPreferenceRepository.setLanguage(guildId, interaction.user.id, lang);
     await interaction.reply({
         content: discordMessages.languageTargetSet(lang),
         flags: MessageFlags.Ephemeral,
@@ -25,7 +34,9 @@ export async function handleSetlang(interaction: ChatInputCommandInteraction): P
 
 /** Handle /mylang command — show user's current translation language. */
 export async function handleMylang(interaction: ChatInputCommandInteraction): Promise<void> {
-    const userPref = userPreferenceRepository.getLanguage(interaction.user.id);
+    const userPref = interaction.guildId
+        ? userPreferenceRepository.getLanguage(interaction.guildId, interaction.user.id)
+        : null;
     const localeLang = localeToLang(interaction.locale);
 
     let reply: string;

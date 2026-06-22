@@ -881,11 +881,12 @@ const LANG_NAMES = {
     tr: 'Türkçe',
 };
 
-let allPrefsData = {};
+let allPrefsData = [];
 let userProfiles = {};
 let prefsPage = 1,
     prefsPageSize = 15;
 let prefsSearch = '';
+let prefsGuildFilter = '';
 let selectedPrefUserIds = new Set();
 
 function escapeHtml(value) {
@@ -942,33 +943,112 @@ async function loadUserPrefs() {
     try {
         const res = await api('/user-prefs');
         if (!res.ok) return;
-        const { prefs, count, profiles } = await res.json();
-        allPrefsData = prefs;
+        const { entries, profiles } = await res.json();
+        allPrefsData = Array.isArray(entries) ? entries : [];
         userProfiles = { ...userProfiles, ...(profiles || {}) };
-        document.getElementById('prefs-count').textContent =
-            count + ' user(s) with custom settings';
         prefsPage = 1;
         selectedPrefUserIds = new Set(
-            [...selectedPrefUserIds].filter((userId) =>
-                Object.prototype.hasOwnProperty.call(prefs, userId),
+            [...selectedPrefUserIds].filter((key) =>
+                allPrefsData.some((entry) => prefSelectionKey(entry.guildId, entry.userId) === key),
             ),
         );
+        ensurePrefsGuildFilter();
         renderUserPrefs();
     } catch {}
 }
 
+function prefSelectionKey(guildId, userId) {
+    return `${guildId}\u0000${userId}`;
+}
+
+function prefRefFromKey(key) {
+    const [guildId, userId] = String(key).split('\u0000');
+    return { guildId, userId };
+}
+
+function prefsGuildOptions() {
+    const options = [];
+    const byGuildId = new Map();
+    const entries = Array.isArray(allPrefsData) ? allPrefsData : [];
+
+    for (const entry of entries) {
+        const guildId = String(entry.guildId || '');
+        if (!guildId) continue;
+
+        if (!byGuildId.has(guildId)) {
+            const option = {
+                guildId,
+                guildName: entry.guildName || guildId,
+                guildIcon: entry.guildIcon || '',
+                count: 0,
+            };
+            byGuildId.set(guildId, option);
+            options.push(option);
+        }
+
+        byGuildId.get(guildId).count += 1;
+    }
+
+    return options;
+}
+
+function ensurePrefsGuildFilter() {
+    const options = prefsGuildOptions();
+
+    if (options.length === 0) {
+        prefsGuildFilter = '';
+        return;
+    }
+
+    if (!prefsGuildFilter || !options.some((guild) => guild.guildId === prefsGuildFilter)) {
+        prefsGuildFilter = options[0].guildId;
+    }
+}
+
+function selectedPrefsGuild() {
+    ensurePrefsGuildFilter();
+    return prefsGuildOptions().find((guild) => guild.guildId === prefsGuildFilter) || null;
+}
+
+function renderPrefsGuildFilter() {
+    const select = document.getElementById('prefs-guild-filter');
+    if (!select) return;
+
+    const options = prefsGuildOptions();
+    if (options.length === 0) {
+        select.disabled = true;
+        select.innerHTML = '<option value="">No servers with preferences</option>';
+        select.value = '';
+        return;
+    }
+
+    select.disabled = false;
+    select.innerHTML = options
+        .map((guild) => {
+            const selected = guild.guildId === prefsGuildFilter ? 'selected' : '';
+            return `<option value="${escapeHtml(guild.guildId)}" ${selected}>${escapeHtml(guild.guildName)} (${guild.count})</option>`;
+        })
+        .join('');
+    select.value = prefsGuildFilter;
+}
+
 function filteredPrefsEntries() {
     const query = prefsSearch.trim().toLowerCase();
-    const entries = Object.entries(allPrefsData);
+    ensurePrefsGuildFilter();
+    const entries = (Array.isArray(allPrefsData) ? allPrefsData : []).filter(
+        (entry) => String(entry.guildId || '') === prefsGuildFilter,
+    );
 
     if (!query) return entries;
 
-    return entries.filter(([userId, lang]) => {
-        const name = LANG_NAMES[lang] || lang;
+    return entries.filter((entry) => {
+        const name = LANG_NAMES[entry.language] || entry.language;
         return (
-            userId.toLowerCase().includes(query) ||
-            userSearchText(userId).includes(query) ||
-            String(lang).toLowerCase().includes(query) ||
+            String(entry.guildId).toLowerCase().includes(query) ||
+            String(entry.guildName || '').toLowerCase().includes(query) ||
+            String(entry.userId).toLowerCase().includes(query) ||
+            userSearchText(entry.userId).includes(query) ||
+            String(entry.language).toLowerCase().includes(query) ||
             String(name).toLowerCase().includes(query)
         );
     });
@@ -987,33 +1067,64 @@ function updatePrefBatchState() {
 
 function renderUserPrefs() {
     const container = document.getElementById('user-prefs-container');
+    if (!container) return;
+    ensurePrefsGuildFilter();
+    renderPrefsGuildFilter();
+
+    const selectedGuild = selectedPrefsGuild();
     const entries = filteredPrefsEntries();
+    const count = document.getElementById('prefs-count');
+
+    if (!selectedGuild) {
+        container.innerHTML =
+            '<div class="empty-state">No user language preferences have been saved yet.</div>';
+        document.getElementById('prefs-pagination').innerHTML = '';
+        if (count) count.textContent = '0 server user setting(s)';
+        updatePrefBatchState();
+        return;
+    }
+
+    const selectedGuildName = selectedGuild.guildName || selectedGuild.guildId;
+    if (count) {
+        count.textContent = `${entries.length} shown in ${selectedGuildName} / ${allPrefsData.length} total`;
+    }
 
     if (entries.length === 0) {
         container.innerHTML =
-            '<div class="empty-state">No matching user language preferences.</div>';
+            '<div class="empty-state">No matching user language preferences in this server.</div>';
         document.getElementById('prefs-pagination').innerHTML = '';
         updatePrefBatchState();
         return;
     }
 
+    const totalPages = Math.max(Math.ceil(entries.length / prefsPageSize), 1);
+    prefsPage = Math.min(prefsPage, totalPages);
     const start = (prefsPage - 1) * prefsPageSize;
     const pageEntries = entries.slice(start, start + prefsPageSize);
 
-    let html = `<div class="table-scroll"><table class="data-table user-prefs-table"><thead><tr>
-    <th></th><th>User</th><th>Language</th><th></th>
-  </tr></thead><tbody>`;
-    for (const [userId, lang] of pageEntries) {
-        const name = LANG_NAMES[lang] || lang;
-        const checked = selectedPrefUserIds.has(userId) ? 'checked' : '';
+    let html = `<div class="user-prefs-selected-server">
+      <div class="user-prefs-guild-heading">
+        ${selectedGuild.guildIcon ? `<img src="${escapeHtml(selectedGuild.guildIcon)}" alt="">` : ''}
+        <span>${escapeHtml(selectedGuildName)}</span>
+        <span class="user-prefs-guild-id">${escapeHtml(selectedGuild.guildId)}</span>
+      </div>
+      <div class="table-scroll"><table class="data-table user-prefs-table"><thead><tr>
+        <th></th><th>User</th><th>Language</th><th></th>
+      </tr></thead><tbody>`;
+
+    for (const entry of pageEntries) {
+        const name = LANG_NAMES[entry.language] || entry.language;
+        const key = prefSelectionKey(entry.guildId, entry.userId);
+        const checked = selectedPrefUserIds.has(key) ? 'checked' : '';
         html += `<tr>
-      <td><input type="checkbox" onchange="togglePrefSelection('${userId}', this.checked)" ${checked}></td>
-      <td>${renderUserIdentity(userId, true)}</td>
-      <td>${escapeHtml(name)} (${escapeHtml(lang)})</td>
-      <td><button class="btn-danger" onclick="deleteUserPref('${userId}')">Delete</button></td>
+      <td><input type="checkbox" onchange="togglePrefSelection('${escapeHtml(entry.guildId)}', '${escapeHtml(entry.userId)}', this.checked)" ${checked}></td>
+      <td>${renderUserIdentity(entry.userId, true)}</td>
+      <td>${escapeHtml(name)} (${escapeHtml(entry.language)})</td>
+      <td><button class="btn-danger" onclick="deleteUserPref('${escapeHtml(entry.guildId)}', '${escapeHtml(entry.userId)}')">Delete</button></td>
     </tr>`;
     }
-    html += '</tbody></table></div>';
+
+    html += '</tbody></table></div></div>';
     container.innerHTML = html;
 
     renderPagination('prefs-pagination', {
@@ -1023,8 +1134,6 @@ function renderUserPrefs() {
         onPageChange: 'setPrefsPage',
         onSizeChange: 'setPrefsPageSize',
     });
-    document.getElementById('prefs-count').textContent =
-        `${entries.length} shown / ${Object.keys(allPrefsData).length} total`;
     updatePrefBatchState();
 }
 
@@ -1044,30 +1153,42 @@ function setPrefsSearch(value) {
     renderUserPrefs();
 }
 
-function togglePrefSelection(userId, checked) {
+function setPrefsGuildFilter(guildId) {
+    prefsGuildFilter = guildId || '';
+    prefsPage = 1;
+    selectedPrefUserIds = new Set();
+    ensurePrefsGuildFilter();
+    renderUserPrefs();
+}
+
+function togglePrefSelection(guildId, userId, checked) {
+    const key = prefSelectionKey(guildId, userId);
     if (checked) {
-        selectedPrefUserIds.add(userId);
+        selectedPrefUserIds.add(key);
     } else {
-        selectedPrefUserIds.delete(userId);
+        selectedPrefUserIds.delete(key);
     }
 
     updatePrefBatchState();
 }
 
 async function deleteSelectedUserPrefs() {
-    const userIds = [...selectedPrefUserIds];
-    if (userIds.length === 0) return;
+    const entries = [...selectedPrefUserIds].map(prefRefFromKey);
+    if (entries.length === 0) return;
 
     const res = await api('/user-prefs/batch-delete', {
         method: 'POST',
-        body: JSON.stringify({ userIds }),
+        body: JSON.stringify({ entries }),
     });
 
     if (res.ok) {
         const data = await res.json();
-        for (const userId of data.deleted || []) {
-            delete allPrefsData[userId];
-            selectedPrefUserIds.delete(userId);
+        for (const entry of data.deleted || []) {
+            const key = prefSelectionKey(entry.guildId, entry.userId);
+            allPrefsData = allPrefsData.filter(
+                (pref) => prefSelectionKey(pref.guildId, pref.userId) !== key,
+            );
+            selectedPrefUserIds.delete(key);
         }
         showToast(`${(data.deleted || []).length} user preference(s) cleared`);
         renderUserPrefs();
@@ -1076,14 +1197,17 @@ async function deleteSelectedUserPrefs() {
     }
 }
 
-async function deleteUserPref(userId) {
-    const res = await api('/user-prefs/' + userId, { method: 'DELETE' });
+async function deleteUserPref(guildId, userId) {
+    const res = await api('/user-prefs/' + encodeURIComponent(userId) + '?guildId=' + encodeURIComponent(guildId), { method: 'DELETE' });
     if (res.ok) {
         showToast('User preference deleted');
-        delete allPrefsData[userId];
-        selectedPrefUserIds.delete(userId);
+        const key = prefSelectionKey(guildId, userId);
+        allPrefsData = allPrefsData.filter(
+            (pref) => prefSelectionKey(pref.guildId, pref.userId) !== key,
+        );
+        selectedPrefUserIds.delete(key);
         document.getElementById('prefs-count').textContent =
-            Object.keys(allPrefsData).length + ' user(s) with custom settings';
+            allPrefsData.length + ' server user setting(s)';
         renderUserPrefs();
     } else {
         showToast('Delete failed', true);

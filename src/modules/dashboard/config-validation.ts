@@ -21,6 +21,7 @@ export function validateConfigUpdate(updates: Record<string, unknown>): {
     delete sanitized.tokenUsage;
     delete sanitized.usageHistory;
     delete sanitized.userLanguagePrefs;
+    delete sanitized.userLanguagePreferenceEntries;
     delete sanitized.guildBudgets;
     delete sanitized.guildTokenUsage;
     delete sanitized.guildUsageHistory;

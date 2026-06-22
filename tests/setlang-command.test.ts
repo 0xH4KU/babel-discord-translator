@@ -11,11 +11,16 @@ vi.mock('../src/modules/translation/user-preference-repository.js', () => ({
     },
 }));
 
-function createInteraction({ language = null as string | null, locale = 'en-US' } = {}) {
+function createInteraction({
+    language = null as string | null,
+    locale = 'en-US',
+    guildId = 'guild-1' as string | null,
+} = {}) {
     return {
         options: {
             getString: vi.fn(() => language),
         },
+        guildId,
         user: { id: 'user-1' },
         locale,
         reply: vi.fn(),
@@ -34,7 +39,7 @@ describe('handleSetlang', () => {
 
         await handleSetlang(interaction as never);
 
-        expect(mockRepository.clearLanguage).toHaveBeenCalledWith('user-1');
+        expect(mockRepository.clearLanguage).toHaveBeenCalledWith('guild-1', 'user-1');
         expect(interaction.reply).toHaveBeenCalledWith({
             content: expect.stringContaining('cleared'),
             flags: MessageFlags.Ephemeral,
@@ -47,7 +52,7 @@ describe('handleSetlang', () => {
 
         await handleSetlang(interaction as never);
 
-        expect(mockRepository.setLanguage).toHaveBeenCalledWith('user-1', 'ja');
+        expect(mockRepository.setLanguage).toHaveBeenCalledWith('guild-1', 'user-1', 'ja');
         expect(interaction.reply).toHaveBeenCalledWith({
             content: expect.stringContaining('**ja**'),
             flags: MessageFlags.Ephemeral,
@@ -62,6 +67,7 @@ describe('handleMylang', () => {
 
         await handleMylang(interaction as never);
 
+        expect(mockRepository.getLanguage).toHaveBeenCalledWith('guild-1', 'user-1');
         expect(interaction.reply).toHaveBeenCalledWith({
             content: expect.stringContaining('**日本語** (`ja`), set via /setlang'),
             flags: MessageFlags.Ephemeral,

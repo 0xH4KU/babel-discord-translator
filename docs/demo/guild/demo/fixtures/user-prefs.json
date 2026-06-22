@@ -1,11 +1,46 @@
 {
-  "prefs": {
-    "200000000000000001": "zh-TW",
-    "200000000000000002": "ja",
-    "200000000000000003": "ko",
-    "200000000000000004": "en",
-    "200000000000000005": "es"
-  },
+  "entries": [
+    {
+      "guildId": "100000000000000001",
+      "guildName": "Builder Lounge",
+      "guildIcon": "",
+      "guildMemberCount": 1842,
+      "userId": "200000000000000001",
+      "language": "zh-TW"
+    },
+    {
+      "guildId": "100000000000000001",
+      "guildName": "Builder Lounge",
+      "guildIcon": "",
+      "guildMemberCount": 1842,
+      "userId": "200000000000000002",
+      "language": "ja"
+    },
+    {
+      "guildId": "100000000000000002",
+      "guildName": "Indie Game Dev",
+      "guildIcon": "",
+      "guildMemberCount": 637,
+      "userId": "200000000000000001",
+      "language": "ko"
+    },
+    {
+      "guildId": "100000000000000003",
+      "guildName": "Open Source Asia",
+      "guildIcon": "",
+      "guildMemberCount": 1294,
+      "userId": "200000000000000004",
+      "language": "en"
+    },
+    {
+      "guildId": "100000000000000004",
+      "guildName": "Polyglot Study",
+      "guildIcon": "",
+      "guildMemberCount": 483,
+      "userId": "200000000000000005",
+      "language": "es"
+    }
+  ],
   "count": 5,
   "profiles": {
     "200000000000000001": {

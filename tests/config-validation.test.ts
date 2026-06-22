@@ -31,6 +31,7 @@ describe('validateConfigUpdate', () => {
             tokenUsage: { date: 'x', inputTokens: 1, outputTokens: 1 },
             usageHistory: [],
             userLanguagePrefs: { u: 'ja' },
+            userLanguagePreferenceEntries: [{ guildId: 'g', userId: 'u', language: 'ja' }],
             guildBudgets: { g: { dailyBudgetUsd: 1 } },
             guildTokenUsage: {},
             guildUsageHistory: {},

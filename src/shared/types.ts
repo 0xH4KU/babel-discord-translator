@@ -66,6 +66,12 @@ export interface GuildGlossaryInput {
     notes?: string;
 }
 
+export interface UserLanguagePreferenceEntry {
+    guildId: string;
+    userId: string;
+    language: string;
+}
+
 export interface StoreData {
     vertexAiApiKey: string;
     gcpProject: string;
@@ -84,6 +90,7 @@ export interface StoreData {
     usageHistory: UsageHistoryEntry[];
     translationPrompt: string;
     userLanguagePrefs: Record<string, string>;
+    userLanguagePreferenceEntries: UserLanguagePreferenceEntry[];
     maxInputLength: number;
     maxOutputTokens: number;
     translationMaxConcurrent: number;
