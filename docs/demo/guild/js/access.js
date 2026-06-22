@@ -484,10 +484,10 @@ function renderGlossaryEntries() {
     const rows = glossaryEntries
         .map(
             (entry) => `<tr>
-      <td class="mono">${entry.sourceText}</td>
-      <td class="mono">${entry.targetLanguage || 'auto'}</td>
-      <td class="mono">${entry.targetText}</td>
-      <td class="dim">${entry.notes || '-'}</td>
+      <td class="mono">${escapeHtml(entry.sourceText)}</td>
+      <td class="mono">${escapeHtml(entry.targetLanguage || 'auto')}</td>
+      <td class="mono">${escapeHtml(entry.targetText)}</td>
+      <td class="dim">${entry.notes ? escapeHtml(entry.notes) : '-'}</td>
       <td>
         <button class="btn btn-secondary btn-xs" onclick="editGlossaryEntry(${entry.id})">Edit</button>
         <button class="btn-danger" onclick="deleteGlossaryEntry(${entry.id})">Delete</button>

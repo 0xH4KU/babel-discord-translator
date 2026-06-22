@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
 import { describe, expect, it } from 'vitest';
 
 describe('dashboard static assets', () => {
@@ -121,5 +122,45 @@ describe('dashboard static assets', () => {
 
         expect(dashboardJs).toContain('getDashboardUsageScopeLabel');
         expect(dashboardJs).toContain('getDashboardUsageScopeLabel(d)');
+    });
+
+    it('escapes glossary table fields rendered from stored import data', () => {
+        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const glossaryContainer = { innerHTML: '' };
+        const context = {
+            document: {
+                getElementById(id: string) {
+                    return id === 'glossary-container' ? glossaryContainer : null;
+                },
+            },
+            hasDashboardCapability(name: string) {
+                return name === 'guildGlossary';
+            },
+        };
+
+        vm.createContext(context);
+        vm.runInContext(
+            [
+                accessJs,
+                "glossaryGuildId = 'guild-1';",
+                `glossaryEntries = [{
+                    id: 1,
+                    sourceText: '<img src=x onerror=alert(1)>',
+                    targetLanguage: 'ja<script>alert(1)</script>',
+                    targetText: '<b>owned</b>',
+                    notes: '<svg onload=alert(1)>'
+                }];`,
+                'renderGlossaryEntries();',
+            ].join('\n'),
+            context,
+        );
+
+        expect(glossaryContainer.innerHTML).toContain('&lt;img src=x onerror=alert(1)&gt;');
+        expect(glossaryContainer.innerHTML).toContain('ja&lt;script&gt;alert(1)&lt;/script&gt;');
+        expect(glossaryContainer.innerHTML).toContain('&lt;b&gt;owned&lt;/b&gt;');
+        expect(glossaryContainer.innerHTML).toContain('&lt;svg onload=alert(1)&gt;');
+        expect(glossaryContainer.innerHTML).not.toContain('<img src=x');
+        expect(glossaryContainer.innerHTML).not.toContain('<b>owned</b>');
+        expect(glossaryContainer.innerHTML).not.toContain('<svg onload');
     });
 });

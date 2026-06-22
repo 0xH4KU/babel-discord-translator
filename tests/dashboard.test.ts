@@ -1100,7 +1100,7 @@ describe('Dashboard API', () => {
             expect(res.status).toBe(200);
             expect(res.headers['content-type']).toContain('text/plain');
             expect(res.text).toContain(
-                'babel_app_version_info{version="0.2.0",repository_url="https://github.com/0xH4KU/babel-discord-translator"} 1',
+                'babel_app_version_info{version="0.2.1",repository_url="https://github.com/0xH4KU/babel-discord-translator"} 1',
             );
             expect(res.text).toContain('babel_translations_total');
             expect(res.text).toContain('babel_translation_failures_total');
@@ -2534,6 +2534,21 @@ describe('Dashboard API', () => {
             expect(pocketRes.body).toEqual(pocketHistory);
             expect(usageMock.getGuildHistoryForGuilds).toHaveBeenCalledWith(['guild-1']);
             expect(usageMock.getAllUserHistory).toHaveBeenCalled();
+
+            usageMock.getGuildHistory.mockClear();
+            const pocketGuildFilterRes = await request(
+                combinedServer,
+                'GET',
+                '/pocket/api/usage/history?guildId=guild-1',
+                {
+                    cookie,
+                },
+            );
+            expect(pocketGuildFilterRes.status).toBe(400);
+            expect(pocketGuildFilterRes.body).toEqual({
+                error: 'guildId filter is not available for this dashboard scope',
+            });
+            expect(usageMock.getGuildHistory).not.toHaveBeenCalled();
         } finally {
             usageMock.getHistory.mockReturnValue([]);
             usageMock.getGuildHistory.mockReturnValue([]);

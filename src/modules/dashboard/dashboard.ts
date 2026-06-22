@@ -556,6 +556,13 @@ export function createDashboardApp({
         const scope = getScope(res);
         const guildId = req.query.guildId as string | undefined;
         if (guildId) {
+            if (!scope.capabilities.guildAccess) {
+                res.status(400).json({
+                    error: 'guildId filter is not available for this dashboard scope',
+                });
+                return;
+            }
+
             res.json(usage.getGuildHistory(guildId));
         } else if (isCombinedDashboard && scope.appProfileIdForLogs === 'babel-guild') {
             const guildIds = scope.client.guilds.cache.map((guild) => guild.id);
