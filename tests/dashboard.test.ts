@@ -35,6 +35,7 @@ vi.mock('../src/persistence/store.js', () => {
         translationPrompt: '',
         userLanguagePrefs: { legacyUser: 'en' },
         userLanguagePreferenceEntries: [
+            { guildId: '', userId: 'legacyUser', language: 'en' },
             { guildId: 'guild-1', userId: 'user1', language: 'ja' },
             { guildId: 'guild-2', userId: 'user1', language: 'ko' },
             { guildId: 'guild-1', userId: 'user2', language: 'zh-TW' },
@@ -1699,6 +1700,47 @@ describe('Dashboard API', () => {
                 expect.objectContaining({ guildId: 'guild-2', userId: 'user1' }),
             ]),
         );
+    });
+
+    it('should expose global user language preferences for Babel Pocket', async () => {
+        const pocketApp = createDashboardApp({
+            cache,
+            cooldown: new CooldownManager(5),
+            log,
+            client: createMinimalClient(),
+            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
+            metrics,
+            runtimeLimiter,
+            profile: BABEL_POCKET_PROFILE,
+            sessionRepository: new InMemorySessionRepository(),
+            userProfileRepository,
+        });
+        const pocketServer = startDashboardServer(pocketApp, 0);
+
+        try {
+            const login = await request(pocketServer, 'POST', '/api/login', {
+                body: { password: 'test-pass-123' },
+            });
+            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
+            const res = await request(pocketServer, 'GET', '/api/user-prefs', {
+                cookie,
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.body).toMatchObject({
+                entries: [
+                    {
+                        guildId: '',
+                        userId: 'legacyUser',
+                        language: 'en',
+                    },
+                ],
+                count: 1,
+            });
+        } finally {
+            stopDashboardApp(pocketApp);
+            pocketServer.close();
+        }
     });
 
     it('should manage per-guild glossary entries', async () => {

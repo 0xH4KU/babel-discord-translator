@@ -557,6 +557,19 @@ const DEMO_USER_PREFS = [
     },
 ];
 
+const DEMO_POCKET_USER_PREFS = [
+    {
+        guildId: '',
+        userId: '200000000000000001',
+        language: 'zh-TW',
+    },
+    {
+        guildId: '',
+        userId: '200000000000000002',
+        language: 'ja',
+    },
+];
+
 const DEMO_USER_PROFILES = {
     '200000000000000001': {
         userId: '200000000000000001',
@@ -976,7 +989,7 @@ function buildDemoVariant(publicDir: string, demoDir: string, variant: DemoVaria
     );
     writeJson(join(fixtureDir, 'history.json'), DEMO_HISTORY);
     writeJson(join(fixtureDir, 'logs.json'), createLogsFixture(variant));
-    const userPrefEntries = variant.kind === 'guild' ? DEMO_USER_PREFS : [];
+    const userPrefEntries = variant.kind === 'guild' ? DEMO_USER_PREFS : DEMO_POCKET_USER_PREFS;
     writeJson(join(fixtureDir, 'user-prefs.json'), {
         entries: userPrefEntries,
         count: userPrefEntries.length,

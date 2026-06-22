@@ -71,6 +71,9 @@ describe('dashboard static assets', () => {
                     return nodes[id as keyof typeof nodes] || null;
                 },
             },
+            hasDashboardCapability(name: string) {
+                return name === 'guildAccess';
+            },
             genAvatar(value: string) {
                 return `avatar:${value}`;
             },
@@ -84,7 +87,9 @@ describe('dashboard static assets', () => {
         expect(accessJs).toContain('setPrefsGuildFilter');
         expect(accessJs).toContain('renderPrefsGuildFilter');
         expect(accessJs).toContain('body: JSON.stringify({ entries })');
-        expect(accessJs).toContain("api('/user-prefs/' + encodeURIComponent(userId) + '?guildId='");
+        expect(accessJs).toContain('const query = userPrefsUseGuildFilter()');
+        expect(accessJs).toContain("'?guildId=' + encodeURIComponent(guildId)");
+        expect(accessJs).toContain("api('/user-prefs/' + encodeURIComponent(userId) + query");
 
         vm.createContext(context);
         vm.runInContext(
@@ -117,6 +122,80 @@ describe('dashboard static assets', () => {
         expect(nodes['user-prefs-container'].innerHTML).toContain('user-2');
         expect(nodes['user-prefs-container'].innerHTML).not.toContain('user-1');
         expect(nodes['prefs-count'].textContent).toBe('1 shown in Server 2 / 2 total');
+    });
+
+    it('renders Pocket user preferences without server filtering controls', () => {
+        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const nodes = {
+            'prefs-count': { textContent: '' },
+            'prefs-guild-filter': { disabled: false, hidden: false, innerHTML: '', value: '' },
+            'prefs-pagination': { innerHTML: '' },
+            'prefs-batch-delete': { disabled: false, textContent: '' },
+            'user-prefs-container': { innerHTML: '' },
+        };
+        const context = {
+            document: {
+                getElementById(id: string) {
+                    return nodes[id as keyof typeof nodes] || null;
+                },
+            },
+            hasDashboardCapability() {
+                return false;
+            },
+            genAvatar(value: string) {
+                return `avatar:${value}`;
+            },
+            renderPagination() {},
+        };
+
+        vm.createContext(context);
+        vm.runInContext(
+            [
+                accessJs,
+                `allPrefsData = [{
+                    guildId: '',
+                    userId: 'user-pocket',
+                    language: 'ko'
+                }];`,
+                'renderUserPrefs();',
+            ].join('\n'),
+            context,
+        );
+
+        expect(nodes['prefs-guild-filter'].hidden).toBe(true);
+        expect(nodes['user-prefs-container'].innerHTML).toContain('user-pocket');
+        expect(nodes['user-prefs-container'].innerHTML).not.toContain('user-prefs-guild-id');
+        expect(nodes['prefs-count'].textContent).toBe('1 shown / 1 total');
+    });
+
+    it('keeps user preference controls usable on narrow mobile screens', () => {
+        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const responsiveCss = readFileSync('src/public/css/responsive.css', 'utf-8');
+
+        expect(accessJs).toContain('data-label="User"');
+        expect(accessJs).toContain('data-label="Language"');
+        expect(accessJs).toContain('data-label="Action"');
+        expect(responsiveCss).toMatch(
+            /@media\s*\(max-width:\s*480px\)[\s\S]*\.prefs-tools\s*{[\s\S]*flex-direction:\s*column/s,
+        );
+        expect(responsiveCss).toMatch(
+            /@media\s*\(max-width:\s*480px\)[\s\S]*#prefs-guild-filter\s*{[\s\S]*flex:\s*0\s+0\s+auto/s,
+        );
+        expect(responsiveCss).toMatch(
+            /@media\s*\(max-width:\s*480px\)[\s\S]*#prefs-guild-filter\s*{[\s\S]*width:\s*100%/s,
+        );
+        expect(responsiveCss).toMatch(
+            /@media\s*\(max-width:\s*480px\)[\s\S]*\.user-prefs-table\s+thead\s*{[\s\S]*display:\s*none/s,
+        );
+        expect(responsiveCss).toMatch(
+            /@media\s*\(max-width:\s*480px\)[\s\S]*\.user-prefs-table\s+td\[data-label\]::before\s*{[\s\S]*content:\s*attr\(data-label\)/s,
+        );
+        expect(responsiveCss).toMatch(
+            /@media\s*\(max-width:\s*480px\)[\s\S]*\.user-prefs-table\s+td\[data-label="Action"\]\s+\.btn-danger\s*{[\s\S]*width:\s*100%/s,
+        );
+        expect(responsiveCss).toMatch(
+            /@media\s*\(max-width:\s*480px\)[\s\S]*\.user-prefs-table\s+td:last-child\s*{[\s\S]*width:\s*100%[\s\S]*white-space:\s*normal/s,
+        );
     });
 
     it('exposes Server Glossary import controls and client import flow', () => {

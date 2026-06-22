@@ -315,6 +315,7 @@ export function createTranslationService({
             const { targetLanguage, langSource } = resolveTargetLanguage(
                 request,
                 userPreferenceStore,
+                { accessMode },
             );
             if (isSameLanguage(originalText, targetLanguage, request.locale)) {
                 requestLogger.warn('translation.request.blocked', {

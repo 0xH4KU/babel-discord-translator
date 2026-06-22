@@ -368,6 +368,35 @@ describe('TranslationService', () => {
         });
     });
 
+    it('should use global user preferences for Babel Pocket translations', async () => {
+        const { service } = createService({
+            accessMode: 'user-install',
+            storeOverrides: {
+                allowedUserIds: ['user1'],
+                userLanguagePreferenceEntries: [
+                    { guildId: '', userId: 'user1', language: 'ko' },
+                    { guildId: 'guild-1', userId: 'user1', language: 'ja' },
+                ],
+            },
+        });
+
+        const result = await service.process({
+            command: 'babel',
+            commandLabel: 'Babel Pocket (context menu)',
+            guildId: 'guild-1',
+            guildName: 'Shared Friend Server',
+            userId: 'user1',
+            userTag: 'user#0001',
+            locale: 'en-US',
+            text: 'Hello world',
+            requestId: 'req-pocket-pref',
+        });
+
+        expect(result.status).toBe('success');
+        expect(result.status === 'success' ? result.targetLanguage : '').toBe('ko');
+        expect(result.status === 'success' ? result.langSource : '').toBe('setlang');
+    });
+
     it('should reuse the same cached translation for identical requests', async () => {
         const translator = vi.fn(
             async (): Promise<TranslationResult> => ({
@@ -1278,6 +1307,30 @@ describe('resolveTargetLanguage', () => {
         ).toEqual({
             targetLanguage: 'auto',
             langSource: 'auto',
+        });
+    });
+
+    it('should resolve user-install preferences from global user scope', () => {
+        const preferenceStore = createUserPreferenceStoreMock({
+            userLanguagePreferenceEntries: [
+                { guildId: '', userId: 'user1', language: 'ko' },
+                { guildId: 'guild-1', userId: 'user1', language: 'ja' },
+            ],
+        });
+
+        expect(
+            resolveTargetLanguage(
+                {
+                    guildId: 'guild-1',
+                    userId: 'user1',
+                    locale: 'en-US',
+                },
+                preferenceStore,
+                { accessMode: 'user-install' },
+            ),
+        ).toEqual({
+            targetLanguage: 'ko',
+            langSource: 'setlang',
         });
     });
 

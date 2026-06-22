@@ -149,7 +149,7 @@ function createProfileRuntime(
         if (interaction.isChatInputCommand()) {
             switch (interaction.commandName) {
                 case 'setlang':
-                    return handleSetlang(interaction);
+                    return handleSetlang(interaction, { profile });
                 case 'translate':
                     if (profile.enableTranslateCommand && webhookService) {
                         return handleTranslate(interaction, { translationService, webhookService });
@@ -158,7 +158,7 @@ function createProfileRuntime(
                 case 'help':
                     return handleHelp(interaction, { profile });
                 case 'mylang':
-                    return handleMylang(interaction);
+                    return handleMylang(interaction, { profile });
             }
         }
 

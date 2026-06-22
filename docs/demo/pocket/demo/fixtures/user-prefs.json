@@ -1,6 +1,17 @@
 {
-  "entries": [],
-  "count": 0,
+  "entries": [
+    {
+      "guildId": "",
+      "userId": "200000000000000001",
+      "language": "zh-TW"
+    },
+    {
+      "guildId": "",
+      "userId": "200000000000000002",
+      "language": "ja"
+    }
+  ],
+  "count": 2,
   "profiles": {
     "200000000000000001": {
       "userId": "200000000000000001",

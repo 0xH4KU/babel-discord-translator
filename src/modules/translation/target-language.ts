@@ -1,3 +1,4 @@
+import type { AccessMode } from '../../apps/app-profile.js';
 import type { TranslationServiceRequest } from './translation-service.js';
 import { localeToLang } from './lang.js';
 
@@ -12,16 +13,30 @@ export interface TargetLanguageDecision {
     langSource: LangSource;
 }
 
+export interface TargetLanguageOptions {
+    accessMode?: AccessMode;
+}
+
+function resolvePreferenceGuildId(
+    request: Pick<TranslationServiceRequest, 'guildId'>,
+    options: TargetLanguageOptions,
+): string | null {
+    return options.accessMode === 'user-install' ? '' : (request.guildId ?? null);
+}
+
 export function resolveTargetLanguage(
     request: Pick<
         TranslationServiceRequest,
         'guildId' | 'locale' | 'targetLanguageOption' | 'userId'
     >,
     preferenceStore: UserPreferenceRepositoryLike,
+    options: TargetLanguageOptions = {},
 ): TargetLanguageDecision {
-    const userPreference = request.guildId
-        ? preferenceStore.getLanguage(request.guildId, request.userId)
-        : null;
+    const preferenceGuildId = resolvePreferenceGuildId(request, options);
+    const userPreference =
+        preferenceGuildId !== null
+            ? preferenceStore.getLanguage(preferenceGuildId, request.userId)
+            : null;
     const localeLanguage = localeToLang(request.locale);
 
     if (request.targetLanguageOption && request.targetLanguageOption !== 'auto') {

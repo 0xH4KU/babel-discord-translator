@@ -140,6 +140,22 @@ describe('build-dashboard-demo', () => {
         expect(
             readFileSync(join(demoDir, 'guild', 'demo', 'fixtures', 'user-prefs.json'), 'utf-8'),
         ).toContain('Alex Chen');
+        const pocketUserPrefs = JSON.parse(
+            readFileSync(join(demoDir, 'pocket', 'demo', 'fixtures', 'user-prefs.json'), 'utf-8'),
+        ) as {
+            entries: Array<{ guildId: string; userId: string; language: string }>;
+            count: number;
+        };
+        expect(pocketUserPrefs.entries).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    guildId: '',
+                    userId: '200000000000000001',
+                    language: 'zh-TW',
+                }),
+            ]),
+        );
+        expect(pocketUserPrefs.count).toBe(pocketUserPrefs.entries.length);
         const pocketUserBudgets = JSON.parse(
             readFileSync(join(demoDir, 'pocket', 'demo', 'fixtures', 'user-budgets.json'), 'utf-8'),
         ) as {

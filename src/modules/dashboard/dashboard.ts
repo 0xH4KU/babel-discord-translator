@@ -105,7 +105,7 @@ function sanitizeUserPreferenceRef(value: unknown): { guildId: string; userId: s
     const guildId = String(source.guildId ?? '').trim();
     const userId = String(source.userId ?? '').trim();
 
-    return guildId && userId ? { guildId, userId } : null;
+    return userId ? { guildId, userId } : null;
 }
 
 function applySecurityHeaders(_req: Request, res: Response, next: NextFunction): void {
@@ -892,26 +892,32 @@ export function createDashboardApp({
         auth.requireAuth,
         asyncHandler(async (_req: Request, res: Response) => {
             const scope = getScope(res);
-            const guildsById = new Map(
-                scope.client.guilds.cache.map((guild) => [
-                    guild.id,
-                    {
-                        id: guild.id,
-                        name: guild.name,
-                        icon: guild.iconURL({ size: 32 }) || '',
-                        memberCount: guild.memberCount,
-                    },
-                ]),
-            );
-            const entries = userPreferenceRepository
-                .listPreferences()
-                .filter((entry) => entry.guildId && guildsById.has(entry.guildId))
-                .map((entry) => ({
-                    ...entry,
-                    guildName: guildsById.get(entry.guildId)?.name ?? entry.guildId,
-                    guildIcon: guildsById.get(entry.guildId)?.icon ?? '',
-                    guildMemberCount: guildsById.get(entry.guildId)?.memberCount ?? null,
-                }));
+            const allPreferences = userPreferenceRepository.listPreferences();
+            const entries = scope.capabilities.guildAccess
+                ? (() => {
+                      const guildsById = new Map(
+                          scope.client.guilds.cache.map((guild) => [
+                              guild.id,
+                              {
+                                  id: guild.id,
+                                  name: guild.name,
+                                  icon: guild.iconURL({ size: 32 }) || '',
+                                  memberCount: guild.memberCount,
+                              },
+                          ]),
+                      );
+
+                      return allPreferences
+                          .filter((entry) => entry.guildId && guildsById.has(entry.guildId))
+                          .map((entry) => ({
+                              ...entry,
+                              guildName: guildsById.get(entry.guildId)?.name ?? entry.guildId,
+                              guildIcon: guildsById.get(entry.guildId)?.icon ?? '',
+                              guildMemberCount:
+                                  guildsById.get(entry.guildId)?.memberCount ?? null,
+                          }));
+                  })()
+                : allPreferences.filter((entry) => !entry.guildId);
             const userIds = [...new Set(entries.map((entry) => entry.userId))];
             const profiles = await resolveDiscordUserProfiles({
                 client: scope.client,
@@ -971,9 +977,10 @@ export function createDashboardApp({
         auth.requireAuth,
         auth.requireCsrf,
         (req: Request, res: Response) => {
+            const scope = getScope(res);
             const userId = req.params.userId as string;
             const guildId = String(req.query.guildId ?? '').trim();
-            if (!guildId) {
+            if (scope.capabilities.guildAccess && !guildId) {
                 res.status(400).json({ error: 'guildId is required' });
                 return;
             }
