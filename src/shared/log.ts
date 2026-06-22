@@ -3,6 +3,7 @@
  * Does NOT persist to disk — privacy by design.
  */
 import type { LogEntry } from './types.js';
+import type { AppProfile } from '../apps/app-profile.js';
 
 export class TranslationLog {
     entries: LogEntry[];
@@ -20,6 +21,7 @@ export class TranslationLog {
      * Only stores a short preview of the content, not full text.
      */
     add(params: {
+        appProfileId?: AppProfile['id'];
         guildId?: string | null;
         guildName?: string;
         userId: string;
@@ -32,6 +34,7 @@ export class TranslationLog {
     }): void {
         this.pushEntry({
             type: 'translation',
+            appProfileId: params.appProfileId,
             guildId: params.guildId ?? null,
             guildName: params.guildName || params.guildId || 'Unknown',
             userId: params.userId,
@@ -46,6 +49,7 @@ export class TranslationLog {
 
     /** Add an error log entry. */
     addError(params: {
+        appProfileId?: AppProfile['id'];
         guildId?: string | null;
         guildName?: string;
         userId?: string;
@@ -61,6 +65,7 @@ export class TranslationLog {
         this._errorCount++;
         this.pushEntry({
             type: 'error',
+            appProfileId: params.appProfileId,
             guildId: params.guildId ?? null,
             guildName: params.guildName || params.guildId || 'Unknown',
             userId: params.userId || 'Unknown',
@@ -78,6 +83,18 @@ export class TranslationLog {
     /** Get recent log entries (newest first). */
     getRecent(count: number = 50, filter?: string): LogEntry[] {
         const filtered = filter ? this.entries.filter((e) => e.type === filter) : this.entries;
+        return filtered.slice(-count).reverse();
+    }
+
+    /** Get recent log entries for one app profile (newest first). */
+    getRecentForProfile(
+        appProfileId: AppProfile['id'],
+        count: number = 50,
+        filter?: string,
+    ): LogEntry[] {
+        const filtered = this.entries.filter((entry) => {
+            return entry.appProfileId === appProfileId && (!filter || entry.type === filter);
+        });
         return filtered.slice(-count).reverse();
     }
 

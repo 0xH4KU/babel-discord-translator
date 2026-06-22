@@ -306,6 +306,15 @@ class UsageTracker {
         }));
     }
 
+    /** Get aggregated usage history for selected guilds (last 30 days). */
+    getGuildHistoryForGuilds(guildIds: readonly string[]): UsageHistoryDay[] {
+        this.ensureToday();
+        const allHistory = usageRepository.getAllGuildUsageHistory();
+        const history = guildIds.flatMap((guildId) => allHistory[guildId] ?? []);
+
+        return aggregateHistoryByDate(history);
+    }
+
     /** Get usage history for a specific user (last 30 days). */
     getUserHistory(userId: string): UsageHistoryDay[] {
         this.ensureToday();
@@ -317,6 +326,14 @@ class UsageTracker {
             totalTokens: day.inputTokens + day.outputTokens,
             cost: calculateCost(day, runtimeConfig),
         }));
+    }
+
+    /** Get aggregated usage history for all user-install users (last 30 days). */
+    getAllUserHistory(): UsageHistoryDay[] {
+        this.ensureToday();
+        const allHistory = usageRepository.getAllUserUsageHistory();
+
+        return aggregateHistoryByDate(Object.values(allHistory).flat());
     }
 
     private getSharedGlobalBudgetCost(runtimeConfig: RuntimeConfig): UsageCost {
@@ -385,6 +402,35 @@ function toHistoryEntry(usage: TokenUsage): UsageHistoryEntry {
         outputTokens: usage.outputTokens,
         requests: usage.requests,
     };
+}
+
+function aggregateHistoryByDate(history: UsageHistoryEntry[]): UsageHistoryDay[] {
+    const runtimeConfig = configRepository.getRuntimeConfig();
+    const byDate = new Map<string, UsageHistoryEntry>();
+
+    for (const entry of history) {
+        const aggregate =
+            byDate.get(entry.date) ??
+            ({
+                date: entry.date,
+                inputTokens: 0,
+                outputTokens: 0,
+                requests: 0,
+            } satisfies UsageHistoryEntry);
+        aggregate.inputTokens += entry.inputTokens;
+        aggregate.outputTokens += entry.outputTokens;
+        aggregate.requests += entry.requests;
+        byDate.set(entry.date, aggregate);
+    }
+
+    return Array.from(byDate.values())
+        .sort((a, b) => a.date.localeCompare(b.date))
+        .slice(-30)
+        .map((day) => ({
+            ...day,
+            totalTokens: day.inputTokens + day.outputTokens,
+            cost: calculateCost(day, runtimeConfig),
+        }));
 }
 
 export const usage = new UsageTracker();

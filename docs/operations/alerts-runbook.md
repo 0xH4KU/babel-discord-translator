@@ -4,16 +4,16 @@ This runbook covers the 0.1.0 operations surface: health endpoints, Prometheus m
 
 ## Signals
 
-| Signal | Endpoint / Metric | Page When |
-|---|---|---|
-| Process down | `GET /livez` | Returns non-200 or times out for 2 minutes |
-| Not ready | `GET /readyz` | Returns non-200 for 5 minutes |
-| Degraded | `GET /healthz` | `status` is `degraded` for 10 minutes |
-| Failure spike | `babel_translation_failures_total` | Increase is above normal traffic baseline |
-| Budget blocks | `babel_budget_blocks_total` | Any sustained increase |
-| Queue pressure | `babel_runtime_queue_depth`, `babel_runtime_rejections_total` | Queue remains non-zero or rejections increase |
-| Provider failure | `babel_provider_requests_total{result="failure"}` | Provider failures increase for an enabled provider |
-| Fallback churn | `babel_provider_fallback_total` | Fallbacks increase quickly |
+| Signal           | Endpoint / Metric                                                                                                 | Page When                                          |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| Process down     | `GET /livez`                                                                                                      | Returns non-200 or times out for 2 minutes         |
+| Not ready        | `GET /readyz`                                                                                                     | Returns non-200 for 5 minutes                      |
+| Degraded         | `GET /healthz`                                                                                                    | `status` is `degraded` for 10 minutes              |
+| Failure spike    | `babel_translation_failures_total`                                                                                | Increase is above normal traffic baseline          |
+| Budget blocks    | `babel_budget_blocks_total`                                                                                       | Any sustained increase                             |
+| Queue pressure   | `babel_runtime_queue_depth`, `babel_runtime_rejections_all_total`, `babel_runtime_rejections_total{reason="..."}` | Queue remains non-zero or rejections increase      |
+| Provider failure | `babel_provider_requests_total{result="failure"}`                                                                 | Provider failures increase for an enabled provider |
+| Fallback churn   | `babel_provider_fallback_total`                                                                                   | Fallbacks increase quickly                         |
 
 ## Prometheus Examples
 
@@ -21,12 +21,18 @@ This runbook covers the 0.1.0 operations surface: health endpoints, Prometheus m
 increase(babel_translation_failures_total[5m]) > 5
 increase(babel_budget_blocks_total[5m]) > 0
 babel_runtime_queue_depth > 0
-increase(babel_runtime_rejections_total[5m]) > 0
+increase(babel_runtime_rejections_all_total[5m]) > 0
 increase(babel_provider_requests_total{result="failure"}[5m]) > 3
 increase(babel_provider_fallback_total[10m]) > 2
 ```
 
 Tune thresholds to each server's normal traffic. Small instances should alert on queue pressure earlier because retries run inside acquired runtime permits.
+
+If `BABEL_METRICS_TOKEN` is set, include it when scraping manually:
+
+```bash
+curl -fsS -H "Authorization: Bearer $BABEL_METRICS_TOKEN" http://localhost:3000/metrics | head
+```
 
 ## Triage Flow
 
@@ -40,14 +46,14 @@ Tune thresholds to each server's normal traffic. Small instances should alert on
 
 ## Common Responses
 
-| Symptom | Likely Cause | Response |
-|---|---|---|
-| `/livez` fails | Process crash, SQLite unavailable, config repository failure | Restart the service, then inspect logs and database path permissions |
-| `/readyz` fails but `/livez` passes | Setup incomplete or enabled provider health probe fails | Complete provider config or switch to a healthy fallback provider |
-| Provider auth errors | Expired or wrong API key, wrong GCP project, revoked credential | Rotate credentials and test from dashboard Translation Test |
-| Queue rejections | Traffic burst, provider slowdown, limits too tight | Raise queue/concurrency carefully, or lower Discord usage temporarily |
-| Budget blocks | Daily budget reached or estimate guard would overspend | Raise budget or wait for the daily reset |
-| Cache hit rate collapses after deploy | Prompt/model/output-token config changed | Expected after cache-key version changes; monitor provider traffic |
+| Symptom                               | Likely Cause                                                    | Response                                                              |
+| ------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `/livez` fails                        | Process crash, SQLite unavailable, config repository failure    | Restart the service, then inspect logs and database path permissions  |
+| `/readyz` fails but `/livez` passes   | Setup incomplete or enabled provider health probe fails         | Complete provider config or switch to a healthy fallback provider     |
+| Provider auth errors                  | Expired or wrong API key, wrong GCP project, revoked credential | Rotate credentials and test from dashboard Translation Test           |
+| Queue rejections                      | Traffic burst, provider slowdown, limits too tight              | Raise queue/concurrency carefully, or lower Discord usage temporarily |
+| Budget blocks                         | Daily budget reached or estimate guard would overspend          | Raise budget or wait for the daily reset                              |
+| Cache hit rate collapses after deploy | Prompt/model/output-token config changed                        | Expected after cache-key version changes; monitor provider traffic    |
 
 ## Release Checks
 
@@ -66,5 +72,5 @@ After deploy, verify:
 ```bash
 curl -fsS http://localhost:3000/livez
 curl -fsS http://localhost:3000/readyz
-curl -fsS http://localhost:3000/metrics | head
+curl -fsS -H "Authorization: Bearer $BABEL_METRICS_TOKEN" http://localhost:3000/metrics | head
 ```

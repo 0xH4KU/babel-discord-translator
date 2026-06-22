@@ -173,6 +173,20 @@ describe('deployment configuration', () => {
         expect(deploymentDocs).toContain('BABEL_DASHBOARD_MODE');
     });
 
+    it('documents optional metrics token protection for public deployments', () => {
+        const envExample = readFileSync('.env.example', 'utf8');
+        const readme = readFileSync('README.md', 'utf8');
+        const dockerDocs = readFileSync('docs/operations/docker.md', 'utf8');
+        const deploymentDocs = readFileSync('docs/operations/deployment.md', 'utf8');
+        const alertsRunbook = readFileSync('docs/operations/alerts-runbook.md', 'utf8');
+
+        expect(envExample).toContain('BABEL_METRICS_TOKEN=');
+        expect(readme).toContain('BABEL_METRICS_TOKEN');
+        expect(dockerDocs).toContain('BABEL_METRICS_TOKEN');
+        expect(deploymentDocs).toContain('BABEL_METRICS_TOKEN');
+        expect(alertsRunbook).toContain('Authorization: Bearer $BABEL_METRICS_TOKEN');
+    });
+
     it('documents combined dashboard chooser routing consistently', () => {
         const readme = readFileSync('README.md', 'utf8');
         const deploymentDocs = readFileSync('docs/operations/deployment.md', 'utf8');

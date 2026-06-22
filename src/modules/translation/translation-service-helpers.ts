@@ -6,7 +6,9 @@ export type ServiceCommand = 'babel' | 'translate';
 
 export type TranslatorOptions = {
     metrics?: AppMetricsCollector;
-    glossaryEntries?: Array<Pick<GuildGlossaryEntry, 'sourceText' | 'targetText' | 'notes'>>;
+    glossaryEntries?: Array<
+        Pick<GuildGlossaryEntry, 'sourceText' | 'targetLanguage' | 'targetText' | 'notes'>
+    >;
     runtimeConfig?: RuntimeConfig;
     logContext: {
         requestId: string;
@@ -28,6 +30,51 @@ export function createTranslatorOptions(
         ...(glossaryEntries.length > 0 ? { glossaryEntries } : {}),
         ...(runtimeConfig ? { runtimeConfig } : {}),
     };
+}
+
+function normalizeGlossarySource(sourceText: string): string {
+    return sourceText.trim().toLowerCase();
+}
+
+function normalizeGlossaryLanguage(targetLanguage: string): string {
+    return targetLanguage.trim().toLowerCase();
+}
+
+export function selectGlossaryEntriesForTarget(
+    entries: GuildGlossaryEntry[],
+    targetLanguage: string,
+): GuildGlossaryEntry[] {
+    const normalizedTarget = normalizeGlossaryLanguage(targetLanguage || 'auto');
+
+    if (normalizedTarget === 'auto') {
+        return entries;
+    }
+
+    const exactSourceKeys = new Set<string>();
+    const exactEntries: GuildGlossaryEntry[] = [];
+    const fallbackEntries: GuildGlossaryEntry[] = [];
+
+    for (const entry of entries) {
+        const entryLanguage = normalizeGlossaryLanguage(entry.targetLanguage);
+        const sourceKey = normalizeGlossarySource(entry.sourceText);
+
+        if (entryLanguage === normalizedTarget) {
+            exactSourceKeys.add(sourceKey);
+            exactEntries.push(entry);
+            continue;
+        }
+
+        if (entryLanguage === 'auto') {
+            fallbackEntries.push(entry);
+        }
+    }
+
+    return [
+        ...exactEntries,
+        ...fallbackEntries.filter(
+            (entry) => !exactSourceKeys.has(normalizeGlossarySource(entry.sourceText)),
+        ),
+    ];
 }
 
 export function suggestedActionForErrorType(errorType: string): string {
@@ -94,6 +141,7 @@ export function buildGlossaryVersion(entries: GuildGlossaryEntry[]): string {
             [
                 entry.id,
                 entry.sourceText.trim(),
+                entry.targetLanguage.trim(),
                 entry.targetText.trim(),
                 entry.notes.trim(),
                 entry.updatedAt,

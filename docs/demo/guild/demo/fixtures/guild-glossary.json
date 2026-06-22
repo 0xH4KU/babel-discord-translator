@@ -4,6 +4,7 @@
       "id": 1,
       "guildId": "100000000000000001",
       "sourceText": "Babel",
+      "targetLanguage": "auto",
       "targetText": "Babel",
       "notes": "Preserve project name",
       "createdAt": "2026-06-01T00:00:00.000Z",
@@ -13,6 +14,7 @@
       "id": 2,
       "guildId": "100000000000000001",
       "sourceText": "release notes",
+      "targetLanguage": "zh-TW",
       "targetText": "版本公告",
       "notes": "Community wording",
       "createdAt": "2026-06-01T00:00:00.000Z",
@@ -22,11 +24,22 @@
       "id": 3,
       "guildId": "100000000000000001",
       "sourceText": "raid",
+      "targetLanguage": "zh-TW",
       "targetText": "團本",
+      "notes": "Game term",
+      "createdAt": "2026-06-01T00:00:00.000Z",
+      "updatedAt": "2026-06-01T00:00:00.000Z"
+    },
+    {
+      "id": 4,
+      "guildId": "100000000000000001",
+      "sourceText": "raid",
+      "targetLanguage": "ja",
+      "targetText": "レイド",
       "notes": "Game term",
       "createdAt": "2026-06-01T00:00:00.000Z",
       "updatedAt": "2026-06-01T00:00:00.000Z"
     }
   ],
-  "count": 3
+  "count": 4
 }

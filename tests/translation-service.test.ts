@@ -135,6 +135,7 @@ function createGlossaryRepositoryMock(
             id: number;
             guildId: string;
             sourceText: string;
+            targetLanguage: string;
             targetText: string;
             notes: string;
             createdAt: string;
@@ -163,6 +164,7 @@ function createService({
     accessMode,
     pendingUserInstallOwnerRepository,
     enableGuildGlossary,
+    appProfileId,
 }: {
     storeOverrides?: Partial<StoreData>;
     translator?: ReturnType<typeof vi.fn>;
@@ -173,6 +175,7 @@ function createService({
     accessMode?: AccessMode;
     pendingUserInstallOwnerRepository?: { recordSeen: ReturnType<typeof vi.fn> };
     enableGuildGlossary?: boolean;
+    appProfileId?: 'babel-guild' | 'babel-pocket';
 } = {}) {
     const cache = new TranslationCache(100);
     const cooldown = new CooldownManager(0);
@@ -194,6 +197,7 @@ function createService({
         translator,
         metrics,
         runtimeLimiter,
+        appProfileId,
         accessMode,
         enableGuildGlossary,
         pendingUserInstallOwnerRepository,
@@ -325,6 +329,34 @@ describe('TranslationService', () => {
 
         expect(result.status).toBe('success');
         expect(configStore.getRuntimeConfig).toHaveBeenCalledOnce();
+    });
+
+    it('should tag successful translation logs with the app profile id', async () => {
+        const { service, log } = createService({
+            appProfileId: 'babel-pocket',
+            accessMode: 'user-install',
+            storeOverrides: {
+                allowedUserIds: ['user1'],
+            },
+        });
+
+        const result = await service.process({
+            command: 'babel',
+            commandLabel: 'Babel Pocket (context menu)',
+            guildId: null,
+            guildName: 'Direct Message',
+            userId: 'user1',
+            userTag: 'user#0001',
+            text: 'Hello world',
+            requestId: 'req-pocket-log',
+        });
+
+        expect(result.status).toBe('success');
+        expect(log.getRecent(1)[0]).toMatchObject({
+            type: 'translation',
+            appProfileId: 'babel-pocket',
+            contentPreview: 'Hello world',
+        });
     });
 
     it('should reuse the same cached translation for identical requests', async () => {
@@ -632,6 +664,7 @@ describe('TranslationService', () => {
                     id: 1,
                     guildId: 'guild-1',
                     sourceText: 'OpenAI',
+                    targetLanguage: 'auto',
                     targetText: 'OpenAI',
                     notes: 'Preserve brand name',
                     createdAt: '2026-06-01T00:00:00.000Z',
@@ -641,6 +674,17 @@ describe('TranslationService', () => {
                     id: 2,
                     guildId: 'guild-1',
                     sourceText: 'raid',
+                    targetLanguage: 'auto',
+                    targetText: 'legacy raid',
+                    notes: 'Legacy term',
+                    createdAt: '2026-06-01T00:00:00.000Z',
+                    updatedAt: '2026-06-01T00:00:00.000Z',
+                },
+                {
+                    id: 3,
+                    guildId: 'guild-1',
+                    sourceText: 'raid',
+                    targetLanguage: 'zh-TW',
                     targetText: '團本',
                     notes: '',
                     createdAt: '2026-06-01T00:00:00.000Z',
@@ -678,6 +722,7 @@ describe('TranslationService', () => {
                 id: 1,
                 guildId: 'guild-1',
                 sourceText: 'OpenAI',
+                targetLanguage: 'auto',
                 targetText: 'OpenAI',
                 notes: 'Preserve brand name',
                 createdAt: '2026-06-01T00:00:00.000Z',
@@ -687,6 +732,17 @@ describe('TranslationService', () => {
                 id: 2,
                 guildId: 'guild-1',
                 sourceText: 'raid',
+                targetLanguage: 'auto',
+                targetText: 'legacy raid',
+                notes: 'Legacy term',
+                createdAt: '2026-06-01T00:00:00.000Z',
+                updatedAt: '2026-06-01T00:00:00.000Z',
+            },
+            {
+                id: 3,
+                guildId: 'guild-1',
+                sourceText: 'raid',
+                targetLanguage: 'ja',
                 targetText: 'レイド',
                 notes: '',
                 createdAt: '2026-06-01T00:00:00.000Z',
@@ -701,9 +757,9 @@ describe('TranslationService', () => {
             guildName: 'Test Guild',
             userId: 'user3',
             userTag: 'user#0003',
-            locale: 'zh-TW',
+            locale: 'en-US',
             text: 'OpenAI raid tonight',
-            targetLanguageOption: 'zh-TW',
+            targetLanguageOption: 'ja',
         });
 
         expect(first.status).toBe('success');
@@ -714,8 +770,24 @@ describe('TranslationService', () => {
         expect(translator).toHaveBeenCalledTimes(2);
         expect(translator.mock.calls[0]?.[2]).toMatchObject({
             glossaryEntries: [
-                { sourceText: 'OpenAI', targetText: 'OpenAI', notes: 'Preserve brand name' },
-                { sourceText: 'raid', targetText: '團本', notes: '' },
+                { sourceText: 'raid', targetLanguage: 'zh-TW', targetText: '團本', notes: '' },
+                {
+                    sourceText: 'OpenAI',
+                    targetLanguage: 'auto',
+                    targetText: 'OpenAI',
+                    notes: 'Preserve brand name',
+                },
+            ],
+        });
+        expect(translator.mock.calls[1]?.[2]).toMatchObject({
+            glossaryEntries: [
+                { sourceText: 'raid', targetLanguage: 'ja', targetText: 'レイド', notes: '' },
+                {
+                    sourceText: 'OpenAI',
+                    targetLanguage: 'auto',
+                    targetText: 'OpenAI',
+                    notes: 'Preserve brand name',
+                },
             ],
         });
     });
@@ -734,6 +806,7 @@ describe('TranslationService', () => {
                     id: 1,
                     guildId: 'guild-1',
                     sourceText: 'OpenAI',
+                    targetLanguage: 'auto',
                     targetText: 'OpenAI',
                     notes: 'Preserve brand name',
                     createdAt: '2026-06-01T00:00:00.000Z',
@@ -812,6 +885,35 @@ describe('TranslationService', () => {
             userId: 'user-owner',
             billingUserId: 'user-owner',
             userTag: 'owner#0001',
+            locale: 'en-US',
+            text: 'Hello',
+        });
+
+        expect(result.status).toBe('success');
+        expect(usageTracker.record).toHaveBeenCalledWith(12, 6, {
+            guildId: null,
+            userId: 'user-owner',
+        });
+    });
+
+    it('should keep user-install usage out of guild usage buckets when invoked in a guild', async () => {
+        const { service, usageTracker } = createService({
+            storeOverrides: {
+                allowedGuildIds: [],
+                allowedUserIds: ['user-owner'],
+                userLanguagePrefs: { 'user-owner': 'ja' },
+            },
+            accessMode: 'user-install',
+        });
+
+        const result = await service.process({
+            command: 'babel',
+            commandLabel: 'Babel Pocket (context menu)',
+            guildId: 'guild-1',
+            guildName: 'Guild One',
+            userId: 'actor',
+            billingUserId: 'user-owner',
+            userTag: 'actor#0001',
             locale: 'en-US',
             text: 'Hello',
         });
@@ -959,6 +1061,37 @@ describe('TranslationService', () => {
             requestId: 'req-provider-failure-1',
             provider: 'openai',
             errorType: 'server_error',
+        });
+    });
+
+    it('should tag error logs with the app profile id', async () => {
+        const translator = vi.fn(async () => {
+            throw new Error('OpenAI 429 rate limit');
+        });
+        const { service, log } = createService({
+            translator,
+            appProfileId: 'babel-guild',
+        });
+
+        const result = await service.process({
+            command: 'translate',
+            commandLabel: '/translate',
+            guildId: 'guild-1',
+            guildName: 'Test Guild',
+            userId: 'user1',
+            userTag: 'user#0001',
+            locale: 'en-US',
+            text: 'Hello world',
+            requestId: 'req-guild-error-log',
+            beforeTranslate: async () => undefined,
+        });
+
+        expect(result.status).toBe('error');
+        expect(log.getRecent(1)[0]).toMatchObject({
+            type: 'error',
+            appProfileId: 'babel-guild',
+            requestId: 'req-guild-error-log',
+            errorType: 'rate_limit',
         });
     });
 

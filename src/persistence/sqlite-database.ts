@@ -169,6 +169,19 @@ const MIGRATIONS: Migration[] = [
             `);
         },
     },
+    {
+        id: 6,
+        name: 'guild_glossary_target_language',
+        up(db) {
+            db.exec(`
+                ALTER TABLE guild_glossary
+                ADD COLUMN target_language TEXT NOT NULL DEFAULT 'auto';
+
+                CREATE INDEX IF NOT EXISTS idx_guild_glossary_language_lookup
+                    ON guild_glossary (guild_id, target_language, source_text);
+            `);
+        },
+    },
 ];
 
 let sharedDatabase: DatabaseSync | null = null;

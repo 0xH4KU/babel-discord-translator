@@ -51,6 +51,7 @@ export interface GuildGlossaryEntry {
     id: number;
     guildId: string;
     sourceText: string;
+    targetLanguage: string;
     targetText: string;
     notes: string;
     createdAt: string;
@@ -60,6 +61,7 @@ export interface GuildGlossaryEntry {
 export interface GuildGlossaryInput {
     id?: number;
     sourceText: string;
+    targetLanguage?: string;
     targetText: string;
     notes?: string;
 }
@@ -171,6 +173,7 @@ export interface TranslateCommandDeps extends CommandDeps {
 
 export interface TranslationLogEntry {
     type: 'translation';
+    appProfileId?: AppProfile['id'];
     guildId: string | null;
     guildName: string;
     userId: string;
@@ -184,6 +187,7 @@ export interface TranslationLogEntry {
 
 export interface ErrorLogEntry {
     type: 'error';
+    appProfileId?: AppProfile['id'];
     guildId: string | null;
     guildName: string;
     userId: string;
@@ -225,6 +229,7 @@ export interface DashboardDeps {
     profiles?: AppProfile[];
     clients?: Partial<Record<AppProfile['id'], Client>>;
     pendingUserInstallOwnerRepository?: PendingUserInstallOwnerRepository;
+    metricsToken?: string;
 }
 
 // --- Usage ---

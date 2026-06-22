@@ -130,6 +130,7 @@ function createProfileRuntime(
         cooldown,
         log: shared.log,
         stats: shared.stats,
+        appProfileId: profile.id,
         metrics: shared.metrics,
         runtimeLimiter: shared.runtimeLimiter,
         accessMode: profile.accessMode,

@@ -23,6 +23,7 @@ import { guildGlossaryRepository } from '../translation/guild-glossary-repositor
 import { applyConfigUpdateEffects } from '../config/config-runtime-effects.js';
 import { resetTranslationProviderState } from '../translation/translate.js';
 import { appLogger } from '../../shared/structured-logger.js';
+import { sanitizeError } from '../../shared/errors.js';
 import { dashboardMessages } from '../../shared/messages/dashboard-messages.js';
 import { getVersionMetadataWithUpdate } from '../../shared/version.js';
 import { DiscordUserProfileRepository } from './discord-user-profile-repository.js';
@@ -39,13 +40,18 @@ import {
 } from './capabilities.js';
 import { PendingUserInstallOwnerRepository } from './pending-user-install-owner-repository.js';
 import { validateConfigUpdate } from './config-validation.js';
-import { sanitizeGlossaryInput } from './glossary-input.js';
+import {
+    parseGlossaryImport,
+    sanitizeGlossaryImportRequest,
+    sanitizeGlossaryInput,
+} from './glossary-input.js';
 import {
     budgetRiskForGuilds,
     buildOperationsGuidance,
     providerModeIncludes,
     providerSummary,
 } from './operations-summary.js';
+import { createMetricsAuthMiddleware } from './metrics-auth.js';
 import { createEmptyRuntimeSnapshot, renderPrometheusMetrics } from './prometheus-metrics.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -59,6 +65,7 @@ interface DashboardApiScope {
     profiles: AppProfile[];
     capabilities: DashboardCapabilities;
     client: DashboardDeps['client'];
+    appProfileIdForLogs?: AppProfile['id'];
 }
 
 type DashboardCapabilityName = keyof DashboardCapabilities;
@@ -75,6 +82,18 @@ function serializeProfile(profile: NonNullable<DashboardDeps['profile']>): {
         commandName: profile.commandName,
         accessMode: profile.accessMode,
     };
+}
+
+function normalizeGlossarySource(sourceText: string): string {
+    return sourceText.trim().toLowerCase();
+}
+
+function normalizeGlossaryLanguage(targetLanguage: string): string {
+    return targetLanguage.trim().toLowerCase();
+}
+
+function normalizeGlossaryKey(sourceText: string, targetLanguage: string): string {
+    return `${normalizeGlossarySource(sourceText)}\u0000${normalizeGlossaryLanguage(targetLanguage)}`;
 }
 
 function applySecurityHeaders(_req: Request, res: Response, next: NextFunction): void {
@@ -134,6 +153,7 @@ export function createDashboardApp({
     profiles = [profile],
     pendingUserInstallOwnerRepository = new PendingUserInstallOwnerRepository(),
     healthProbeCacheTtlMs = 5_000,
+    metricsToken,
 }: DashboardDeps): express.Express {
     const app = express();
     app.set('trust proxy', 1);
@@ -156,6 +176,7 @@ export function createDashboardApp({
         profiles: [BABEL_GUILD_PROFILE],
         capabilities: getDashboardCapabilities(BABEL_GUILD_PROFILE),
         client: guildClient,
+        appProfileIdForLogs: 'babel-guild',
     };
     const pocketScope: DashboardApiScope = {
         profile:
@@ -163,6 +184,7 @@ export function createDashboardApp({
         profiles: [BABEL_POCKET_PROFILE],
         capabilities: getDashboardCapabilities(BABEL_POCKET_PROFILE),
         client: userInstallClient,
+        appProfileIdForLogs: 'babel-pocket',
     };
     const apiScopes = isCombinedDashboard
         ? [
@@ -289,19 +311,23 @@ export function createDashboardApp({
         }),
     );
 
-    app.get('/metrics', (_req: Request, res: Response) => {
-        const metricsSnapshot = metrics?.snapshot() ?? createEmptyAppMetricsSnapshot();
-        const runtimeSnapshot = runtimeLimiter?.snapshot() ?? createEmptyRuntimeSnapshot();
+    app.get(
+        '/metrics',
+        createMetricsAuthMiddleware(metricsToken),
+        (_req: Request, res: Response) => {
+            const metricsSnapshot = metrics?.snapshot() ?? createEmptyAppMetricsSnapshot();
+            const runtimeSnapshot = runtimeLimiter?.snapshot() ?? createEmptyRuntimeSnapshot();
 
-        res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
-        res.send(
-            renderPrometheusMetrics({
-                metricsSnapshot,
-                cacheStats: cache.stats(),
-                runtimeSnapshot,
-            }),
-        );
-    });
+            res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+            res.send(
+                renderPrometheusMetrics({
+                    metricsSnapshot,
+                    cacheStats: cache.stats(),
+                    runtimeSnapshot,
+                }),
+            );
+        },
+    );
 
     api.get('/setup-status', auth.requireAuth, (_req: Request, res: Response) => {
         res.json({ complete: configRepository.isSetupComplete() });
@@ -527,9 +553,22 @@ export function createDashboardApp({
     });
 
     api.get('/usage/history', auth.requireAuth, (req: Request, res: Response) => {
+        const scope = getScope(res);
         const guildId = req.query.guildId as string | undefined;
         if (guildId) {
+            if (!scope.capabilities.guildAccess) {
+                res.status(400).json({
+                    error: 'guildId filter is not available for this dashboard scope',
+                });
+                return;
+            }
+
             res.json(usage.getGuildHistory(guildId));
+        } else if (isCombinedDashboard && scope.appProfileIdForLogs === 'babel-guild') {
+            const guildIds = scope.client.guilds.cache.map((guild) => guild.id);
+            res.json(usage.getGuildHistoryForGuilds(guildIds));
+        } else if (isCombinedDashboard && scope.appProfileIdForLogs === 'babel-pocket') {
+            res.json(usage.getAllUserHistory());
         } else {
             res.json(usage.getHistory());
         }
@@ -696,6 +735,92 @@ export function createDashboardApp({
         },
     );
 
+    api.postIf(
+        'guildGlossary',
+        '/guild-glossary/:guildId/import',
+        auth.requireAuth,
+        auth.requireCsrf,
+        (req: Request, res: Response) => {
+            const guildId = String(req.params.guildId ?? '').trim();
+            if (!guildId) {
+                res.status(400).json({ error: 'Guild id is required' });
+                return;
+            }
+
+            const importRequest = sanitizeGlossaryImportRequest(req.body ?? {});
+            if (!importRequest.ok) {
+                res.status(400).json({ error: importRequest.error });
+                return;
+            }
+
+            const parsed = parseGlossaryImport(importRequest.value.text);
+            const existingByKey = new Map(
+                guildGlossaryRepository
+                    .listEntries(guildId)
+                    .map(
+                        (entry) =>
+                            [
+                                normalizeGlossaryKey(entry.sourceText, entry.targetLanguage),
+                                entry,
+                            ] as const,
+                    ),
+            );
+            let created = 0;
+            let updated = 0;
+            let skipped = 0;
+
+            for (const row of parsed.rows) {
+                const normalizedKey = normalizeGlossaryKey(
+                    row.input.sourceText,
+                    row.input.targetLanguage,
+                );
+                const existing = existingByKey.get(normalizedKey);
+
+                if (existing && importRequest.value.duplicateMode === 'skip') {
+                    skipped++;
+                    continue;
+                }
+
+                if (existing) {
+                    const entry = guildGlossaryRepository.upsertEntry(guildId, {
+                        id: existing.id,
+                        ...row.input,
+                    });
+                    existingByKey.delete(normalizedKey);
+                    existingByKey.set(
+                        normalizeGlossaryKey(entry.sourceText, entry.targetLanguage),
+                        entry,
+                    );
+                    updated++;
+                    continue;
+                }
+
+                const entry = guildGlossaryRepository.upsertEntry(guildId, row.input);
+                existingByKey.set(
+                    normalizeGlossaryKey(entry.sourceText, entry.targetLanguage),
+                    entry,
+                );
+                created++;
+            }
+
+            const failed = parsed.errors?.length ?? 0;
+            const changed = created + updated > 0;
+            if (changed) {
+                cache.clear();
+            }
+
+            res.json({
+                ok: true,
+                created,
+                updated,
+                skipped,
+                failed,
+                errors: parsed.errors ?? [],
+                cacheCleared: changed,
+            });
+        },
+    );
+
     api.deleteIf(
         'guildGlossary',
         '/guild-glossary/:guildId/:entryId',
@@ -723,6 +848,8 @@ export function createDashboardApp({
     );
 
     api.get('/logs', auth.requireAuth, (req: Request, res: Response) => {
+        const scope = getScope(res);
+        const scopeProfileId = isCombinedDashboard ? scope.appProfileIdForLogs : undefined;
         const count = Math.min(parseInt(req.query.count as string) || 50, 200);
         const filter = req.query.filter as string | undefined;
         const errorType = req.query.errorType as string | undefined;
@@ -732,15 +859,19 @@ export function createDashboardApp({
                 return;
             }
 
-            const entries = log
-                .getRecent(log.size, 'error')
+            const errorEntries = scopeProfileId
+                ? log.getRecentForProfile(scopeProfileId, log.size, 'error')
+                : log.getRecent(log.size, 'error');
+            const entries = errorEntries
                 .filter((entry) => entry.type === 'error' && entry.errorType === errorType)
                 .slice(0, count);
             res.json(entries);
             return;
         }
 
-        const entries = log.getRecent(count, filter);
+        const entries = scopeProfileId
+            ? log.getRecentForProfile(scopeProfileId, count, filter)
+            : log.getRecent(count, filter);
         res.json(entries);
     });
 
@@ -837,7 +968,7 @@ export function createDashboardApp({
                     latencyMs: Date.now() - start,
                 });
             } catch (err) {
-                res.status(500).json({ error: (err as Error).message });
+                res.status(500).json({ error: sanitizeError((err as Error).message) });
             }
         }),
     );

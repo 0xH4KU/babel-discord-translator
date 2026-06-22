@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { createEmptyAppMetricsSnapshot } from '../src/shared/app-metrics.js';
 import { validateConfigUpdate } from '../src/modules/dashboard/config-validation.js';
-import { sanitizeGlossaryInput } from '../src/modules/dashboard/glossary-input.js';
+import {
+    parseGlossaryImport,
+    sanitizeGlossaryImportRequest,
+    sanitizeGlossaryInput,
+} from '../src/modules/dashboard/glossary-input.js';
 import {
     budgetRiskForGuilds,
     buildOperationsGuidance,
@@ -49,6 +53,7 @@ describe('dashboard helper modules', () => {
             sanitizeGlossaryInput({
                 id: '2',
                 sourceText: ' raid ',
+                targetLanguage: ' ja ',
                 targetText: ' 團本 ',
                 notes: ' Game term ',
             }),
@@ -57,9 +62,158 @@ describe('dashboard helper modules', () => {
             value: {
                 id: 2,
                 sourceText: 'raid',
+                targetLanguage: 'ja',
                 targetText: '團本',
                 notes: 'Game term',
             },
+        });
+        expect(
+            sanitizeGlossaryInput({
+                sourceText: 'raid',
+                targetText: '團本',
+            }),
+        ).toEqual({
+            ok: true,
+            value: {
+                sourceText: 'raid',
+                targetLanguage: 'auto',
+                targetText: '團本',
+                notes: '',
+            },
+        });
+        expect(
+            sanitizeGlossaryInput({
+                sourceText: 'raid',
+                targetLanguage: '   ',
+                targetText: '團本',
+            }),
+        ).toEqual({ ok: false, error: 'Glossary target language is required' });
+        expect(
+            sanitizeGlossaryInput({
+                sourceText: 'raid',
+                targetLanguage: 'x'.repeat(21),
+                targetText: '團本',
+            }),
+        ).toEqual({
+            ok: false,
+            error: 'Glossary target language must be 20 characters or fewer',
+        });
+    });
+
+    it('parses glossary CSV and TSV imports with optional headers', () => {
+        expect(
+            parseGlossaryImport(
+                'sourceText,targetText,notes\nOpenAI,OpenAI,Preserve brand\n"raid, boss",團本,"Game, term"',
+            ),
+        ).toEqual({
+            ok: true,
+            rows: [
+                {
+                    line: 2,
+                    input: {
+                        sourceText: 'OpenAI',
+                        targetLanguage: 'auto',
+                        targetText: 'OpenAI',
+                        notes: 'Preserve brand',
+                    },
+                },
+                {
+                    line: 3,
+                    input: {
+                        sourceText: 'raid, boss',
+                        targetLanguage: 'auto',
+                        targetText: '團本',
+                        notes: 'Game, term',
+                    },
+                },
+            ],
+        });
+
+        expect(parseGlossaryImport('OpenAI\tOpenAI\nraid\t團本\tGame term')).toEqual({
+            ok: true,
+            rows: [
+                {
+                    line: 1,
+                    input: {
+                        sourceText: 'OpenAI',
+                        targetLanguage: 'auto',
+                        targetText: 'OpenAI',
+                        notes: '',
+                    },
+                },
+                {
+                    line: 2,
+                    input: {
+                        sourceText: 'raid',
+                        targetLanguage: 'auto',
+                        targetText: '團本',
+                        notes: 'Game term',
+                    },
+                },
+            ],
+        });
+
+        expect(
+            parseGlossaryImport(
+                'sourceText,targetLanguage,targetText,notes\nraid,ja,レイド,Game term',
+            ),
+        ).toEqual({
+            ok: true,
+            rows: [
+                {
+                    line: 2,
+                    input: {
+                        sourceText: 'raid',
+                        targetLanguage: 'ja',
+                        targetText: 'レイド',
+                        notes: 'Game term',
+                    },
+                },
+            ],
+        });
+    });
+
+    it('returns row-level errors for invalid glossary import rows', () => {
+        expect(parseGlossaryImport('source,target,notes\n,團本\nraid,,Game term')).toEqual({
+            ok: true,
+            rows: [],
+            errors: [
+                { line: 2, error: 'Glossary source and target are required' },
+                { line: 3, error: 'Glossary source and target are required' },
+            ],
+        });
+    });
+
+    it('rejects malformed or oversized glossary import requests', () => {
+        expect(
+            sanitizeGlossaryImportRequest({
+                text: 'source,target\nOpenAI,OpenAI',
+                duplicateMode: 'skip',
+            }),
+        ).toEqual({
+            ok: true,
+            value: {
+                text: 'source,target\nOpenAI,OpenAI',
+                duplicateMode: 'skip',
+            },
+        });
+
+        expect(
+            sanitizeGlossaryImportRequest({
+                text: 'source,target\nOpenAI,OpenAI',
+                duplicateMode: 'replace',
+            }),
+        ).toEqual({ ok: false, error: 'Glossary import duplicate mode must be skip or overwrite' });
+
+        expect(sanitizeGlossaryImportRequest({ text: '', duplicateMode: 'skip' })).toEqual({
+            ok: false,
+            error: 'Glossary import text is required',
+        });
+
+        expect(parseGlossaryImport('"unterminated,OpenAI')).toEqual({
+            ok: true,
+            rows: [],
+            errors: [{ line: 1, error: 'Malformed CSV row' }],
         });
     });
 
@@ -147,6 +301,11 @@ describe('dashboard helper modules', () => {
             runtimeSnapshot: {
                 ...runtimeSnapshot,
                 queued: 1,
+                rejectedTotal: 2,
+                rejectionCounts: {
+                    ...runtimeSnapshot.rejectionCounts,
+                    user_queue_full: 2,
+                },
             },
         });
 
@@ -155,6 +314,9 @@ describe('dashboard helper modules', () => {
             'babel_provider_requests_total{provider="vertex",result="success"} 1',
         );
         expect(text).toContain('babel_runtime_queue_depth 1');
+        expect(text).toContain('babel_runtime_rejections_all_total 2');
+        expect(text).toContain('babel_runtime_rejections_total{reason="user_queue_full"} 2');
+        expect(text).not.toContain('\nbabel_runtime_rejections_total 2\n');
         expect(text).toContain('babel_cache_hits_total 3');
     });
 });

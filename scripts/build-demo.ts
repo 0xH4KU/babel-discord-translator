@@ -628,6 +628,7 @@ const DEMO_GLOSSARY = {
             id: 1,
             guildId: '100000000000000001',
             sourceText: 'Babel',
+            targetLanguage: 'auto',
             targetText: 'Babel',
             notes: 'Preserve project name',
             createdAt: '2026-06-01T00:00:00.000Z',
@@ -637,6 +638,7 @@ const DEMO_GLOSSARY = {
             id: 2,
             guildId: '100000000000000001',
             sourceText: 'release notes',
+            targetLanguage: 'zh-TW',
             targetText: '版本公告',
             notes: 'Community wording',
             createdAt: '2026-06-01T00:00:00.000Z',
@@ -646,22 +648,33 @@ const DEMO_GLOSSARY = {
             id: 3,
             guildId: '100000000000000001',
             sourceText: 'raid',
+            targetLanguage: 'zh-TW',
             targetText: '團本',
             notes: 'Game term',
             createdAt: '2026-06-01T00:00:00.000Z',
             updatedAt: '2026-06-01T00:00:00.000Z',
         },
+        {
+            id: 4,
+            guildId: '100000000000000001',
+            sourceText: 'raid',
+            targetLanguage: 'ja',
+            targetText: 'レイド',
+            notes: 'Game term',
+            createdAt: '2026-06-01T00:00:00.000Z',
+            updatedAt: '2026-06-01T00:00:00.000Z',
+        },
     ],
-    count: 3,
+    count: 4,
 };
 
 const DEMO_VERSION = {
-    version: '0.2.0',
+    version: '0.2.1',
     repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator',
     update: {
         status: 'current',
-        latestVersion: '0.2.0',
-        latestUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases/tag/v0.2.0',
+        latestVersion: '0.2.1',
+        latestUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases/tag/v0.2.1',
     },
 };
 
@@ -797,6 +810,7 @@ function createDemoApiJs(variant: DemoVariant): string {
     '/guild-glossary/100000000000000001': { error: 'No demo fixture for /guild-glossary/100000000000000001', status: 404 },`
             : `
     '/guild-glossary/100000000000000001': 'guild-glossary.json',
+    '/guild-glossary/100000000000000001/import': { ok: true, created: 0, updated: 0, skipped: 0, failed: 0, errors: [], cacheCleared: false },
     '/guild-glossary/100000000000000002': { entries: [], count: 0 },
     '/guild-glossary/100000000000000003': { entries: [], count: 0 },
     '/guild-glossary/100000000000000004': { entries: [], count: 0 },`;

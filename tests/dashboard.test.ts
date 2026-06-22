@@ -56,6 +56,7 @@ vi.mock('../src/persistence/store.js', () => {
             id: number;
             guildId: string;
             sourceText: string;
+            targetLanguage: string;
             targetText: string;
             notes: string;
             createdAt: string;
@@ -115,6 +116,7 @@ vi.mock('../src/persistence/store.js', () => {
                     input: {
                         id?: number;
                         sourceText: string;
+                        targetLanguage?: string;
                         targetText: string;
                         notes?: string;
                     },
@@ -126,6 +128,7 @@ vi.mock('../src/persistence/store.js', () => {
                         const existing = glossary[guildId].find((entry) => entry.id === input.id);
                         if (!existing) throw new Error('Glossary entry not found');
                         existing.sourceText = input.sourceText.trim();
+                        existing.targetLanguage = input.targetLanguage?.trim() || 'auto';
                         existing.targetText = input.targetText.trim();
                         existing.notes = input.notes?.trim() ?? '';
                         existing.updatedAt = now;
@@ -136,6 +139,7 @@ vi.mock('../src/persistence/store.js', () => {
                         id: glossaryId++,
                         guildId,
                         sourceText: input.sourceText.trim(),
+                        targetLanguage: input.targetLanguage?.trim() || 'auto',
                         targetText: input.targetText.trim(),
                         notes: input.notes?.trim() ?? '',
                         createdAt: now,
@@ -171,6 +175,10 @@ const usageMock = vi.hoisted(() => ({
     })),
     getGuildStatsForGuilds: vi.fn(() => ({})),
     getHistory: vi.fn(() => []),
+    getGuildHistory: vi.fn(() => []),
+    getUserHistory: vi.fn(() => []),
+    getGuildHistoryForGuilds: vi.fn(() => []),
+    getAllUserHistory: vi.fn(() => []),
     record: vi.fn(),
     getUserStats: vi.fn((userId: string) => ({
         date: '2025-03-01',
@@ -212,6 +220,7 @@ import { CooldownManager } from '../src/modules/translation/cooldown.js';
 import { TranslationLog } from '../src/shared/log.js';
 import { TranslationRuntimeLimiter } from '../src/modules/translation/translation-runtime-limiter.js';
 import { _test as healthTest } from '../src/shared/health.js';
+import { translate as translateMock } from '../src/modules/translation/translate.js';
 import { createSqliteDatabase } from '../src/persistence/sqlite-database.js';
 import { DiscordUserProfileRepository } from '../src/modules/dashboard/discord-user-profile-repository.js';
 import { PendingUserInstallOwnerRepository } from '../src/modules/dashboard/pending-user-install-owner-repository.js';
@@ -257,10 +266,12 @@ function request(
                 data += chunk;
             });
             res.on('end', () => {
+                const contentType = String(res.headers['content-type'] ?? '');
                 resolve({
                     status: res.statusCode!,
                     headers: res.headers,
-                    body: data ? JSON.parse(data) : null,
+                    body:
+                        data && contentType.includes('application/json') ? JSON.parse(data) : null,
                     rawHeaders: res.headers,
                 });
             });
@@ -276,7 +287,12 @@ function requestText(
     server: http.Server,
     method: string,
     path: string,
-    { cookie, csrf }: { cookie?: string; csrf?: string } = {},
+    {
+        cookie,
+        csrf,
+        bearerToken,
+        metricsToken,
+    }: { cookie?: string; csrf?: string; bearerToken?: string; metricsToken?: string } = {},
 ): Promise<TextTestResponse> {
     return new Promise((resolve, reject) => {
         const addr = server.address() as { port: number };
@@ -289,6 +305,12 @@ function requestText(
         };
         if (cookie) (options.headers as Record<string, string>)['Cookie'] = cookie;
         if (csrf) (options.headers as Record<string, string>)['x-csrf-token'] = csrf;
+        if (bearerToken) {
+            (options.headers as Record<string, string>).Authorization = `Bearer ${bearerToken}`;
+        }
+        if (metricsToken) {
+            (options.headers as Record<string, string>)['x-metrics-token'] = metricsToken;
+        }
 
         const req = http.request(options, (res) => {
             let data = '';
@@ -1043,7 +1065,7 @@ describe('Dashboard API', () => {
         expect(versionCheck).not.toHaveBeenCalled();
     });
 
-    it('should expose Prometheus metrics without dashboard authentication', async () => {
+    it('should expose Prometheus metrics without dashboard authentication by default', async () => {
         metrics.recordTranslationSuccess({ cached: true });
         metrics.recordTranslationFailure();
         metrics.recordBudgetExceeded();
@@ -1078,7 +1100,7 @@ describe('Dashboard API', () => {
             expect(res.status).toBe(200);
             expect(res.headers['content-type']).toContain('text/plain');
             expect(res.text).toContain(
-                'babel_app_version_info{version="0.2.0",repository_url="https://github.com/0xH4KU/babel-discord-translator"} 1',
+                'babel_app_version_info{version="0.2.1",repository_url="https://github.com/0xH4KU/babel-discord-translator"} 1',
             );
             expect(res.text).toContain('babel_translations_total');
             expect(res.text).toContain('babel_translation_failures_total');
@@ -1096,6 +1118,43 @@ describe('Dashboard API', () => {
             if (queued.accepted) queued.reservation.cancel();
             if (second.accepted) second.reservation.cancel();
             if (first.accepted) first.reservation.cancel();
+        }
+    });
+
+    it('should require a metrics token when one is configured', async () => {
+        const protectedApp = createHealthDashboardApp({
+            cache,
+            metrics,
+            runtimeLimiter,
+            healthCheck,
+            healthProbeCacheTtlMs: 0,
+            metricsToken: 'metrics-secret',
+        });
+        const protectedServer = startDashboardServer(protectedApp, 0);
+
+        try {
+            const missing = await requestText(protectedServer, 'GET', '/metrics');
+            expect(missing.status).toBe(401);
+            expect(missing.text).toBe('Metrics token required\n');
+
+            const wrong = await requestText(protectedServer, 'GET', '/metrics', {
+                bearerToken: 'wrong-secret',
+            });
+            expect(wrong.status).toBe(401);
+
+            const withBearer = await requestText(protectedServer, 'GET', '/metrics', {
+                bearerToken: 'metrics-secret',
+            });
+            expect(withBearer.status).toBe(200);
+            expect(withBearer.text).toContain('babel_translations_total');
+
+            const withHeader = await requestText(protectedServer, 'GET', '/metrics', {
+                metricsToken: 'metrics-secret',
+            });
+            expect(withHeader.status).toBe(200);
+        } finally {
+            protectedServer.close();
+            stopDashboardApp(protectedApp);
         }
     });
 
@@ -1302,6 +1361,26 @@ describe('Dashboard API', () => {
         expect(res.status).toBe(200);
         expect(res.body!.ok).toBe(true);
         expect(res.body!.translation).toBe('translated: Hello');
+    });
+
+    it('should sanitize translate test errors before returning them', async () => {
+        vi.mocked(translateMock).mockRejectedValueOnce(
+            new Error(
+                'OpenAI 500 at https://api.openai.com/v1/chat/completions with token abcdefghijklmnopqrstuvwxyz1234567890',
+            ),
+        );
+
+        const res = await request(server, 'POST', '/api/translate/test', {
+            cookie: sessionCookie,
+            csrf: csrfToken,
+            body: { text: 'Hello', targetLanguage: 'ja' },
+        });
+
+        expect(res.status).toBe(500);
+        expect(res.body!.error).toContain('[API endpoint]');
+        expect(res.body!.error).toContain('***');
+        expect(res.body!.error).not.toContain('api.openai.com');
+        expect(res.body!.error).not.toContain('abcdefghijklmnopqrstuvwxyz1234567890');
     });
 
     it('should list active dashboard sessions without exposing raw tokens', async () => {
@@ -1568,6 +1647,7 @@ describe('Dashboard API', () => {
                 id: expect.any(Number),
                 guildId: 'guild-1',
                 sourceText: 'raid',
+                targetLanguage: 'auto',
                 targetText: '團本',
                 notes: 'Game term',
             },
@@ -1581,6 +1661,7 @@ describe('Dashboard API', () => {
             entries: [
                 expect.objectContaining({
                     sourceText: 'raid',
+                    targetLanguage: 'auto',
                     targetText: '團本',
                 }),
             ],
@@ -1594,11 +1675,13 @@ describe('Dashboard API', () => {
             body: {
                 id: entryId,
                 sourceText: 'raid',
+                targetLanguage: 'ja',
                 targetText: 'レイド',
                 notes: '',
             },
         });
         expect(update.status).toBe(200);
+        expect((update.body!.entry as Record<string, unknown>).targetLanguage).toBe('ja');
         expect((update.body!.entry as Record<string, unknown>).targetText).toBe('レイド');
 
         const deleted = await request(server, 'DELETE', `/api/guild-glossary/guild-1/${entryId}`, {
@@ -1621,6 +1704,181 @@ describe('Dashboard API', () => {
 
         expect(res.status).toBe(400);
         expect(res.body).toEqual({ error: 'Glossary source and target are required' });
+    });
+
+    it('should import glossary entries with case-insensitive skip and overwrite modes', async () => {
+        cache.set('glossary-cache-key', 'cached translation');
+
+        const initial = await request(server, 'POST', '/api/guild-glossary/guild-import', {
+            cookie: sessionCookie,
+            csrf: csrfToken,
+            body: {
+                sourceText: 'OpenAI',
+                targetLanguage: 'auto',
+                targetText: 'OpenAI',
+                notes: 'Original brand note',
+            },
+        });
+        expect(initial.status).toBe(200);
+        cache.set('glossary-cache-key', 'cached translation');
+
+        const skip = await request(server, 'POST', '/api/guild-glossary/guild-import/import', {
+            cookie: sessionCookie,
+            csrf: csrfToken,
+            body: {
+                duplicateMode: 'skip',
+                text: [
+                    'sourceText,targetLanguage,targetText,notes',
+                    'openai,ja,オープンAI,Japanese brand',
+                    'openai,auto,Open AI,Changed note',
+                    'raid,zh-TW,團本,Game term',
+                ].join('\n'),
+            },
+        });
+
+        expect(skip.status).toBe(200);
+        expect(skip.body).toMatchObject({
+            ok: true,
+            created: 2,
+            updated: 0,
+            skipped: 1,
+            failed: 0,
+            cacheCleared: true,
+        });
+        expect(cache.stats().size).toBe(0);
+
+        const afterSkip = await request(server, 'GET', '/api/guild-glossary/guild-import', {
+            cookie: sessionCookie,
+        });
+        expect(afterSkip.body!.entries).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    sourceText: 'OpenAI',
+                    targetLanguage: 'auto',
+                    targetText: 'OpenAI',
+                    notes: 'Original brand note',
+                }),
+                expect.objectContaining({
+                    sourceText: 'openai',
+                    targetLanguage: 'ja',
+                    targetText: 'オープンAI',
+                    notes: 'Japanese brand',
+                }),
+                expect.objectContaining({
+                    sourceText: 'raid',
+                    targetLanguage: 'zh-TW',
+                    targetText: '團本',
+                    notes: 'Game term',
+                }),
+            ]),
+        );
+
+        cache.set('glossary-cache-key', 'cached translation');
+        const overwrite = await request(server, 'POST', '/api/guild-glossary/guild-import/import', {
+            cookie: sessionCookie,
+            csrf: csrfToken,
+            body: {
+                duplicateMode: 'overwrite',
+                text: [
+                    'source,targetLanguage,target,notes',
+                    'openai,auto,Open AI,Changed note',
+                    'RAID,ja,レイド,JP term',
+                    'raid,zh-TW,團本二,Changed TW',
+                ].join('\n'),
+            },
+        });
+
+        expect(overwrite.status).toBe(200);
+        expect(overwrite.body).toMatchObject({
+            ok: true,
+            created: 1,
+            updated: 2,
+            skipped: 0,
+            failed: 0,
+            cacheCleared: true,
+        });
+        expect(cache.stats().size).toBe(0);
+
+        const afterOverwrite = await request(server, 'GET', '/api/guild-glossary/guild-import', {
+            cookie: sessionCookie,
+        });
+        expect(afterOverwrite.body!.entries).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    sourceText: 'openai',
+                    targetLanguage: 'auto',
+                    targetText: 'Open AI',
+                    notes: 'Changed note',
+                }),
+                expect.objectContaining({
+                    sourceText: 'openai',
+                    targetLanguage: 'ja',
+                    targetText: 'オープンAI',
+                    notes: 'Japanese brand',
+                }),
+                expect.objectContaining({
+                    sourceText: 'RAID',
+                    targetLanguage: 'ja',
+                    targetText: 'レイド',
+                    notes: 'JP term',
+                }),
+                expect.objectContaining({
+                    sourceText: 'raid',
+                    targetLanguage: 'zh-TW',
+                    targetText: '團本二',
+                    notes: 'Changed TW',
+                }),
+            ]),
+        );
+    });
+
+    it('should report glossary import row errors and avoid cache clearing when nothing changes', async () => {
+        cache.set('unchanged-cache-key', 'cached translation');
+
+        const res = await request(
+            server,
+            'POST',
+            '/api/guild-glossary/guild-import-errors/import',
+            {
+                cookie: sessionCookie,
+                csrf: csrfToken,
+                body: {
+                    duplicateMode: 'skip',
+                    text: 'source,target\n,團本\nraid,',
+                },
+            },
+        );
+
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({
+            ok: true,
+            created: 0,
+            updated: 0,
+            skipped: 0,
+            failed: 2,
+            errors: [
+                { line: 2, error: 'Glossary source and target are required' },
+                { line: 3, error: 'Glossary source and target are required' },
+            ],
+            cacheCleared: false,
+        });
+        expect(cache.stats().size).toBe(1);
+    });
+
+    it('should validate glossary import requests', async () => {
+        const res = await request(server, 'POST', '/api/guild-glossary/guild-1/import', {
+            cookie: sessionCookie,
+            csrf: csrfToken,
+            body: {
+                duplicateMode: 'replace',
+                text: 'source,target\nOpenAI,OpenAI',
+            },
+        });
+
+        expect(res.status).toBe(400);
+        expect(res.body).toEqual({
+            error: 'Glossary import duplicate mode must be skip or overwrite',
+        });
     });
 
     it('should not expose guild glossary routes for Babel Pocket', async () => {
@@ -1648,6 +1906,21 @@ describe('Dashboard API', () => {
             });
 
             expect(res.status).toBe(404);
+
+            const csrfRes = await request(pocketServer, 'GET', '/api/auth/check', {
+                cookie,
+            });
+            const pocketCsrf = csrfRes.body!.csrfToken as string;
+            const importRes = await requestText(
+                pocketServer,
+                'POST',
+                '/api/guild-glossary/guild-1/import',
+                {
+                    cookie,
+                    csrf: pocketCsrf,
+                },
+            );
+            expect(importRes.status).toBe(404);
         } finally {
             stopDashboardApp(pocketApp);
             pocketServer.close();
@@ -1997,6 +2270,291 @@ describe('Dashboard API', () => {
                 expect(res.text).toContain('id="profile-select-view"');
             }
         } finally {
+            stopDashboardApp(combinedApp);
+            combinedServer.close();
+        }
+    });
+
+    it('should return product-scoped logs for combined dashboard API paths', async () => {
+        const scopedLog = new TranslationLog(10);
+        scopedLog.add({
+            appProfileId: 'babel-guild',
+            guildId: 'guild-1',
+            guildName: 'Guild Server',
+            userId: 'guild-user',
+            userTag: 'GuildUser#0001',
+            contentPreview: 'guild log',
+        });
+        scopedLog.add({
+            appProfileId: 'babel-pocket',
+            guildId: null,
+            guildName: 'Direct Message',
+            userId: 'pocket-user',
+            userTag: 'PocketUser#0001',
+            contentPreview: 'pocket log',
+        });
+        const combinedApp = createDashboardApp({
+            cache,
+            cooldown: new CooldownManager(5),
+            log: scopedLog,
+            client: createMinimalClient(),
+            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
+            metrics,
+            runtimeLimiter,
+            profile: BABEL_GUILD_PROFILE,
+            profiles: [BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE],
+            sessionRepository: new InMemorySessionRepository(),
+            userProfileRepository,
+        });
+        const combinedServer = startDashboardServer(combinedApp, 0);
+
+        try {
+            const login = await request(combinedServer, 'POST', '/api/login', {
+                body: { password: 'test-pass-123' },
+            });
+            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
+
+            const guildRes = await request(combinedServer, 'GET', '/guild/api/logs', {
+                cookie,
+            });
+            const pocketRes = await request(combinedServer, 'GET', '/pocket/api/logs', {
+                cookie,
+            });
+
+            expect(guildRes.status).toBe(200);
+            expect(pocketRes.status).toBe(200);
+            expect(guildRes.body).toEqual([
+                expect.objectContaining({
+                    appProfileId: 'babel-guild',
+                    contentPreview: 'guild log',
+                }),
+            ]);
+            expect(pocketRes.body).toEqual([
+                expect.objectContaining({
+                    appProfileId: 'babel-pocket',
+                    contentPreview: 'pocket log',
+                }),
+            ]);
+        } finally {
+            stopDashboardApp(combinedApp);
+            combinedServer.close();
+        }
+    });
+
+    it('should apply error type filters within product-scoped combined logs', async () => {
+        const scopedLog = new TranslationLog(10);
+        scopedLog.addError({
+            appProfileId: 'babel-guild',
+            guildId: 'guild-1',
+            guildName: 'Guild Server',
+            userId: 'guild-user',
+            error: 'Guild rate limited',
+            command: '/translate',
+            errorType: 'rate_limit',
+        });
+        scopedLog.addError({
+            appProfileId: 'babel-pocket',
+            guildId: null,
+            guildName: 'Direct Message',
+            userId: 'pocket-user',
+            error: 'Pocket rate limited',
+            command: 'Babel Pocket',
+            errorType: 'rate_limit',
+        });
+        scopedLog.addError({
+            appProfileId: 'babel-guild',
+            guildId: 'guild-1',
+            guildName: 'Guild Server',
+            userId: 'guild-user',
+            error: 'Guild auth failed',
+            command: '/translate',
+            errorType: 'auth',
+        });
+        const combinedApp = createDashboardApp({
+            cache,
+            cooldown: new CooldownManager(5),
+            log: scopedLog,
+            client: createMinimalClient(),
+            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
+            metrics,
+            runtimeLimiter,
+            profile: BABEL_GUILD_PROFILE,
+            profiles: [BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE],
+            sessionRepository: new InMemorySessionRepository(),
+            userProfileRepository,
+        });
+        const combinedServer = startDashboardServer(combinedApp, 0);
+
+        try {
+            const login = await request(combinedServer, 'POST', '/api/login', {
+                body: { password: 'test-pass-123' },
+            });
+            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
+
+            const guildRes = await request(
+                combinedServer,
+                'GET',
+                '/guild/api/logs?errorType=rate_limit',
+                { cookie },
+            );
+            const pocketRes = await request(
+                combinedServer,
+                'GET',
+                '/pocket/api/logs?errorType=rate_limit',
+                { cookie },
+            );
+
+            expect(guildRes.status).toBe(200);
+            expect(pocketRes.status).toBe(200);
+            expect(guildRes.body).toEqual([
+                expect.objectContaining({
+                    appProfileId: 'babel-guild',
+                    error: 'Guild rate limited',
+                    errorType: 'rate_limit',
+                }),
+            ]);
+            expect(pocketRes.body).toEqual([
+                expect.objectContaining({
+                    appProfileId: 'babel-pocket',
+                    error: 'Pocket rate limited',
+                    errorType: 'rate_limit',
+                }),
+            ]);
+        } finally {
+            stopDashboardApp(combinedApp);
+            combinedServer.close();
+        }
+    });
+
+    it('should return product-scoped usage history for combined dashboard API paths', async () => {
+        const globalHistory = [
+            {
+                date: '2026-06-01',
+                inputTokens: 3000,
+                outputTokens: 1500,
+                totalTokens: 4500,
+                requests: 3,
+                cost: 0,
+            },
+        ];
+        const guildHistory = [
+            {
+                date: '2026-06-01',
+                inputTokens: 1000,
+                outputTokens: 500,
+                totalTokens: 1500,
+                requests: 1,
+                cost: 0,
+            },
+        ];
+        const pocketHistory = [
+            {
+                date: '2026-06-01',
+                inputTokens: 2000,
+                outputTokens: 1000,
+                totalTokens: 3000,
+                requests: 2,
+                cost: 0,
+            },
+        ];
+        usageMock.getHistory.mockReturnValue(globalHistory);
+        usageMock.getGuildHistory.mockReturnValue(guildHistory);
+        usageMock.getUserHistory.mockReturnValue(pocketHistory);
+        usageMock.getGuildHistoryForGuilds.mockReturnValue(guildHistory);
+        usageMock.getAllUserHistory.mockReturnValue(pocketHistory);
+
+        const guildClient = {
+            ...createMinimalClient(),
+            guilds: {
+                cache: {
+                    size: 1,
+                    map: (fn: Function) =>
+                        [
+                            {
+                                id: 'guild-1',
+                                name: 'Guild One',
+                                iconURL: () => '',
+                                memberCount: 10,
+                            },
+                        ].map(fn),
+                    [Symbol.iterator]: function* () {
+                        yield [
+                            'guild-1',
+                            {
+                                id: 'guild-1',
+                                name: 'Guild One',
+                                iconURL: () => '',
+                                memberCount: 10,
+                            },
+                        ];
+                    },
+                },
+            },
+        } as unknown as Client;
+        const combinedApp = createDashboardApp({
+            cache,
+            cooldown: new CooldownManager(5),
+            log,
+            client: guildClient,
+            clients: {
+                'babel-guild': guildClient,
+                'babel-pocket': createMinimalClient(),
+            },
+            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
+            metrics,
+            runtimeLimiter,
+            profile: BABEL_GUILD_PROFILE,
+            profiles: [BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE],
+            sessionRepository: new InMemorySessionRepository(),
+            userProfileRepository,
+        });
+        const combinedServer = startDashboardServer(combinedApp, 0);
+
+        try {
+            const login = await request(combinedServer, 'POST', '/api/login', {
+                body: { password: 'test-pass-123' },
+            });
+            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
+
+            const rootRes = await request(combinedServer, 'GET', '/api/usage/history', {
+                cookie,
+            });
+            const guildRes = await request(combinedServer, 'GET', '/guild/api/usage/history', {
+                cookie,
+            });
+            const pocketRes = await request(combinedServer, 'GET', '/pocket/api/usage/history', {
+                cookie,
+            });
+
+            expect(rootRes.status).toBe(200);
+            expect(guildRes.status).toBe(200);
+            expect(pocketRes.status).toBe(200);
+            expect(rootRes.body).toEqual(globalHistory);
+            expect(guildRes.body).toEqual(guildHistory);
+            expect(pocketRes.body).toEqual(pocketHistory);
+            expect(usageMock.getGuildHistoryForGuilds).toHaveBeenCalledWith(['guild-1']);
+            expect(usageMock.getAllUserHistory).toHaveBeenCalled();
+
+            usageMock.getGuildHistory.mockClear();
+            const pocketGuildFilterRes = await request(
+                combinedServer,
+                'GET',
+                '/pocket/api/usage/history?guildId=guild-1',
+                {
+                    cookie,
+                },
+            );
+            expect(pocketGuildFilterRes.status).toBe(400);
+            expect(pocketGuildFilterRes.body).toEqual({
+                error: 'guildId filter is not available for this dashboard scope',
+            });
+            expect(usageMock.getGuildHistory).not.toHaveBeenCalled();
+        } finally {
+            usageMock.getHistory.mockReturnValue([]);
+            usageMock.getGuildHistory.mockReturnValue([]);
+            usageMock.getUserHistory.mockReturnValue([]);
+            usageMock.getGuildHistoryForGuilds.mockReturnValue([]);
+            usageMock.getAllUserHistory.mockReturnValue([]);
             stopDashboardApp(combinedApp);
             combinedServer.close();
         }

@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
 import { describe, expect, it } from 'vitest';
 
 describe('dashboard static assets', () => {
@@ -54,6 +55,48 @@ describe('dashboard static assets', () => {
         expect(accessJs).toContain("api('/user-budgets')");
     });
 
+    it('exposes Server Glossary import controls and client import flow', () => {
+        const html = readFileSync('src/public/index.html', 'utf-8');
+        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const settingsCss = readFileSync('src/public/css/settings.css', 'utf-8');
+
+        expect(html).toContain('id="glossary-import-file"');
+        expect(html).toContain('id="glossary-target-language"');
+        expect(html).toContain('Language');
+        expect(html).toContain('class="glossary-file-input"');
+        expect(html).toContain('class="glossary-file-button"');
+        expect(html).toContain('id="glossary-import-file-name"');
+        expect(html).toContain('id="glossary-import-text"');
+        expect(html).toContain('class="glossary-import-textarea"');
+        expect(html).toContain('name="glossary-import-mode"');
+        expect(html).toContain('class="glossary-import-option"');
+        expect(html).toContain('onclick="importGlossaryEntries()"');
+        expect(accessJs).toContain('function readGlossaryImportFile');
+        expect(accessJs).toContain('glossary-target-language');
+        expect(accessJs).toContain('entry.targetLanguage');
+        expect(accessJs).toContain('targetLanguage');
+        expect(accessJs).toContain('glossary-import-file-name');
+        expect(accessJs).toContain('function importGlossaryEntries');
+        expect(accessJs).toContain("api('/guild-glossary/' + glossaryGuildId + '/import'");
+        expect(accessJs).toContain('renderGlossaryImportResult');
+        expect(accessJs).toContain('escapeHtml(error.error)');
+        expect(settingsCss).toContain('.glossary-import');
+        expect(settingsCss).toContain('.glossary-import-grid');
+        expect(settingsCss).toContain('.glossary-file-picker .glossary-file-input');
+        expect(settingsCss).toContain('clip-path: inset(50%)');
+        expect(settingsCss).toContain('.glossary-file-button');
+        expect(settingsCss).toContain('.glossary-file-picker .glossary-file-button');
+        expect(settingsCss).toContain('.glossary-import-options .glossary-import-option');
+        expect(settingsCss).toContain(
+            ".glossary-import-options .glossary-import-option input[type='radio']",
+        );
+        expect(settingsCss).toContain(
+            '.glossary-import-options .glossary-import-option:focus-within',
+        );
+        expect(settingsCss).toContain('.glossary-import-textarea');
+        expect(settingsCss).toContain('.glossary-import-result');
+    });
+
     it('uses the original Babel Pocket user whitelist controls', () => {
         const html = readFileSync('src/public/index.html', 'utf-8');
         const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
@@ -79,5 +122,45 @@ describe('dashboard static assets', () => {
 
         expect(dashboardJs).toContain('getDashboardUsageScopeLabel');
         expect(dashboardJs).toContain('getDashboardUsageScopeLabel(d)');
+    });
+
+    it('escapes glossary table fields rendered from stored import data', () => {
+        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const glossaryContainer = { innerHTML: '' };
+        const context = {
+            document: {
+                getElementById(id: string) {
+                    return id === 'glossary-container' ? glossaryContainer : null;
+                },
+            },
+            hasDashboardCapability(name: string) {
+                return name === 'guildGlossary';
+            },
+        };
+
+        vm.createContext(context);
+        vm.runInContext(
+            [
+                accessJs,
+                "glossaryGuildId = 'guild-1';",
+                `glossaryEntries = [{
+                    id: 1,
+                    sourceText: '<img src=x onerror=alert(1)>',
+                    targetLanguage: 'ja<script>alert(1)</script>',
+                    targetText: '<b>owned</b>',
+                    notes: '<svg onload=alert(1)>'
+                }];`,
+                'renderGlossaryEntries();',
+            ].join('\n'),
+            context,
+        );
+
+        expect(glossaryContainer.innerHTML).toContain('&lt;img src=x onerror=alert(1)&gt;');
+        expect(glossaryContainer.innerHTML).toContain('ja&lt;script&gt;alert(1)&lt;/script&gt;');
+        expect(glossaryContainer.innerHTML).toContain('&lt;b&gt;owned&lt;/b&gt;');
+        expect(glossaryContainer.innerHTML).toContain('&lt;svg onload=alert(1)&gt;');
+        expect(glossaryContainer.innerHTML).not.toContain('<img src=x');
+        expect(glossaryContainer.innerHTML).not.toContain('<b>owned</b>');
+        expect(glossaryContainer.innerHTML).not.toContain('<svg onload');
     });
 });

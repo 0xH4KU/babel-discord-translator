@@ -314,13 +314,14 @@ export class ConfigStore {
                 id,
                 guild_id as guildId,
                 source_text as sourceText,
+                target_language as targetLanguage,
                 target_text as targetText,
                 notes,
                 created_at as createdAt,
                 updated_at as updatedAt
             FROM guild_glossary
             WHERE guild_id = ?
-            ORDER BY source_text COLLATE NOCASE ASC, id ASC
+            ORDER BY target_language COLLATE NOCASE ASC, source_text COLLATE NOCASE ASC, id ASC
         `,
         ).all(guildId) as unknown as GuildGlossaryEntry[];
 
@@ -329,6 +330,7 @@ export class ConfigStore {
 
     upsertGuildGlossaryEntry(guildId: string, input: GuildGlossaryInput): GuildGlossaryEntry {
         const sourceText = input.sourceText.trim();
+        const targetLanguage = input.targetLanguage?.trim() || 'auto';
         const targetText = input.targetText.trim();
         const notes = input.notes?.trim() ?? '';
         const now = new Date().toISOString();
@@ -351,11 +353,11 @@ export class ConfigStore {
                 .prepare(
                     `
                 UPDATE guild_glossary
-                SET source_text = ?, target_text = ?, notes = ?, updated_at = ?
+                SET source_text = ?, target_language = ?, target_text = ?, notes = ?, updated_at = ?
                 WHERE guild_id = ? AND id = ?
             `,
                 )
-                .run(sourceText, targetText, notes, now, guildId, input.id);
+                .run(sourceText, targetLanguage, targetText, notes, now, guildId, input.id);
 
             return this.getGuildGlossaryEntry(guildId, input.id)!;
         }
@@ -365,14 +367,15 @@ export class ConfigStore {
             INSERT INTO guild_glossary (
                 guild_id,
                 source_text,
+                target_language,
                 target_text,
                 notes,
                 created_at,
                 updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         `,
-        ).run(guildId, sourceText, targetText, notes, now, now);
+        ).run(guildId, sourceText, targetLanguage, targetText, notes, now, now);
 
         return this.getGuildGlossaryEntry(guildId, Number(result.lastInsertRowid))!;
     }
@@ -577,6 +580,7 @@ export class ConfigStore {
                 id,
                 guild_id as guildId,
                 source_text as sourceText,
+                target_language as targetLanguage,
                 target_text as targetText,
                 notes,
                 created_at as createdAt,

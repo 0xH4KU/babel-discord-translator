@@ -68,11 +68,37 @@ describe('build-dashboard-demo', () => {
         expect(readFileSync(join(demoDir, 'guild', 'demo', 'demo-api.js'), 'utf-8')).toContain(
             'window.BABEL_DEMO',
         );
+        expect(readFileSync(join(demoDir, 'guild', 'demo', 'demo-api.js'), 'utf-8')).toContain(
+            '/guild-glossary/100000000000000001/import',
+        );
         const guildStats = JSON.parse(
             readFileSync(join(demoDir, 'guild', 'demo', 'fixtures', 'stats.json'), 'utf-8'),
         ) as { bot: { name: string }; guildBudgets: unknown[] };
         expect(guildStats.bot.name).toBe('Babel Guild Demo#0110');
         expect(guildStats.guildBudgets.length).toBeGreaterThan(0);
+
+        const guildGlossary = JSON.parse(
+            readFileSync(
+                join(demoDir, 'guild', 'demo', 'fixtures', 'guild-glossary.json'),
+                'utf-8',
+            ),
+        ) as {
+            entries: Array<{ sourceText: string; targetLanguage: string; targetText: string }>;
+        };
+        expect(guildGlossary.entries).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    sourceText: 'raid',
+                    targetLanguage: 'zh-TW',
+                    targetText: '團本',
+                }),
+                expect.objectContaining({
+                    sourceText: 'raid',
+                    targetLanguage: 'ja',
+                    targetText: 'レイド',
+                }),
+            ]),
+        );
 
         const pocketStats = JSON.parse(
             readFileSync(join(demoDir, 'pocket', 'demo', 'fixtures', 'stats.json'), 'utf-8'),

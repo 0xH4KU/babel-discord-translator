@@ -1,6 +1,6 @@
 import { buildTranslationCacheKey, type TranslationCache } from './cache.js';
 import type { CooldownManager } from './cooldown.js';
-import type { AccessMode } from '../../apps/app-profile.js';
+import type { AccessMode, AppProfile } from '../../apps/app-profile.js';
 import { ProviderOrchestratorError } from '../../infra/provider-orchestrator.js';
 import type { TranslationLog } from '../../shared/log.js';
 import { isSameLanguage } from './lang.js';
@@ -40,6 +40,7 @@ import {
     buildGlossaryVersion,
     classifyTranslationError,
     createTranslatorOptions,
+    selectGlossaryEntriesForTarget,
     suggestedActionForErrorType,
     type ServiceCommand,
     type TranslatorOptions,
@@ -127,6 +128,7 @@ export interface TranslationServiceDeps {
     cooldown: CooldownManager;
     log: TranslationLog;
     stats: BotStats;
+    appProfileId?: AppProfile['id'];
     configStore?: ConfigRepositoryLike;
     userPreferenceStore?: UserPreferenceRepositoryLike;
     glossaryRepository?: GlossaryRepositoryLike;
@@ -200,6 +202,7 @@ export function createTranslationService({
     metrics,
     runtimeLimiter,
     logger = appLogger.child({ component: 'translation_service' }),
+    appProfileId,
     accessMode = 'guild',
     enableGuildGlossary = true,
     pendingUserInstallOwnerRepository,
@@ -252,7 +255,7 @@ export function createTranslationService({
             }
 
             const usageScope = {
-                guildId: request.guildId ?? null,
+                guildId: accessMode === 'guild' ? (request.guildId ?? null) : null,
                 userId: accessMode === 'user-install' ? getBillingUsageUserId(scope) : null,
             };
 
@@ -327,7 +330,11 @@ export function createTranslationService({
                 enableGuildGlossary && request.guildId
                     ? glossaryRepository.listEntries(request.guildId)
                     : [];
-            const glossaryVersion = buildGlossaryVersion(glossaryEntries);
+            const selectedGlossaryEntries = selectGlossaryEntriesForTarget(
+                glossaryEntries,
+                targetLanguage,
+            );
+            const glossaryVersion = buildGlossaryVersion(selectedGlossaryEntries);
             const cacheKey = buildTranslationCacheKey({
                 sourceText: originalText,
                 targetLanguage,
@@ -472,7 +479,7 @@ export function createTranslationService({
                                         command: request.command,
                                     },
                                     metrics,
-                                    glossaryEntries,
+                                    selectedGlossaryEntries,
                                     runtimeConfig,
                                 ),
                             );
@@ -503,7 +510,7 @@ export function createTranslationService({
                                     command: request.command,
                                 },
                                 metrics,
-                                glossaryEntries,
+                                selectedGlossaryEntries,
                                 runtimeConfig,
                             ),
                         );
@@ -520,6 +527,7 @@ export function createTranslationService({
 
                 metrics?.recordTranslationSuccess({ cached });
                 log.add({
+                    appProfileId,
                     guildId: request.guildId,
                     guildName: request.guildName,
                     userId: request.userId,
@@ -564,6 +572,7 @@ export function createTranslationService({
                         : classifyTranslationError(message);
                 metrics?.recordTranslationFailure();
                 log.addError({
+                    appProfileId,
                     guildId: request.guildId,
                     guildName: request.guildName,
                     userId: request.userId,

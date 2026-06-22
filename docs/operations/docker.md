@@ -6,11 +6,11 @@ This guide is for operators who want to run Babel Guild or Babel Pocket as a sel
 
 Select the app profile before you build the image or register Discord commands.
 
-| Product      | Install Model        | Docker Environment    | Command Registration      |
-| ------------ | -------------------- | --------------------- | ------------------------- |
-| Babel Guild  | Server/Guild Install | `BABEL_APP=guild`     | `npm run register:guild`  |
-| Babel Pocket | User Install         | `BABEL_APP=pocket`    | `npm run register:pocket` |
-| Both         | Both                 | `BABEL_APP=combined`  | Run both explicit commands |
+| Product      | Install Model        | Docker Environment   | Command Registration       |
+| ------------ | -------------------- | -------------------- | -------------------------- |
+| Babel Guild  | Server/Guild Install | `BABEL_APP=guild`    | `npm run register:guild`   |
+| Babel Pocket | User Install         | `BABEL_APP=pocket`   | `npm run register:pocket`  |
+| Both         | Both                 | `BABEL_APP=combined` | Run both explicit commands |
 
 The same Docker image can run either product, or both products in one process. Compose defaults to Babel Guild for backward compatibility.
 
@@ -180,11 +180,14 @@ For very small instances, keep a single product profile and use the health-only 
 ```env
 BABEL_APP=guild
 BABEL_DASHBOARD_MODE=health-only
+BABEL_METRICS_TOKEN=
 BABEL_NODE_MAX_OLD_SPACE_MB=64
 BABEL_NODE_MAX_SEMI_SPACE_MB=4
 ```
 
 `health-only` keeps `/livez`, `/readyz`, `/healthz`, and `/metrics`, but skips the authenticated dashboard UI and dashboard API routes. Use `full` when you need to change settings from the browser. Do not use `off` unless you also replace the Docker or host healthcheck because Babel will not expose `/livez`. Avoid `BABEL_APP=combined` unless you need both Guild and Pocket in one process.
+
+Set `BABEL_METRICS_TOKEN` if `/metrics` is exposed beyond localhost or a private monitoring network. Scrapers can send `Authorization: Bearer <token>` or `x-metrics-token: <token>`.
 
 ## Updating Babel
 
