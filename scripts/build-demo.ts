@@ -669,12 +669,12 @@ const DEMO_GLOSSARY = {
 };
 
 const DEMO_VERSION = {
-    version: '0.2.0',
+    version: '0.2.1',
     repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator',
     update: {
         status: 'current',
-        latestVersion: '0.2.0',
-        latestUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases/tag/v0.2.0',
+        latestVersion: '0.2.1',
+        latestUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases/tag/v0.2.1',
     },
 };
 

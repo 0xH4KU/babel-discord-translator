@@ -31,7 +31,7 @@ describe('version metadata', () => {
             packages: Record<string, { version?: string }>;
         };
 
-        expect(APP_VERSION).toBe('0.2.0');
+        expect(APP_VERSION).toBe('0.2.1');
         expect(rootPackage.version).toBe(APP_VERSION);
         expect(guildPackage.version).toBe(APP_VERSION);
         expect(pocketPackage.version).toBe(APP_VERSION);

@@ -1,6 +1,6 @@
 {
     "name": "@babel-discord-translator/pocket",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "description": "Babel Pocket user-install Discord translator",
     "type": "module",
     "main": "../../dist/apps/babel-pocket/src/index.js",
