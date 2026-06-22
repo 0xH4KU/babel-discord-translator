@@ -1,5 +1,6 @@
 const MAX_GLOSSARY_TEXT_LENGTH = 120;
 const MAX_GLOSSARY_NOTES_LENGTH = 200;
+const MAX_GLOSSARY_LANGUAGE_LENGTH = 20;
 const MAX_GLOSSARY_IMPORT_BYTES = 128 * 1024;
 const MAX_GLOSSARY_IMPORT_ROWS = 500;
 
@@ -9,6 +10,7 @@ export interface GlossaryImportRow {
     line: number;
     input: {
         sourceText: string;
+        targetLanguage: string;
         targetText: string;
         notes: string;
     };
@@ -25,12 +27,15 @@ export function sanitizeGlossaryInput(body: Record<string, unknown>):
           value: {
               id?: number;
               sourceText: string;
+              targetLanguage: string;
               targetText: string;
               notes: string;
           };
       }
     | { ok: false; error: string } {
     const sourceText = String(body.sourceText ?? '').trim();
+    const hasTargetLanguage = body.targetLanguage !== undefined && body.targetLanguage !== null;
+    const targetLanguage = hasTargetLanguage ? String(body.targetLanguage).trim() : 'auto';
     const targetText = String(body.targetText ?? '').trim();
     const notes = String(body.notes ?? '').trim();
     const rawId = body.id;
@@ -41,6 +46,17 @@ export function sanitizeGlossaryInput(body: Record<string, unknown>):
 
     if (!sourceText || !targetText) {
         return { ok: false, error: 'Glossary source and target are required' };
+    }
+
+    if (!targetLanguage) {
+        return { ok: false, error: 'Glossary target language is required' };
+    }
+
+    if (targetLanguage.length > MAX_GLOSSARY_LANGUAGE_LENGTH) {
+        return {
+            ok: false,
+            error: `Glossary target language must be ${MAX_GLOSSARY_LANGUAGE_LENGTH} characters or fewer`,
+        };
     }
 
     if (
@@ -69,6 +85,7 @@ export function sanitizeGlossaryInput(body: Record<string, unknown>):
         value: {
             ...(id !== undefined ? { id } : {}),
             sourceText,
+            targetLanguage,
             targetText,
             notes,
         },
@@ -172,11 +189,20 @@ function isHeaderRow(fields: string[]): boolean {
     const second = String(fields[1] ?? '')
         .trim()
         .toLowerCase();
+    const third = String(fields[2] ?? '')
+        .trim()
+        .toLowerCase();
 
     return (
         (first === 'sourcetext' || first === 'source') &&
-        (second === 'targettext' || second === 'target')
+        (second === 'targettext' ||
+            second === 'target' ||
+            (second === 'targetlanguage' && (third === 'targettext' || third === 'target')))
     );
+}
+
+function isFourColumnImportRow(fields: string[]): boolean {
+    return fields.length >= 4;
 }
 
 export function parseGlossaryImport(text: string): {
@@ -211,11 +237,21 @@ export function parseGlossaryImport(text: string): {
             continue;
         }
 
-        const input = sanitizeGlossaryInput({
-            sourceText: parsed.fields[0] ?? '',
-            targetText: parsed.fields[1] ?? '',
-            notes: parsed.fields[2] ?? '',
-        });
+        const fourColumn = isFourColumnImportRow(parsed.fields);
+        const input = sanitizeGlossaryInput(
+            fourColumn
+                ? {
+                      sourceText: parsed.fields[0] ?? '',
+                      targetLanguage: parsed.fields[1] ?? '',
+                      targetText: parsed.fields[2] ?? '',
+                      notes: parsed.fields[3] ?? '',
+                  }
+                : {
+                      sourceText: parsed.fields[0] ?? '',
+                      targetText: parsed.fields[1] ?? '',
+                      notes: parsed.fields[2] ?? '',
+                  },
+        );
 
         if (!input.ok) {
             errors.push({ line: line.line, error: input.error });
@@ -226,6 +262,7 @@ export function parseGlossaryImport(text: string): {
             line: line.line,
             input: {
                 sourceText: input.value.sourceText,
+                targetLanguage: input.value.targetLanguage,
                 targetText: input.value.targetText,
                 notes: input.value.notes,
             },

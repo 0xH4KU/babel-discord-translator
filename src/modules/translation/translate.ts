@@ -12,6 +12,7 @@ import type { TranslationProvider } from '../../infra/provider-orchestrator.js';
 
 export interface TranslationGlossaryPromptEntry {
     sourceText: string;
+    targetLanguage?: string;
     targetText: string;
     notes?: string;
 }
@@ -92,16 +93,21 @@ export function buildTranslationPrompt(
     customPrompt?: string | null,
     glossaryEntries: TranslationGlossaryPromptEntry[] = [],
 ): string {
-    return `${resolveSystemPrompt(targetLanguage, customPrompt)}${buildGlossaryPromptSection(glossaryEntries)}
+    return `${resolveSystemPrompt(targetLanguage, customPrompt)}${buildGlossaryPromptSection(glossaryEntries, targetLanguage)}
 
 Text:
 ${text}`;
 }
 
-export function buildGlossaryPromptSection(entries: TranslationGlossaryPromptEntry[]): string {
+export function buildGlossaryPromptSection(
+    entries: TranslationGlossaryPromptEntry[],
+    targetLanguage: string = 'auto',
+): string {
+    const shouldLabelLanguage = targetLanguage === 'auto';
     const usableEntries = entries
         .map((entry) => ({
             sourceText: entry.sourceText.trim(),
+            targetLanguage: entry.targetLanguage?.trim() || 'auto',
             targetText: entry.targetText.trim(),
             notes: entry.notes?.trim() ?? '',
         }))
@@ -114,7 +120,8 @@ export function buildGlossaryPromptSection(entries: TranslationGlossaryPromptEnt
     const rules = usableEntries
         .map((entry) => {
             const notes = entry.notes ? ` (${entry.notes})` : '';
-            return `- ${entry.sourceText} => ${entry.targetText}${notes}`;
+            const language = shouldLabelLanguage ? ` [${entry.targetLanguage}]` : '';
+            return `- ${entry.sourceText}${language} => ${entry.targetText}${notes}`;
         })
         .join('\n');
 

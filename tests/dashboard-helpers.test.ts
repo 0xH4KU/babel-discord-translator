@@ -53,6 +53,7 @@ describe('dashboard helper modules', () => {
             sanitizeGlossaryInput({
                 id: '2',
                 sourceText: ' raid ',
+                targetLanguage: ' ja ',
                 targetText: ' 團本 ',
                 notes: ' Game term ',
             }),
@@ -61,9 +62,41 @@ describe('dashboard helper modules', () => {
             value: {
                 id: 2,
                 sourceText: 'raid',
+                targetLanguage: 'ja',
                 targetText: '團本',
                 notes: 'Game term',
             },
+        });
+        expect(
+            sanitizeGlossaryInput({
+                sourceText: 'raid',
+                targetText: '團本',
+            }),
+        ).toEqual({
+            ok: true,
+            value: {
+                sourceText: 'raid',
+                targetLanguage: 'auto',
+                targetText: '團本',
+                notes: '',
+            },
+        });
+        expect(
+            sanitizeGlossaryInput({
+                sourceText: 'raid',
+                targetLanguage: '   ',
+                targetText: '團本',
+            }),
+        ).toEqual({ ok: false, error: 'Glossary target language is required' });
+        expect(
+            sanitizeGlossaryInput({
+                sourceText: 'raid',
+                targetLanguage: 'x'.repeat(21),
+                targetText: '團本',
+            }),
+        ).toEqual({
+            ok: false,
+            error: 'Glossary target language must be 20 characters or fewer',
         });
     });
 
@@ -79,6 +112,7 @@ describe('dashboard helper modules', () => {
                     line: 2,
                     input: {
                         sourceText: 'OpenAI',
+                        targetLanguage: 'auto',
                         targetText: 'OpenAI',
                         notes: 'Preserve brand',
                     },
@@ -87,6 +121,7 @@ describe('dashboard helper modules', () => {
                     line: 3,
                     input: {
                         sourceText: 'raid, boss',
+                        targetLanguage: 'auto',
                         targetText: '團本',
                         notes: 'Game, term',
                     },
@@ -99,11 +134,40 @@ describe('dashboard helper modules', () => {
             rows: [
                 {
                     line: 1,
-                    input: { sourceText: 'OpenAI', targetText: 'OpenAI', notes: '' },
+                    input: {
+                        sourceText: 'OpenAI',
+                        targetLanguage: 'auto',
+                        targetText: 'OpenAI',
+                        notes: '',
+                    },
                 },
                 {
                     line: 2,
-                    input: { sourceText: 'raid', targetText: '團本', notes: 'Game term' },
+                    input: {
+                        sourceText: 'raid',
+                        targetLanguage: 'auto',
+                        targetText: '團本',
+                        notes: 'Game term',
+                    },
+                },
+            ],
+        });
+
+        expect(
+            parseGlossaryImport(
+                'sourceText,targetLanguage,targetText,notes\nraid,ja,レイド,Game term',
+            ),
+        ).toEqual({
+            ok: true,
+            rows: [
+                {
+                    line: 2,
+                    input: {
+                        sourceText: 'raid',
+                        targetLanguage: 'ja',
+                        targetText: 'レイド',
+                        notes: 'Game term',
+                    },
                 },
             ],
         });

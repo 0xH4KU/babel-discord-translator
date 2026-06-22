@@ -90,4 +90,37 @@ describe('createSqliteDatabase', () => {
             db.close();
         }
     });
+
+    it('should create multilingual guild glossary columns and lookup index', async () => {
+        const { createSqliteDatabase } = await import('../src/persistence/sqlite-database.js');
+        const db = createSqliteDatabase(':memory:');
+
+        try {
+            const columns = db.prepare('PRAGMA table_info(guild_glossary)').all() as Array<{
+                name: string;
+                dflt_value: string | null;
+            }>;
+            const targetLanguage = columns.find((column) => column.name === 'target_language');
+
+            expect(targetLanguage).toMatchObject({
+                name: 'target_language',
+                dflt_value: "'auto'",
+            });
+
+            const index = db
+                .prepare(
+                    `
+                    SELECT name
+                    FROM sqlite_master
+                    WHERE type = 'index'
+                      AND name = 'idx_guild_glossary_language_lookup'
+                `,
+                )
+                .get() as { name: string } | undefined;
+
+            expect(index?.name).toBe('idx_guild_glossary_language_lookup');
+        } finally {
+            db.close();
+        }
+    });
 });

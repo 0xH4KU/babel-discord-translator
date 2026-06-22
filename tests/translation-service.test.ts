@@ -135,6 +135,7 @@ function createGlossaryRepositoryMock(
             id: number;
             guildId: string;
             sourceText: string;
+            targetLanguage: string;
             targetText: string;
             notes: string;
             createdAt: string;
@@ -663,6 +664,7 @@ describe('TranslationService', () => {
                     id: 1,
                     guildId: 'guild-1',
                     sourceText: 'OpenAI',
+                    targetLanguage: 'auto',
                     targetText: 'OpenAI',
                     notes: 'Preserve brand name',
                     createdAt: '2026-06-01T00:00:00.000Z',
@@ -672,6 +674,17 @@ describe('TranslationService', () => {
                     id: 2,
                     guildId: 'guild-1',
                     sourceText: 'raid',
+                    targetLanguage: 'auto',
+                    targetText: 'legacy raid',
+                    notes: 'Legacy term',
+                    createdAt: '2026-06-01T00:00:00.000Z',
+                    updatedAt: '2026-06-01T00:00:00.000Z',
+                },
+                {
+                    id: 3,
+                    guildId: 'guild-1',
+                    sourceText: 'raid',
+                    targetLanguage: 'zh-TW',
                     targetText: '團本',
                     notes: '',
                     createdAt: '2026-06-01T00:00:00.000Z',
@@ -709,6 +722,7 @@ describe('TranslationService', () => {
                 id: 1,
                 guildId: 'guild-1',
                 sourceText: 'OpenAI',
+                targetLanguage: 'auto',
                 targetText: 'OpenAI',
                 notes: 'Preserve brand name',
                 createdAt: '2026-06-01T00:00:00.000Z',
@@ -718,6 +732,17 @@ describe('TranslationService', () => {
                 id: 2,
                 guildId: 'guild-1',
                 sourceText: 'raid',
+                targetLanguage: 'auto',
+                targetText: 'legacy raid',
+                notes: 'Legacy term',
+                createdAt: '2026-06-01T00:00:00.000Z',
+                updatedAt: '2026-06-01T00:00:00.000Z',
+            },
+            {
+                id: 3,
+                guildId: 'guild-1',
+                sourceText: 'raid',
+                targetLanguage: 'ja',
                 targetText: 'レイド',
                 notes: '',
                 createdAt: '2026-06-01T00:00:00.000Z',
@@ -732,9 +757,9 @@ describe('TranslationService', () => {
             guildName: 'Test Guild',
             userId: 'user3',
             userTag: 'user#0003',
-            locale: 'zh-TW',
+            locale: 'en-US',
             text: 'OpenAI raid tonight',
-            targetLanguageOption: 'zh-TW',
+            targetLanguageOption: 'ja',
         });
 
         expect(first.status).toBe('success');
@@ -745,8 +770,24 @@ describe('TranslationService', () => {
         expect(translator).toHaveBeenCalledTimes(2);
         expect(translator.mock.calls[0]?.[2]).toMatchObject({
             glossaryEntries: [
-                { sourceText: 'OpenAI', targetText: 'OpenAI', notes: 'Preserve brand name' },
-                { sourceText: 'raid', targetText: '團本', notes: '' },
+                { sourceText: 'raid', targetLanguage: 'zh-TW', targetText: '團本', notes: '' },
+                {
+                    sourceText: 'OpenAI',
+                    targetLanguage: 'auto',
+                    targetText: 'OpenAI',
+                    notes: 'Preserve brand name',
+                },
+            ],
+        });
+        expect(translator.mock.calls[1]?.[2]).toMatchObject({
+            glossaryEntries: [
+                { sourceText: 'raid', targetLanguage: 'ja', targetText: 'レイド', notes: '' },
+                {
+                    sourceText: 'OpenAI',
+                    targetLanguage: 'auto',
+                    targetText: 'OpenAI',
+                    notes: 'Preserve brand name',
+                },
             ],
         });
     });
@@ -765,6 +806,7 @@ describe('TranslationService', () => {
                     id: 1,
                     guildId: 'guild-1',
                     sourceText: 'OpenAI',
+                    targetLanguage: 'auto',
                     targetText: 'OpenAI',
                     notes: 'Preserve brand name',
                     createdAt: '2026-06-01T00:00:00.000Z',

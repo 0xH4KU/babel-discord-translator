@@ -172,12 +172,19 @@ describe('ConfigStore', () => {
             sourceText: 'raid',
             targetText: '副本',
         });
+        const third = store.upsertGuildGlossaryEntry('guild-1', {
+            sourceText: 'raid',
+            targetLanguage: 'ja',
+            targetText: 'レイド',
+            notes: 'Game term',
+        });
 
         expect(store.listGuildGlossary('guild-1')).toEqual([
             {
                 id: first.id,
                 guildId: 'guild-1',
                 sourceText: 'OpenAI',
+                targetLanguage: 'auto',
                 targetText: 'OpenAI',
                 notes: 'Preserve brand name',
                 createdAt: expect.any(String),
@@ -187,8 +194,19 @@ describe('ConfigStore', () => {
                 id: second.id,
                 guildId: 'guild-1',
                 sourceText: 'raid',
+                targetLanguage: 'auto',
                 targetText: '副本',
                 notes: '',
+                createdAt: expect.any(String),
+                updatedAt: expect.any(String),
+            },
+            {
+                id: third.id,
+                guildId: 'guild-1',
+                sourceText: 'raid',
+                targetLanguage: 'ja',
+                targetText: 'レイド',
+                notes: 'Game term',
                 createdAt: expect.any(String),
                 updatedAt: expect.any(String),
             },
@@ -197,19 +215,26 @@ describe('ConfigStore', () => {
         const updated = store.upsertGuildGlossaryEntry('guild-1', {
             id: second.id,
             sourceText: 'raid',
+            targetLanguage: 'zh-TW',
             targetText: '團本',
             notes: 'Game term',
         });
 
         expect(updated.id).toBe(second.id);
+        expect(store.listGuildGlossary('guild-1').map((entry) => entry.targetLanguage)).toEqual([
+            'auto',
+            'ja',
+            'zh-TW',
+        ]);
         expect(store.listGuildGlossary('guild-1').map((entry) => entry.targetText)).toEqual([
             'OpenAI',
+            'レイド',
             '團本',
         ]);
         expect(store.listGuildGlossary('guild-2')).toEqual([]);
         expect(store.deleteGuildGlossaryEntry('guild-1', first.id)).toBe(true);
         expect(store.deleteGuildGlossaryEntry('guild-1', first.id)).toBe(false);
-        expect(store.listGuildGlossary('guild-1')).toHaveLength(1);
+        expect(store.listGuildGlossary('guild-1')).toHaveLength(2);
 
         store.close();
     });

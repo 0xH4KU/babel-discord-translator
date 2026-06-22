@@ -485,6 +485,7 @@ function renderGlossaryEntries() {
         .map(
             (entry) => `<tr>
       <td class="mono">${entry.sourceText}</td>
+      <td class="mono">${entry.targetLanguage || 'auto'}</td>
       <td class="mono">${entry.targetText}</td>
       <td class="dim">${entry.notes || '-'}</td>
       <td>
@@ -496,7 +497,7 @@ function renderGlossaryEntries() {
         .join('');
 
     container.innerHTML = `<div class="table-scroll"><table class="data-table glossary-table">
-      <thead><tr><th>Source</th><th>Target</th><th>Notes</th><th></th></tr></thead>
+      <thead><tr><th>Source</th><th>Language</th><th>Target</th><th>Notes</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>`;
 }
@@ -506,6 +507,7 @@ function resetGlossaryForm() {
 
     document.getElementById('glossary-entry-id').value = '';
     document.getElementById('glossary-source').value = '';
+    document.getElementById('glossary-target-language').value = 'auto';
     document.getElementById('glossary-target').value = '';
     document.getElementById('glossary-notes').value = '';
 }
@@ -581,6 +583,7 @@ function editGlossaryEntry(entryId) {
 
     document.getElementById('glossary-entry-id').value = entry.id;
     document.getElementById('glossary-source').value = entry.sourceText;
+    document.getElementById('glossary-target-language').value = entry.targetLanguage || 'auto';
     document.getElementById('glossary-target').value = entry.targetText;
     document.getElementById('glossary-notes').value = entry.notes || '';
 }
@@ -595,11 +598,12 @@ async function saveGlossaryEntry() {
 
     const id = document.getElementById('glossary-entry-id').value;
     const sourceText = document.getElementById('glossary-source').value.trim();
+    const targetLanguage = document.getElementById('glossary-target-language').value.trim();
     const targetText = document.getElementById('glossary-target').value.trim();
     const notes = document.getElementById('glossary-notes').value.trim();
 
-    if (!sourceText || !targetText) {
-        showToast('Source and target are required', true);
+    if (!sourceText || !targetLanguage || !targetText) {
+        showToast('Source, language, and target are required', true);
         return;
     }
 
@@ -608,6 +612,7 @@ async function saveGlossaryEntry() {
         body: JSON.stringify({
             ...(id ? { id: Number(id) } : {}),
             sourceText,
+            targetLanguage,
             targetText,
             notes,
         }),

@@ -111,14 +111,41 @@ describe('buildTargetedPrompt', () => {
 
 describe('buildGlossaryPromptSection', () => {
     it('should render glossary rules with notes', () => {
-        const section = buildGlossaryPromptSection([
-            { sourceText: 'OpenAI', targetText: 'OpenAI', notes: 'Preserve brand name' },
-            { sourceText: 'raid', targetText: '團本', notes: '' },
-        ]);
+        const section = buildGlossaryPromptSection(
+            [
+                {
+                    sourceText: 'OpenAI',
+                    targetLanguage: 'auto',
+                    targetText: 'OpenAI',
+                    notes: 'Preserve brand name',
+                },
+                { sourceText: 'raid', targetLanguage: 'zh-TW', targetText: '團本', notes: '' },
+            ],
+            'zh-TW',
+        );
 
         expect(section).toContain('Server glossary');
         expect(section).toContain('- OpenAI => OpenAI (Preserve brand name)');
         expect(section).toContain('- raid => 團本');
+        expect(section).not.toContain('[zh-TW]');
+    });
+
+    it('should label language-specific rules when target language is auto', () => {
+        const section = buildGlossaryPromptSection(
+            [
+                { sourceText: 'raid', targetLanguage: 'zh-TW', targetText: '團本', notes: '' },
+                {
+                    sourceText: 'raid',
+                    targetLanguage: 'ja',
+                    targetText: 'レイド',
+                    notes: 'Game term',
+                },
+            ],
+            'auto',
+        );
+
+        expect(section).toContain('- raid [zh-TW] => 團本');
+        expect(section).toContain('- raid [ja] => レイド (Game term)');
     });
 
     it('should omit the glossary section when there are no entries', () => {

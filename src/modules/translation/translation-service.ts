@@ -40,6 +40,7 @@ import {
     buildGlossaryVersion,
     classifyTranslationError,
     createTranslatorOptions,
+    selectGlossaryEntriesForTarget,
     suggestedActionForErrorType,
     type ServiceCommand,
     type TranslatorOptions,
@@ -329,7 +330,11 @@ export function createTranslationService({
                 enableGuildGlossary && request.guildId
                     ? glossaryRepository.listEntries(request.guildId)
                     : [];
-            const glossaryVersion = buildGlossaryVersion(glossaryEntries);
+            const selectedGlossaryEntries = selectGlossaryEntriesForTarget(
+                glossaryEntries,
+                targetLanguage,
+            );
+            const glossaryVersion = buildGlossaryVersion(selectedGlossaryEntries);
             const cacheKey = buildTranslationCacheKey({
                 sourceText: originalText,
                 targetLanguage,
@@ -474,7 +479,7 @@ export function createTranslationService({
                                         command: request.command,
                                     },
                                     metrics,
-                                    glossaryEntries,
+                                    selectedGlossaryEntries,
                                     runtimeConfig,
                                 ),
                             );
@@ -505,7 +510,7 @@ export function createTranslationService({
                                     command: request.command,
                                 },
                                 metrics,
-                                glossaryEntries,
+                                selectedGlossaryEntries,
                                 runtimeConfig,
                             ),
                         );

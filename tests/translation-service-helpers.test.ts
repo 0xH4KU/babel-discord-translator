@@ -4,6 +4,7 @@ import {
     buildGlossaryVersion,
     classifyTranslationError,
     createTranslatorOptions,
+    selectGlossaryEntriesForTarget,
     suggestedActionForErrorType,
 } from '../src/modules/translation/translation-service-helpers.js';
 
@@ -34,6 +35,7 @@ describe('translation service helpers', () => {
                     id: 1,
                     guildId: 'guild-1',
                     sourceText: ' OpenAI ',
+                    targetLanguage: ' auto ',
                     targetText: ' OpenAI ',
                     notes: ' Preserve brand ',
                     createdAt: '2026-06-01T00:00:00.000Z',
@@ -41,7 +43,9 @@ describe('translation service helpers', () => {
                 },
             ]),
         ).toBe(
-            [1, 'OpenAI', 'OpenAI', 'Preserve brand', '2026-06-02T00:00:00.000Z'].join('\u001f'),
+            [1, 'OpenAI', 'auto', 'OpenAI', 'Preserve brand', '2026-06-02T00:00:00.000Z'].join(
+                '\u001f',
+            ),
         );
     });
 
@@ -57,13 +61,54 @@ describe('translation service helpers', () => {
         expect(createTranslatorOptions(logContext)).toEqual({ logContext });
         expect(
             createTranslatorOptions(logContext, metrics, [
-                { sourceText: 'raid', targetText: '團本', notes: '' },
+                { sourceText: 'raid', targetLanguage: 'zh-TW', targetText: '團本', notes: '' },
             ]),
         ).toEqual({
             logContext,
             metrics,
-            glossaryEntries: [{ sourceText: 'raid', targetText: '團本', notes: '' }],
+            glossaryEntries: [
+                { sourceText: 'raid', targetLanguage: 'zh-TW', targetText: '團本', notes: '' },
+            ],
         });
         expect(vi.isMockFunction(createTranslatorOptions)).toBe(false);
+    });
+
+    it('selects exact target-language glossary entries before auto fallbacks', () => {
+        const entries = [
+            {
+                id: 1,
+                guildId: 'guild-1',
+                sourceText: 'OpenAI',
+                targetLanguage: 'auto',
+                targetText: 'OpenAI',
+                notes: 'Preserve brand',
+                createdAt: '2026-06-01T00:00:00.000Z',
+                updatedAt: '2026-06-01T00:00:00.000Z',
+            },
+            {
+                id: 2,
+                guildId: 'guild-1',
+                sourceText: 'raid',
+                targetLanguage: 'auto',
+                targetText: '團本',
+                notes: 'Legacy term',
+                createdAt: '2026-06-01T00:00:00.000Z',
+                updatedAt: '2026-06-01T00:00:00.000Z',
+            },
+            {
+                id: 3,
+                guildId: 'guild-1',
+                sourceText: 'raid',
+                targetLanguage: 'ja',
+                targetText: 'レイド',
+                notes: 'Japanese term',
+                createdAt: '2026-06-01T00:00:00.000Z',
+                updatedAt: '2026-06-01T00:00:00.000Z',
+            },
+        ];
+
+        expect(selectGlossaryEntriesForTarget(entries, 'ja')).toEqual([entries[2], entries[0]]);
+        expect(selectGlossaryEntriesForTarget(entries, 'ko')).toEqual([entries[0], entries[1]]);
+        expect(selectGlossaryEntriesForTarget(entries, 'auto')).toEqual(entries);
     });
 });

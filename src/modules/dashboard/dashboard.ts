@@ -88,6 +88,14 @@ function normalizeGlossarySource(sourceText: string): string {
     return sourceText.trim().toLowerCase();
 }
 
+function normalizeGlossaryLanguage(targetLanguage: string): string {
+    return targetLanguage.trim().toLowerCase();
+}
+
+function normalizeGlossaryKey(sourceText: string, targetLanguage: string): string {
+    return `${normalizeGlossarySource(sourceText)}\u0000${normalizeGlossaryLanguage(targetLanguage)}`;
+}
+
 function applySecurityHeaders(_req: Request, res: Response, next: NextFunction): void {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
@@ -739,18 +747,27 @@ export function createDashboardApp({
             }
 
             const parsed = parseGlossaryImport(importRequest.value.text);
-            const existingBySource = new Map(
+            const existingByKey = new Map(
                 guildGlossaryRepository
                     .listEntries(guildId)
-                    .map((entry) => [normalizeGlossarySource(entry.sourceText), entry] as const),
+                    .map(
+                        (entry) =>
+                            [
+                                normalizeGlossaryKey(entry.sourceText, entry.targetLanguage),
+                                entry,
+                            ] as const,
+                    ),
             );
             let created = 0;
             let updated = 0;
             let skipped = 0;
 
             for (const row of parsed.rows) {
-                const normalizedSource = normalizeGlossarySource(row.input.sourceText);
-                const existing = existingBySource.get(normalizedSource);
+                const normalizedKey = normalizeGlossaryKey(
+                    row.input.sourceText,
+                    row.input.targetLanguage,
+                );
+                const existing = existingByKey.get(normalizedKey);
 
                 if (existing && importRequest.value.duplicateMode === 'skip') {
                     skipped++;
@@ -762,14 +779,20 @@ export function createDashboardApp({
                         id: existing.id,
                         ...row.input,
                     });
-                    existingBySource.delete(normalizedSource);
-                    existingBySource.set(normalizeGlossarySource(entry.sourceText), entry);
+                    existingByKey.delete(normalizedKey);
+                    existingByKey.set(
+                        normalizeGlossaryKey(entry.sourceText, entry.targetLanguage),
+                        entry,
+                    );
                     updated++;
                     continue;
                 }
 
                 const entry = guildGlossaryRepository.upsertEntry(guildId, row.input);
-                existingBySource.set(normalizeGlossarySource(entry.sourceText), entry);
+                existingByKey.set(
+                    normalizeGlossaryKey(entry.sourceText, entry.targetLanguage),
+                    entry,
+                );
                 created++;
             }
 

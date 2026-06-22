@@ -51,6 +51,7 @@ export interface GuildGlossaryEntry {
     id: number;
     guildId: string;
     sourceText: string;
+    targetLanguage: string;
     targetText: string;
     notes: string;
     createdAt: string;
@@ -60,6 +61,7 @@ export interface GuildGlossaryEntry {
 export interface GuildGlossaryInput {
     id?: number;
     sourceText: string;
+    targetLanguage?: string;
     targetText: string;
     notes?: string;
 }

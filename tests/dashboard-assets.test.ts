@@ -60,6 +60,8 @@ describe('dashboard static assets', () => {
         const settingsCss = readFileSync('src/public/css/settings.css', 'utf-8');
 
         expect(html).toContain('id="glossary-import-file"');
+        expect(html).toContain('id="glossary-target-language"');
+        expect(html).toContain('Language');
         expect(html).toContain('class="glossary-file-input"');
         expect(html).toContain('class="glossary-file-button"');
         expect(html).toContain('id="glossary-import-file-name"');
@@ -69,6 +71,9 @@ describe('dashboard static assets', () => {
         expect(html).toContain('class="glossary-import-option"');
         expect(html).toContain('onclick="importGlossaryEntries()"');
         expect(accessJs).toContain('function readGlossaryImportFile');
+        expect(accessJs).toContain('glossary-target-language');
+        expect(accessJs).toContain('entry.targetLanguage');
+        expect(accessJs).toContain('targetLanguage');
         expect(accessJs).toContain('glossary-import-file-name');
         expect(accessJs).toContain('function importGlossaryEntries');
         expect(accessJs).toContain("api('/guild-glossary/' + glossaryGuildId + '/import'");

@@ -56,6 +56,7 @@ vi.mock('../src/persistence/store.js', () => {
             id: number;
             guildId: string;
             sourceText: string;
+            targetLanguage: string;
             targetText: string;
             notes: string;
             createdAt: string;
@@ -115,6 +116,7 @@ vi.mock('../src/persistence/store.js', () => {
                     input: {
                         id?: number;
                         sourceText: string;
+                        targetLanguage?: string;
                         targetText: string;
                         notes?: string;
                     },
@@ -126,6 +128,7 @@ vi.mock('../src/persistence/store.js', () => {
                         const existing = glossary[guildId].find((entry) => entry.id === input.id);
                         if (!existing) throw new Error('Glossary entry not found');
                         existing.sourceText = input.sourceText.trim();
+                        existing.targetLanguage = input.targetLanguage?.trim() || 'auto';
                         existing.targetText = input.targetText.trim();
                         existing.notes = input.notes?.trim() ?? '';
                         existing.updatedAt = now;
@@ -136,6 +139,7 @@ vi.mock('../src/persistence/store.js', () => {
                         id: glossaryId++,
                         guildId,
                         sourceText: input.sourceText.trim(),
+                        targetLanguage: input.targetLanguage?.trim() || 'auto',
                         targetText: input.targetText.trim(),
                         notes: input.notes?.trim() ?? '',
                         createdAt: now,
@@ -1643,6 +1647,7 @@ describe('Dashboard API', () => {
                 id: expect.any(Number),
                 guildId: 'guild-1',
                 sourceText: 'raid',
+                targetLanguage: 'auto',
                 targetText: '團本',
                 notes: 'Game term',
             },
@@ -1656,6 +1661,7 @@ describe('Dashboard API', () => {
             entries: [
                 expect.objectContaining({
                     sourceText: 'raid',
+                    targetLanguage: 'auto',
                     targetText: '團本',
                 }),
             ],
@@ -1669,11 +1675,13 @@ describe('Dashboard API', () => {
             body: {
                 id: entryId,
                 sourceText: 'raid',
+                targetLanguage: 'ja',
                 targetText: 'レイド',
                 notes: '',
             },
         });
         expect(update.status).toBe(200);
+        expect((update.body!.entry as Record<string, unknown>).targetLanguage).toBe('ja');
         expect((update.body!.entry as Record<string, unknown>).targetText).toBe('レイド');
 
         const deleted = await request(server, 'DELETE', `/api/guild-glossary/guild-1/${entryId}`, {
@@ -1706,6 +1714,7 @@ describe('Dashboard API', () => {
             csrf: csrfToken,
             body: {
                 sourceText: 'OpenAI',
+                targetLanguage: 'auto',
                 targetText: 'OpenAI',
                 notes: 'Original brand note',
             },
@@ -1718,14 +1727,19 @@ describe('Dashboard API', () => {
             csrf: csrfToken,
             body: {
                 duplicateMode: 'skip',
-                text: 'sourceText,targetText,notes\nopenai,Open AI,Changed note\nraid,團本,Game term',
+                text: [
+                    'sourceText,targetLanguage,targetText,notes',
+                    'openai,ja,オープンAI,Japanese brand',
+                    'openai,auto,Open AI,Changed note',
+                    'raid,zh-TW,團本,Game term',
+                ].join('\n'),
             },
         });
 
         expect(skip.status).toBe(200);
         expect(skip.body).toMatchObject({
             ok: true,
-            created: 1,
+            created: 2,
             updated: 0,
             skipped: 1,
             failed: 0,
@@ -1740,11 +1754,19 @@ describe('Dashboard API', () => {
             expect.arrayContaining([
                 expect.objectContaining({
                     sourceText: 'OpenAI',
+                    targetLanguage: 'auto',
                     targetText: 'OpenAI',
                     notes: 'Original brand note',
                 }),
                 expect.objectContaining({
+                    sourceText: 'openai',
+                    targetLanguage: 'ja',
+                    targetText: 'オープンAI',
+                    notes: 'Japanese brand',
+                }),
+                expect.objectContaining({
                     sourceText: 'raid',
+                    targetLanguage: 'zh-TW',
                     targetText: '團本',
                     notes: 'Game term',
                 }),
@@ -1757,14 +1779,19 @@ describe('Dashboard API', () => {
             csrf: csrfToken,
             body: {
                 duplicateMode: 'overwrite',
-                text: 'source,target,notes\nopenai,Open AI,Changed note\nRAID,レイド,JP term',
+                text: [
+                    'source,targetLanguage,target,notes',
+                    'openai,auto,Open AI,Changed note',
+                    'RAID,ja,レイド,JP term',
+                    'raid,zh-TW,團本二,Changed TW',
+                ].join('\n'),
             },
         });
 
         expect(overwrite.status).toBe(200);
         expect(overwrite.body).toMatchObject({
             ok: true,
-            created: 0,
+            created: 1,
             updated: 2,
             skipped: 0,
             failed: 0,
@@ -1779,13 +1806,27 @@ describe('Dashboard API', () => {
             expect.arrayContaining([
                 expect.objectContaining({
                     sourceText: 'openai',
+                    targetLanguage: 'auto',
                     targetText: 'Open AI',
                     notes: 'Changed note',
                 }),
                 expect.objectContaining({
+                    sourceText: 'openai',
+                    targetLanguage: 'ja',
+                    targetText: 'オープンAI',
+                    notes: 'Japanese brand',
+                }),
+                expect.objectContaining({
                     sourceText: 'RAID',
+                    targetLanguage: 'ja',
                     targetText: 'レイド',
                     notes: 'JP term',
+                }),
+                expect.objectContaining({
+                    sourceText: 'raid',
+                    targetLanguage: 'zh-TW',
+                    targetText: '團本二',
+                    notes: 'Changed TW',
                 }),
             ]),
         );
