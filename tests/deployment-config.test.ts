@@ -67,6 +67,53 @@ describe('deployment configuration', () => {
         );
     });
 
+    it('runs a built dashboard smoke check in package scripts and CI', () => {
+        const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as {
+            scripts: Record<string, string>;
+        };
+        const ci = readFileSync('.github/workflows/ci.yml', 'utf8');
+
+        expect(packageJson.scripts['smoke:dashboard']).toBe(
+            'node scripts/smoke-dashboard-build.js',
+        );
+        expect(ci).toContain('npm run smoke:dashboard');
+    });
+
+    it('keeps the README TypeScript badge aligned with package.json', () => {
+        const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as {
+            devDependencies: Record<string, string>;
+        };
+        const readme = readFileSync('README.md', 'utf8');
+        const typescriptVersion = packageJson.devDependencies.typescript.replace(/^[^\d]*/, '');
+        const majorMinor = typescriptVersion.split('.').slice(0, 2).join('.');
+
+        expect(readme).toContain(
+            `[![TypeScript](https://img.shields.io/badge/TypeScript-${majorMinor}-blue.svg)]`,
+        );
+    });
+
+    it('documents and tests the supported Node runtime range for native SQLite', () => {
+        const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as {
+            engines: Record<string, string>;
+        };
+        const packageLock = JSON.parse(readFileSync('package-lock.json', 'utf8')) as {
+            packages: Record<string, { engines?: Record<string, string> }>;
+        };
+        const ci = readFileSync('.github/workflows/ci.yml', 'utf8');
+        const readme = readFileSync('README.md', 'utf8');
+        const deploymentDocs = readFileSync('docs/operations/deployment.md', 'utf8');
+        const dockerDocs = readFileSync('docs/operations/docker.md', 'utf8');
+
+        expect(packageJson.engines.node).toBe('>=22.13.0');
+        expect(packageLock.packages[''].engines?.node).toBe('>=22.13.0');
+        expect(ci).toContain('node-version: [22, 24]');
+        for (const doc of [readme, deploymentDocs, dockerDocs]) {
+            expect(doc).toContain('Node.js `22.13+`');
+            expect(doc).toContain('native `node:sqlite`');
+            expect(doc).toContain('run `npm run smoke:dashboard` after upgrading Node');
+        }
+    });
+
     it('builds the Docker image with workspace app manifests and sources', () => {
         const dockerfile = readFileSync('Dockerfile', 'utf8');
 

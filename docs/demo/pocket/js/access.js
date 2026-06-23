@@ -244,13 +244,14 @@ function renderGuilds() {
             const costLabel = bd ? formatUsd(todayCost) : '-';
 
             if (g.manual) {
+                const escapedId = escapeHtml(g.id);
                 return `<div class="guild-item guild-item-col">
         <div class="guild-item-row">
-          <img src="${genAvatar(g.id)}" alt="">
-          <span class="guild-name" style="font-family:monospace;font-size:0.8rem">${g.id}</span>
+          <img src="${escapeHtml(genAvatar(g.id))}" alt="">
+          <span class="guild-name guild-name-mono">${escapedId}</span>
           <span class="guild-members">manually added</span>
-          <label class="toggle"><input type="checkbox" data-guild-id="${g.id}" onchange="toggleGuildAllowed('${g.id}', this.checked)" checked><span class="slider"></span></label>
-          <button class="btn-danger" onclick="removeManualGuild('${g.id}')">✕</button>
+          <label class="toggle"><input type="checkbox" data-guild-id="${escapedId}" ${actionAttrs('toggleGuildAllowed', [g.id], { value: 'checked' })} checked><span class="slider"></span></label>
+          <button class="btn-danger" ${actionAttrs('removeManualGuild', [g.id])}>✕</button>
         </div>
       </div>`;
             }
@@ -258,27 +259,30 @@ function renderGuilds() {
             const pct =
                 effectiveBudget > 0 ? Math.min((todayCost / effectiveBudget) * 100, 100) : 0;
             const barClass = pct > 90 ? ' danger' : pct > 60 ? ' warning' : '';
+            const escapedId = escapeHtml(g.id);
+            const escapedName = escapeHtml(g.name || g.id);
+            const escapedIcon = escapeHtml(g.icon || genAvatar(g.name || g.id));
 
             return `<div class="guild-item guild-item-col">
       <div class="guild-item-row">
-        <img src="${g.icon || genAvatar(g.name || g.id)}" alt="">
-        <span class="guild-name">${g.name || g.id}</span>
-        <span class="guild-members">${g.memberCount ?? '?'} members</span>
-        <label class="toggle"><input type="checkbox" data-guild-id="${g.id}" onchange="toggleGuildAllowed('${g.id}', this.checked)" ${checked ? 'checked' : ''}><span class="slider"></span></label>
+        <img src="${escapedIcon}" alt="">
+        <span class="guild-name">${escapedName}</span>
+        <span class="guild-members">${escapeHtml(g.memberCount ?? '?')} members</span>
+        <label class="toggle"><input type="checkbox" data-guild-id="${escapedId}" ${actionAttrs('toggleGuildAllowed', [g.id], { value: 'checked' })} ${checked ? 'checked' : ''}><span class="slider"></span></label>
       </div>
       <div class="guild-budget-row">
         <div class="guild-budget-info">
           <span class="guild-budget-label">Budget: ${budgetLabel}</span>
           <span class="guild-budget-cost">Today: ${costLabel}${bd ? ' · ' + bd.usage.requests + ' req' : ''}</span>
         </div>
-        ${effectiveBudget > 0 ? `<div class="guild-budget-bar"><div class="fill${barClass}" style="width:${pct}%"></div></div>` : ''}
+        ${effectiveBudget > 0 ? `<div class="guild-budget-bar"><div class="fill${barClass}" data-progress="${pct}"></div></div>` : ''}
         <div class="guild-budget-actions">
-          <input type="number" class="guild-budget-input" id="gb-${g.id}" min="0" step="0.1"
+          <input type="number" class="guild-budget-input" id="gb-${escapedId}" min="0" step="0.1"
             placeholder="${hasCustomBudget ? effectiveBudget : 'Global'}"
             value="${hasCustomBudget ? effectiveBudget : ''}"
             title="Set per-server budget (USD). Empty = use global.">
-          <button class="btn btn-secondary btn-xs" onclick="saveGuildBudget('${g.id}')">Set</button>
-          ${hasCustomBudget ? `<button class="btn-danger btn-xs" onclick="resetGuildBudget('${g.id}')" title="Reset to global">↺</button>` : ''}
+          <button class="btn btn-secondary btn-xs" ${actionAttrs('saveGuildBudget', [g.id])}>Set</button>
+          ${hasCustomBudget ? `<button class="btn-danger btn-xs" ${actionAttrs('resetGuildBudget', [g.id])} title="Reset to global">↺</button>` : ''}
         </div>
       </div>
     </div>`;
@@ -286,6 +290,9 @@ function renderGuilds() {
         .join('');
 
     container.innerHTML = html;
+    container.querySelectorAll?.('.guild-budget-bar .fill[data-progress]').forEach((node) => {
+        node.style.width = node.dataset.progress + '%';
+    });
 
     renderPagination('guild-pagination', {
         total: allItems.length,
@@ -426,7 +433,7 @@ function renderGlossaryGuildSelect() {
     select.innerHTML = options
         .map(
             (guild) =>
-                `<option value="${guild.id}" ${guild.id === glossaryGuildId ? 'selected' : ''}>${guild.name}</option>`,
+                `<option value="${escapeHtml(guild.id)}" ${guild.id === glossaryGuildId ? 'selected' : ''}>${escapeHtml(guild.name)}</option>`,
         )
         .join('');
 
@@ -489,8 +496,8 @@ function renderGlossaryEntries() {
       <td class="mono">${escapeHtml(entry.targetText)}</td>
       <td class="dim">${entry.notes ? escapeHtml(entry.notes) : '-'}</td>
       <td>
-        <button class="btn btn-secondary btn-xs" onclick="editGlossaryEntry(${entry.id})">Edit</button>
-        <button class="btn-danger" onclick="deleteGlossaryEntry(${entry.id})">Delete</button>
+        <button class="btn btn-secondary btn-xs" ${actionAttrs('editGlossaryEntry', [entry.id])}>Edit</button>
+        <button class="btn-danger" ${actionAttrs('deleteGlossaryEntry', [entry.id])}>Delete</button>
       </td>
     </tr>`,
         )
@@ -725,7 +732,7 @@ function renderAllowedUsers() {
           </span>
         </span>
         <label class="toggle user-access-toggle" title="${enabled ? 'Disable this user' : 'Enable this user'}">
-          <input type="checkbox" ${enabled ? 'checked' : ''} onchange="setAllowedUserEnabled('${escapeHtml(userId)}', this.checked)">
+          <input type="checkbox" ${enabled ? 'checked' : ''} ${actionAttrs('setAllowedUserEnabled', [userId], { value: 'checked' })}>
           <span class="slider"></span>
         </label>
       </div>
@@ -738,8 +745,8 @@ function renderAllowedUsers() {
             placeholder="${hasCustomBudget ? effectiveBudget : 'Default'}"
             value="${hasCustomBudget ? effectiveBudget : ''}"
             title="Set per-user budget (USD). Empty = use default.">
-          <button class="btn btn-secondary btn-xs" onclick="saveUserBudget('${escapeHtml(userId)}')">Set</button>
-          ${hasCustomBudget ? `<button class="btn-danger btn-xs" onclick="resetUserBudget('${escapeHtml(userId)}')" title="Reset to default">↺</button>` : ''}
+          <button class="btn btn-secondary btn-xs" ${actionAttrs('saveUserBudget', [userId])}>Set</button>
+          ${hasCustomBudget ? `<button class="btn-danger btn-xs" ${actionAttrs('resetUserBudget', [userId])} title="Reset to default">↺</button>` : ''}
         </div>
       </div>
     </div>`;
@@ -888,19 +895,6 @@ let prefsPage = 1,
 let prefsSearch = '';
 let prefsGuildFilter = '';
 let selectedPrefUserIds = new Set();
-
-function escapeHtml(value) {
-    return String(value ?? '').replace(/[&<>"']/g, (char) => {
-        const entities = {
-            '&': '&amp;',
-            '<': '&lt;',
-            '>': '&gt;',
-            '"': '&quot;',
-            "'": '&#39;',
-        };
-        return entities[char];
-    });
-}
 
 function userProfile(userId) {
     return userProfiles[userId] || null;
@@ -1145,10 +1139,10 @@ function renderUserPrefs() {
         const key = prefSelectionKey(entry.guildId, entry.userId);
         const checked = selectedPrefUserIds.has(key) ? 'checked' : '';
         html += `<tr>
-      <td class="user-prefs-select-cell"><input type="checkbox" aria-label="Select ${escapeHtml(userDisplayName(entry.userId))}" onchange="togglePrefSelection('${escapeHtml(entry.guildId)}', '${escapeHtml(entry.userId)}', this.checked)" ${checked}></td>
+      <td class="user-prefs-select-cell"><input type="checkbox" aria-label="Select ${escapeHtml(userDisplayName(entry.userId))}" ${actionAttrs('togglePrefSelection', [entry.guildId, entry.userId], { value: 'checked' })} ${checked}></td>
       <td data-label="User">${renderUserIdentity(entry.userId, true)}</td>
       <td data-label="Language">${escapeHtml(name)} (${escapeHtml(entry.language)})</td>
-      <td data-label="Action"><button class="btn-danger" onclick="deleteUserPref('${escapeHtml(entry.guildId)}', '${escapeHtml(entry.userId)}')">Delete</button></td>
+      <td data-label="Action"><button class="btn-danger" ${actionAttrs('deleteUserPref', [entry.guildId, entry.userId])}>Delete</button></td>
     </tr>`;
     }
 

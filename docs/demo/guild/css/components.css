@@ -288,6 +288,11 @@
   color: var(--text-dim);
 }
 
+.guild-name-mono {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.8rem;
+}
+
 /* --- Pagination --- */
 .pagination {
   display: flex;
@@ -319,6 +324,10 @@
   display: flex;
   gap: 0.35rem;
   flex-wrap: wrap;
+}
+
+.pagination .page-ellipsis {
+  padding: 0 0.3rem;
 }
 
 .pagination .page-btn {

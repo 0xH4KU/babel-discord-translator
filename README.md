@@ -29,8 +29,8 @@ Babel now ships as two product profiles on one shared core: translation provider
 Right-click any message → **Apps** → **Babel** or **Babel Pocket** → get an ephemeral translation only you can see. Operators keep control of hosting, provider keys, access policy, and token costs instead of paying for a shared hosted bot.
 
 [![License: GPL-3.0-only](https://img.shields.io/badge/License-GPL--3.0--only-blue.svg)](LICENSE)
-[![Node.js](https://img.shields.io/badge/Node.js-22.12%2B-green.svg)](https://nodejs.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-22.13%2B-green.svg)](https://nodejs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue.svg)](https://www.typescriptlang.org/)
 [![discord.js](https://img.shields.io/badge/discord.js-v14-blue.svg)](https://discord.js.org)
 [![Version](https://img.shields.io/badge/version-0.2.1-brightgreen.svg)](package.json)
 [![CI](https://github.com/0xH4KU/babel-discord-translator/actions/workflows/ci.yml/badge.svg)](https://github.com/0xH4KU/babel-discord-translator/actions)
@@ -148,7 +148,7 @@ Sponsorship is optional and does not unlock private features. Supporting mainten
 
 ## Quick Start
 
-**Prerequisites:** Node.js `22.12+`, npm, a Discord bot token, and a Vertex AI project.
+**Prerequisites:** Node.js `22.13+`, npm, a Discord bot token, and a Vertex AI project.
 
 ```bash
 git clone https://github.com/0xH4KU/babel-discord-translator.git
@@ -300,6 +300,8 @@ npm run db:export:json
 ```
 
 Use `npm run db:migrate -- --force` to overwrite an existing SQLite file.
+
+Babel stores runtime data through native `node:sqlite`. Before upgrading Node on a self-hosted install, back up `data/babel.sqlite`, run `npm run build`, and run `npm run smoke:dashboard` after upgrading Node.
 
 ---
 
@@ -626,8 +628,8 @@ User Request
 
 | Technology                                                                                             | Version  | Role                                        |
 | ------------------------------------------------------------------------------------------------------ | -------- | ------------------------------------------- |
-| [TypeScript](https://www.typescriptlang.org)                                                           | 5.9      | Strict mode with `noUncheckedIndexedAccess` |
-| [Node.js](https://nodejs.org)                                                                          | 22.12+   | Runtime with native `node:sqlite`           |
+| [TypeScript](https://www.typescriptlang.org)                                                           | 6.0      | Strict mode with `noUncheckedIndexedAccess` |
+| [Node.js](https://nodejs.org)                                                                          | 22.13+   | Runtime with native `node:sqlite`           |
 | [discord.js](https://discord.js.org)                                                                   | v14      | Discord gateway client                      |
 | [Express](https://expressjs.com)                                                                       | v4       | Dashboard & API server                      |
 | [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit)                         | v8       | Login throttling                            |

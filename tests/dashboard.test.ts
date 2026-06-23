@@ -561,6 +561,17 @@ describe('Dashboard API', () => {
         expect(res.headers['content-security-policy']).toContain("default-src 'self'");
     });
 
+    it('serves the dashboard with a CSP that does not allow inline scripts', async () => {
+        const res = await requestText(server, 'GET', '/');
+        const csp = String(res.headers['content-security-policy'] ?? '');
+
+        expect(res.status).toBe(200);
+        expect(csp).toContain("script-src 'self'");
+        expect(csp).toContain("style-src 'self' https://fonts.googleapis.com");
+        expect(csp).toContain("img-src 'self' data: https:");
+        expect(csp).not.toContain("'unsafe-inline'");
+    });
+
     // --- Protected route access ---
 
     it('should reject unauthenticated requests to protected routes', async () => {

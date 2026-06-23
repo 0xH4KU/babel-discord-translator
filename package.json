@@ -31,6 +31,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src/ apps/ tests/",
+    "smoke:dashboard": "node scripts/smoke-dashboard-build.js",
     "format": "prettier --write .",
     "prepare": "node scripts/prepare-husky.js"
   },
@@ -49,7 +50,7 @@
     "url": "https://github.com/0xH4KU/babel-discord-translator"
   },
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.13.0"
   },
   "dependencies": {
     "discord.js": "^14.18.0",

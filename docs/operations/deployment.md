@@ -9,11 +9,13 @@ This guide covers common ways to run Babel Guild and Babel Pocket from the `babe
 You need:
 
 - A Discord application with a bot token
-- Node.js `22.12+` for local/VPS installs, or Docker for container installs
+- Node.js `22.13+` for local/VPS installs, or Docker for container installs
 - A dashboard password that is not `admin`
 - At least one configured translation provider in the dashboard after startup
 
 Babel does not require privileged Discord intents.
+
+Babel stores runtime data with native `node:sqlite`. Before upgrading Node.js on a self-hosted install, back up `data/babel.sqlite`, rebuild, and run `npm run smoke:dashboard` after upgrading Node.
 
 ## Choose The Product Profile
 
@@ -155,6 +157,7 @@ pm2 save
 ```
 
 Keep `data/babel.sqlite` backed up. See [SQLite backup and restore](sqlite-backup-restore.md).
+Because Babel uses native `node:sqlite`, run `npm run smoke:dashboard` after upgrading Node and before putting the dashboard back behind public traffic.
 
 ## Static Dashboard Demo
 

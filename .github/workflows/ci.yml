@@ -12,7 +12,7 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [22]
+        node-version: [22, 24]
 
     steps:
       - uses: actions/checkout@v4
@@ -57,6 +57,9 @@ jobs:
             process.exit(1);
           }
           NODE
+
+      - name: Smoke Dashboard Build
+        run: npm run smoke:dashboard
 
   docker:
     runs-on: ubuntu-latest

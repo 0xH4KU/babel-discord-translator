@@ -29,14 +29,15 @@ function renderSessions(sessions) {
   container.innerHTML = sessions.map((session) => {
     const expires = session.expiresAt ? new Date(session.expiresAt).toLocaleString() : 'Unknown';
     const currentBadge = session.current ? '<span class="session-badge">Current</span>' : '';
+    const escapedId = escapeHtml(session.id);
     const action = session.current
       ? '<span class="session-muted">This browser</span>'
-      : `<button class="btn-danger btn-xs" onclick="revokeSession('${session.id}')">Revoke</button>`;
+      : `<button class="btn-danger btn-xs" ${actionAttrs('revokeSession', [session.id])}>Revoke</button>`;
 
     return `<div class="session-item">
       <div>
-        <div class="session-title">Session ${session.id} ${currentBadge}</div>
-        <div class="session-meta">Expires ${expires}</div>
+        <div class="session-title">Session ${escapedId} ${currentBadge}</div>
+        <div class="session-meta">Expires ${escapeHtml(expires)}</div>
       </div>
       ${action}
     </div>`;

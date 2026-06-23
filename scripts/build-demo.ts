@@ -638,11 +638,6 @@ const DEMO_PENDING_USER = {
     },
 };
 
-const DEMO_PENDING_USERS = {
-    users: [DEMO_PENDING_USER],
-    count: 1,
-};
-
 const DEMO_USER_BUDGETS = {
     budgets: {
         '200000000000000001': {
@@ -1208,14 +1203,13 @@ ${pocketSummary}
       '#cfg-openai-apikey',
       '#add-guild-input',
       '#prefs-batch-delete',
-      '[onclick*="save"]',
-      '[onclick*="delete"]',
-      '[onclick*="Delete"]',
-      '[onclick*="clearCache"]',
-      '[onclick*="testTranslate"]',
-      '[onclick*="revokeSession"]',
-      '[onclick*="wizFinish"]',
-      '[onclick*="doLogout"]'
+      '[data-action^="save"]',
+      '[data-action^="delete"]',
+      '[data-action="clearCache"]',
+      '[data-action="testTranslate"]',
+      '[data-action="revokeSession"]',
+      '[data-action="wizFinish"]',
+      '[data-action="doLogout"]'
     ];
 
     document.querySelectorAll(selectors.join(',')).forEach((element) => {

@@ -2,6 +2,8 @@
 
 This guide is for operators who want to run Babel Guild or Babel Pocket as a self-hosted Discord translation app. You provide the Discord bot token, dashboard password, hosting, and AI provider key. Babel does not require a hosted bot subscription.
 
+The image runs Node.js `22.13+` and stores runtime state with native `node:sqlite`. Back up the `/app/data` volume before changing Node image tags, rebuild the image, then run `npm run smoke:dashboard` after upgrading Node.
+
 ## Choose The Product Profile
 
 Select the app profile before you build the image or register Discord commands.

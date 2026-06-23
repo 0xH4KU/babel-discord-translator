@@ -57,6 +57,7 @@ describe('dashboard static assets', () => {
 
     it('filters user language preferences by selected guild', () => {
         const html = readFileSync('src/public/index.html', 'utf-8');
+        const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
         const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
         const nodes = {
             'prefs-count': { textContent: '' },
@@ -94,6 +95,7 @@ describe('dashboard static assets', () => {
         vm.createContext(context);
         vm.runInContext(
             [
+                utilsJs,
                 accessJs,
                 `allPrefsData = [
                     {
@@ -125,6 +127,7 @@ describe('dashboard static assets', () => {
     });
 
     it('renders Pocket user preferences without server filtering controls', () => {
+        const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
         const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
         const nodes = {
             'prefs-count': { textContent: '' },
@@ -151,6 +154,7 @@ describe('dashboard static assets', () => {
         vm.createContext(context);
         vm.runInContext(
             [
+                utilsJs,
                 accessJs,
                 `allPrefsData = [{
                     guildId: '',
@@ -213,7 +217,7 @@ describe('dashboard static assets', () => {
         expect(html).toContain('class="glossary-import-textarea"');
         expect(html).toContain('name="glossary-import-mode"');
         expect(html).toContain('class="glossary-import-option"');
-        expect(html).toContain('onclick="importGlossaryEntries()"');
+        expect(html).toContain('data-action="importGlossaryEntries"');
         expect(accessJs).toContain('function readGlossaryImportFile');
         expect(accessJs).toContain('glossary-target-language');
         expect(accessJs).toContain('entry.targetLanguage');
@@ -249,7 +253,7 @@ describe('dashboard static assets', () => {
         expect(html).toContain('id="user-access-list"');
         expect(html).toContain('id="user-access-pagination"');
         expect(html).toContain('id="add-user-input"');
-        expect(html).toContain('onclick="saveUserWhitelist()"');
+        expect(html).toContain('data-action="saveUserWhitelist"');
         expect(accessJs).toContain('accessAllowedUserIdsDraft');
         expect(accessJs).toContain("api('/user-budgets')");
         expect(accessJs).toContain('setAllowedUserEnabled');
@@ -268,6 +272,7 @@ describe('dashboard static assets', () => {
     });
 
     it('escapes glossary table fields rendered from stored import data', () => {
+        const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
         const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
         const glossaryContainer = { innerHTML: '' };
         const context = {
@@ -284,6 +289,7 @@ describe('dashboard static assets', () => {
         vm.createContext(context);
         vm.runInContext(
             [
+                utilsJs,
                 accessJs,
                 "glossaryGuildId = 'guild-1';",
                 `glossaryEntries = [{
@@ -305,5 +311,151 @@ describe('dashboard static assets', () => {
         expect(glossaryContainer.innerHTML).not.toContain('<img src=x');
         expect(glossaryContainer.innerHTML).not.toContain('<b>owned</b>');
         expect(glossaryContainer.innerHTML).not.toContain('<svg onload');
+    });
+
+    it('escapes guild access rows rendered from Discord data', () => {
+        const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
+        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const nodes = {
+            'guild-list': { innerHTML: '' },
+            'guild-pagination': { innerHTML: '' },
+        };
+        const context = {
+            document: {
+                getElementById(id: string) {
+                    return nodes[id as keyof typeof nodes] || null;
+                },
+                querySelectorAll() {
+                    return [];
+                },
+            },
+            hasDashboardCapability(name: string) {
+                return name === 'guildAccess';
+            },
+            renderPagination() {},
+            formatUsd(value: number) {
+                return `$${value}`;
+            },
+            window: {
+                location: { pathname: '/' },
+            },
+        };
+
+        vm.createContext(context);
+        vm.runInContext(
+            [
+                utilsJs,
+                accessJs,
+                `currentConfig = {
+                    allowedGuildIds: ["guild');alert(1)//"],
+                    dailyBudgetUsd: 0
+                };`,
+                `accessAllowedGuildIdsDraft = ["guild');alert(1)//"];`,
+                `allGuilds = [{
+                    id: "guild');alert(1)//",
+                    name: '<img src=x onerror=alert(1)>',
+                    icon: 'https://cdn.example/avatar.png" onerror="alert(2)',
+                    memberCount: 12
+                }];`,
+                'guildBudgetData = {};',
+                'renderGuilds();',
+            ].join('\n'),
+            context,
+        );
+
+        expect(nodes['guild-list'].innerHTML).toContain(
+            '&lt;img src=x onerror=alert(1)&gt;',
+        );
+        expect(nodes['guild-list'].innerHTML).not.toContain('<img src=x');
+        expect(nodes['guild-list'].innerHTML).not.toContain('onerror="alert(2)');
+        expect(nodes['guild-list'].innerHTML).not.toContain("toggleGuildAllowed('guild');alert");
+    });
+
+    it('escapes session rows before rendering dashboard session metadata', () => {
+        const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
+        const settingsJs = readFileSync('src/public/js/settings.js', 'utf-8');
+        const nodes = {
+            'session-list': { innerHTML: '' },
+        };
+        const context = {
+            document: {
+                getElementById(id: string) {
+                    return nodes[id as keyof typeof nodes] || null;
+                },
+                querySelectorAll() {
+                    return [];
+                },
+            },
+            window: {
+                location: { pathname: '/' },
+            },
+        };
+
+        vm.createContext(context);
+        vm.runInContext(
+            [
+                utilsJs,
+                settingsJs,
+                `renderSessions([{
+                    id: "abc');alert(1)//<img src=x onerror=alert(2)>",
+                    current: false,
+                    expiresAt: '2026-06-23T00:00:00.000Z'
+                }]);`,
+            ].join('\n'),
+            context,
+        );
+
+        expect(nodes['session-list'].innerHTML).toContain(
+            '&lt;img src=x onerror=alert(2)&gt;',
+        );
+        expect(nodes['session-list'].innerHTML).not.toContain('<img src=x');
+        expect(nodes['session-list'].innerHTML).not.toContain("revokeSession('abc');alert");
+    });
+
+    it('escapes usage history rows and chart tooltips before rendering', () => {
+        const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
+        const historyJs = readFileSync('src/public/js/history.js', 'utf-8');
+        const nodes = {
+            'history-table-container': { innerHTML: '' },
+            'history-chart': { innerHTML: '' },
+            'history-summary': { textContent: '' },
+            'history-pagination': { innerHTML: '' },
+        };
+        const context = {
+            document: {
+                getElementById(id: string) {
+                    return nodes[id as keyof typeof nodes] || null;
+                },
+                querySelectorAll() {
+                    return [];
+                },
+            },
+            window: {
+                location: { pathname: '/' },
+            },
+        };
+
+        vm.createContext(context);
+        vm.runInContext(
+            [
+                utilsJs,
+                historyJs,
+                `allHistoryData = [{
+                    date: '2026-06-23" onmouseover="alert(1)<script>alert(2)</script>',
+                    requests: 3,
+                    inputTokens: 12,
+                    outputTokens: 5,
+                    cost: 0.01
+                }];`,
+                'renderHistory();',
+            ].join('\n'),
+            context,
+        );
+
+        expect(nodes['history-table-container'].innerHTML).toContain(
+            '&lt;script&gt;alert(2)&lt;/script&gt;',
+        );
+        expect(nodes['history-chart'].innerHTML).not.toContain('onmouseover="alert(1)');
+        expect(nodes['history-table-container'].innerHTML).not.toContain('<script>');
     });
 });

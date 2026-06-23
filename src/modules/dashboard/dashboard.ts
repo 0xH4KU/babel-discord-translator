@@ -1,7 +1,6 @@
 import express, {
     type NextFunction,
     type Request,
-    type RequestHandler,
     type Response,
 } from 'express';
 import http from 'http';
@@ -31,12 +30,10 @@ import { resolveDiscordUserProfiles } from './discord-user-profile-resolver.js';
 import {
     BABEL_GUILD_PROFILE,
     BABEL_POCKET_PROFILE,
-    type AppProfile,
 } from '../../apps/app-profile.js';
 import {
     getCombinedDashboardCapabilities,
     getDashboardCapabilities,
-    type DashboardCapabilities,
 } from './capabilities.js';
 import { PendingUserInstallOwnerRepository } from './pending-user-install-owner-repository.js';
 import { validateConfigUpdate } from './config-validation.js';
@@ -53,22 +50,18 @@ import {
 } from './operations-summary.js';
 import { createMetricsAuthMiddleware } from './metrics-auth.js';
 import { createEmptyRuntimeSnapshot, renderPrometheusMetrics } from './prometheus-metrics.js';
+import { applySecurityHeaders } from './security-headers.js';
+import {
+    createScopedApiRouter,
+    getDashboardScope,
+    type DashboardApiScope,
+} from './scoped-api.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import type { DashboardDeps } from '../../shared/types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BYTES_PER_MB = 1024 * 1024;
-
-interface DashboardApiScope {
-    profile: AppProfile;
-    profiles: AppProfile[];
-    capabilities: DashboardCapabilities;
-    client: DashboardDeps['client'];
-    appProfileIdForLogs?: AppProfile['id'];
-}
-
-type DashboardCapabilityName = keyof DashboardCapabilities;
 
 function serializeProfile(profile: NonNullable<DashboardDeps['profile']>): {
     id: string;
@@ -106,28 +99,6 @@ function sanitizeUserPreferenceRef(value: unknown): { guildId: string; userId: s
     const userId = String(source.userId ?? '').trim();
 
     return userId ? { guildId, userId } : null;
-}
-
-function applySecurityHeaders(_req: Request, res: Response, next: NextFunction): void {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('Referrer-Policy', 'no-referrer');
-    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-    res.setHeader(
-        'Content-Security-Policy',
-        [
-            "default-src 'self'",
-            "base-uri 'self'",
-            "object-src 'none'",
-            "frame-ancestors 'none'",
-            "connect-src 'self'",
-            "img-src 'self' data: https:",
-            "font-src 'self' https://fonts.gstatic.com",
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-            "script-src 'self' 'unsafe-inline'",
-        ].join('; '),
-    );
-    next();
 }
 
 /** Wrap an async Express handler to forward errors to Express error handling (Express 4 compat). */
@@ -227,52 +198,8 @@ export function createDashboardApp({
         legacyHeaders: false,
     });
 
-    const getScope = (res: Response): DashboardApiScope => res.locals.dashboardScope ?? rootScope;
-    const setScope =
-        (scope: DashboardApiScope): RequestHandler =>
-        (_req, res, next) => {
-            res.locals.dashboardScope = scope;
-            next();
-        };
-    const requireDashboardCapability =
-        (capability: DashboardCapabilityName): RequestHandler =>
-        (_req, res, next) => {
-            if (!getScope(res).capabilities[capability]) {
-                res.status(404).json({ error: 'Not found' });
-                return;
-            }
-
-            next();
-        };
-    const registerApiRoute = (
-        method: 'get' | 'post' | 'delete',
-        path: string,
-        handlers: RequestHandler[],
-    ): void => {
-        for (const { prefix, scope } of apiScopes) {
-            app[method](prefix + path, setScope(scope), ...handlers);
-        }
-    };
-    const api = {
-        get(path: string, ...handlers: RequestHandler[]): void {
-            registerApiRoute('get', path, handlers);
-        },
-        post(path: string, ...handlers: RequestHandler[]): void {
-            registerApiRoute('post', path, handlers);
-        },
-        delete(path: string, ...handlers: RequestHandler[]): void {
-            registerApiRoute('delete', path, handlers);
-        },
-        getIf(capability: DashboardCapabilityName, path: string, ...handlers: RequestHandler[]) {
-            registerApiRoute('get', path, [requireDashboardCapability(capability), ...handlers]);
-        },
-        postIf(capability: DashboardCapabilityName, path: string, ...handlers: RequestHandler[]) {
-            registerApiRoute('post', path, [requireDashboardCapability(capability), ...handlers]);
-        },
-        deleteIf(capability: DashboardCapabilityName, path: string, ...handlers: RequestHandler[]) {
-            registerApiRoute('delete', path, [requireDashboardCapability(capability), ...handlers]);
-        },
-    };
+    const getScope = (res: Response): DashboardApiScope => getDashboardScope(res, rootScope);
+    const api = createScopedApiRouter(app, apiScopes, getScope);
 
     api.post('/login', loginLimiter, (req: Request, res: Response) => {
         const result = auth.login(req.body.password, req);

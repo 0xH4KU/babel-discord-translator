@@ -23,14 +23,13 @@
       '#cfg-openai-apikey',
       '#add-guild-input',
       '#prefs-batch-delete',
-      '[onclick*="save"]',
-      '[onclick*="delete"]',
-      '[onclick*="Delete"]',
-      '[onclick*="clearCache"]',
-      '[onclick*="testTranslate"]',
-      '[onclick*="revokeSession"]',
-      '[onclick*="wizFinish"]',
-      '[onclick*="doLogout"]'
+      '[data-action^="save"]',
+      '[data-action^="delete"]',
+      '[data-action="clearCache"]',
+      '[data-action="testTranslate"]',
+      '[data-action="revokeSession"]',
+      '[data-action="wizFinish"]',
+      '[data-action="doLogout"]'
     ];
 
     document.querySelectorAll(selectors.join(',')).forEach((element) => {

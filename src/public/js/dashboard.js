@@ -249,7 +249,9 @@ function renderOperations(operations) {
 function switchTab(name) {
     document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach((c) => c.classList.remove('active'));
-    document.querySelector(`[onclick="switchTab('${name}')"]`)?.classList.add('active');
+    document
+        .querySelector(`.tab-btn[data-action="switchTab"][data-action-args='["${name}"]']`)
+        ?.classList.add('active');
     document.getElementById('tab-' + name).classList.add('active');
     if (name === 'settings') loadSettings();
     if (name === 'access') loadAccess();

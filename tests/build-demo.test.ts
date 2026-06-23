@@ -74,6 +74,13 @@ describe('build-dashboard-demo', () => {
         expect(readFileSync(join(demoDir, 'guild', 'demo', 'demo-api.js'), 'utf-8')).toContain(
             "if (method !== 'GET' && route !== '/version/refresh')",
         );
+        const guildReadonly = readFileSync(
+            join(demoDir, 'guild', 'demo', 'demo-readonly.js'),
+            'utf-8',
+        );
+        expect(guildReadonly).toContain('[data-action^="save"]');
+        expect(guildReadonly).toContain('[data-action="clearCache"]');
+        expect(guildReadonly).not.toContain('[onclick*=');
         const guildStats = JSON.parse(
             readFileSync(join(demoDir, 'guild', 'demo', 'fixtures', 'stats.json'), 'utf-8'),
         ) as { bot: { name: string }; guildBudgets: unknown[] };

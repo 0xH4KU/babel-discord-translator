@@ -29,7 +29,7 @@
                     <label>Password</label>
                     <input type="password" id="login-pw" placeholder="Enter password" autofocus />
                 </div>
-                <button class="btn btn-primary w-full" onclick="doLogin()">Login</button>
+                <button class="btn btn-primary w-full" data-action="doLogin">Login</button>
                 <div class="error-msg" id="login-error"></div>
             </div>
         </div>
@@ -51,7 +51,7 @@
                         <span>User installs and allowlist</span>
                     </a>
                 </div>
-                <button class="btn btn-secondary btn-sm profile-select-logout" onclick="doLogout()">
+                <button class="btn btn-secondary btn-sm profile-select-logout" data-action="doLogout">
                     Logout
                 </button>
             </main>
@@ -71,7 +71,7 @@
                     <div class="step-desc">Connect one or two providers for translation.</div>
                     <div class="input-group">
                         <label>Provider Mode</label>
-                        <select id="wiz-provider" onchange="wizProviderChanged()">
+                        <select id="wiz-provider" data-action="wizProviderChanged">
                             <option value="vertex">Vertex AI only</option>
                             <option value="openai">OpenAI-compatible only</option>
                             <option value="vertex+openai">Vertex AI primary + OpenAI backup</option>
@@ -112,7 +112,7 @@
                     </div>
                     <div class="wizard-nav">
                         <div></div>
-                        <button class="btn btn-primary" onclick="wizNext()">Next →</button>
+                        <button class="btn btn-primary" data-action="wizNext">Next →</button>
                     </div>
                 </div>
 
@@ -124,8 +124,8 @@
                         <input type="text" id="wiz-model" value="gemini-2.5-flash-lite" />
                     </div>
                     <div class="wizard-nav">
-                        <button class="btn btn-secondary" onclick="wizPrev()">← Back</button>
-                        <button class="btn btn-primary" onclick="wizNext()">Next →</button>
+                        <button class="btn btn-secondary" data-action="wizPrev">← Back</button>
+                        <button class="btn btn-primary" data-action="wizNext">Next →</button>
                     </div>
                 </div>
 
@@ -141,8 +141,8 @@
                         <input type="number" id="wiz-cache" value="2000" min="100" max="2000" />
                     </div>
                     <div class="wizard-nav">
-                        <button class="btn btn-secondary" onclick="wizPrev()">← Back</button>
-                        <button class="btn btn-primary" onclick="wizFinish()">
+                        <button class="btn btn-secondary" data-action="wizPrev">← Back</button>
+                        <button class="btn btn-primary" data-action="wizFinish">
                             Complete Setup ✓
                         </button>
                     </div>
@@ -173,22 +173,22 @@
                         type="button"
                         title="Refresh version check"
                         aria-label="Refresh version check"
-                        onclick="refreshVersionMetadata()"
+                        data-action="refreshVersionMetadata"
                     >
                         ↻
                     </button>
                     <div class="status">Online</div>
                     <span class="health-badge checking" id="api-health">API</span>
                 </div>
-                <button class="btn-logout" onclick="doLogout()">Logout</button>
+                <button class="btn-logout" data-action="doLogout">Logout</button>
             </div>
 
             <div class="tabs">
-                <button class="tab-btn active" onclick="switchTab('overview')">Overview</button>
-                <button class="tab-btn" onclick="switchTab('history')">History</button>
-                <button class="tab-btn" onclick="switchTab('logs')">Logs</button>
-                <button class="tab-btn" onclick="switchTab('access')">Access</button>
-                <button class="tab-btn" onclick="switchTab('settings')">Settings</button>
+                <button class="tab-btn active" data-action="switchTab" data-action-args="[&quot;overview&quot;]">Overview</button>
+                <button class="tab-btn" data-action="switchTab" data-action-args="[&quot;history&quot;]">History</button>
+                <button class="tab-btn" data-action="switchTab" data-action-args="[&quot;logs&quot;]">Logs</button>
+                <button class="tab-btn" data-action="switchTab" data-action-args="[&quot;access&quot;]">Access</button>
+                <button class="tab-btn" data-action="switchTab" data-action-args="[&quot;settings&quot;]">Settings</button>
             </div>
 
             <!-- Overview Tab -->
@@ -272,42 +272,42 @@
                         <button
                             class="log-filter-btn active"
                             data-log-filter="all"
-                            onclick="setLogFilter(undefined)"
+                            data-action="setLogFilter"
                         >
                             All
                         </button>
                         <button
                             class="log-filter-btn"
                             data-log-filter="translation"
-                            onclick="setLogFilter('translation')"
+                            data-action="setLogFilter" data-action-args="[&quot;translation&quot;]"
                         >
                             Translations
                         </button>
                         <button
                             class="log-filter-btn"
                             data-log-filter="error"
-                            onclick="setLogFilter('error')"
+                            data-action="setLogFilter" data-action-args="[&quot;error&quot;]"
                         >
                             Errors
                         </button>
                         <button
                             class="log-filter-btn"
                             data-error-filter="rate_limit"
-                            onclick="setErrorTypeFilter('rate_limit')"
+                            data-action="setErrorTypeFilter" data-action-args="[&quot;rate_limit&quot;]"
                         >
                             Rate Limit
                         </button>
                         <button
                             class="log-filter-btn"
                             data-error-filter="auth"
-                            onclick="setErrorTypeFilter('auth')"
+                            data-action="setErrorTypeFilter" data-action-args="[&quot;auth&quot;]"
                         >
                             Auth
                         </button>
                         <button
                             class="log-filter-btn"
                             data-error-filter="timeout"
-                            onclick="setErrorTypeFilter('timeout')"
+                            data-action="setErrorTypeFilter" data-action-args="[&quot;timeout&quot;]"
                         >
                             Timeout
                         </button>
@@ -340,7 +340,7 @@
                             id="add-guild-input"
                             placeholder="Paste a Guild ID to add manually"
                         />
-                        <button class="btn btn-primary btn-sm" onclick="addManualGuild()">
+                        <button class="btn btn-primary btn-sm" data-action="addManualGuild">
                             Add
                         </button>
                     </div>
@@ -362,7 +362,7 @@
                             id="add-user-input"
                             placeholder="Paste a Discord User ID"
                         />
-                        <button class="btn btn-primary btn-sm" onclick="addAllowedUser()">
+                        <button class="btn btn-primary btn-sm" data-action="addAllowedUser">
                             Add
                         </button>
                     </div>
@@ -375,7 +375,7 @@
                         <select
                             id="prefs-guild-filter"
                             aria-label="Filter user language preferences by server"
-                            onchange="setPrefsGuildFilter(this.value)"
+                            data-action="setPrefsGuildFilter" data-action-value="value"
                         >
                             <option value="">Loading servers...</option>
                         </select>
@@ -383,12 +383,12 @@
                             type="search"
                             id="prefs-search"
                             placeholder="Search user ID or language"
-                            oninput="setPrefsSearch(this.value)"
+                            data-action="setPrefsSearch" data-action-value="value"
                         />
                         <button
                             class="btn-danger"
                             id="prefs-batch-delete"
-                            onclick="deleteSelectedUserPrefs()"
+                            data-action="deleteSelectedUserPrefs"
                             disabled
                         >
                             Clear Selected
@@ -412,7 +412,7 @@
                             <select
                                 id="glossary-guild"
                                 class="settings-select"
-                                onchange="selectGlossaryGuild(this.value)"
+                                data-action="selectGlossaryGuild" data-action-value="value"
                             ></select>
                         </div>
                     </div>
@@ -463,12 +463,12 @@
                             </div>
                         </div>
                         <div class="glossary-actions">
-                            <button class="btn btn-primary btn-sm" onclick="saveGlossaryEntry()">
+                            <button class="btn btn-primary btn-sm" data-action="saveGlossaryEntry">
                                 Save Term
                             </button>
                             <button
                                 class="btn btn-secondary btn-sm"
-                                onclick="resetGlossaryForm()"
+                                data-action="resetGlossaryForm"
                             >
                                 Clear
                             </button>
@@ -484,7 +484,7 @@
                                         id="glossary-import-file"
                                         class="glossary-file-input"
                                         accept=".csv,.tsv,text/csv,text/tab-separated-values,text/plain"
-                                        onchange="readGlossaryImportFile(this)"
+                                        data-action="readGlossaryImportFile" data-action-element="true"
                                     />
                                     <label class="glossary-file-button" for="glossary-import-file">
                                         Choose CSV/TSV
@@ -535,10 +535,10 @@
                             ></textarea>
                         </div>
                         <div class="glossary-actions">
-                            <button class="btn btn-secondary btn-sm" onclick="clearGlossaryImport()">
+                            <button class="btn btn-secondary btn-sm" data-action="clearGlossaryImport">
                                 Clear Import
                             </button>
-                            <button class="btn btn-primary btn-sm" onclick="importGlossaryEntries()">
+                            <button class="btn btn-primary btn-sm" data-action="importGlossaryEntries">
                                 Import Terms
                             </button>
                         </div>
@@ -556,7 +556,7 @@
                     <button
                         class="btn btn-primary"
                         data-access-save-button
-                        onclick="saveGuildWhitelist()"
+                        data-action="saveGuildWhitelist"
                         disabled
                     >
                         Save Changes
@@ -569,7 +569,7 @@
                     <button
                         class="btn btn-primary"
                         data-access-save-button
-                        onclick="saveUserWhitelist()"
+                        data-action="saveUserWhitelist"
                         disabled
                     >
                         Save Changes
@@ -588,7 +588,7 @@
                     <div class="settings-row">
                         <div class="input-group">
                             <label>Provider Mode</label>
-                            <select id="cfg-provider" class="settings-select" onchange="onProviderModeChange()">
+                            <select id="cfg-provider" class="settings-select" data-action="onProviderModeChange">
                                 <option value="vertex">Vertex AI only</option>
                                 <option value="openai">OpenAI-compatible only</option>
                                 <option value="vertex+openai">Vertex AI (primary) + OpenAI (backup)</option>
@@ -705,7 +705,7 @@
                             <div class="hint">Recommended ceiling for small instances: 2000</div>
                         </div>
                         <div class="input-group inline-action">
-                            <button class="btn btn-secondary btn-sm" onclick="clearCache()">
+                            <button class="btn btn-secondary btn-sm" data-action="clearCache">
                                 Clear Cache
                             </button>
                         </div>
@@ -744,7 +744,7 @@
                             >
                             <button
                                 class="btn btn-secondary btn-sm"
-                                onclick="restoreDefaultPrompt()"
+                                data-action="restoreDefaultPrompt"
                             >
                                 Restore Default
                             </button>
@@ -774,7 +774,7 @@
                         <button
                             class="btn btn-primary btn-sm"
                             id="test-btn"
-                            onclick="testTranslate()"
+                            data-action="testTranslate"
                         >
                             Test
                         </button>
@@ -794,7 +794,7 @@
                 </div>
 
                 <div class="save-bar">
-                    <button class="btn btn-primary" onclick="saveSettings()">Save Changes</button>
+                    <button class="btn btn-primary" data-action="saveSettings">Save Changes</button>
                 </div>
             </div>
         </div>
