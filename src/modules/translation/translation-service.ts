@@ -100,6 +100,7 @@ export interface TranslationServiceRequest {
     targetLanguageOption?: string | null;
     requestId?: string;
     beforeTranslate?: () => Promise<unknown>;
+    bypassAccessControl?: boolean;
 }
 
 export type TranslationServiceResult =
@@ -236,7 +237,9 @@ export function createTranslationService({
 
             const runtimeConfig = configStore.getRuntimeConfig();
             const scope = createTranslationScope(request);
-            const accessDecision = decideTranslationAccess(accessMode, runtimeConfig, scope);
+            const accessDecision = request.bypassAccessControl
+                ? { authorized: true }
+                : decideTranslationAccess(accessMode, runtimeConfig, scope);
             if (!accessDecision.authorized) {
                 requestLogger.warn('translation.request.blocked', {
                     blockReason: accessDecision.blockReason,

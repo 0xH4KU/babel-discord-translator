@@ -13,6 +13,53 @@ function deferred<T>() {
 }
 
 describe('TranslationRuntimeLimiter', () => {
+    it('should update limits immediately and activate queued work when concurrency increases', async () => {
+        const limiter = new TranslationRuntimeLimiter({
+            maxConcurrent: 1,
+            maxGlobalQueue: 2,
+            maxGuildQueue: 2,
+            maxUserOutstanding: 1,
+        });
+        const gate = deferred<void>();
+        const firstAdmission = limiter.acquire({ userId: 'user-1', guildId: 'guild-1' });
+        const secondAdmission = limiter.acquire({ userId: 'user-2', guildId: 'guild-1' });
+        let secondStarted = false;
+
+        if (!firstAdmission.accepted || !secondAdmission.accepted) {
+            throw new Error('Expected reservations to be accepted');
+        }
+
+        const first = firstAdmission.reservation.run(async () => {
+            await gate.promise;
+        });
+        const second = secondAdmission.reservation.run(async () => {
+            secondStarted = true;
+            return 'second-done';
+        });
+
+        await Promise.resolve();
+        expect(secondStarted).toBe(false);
+        expect(limiter.snapshot()).toMatchObject({
+            inflight: 1,
+            queued: 1,
+            limits: expect.objectContaining({ maxConcurrent: 1 }),
+        });
+
+        limiter.updateLimits({ maxConcurrent: 2 });
+        await Promise.resolve();
+
+        expect(secondStarted).toBe(true);
+        expect(limiter.snapshot()).toMatchObject({
+            inflight: 2,
+            queued: 0,
+            limits: expect.objectContaining({ maxConcurrent: 2 }),
+        });
+
+        gate.resolve();
+        await first;
+        await expect(second).resolves.toBe('second-done');
+    });
+
     it('should queue work behind active permits and start queued work in FIFO order', async () => {
         const limiter = new TranslationRuntimeLimiter({
             maxConcurrent: 1,

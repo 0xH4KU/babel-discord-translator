@@ -189,7 +189,7 @@ BABEL_NODE_MAX_SEMI_SPACE_MB=4
 
 `health-only` keeps `/livez`, `/readyz`, `/healthz`, and `/metrics`, but skips the authenticated dashboard UI and dashboard API routes. Use `full` when you need to change settings from the browser. Do not use `off` unless you also replace the Docker or host healthcheck because Babel will not expose `/livez`. Avoid `BABEL_APP=combined` unless you need both Guild and Pocket in one process.
 
-Set `BABEL_METRICS_TOKEN` if `/metrics` is exposed beyond localhost or a private monitoring network. Scrapers can send `Authorization: Bearer <token>` or `x-metrics-token: <token>`.
+Set `BABEL_METRICS_TOKEN` if `/metrics` is exposed beyond localhost or a private monitoring network. In `NODE_ENV=production` with a public bind such as `DASHBOARD_HOST=0.0.0.0`, Babel requires a metrics token by default. Scrapers can send `Authorization: Bearer <token>` or `x-metrics-token: <token>`.
 
 ## Updating Babel
 

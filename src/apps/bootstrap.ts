@@ -21,6 +21,7 @@ import { createWebhookService } from '../modules/translation/webhook-service.js'
 import { PendingUserInstallOwnerRepository } from '../modules/dashboard/pending-user-install-owner-repository.js';
 import type { BotStats } from '../shared/types.js';
 import type { AppProfile } from './app-profile.js';
+import type { TranslationService } from '../modules/translation/translation-service.js';
 import type express from 'express';
 import type http from 'http';
 
@@ -39,6 +40,7 @@ interface ProfileBabelRuntime {
     profile: AppProfile;
     client: Client;
     cooldown: CooldownManager;
+    translationService: TranslationService;
 }
 
 function installProcessErrorHandlers(): void {
@@ -170,7 +172,7 @@ function createProfileRuntime(
         }
     });
 
-    return { profile, client, cooldown };
+    return { profile, client, cooldown, translationService };
 }
 
 function resolveDiscordTokenForProfile(
@@ -226,6 +228,7 @@ export async function startBabelApps(profiles: AppProfile[]): Promise<void> {
                 cache: shared.cache,
                 metrics: shared.metrics,
                 runtimeLimiter: shared.runtimeLimiter,
+                host: shared.config.dashboardHost,
             });
             dashboardServer = startDashboardServer(
                 dashboardApp,
@@ -247,6 +250,8 @@ export async function startBabelApps(profiles: AppProfile[]): Promise<void> {
             runtimeLimiter: shared.runtimeLimiter,
             profile: primaryRuntime.profile,
             profiles,
+            host: shared.config.dashboardHost,
+            translationService: primaryRuntime.translationService,
         });
         dashboardServer = startDashboardServer(
             dashboardApp,

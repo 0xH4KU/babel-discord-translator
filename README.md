@@ -279,7 +279,7 @@ All configuration is managed through the web dashboard. The `.env` file only nee
 | `DASHBOARD_PORT`      | Dashboard web server port                                                           | `3000`                                            |
 | `DASHBOARD_HOST`      | Dashboard bind host                                                                 | `0.0.0.0`                                         |
 | `DASHBOARD_PASSWORD`  | Dashboard login password                                                            | `admin` (development only; refused in production) |
-| `BABEL_METRICS_TOKEN` | Optional bearer/header token required by `GET /metrics` when set                    | unset                                             |
+| `BABEL_METRICS_TOKEN` | Bearer/header token for `GET /metrics`; required by default for production public binds | unset                                          |
 | `BABEL_DB_PATH`       | SQLite database path                                                                | `data/babel.sqlite`                               |
 | `BABEL_APP`           | Root app selector: `guild` for Babel Guild, `pocket` for Babel Pocket               | `guild`                                           |
 
@@ -568,7 +568,7 @@ The Dockerfile uses a **multi-stage build** with Node.js `22-alpine`:
 | `GET /healthz` | Combined liveness + readiness with degraded/ok status                                          | Operator **monitoring**       |
 | `GET /metrics` | Prometheus text metrics with version, translation, provider, queue, cache, and budget counters | Alerting and dashboards       |
 
-Set `BABEL_METRICS_TOKEN` before exposing `/metrics` outside a private network. Scrapers can pass it with `Authorization: Bearer <token>` or `x-metrics-token: <token>`.
+Set `BABEL_METRICS_TOKEN` before exposing `/metrics` outside a private network. When `NODE_ENV=production` and `DASHBOARD_HOST` is a public bind such as `0.0.0.0`, Babel requires a metrics token by default. Scrapers can pass it with `Authorization: Bearer <token>` or `x-metrics-token: <token>`.
 
 ### Operations Guides
 

@@ -11,6 +11,23 @@ interface Migration {
     up: (db: DatabaseSync) => void;
 }
 
+function tableHasColumn(db: DatabaseSync, table: string, column: string): boolean {
+    const columns = db.prepare(`PRAGMA table_info("${table}")`).all() as Array<{ name: string }>;
+    return columns.some((row) => row.name === column);
+}
+
+function tablePrimaryKeyColumns(db: DatabaseSync, table: string): string[] {
+    const columns = db.prepare(`PRAGMA table_info("${table}")`).all() as Array<{
+        name: string;
+        pk: number;
+    }>;
+
+    return columns
+        .filter((row) => row.pk > 0)
+        .sort((a, b) => a.pk - b.pk)
+        .map((row) => row.name);
+}
+
 const MIGRATIONS: Migration[] = [
     {
         id: 1,
@@ -175,10 +192,14 @@ const MIGRATIONS: Migration[] = [
         id: 6,
         name: 'guild_glossary_target_language',
         up(db) {
-            db.exec(`
-                ALTER TABLE guild_glossary
-                ADD COLUMN target_language TEXT NOT NULL DEFAULT 'auto';
+            if (!tableHasColumn(db, 'guild_glossary', 'target_language')) {
+                db.exec(`
+                    ALTER TABLE guild_glossary
+                    ADD COLUMN target_language TEXT NOT NULL DEFAULT 'auto';
+                `);
+            }
 
+            db.exec(`
                 CREATE INDEX IF NOT EXISTS idx_guild_glossary_language_lookup
                     ON guild_glossary (guild_id, target_language, source_text);
             `);
@@ -188,6 +209,15 @@ const MIGRATIONS: Migration[] = [
         id: 7,
         name: 'guild_scoped_user_language_preferences',
         up(db) {
+            const primaryKeyColumns = tablePrimaryKeyColumns(db, 'user_language_preferences');
+            if (
+                primaryKeyColumns.length === 2 &&
+                primaryKeyColumns[0] === 'guild_id' &&
+                primaryKeyColumns[1] === 'user_id'
+            ) {
+                return;
+            }
+
             db.exec(`
                 CREATE TABLE user_language_preferences_new (
                     guild_id TEXT NOT NULL DEFAULT '',

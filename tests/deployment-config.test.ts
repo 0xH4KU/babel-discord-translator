@@ -229,8 +229,11 @@ describe('deployment configuration', () => {
 
         expect(envExample).toContain('BABEL_METRICS_TOKEN=');
         expect(readme).toContain('BABEL_METRICS_TOKEN');
+        expect(readme).toContain('requires a metrics token by default');
         expect(dockerDocs).toContain('BABEL_METRICS_TOKEN');
+        expect(dockerDocs).toContain('requires a metrics token by default');
         expect(deploymentDocs).toContain('BABEL_METRICS_TOKEN');
+        expect(deploymentDocs).toContain('requires a metrics token by default');
         expect(alertsRunbook).toContain('Authorization: Bearer $BABEL_METRICS_TOKEN');
     });
 

@@ -41,6 +41,39 @@ describe('validateConfigUpdate', () => {
         expect(result.sanitized).toEqual({});
     });
 
+    it('should drop unknown config keys instead of persisting arbitrary dashboard body fields', () => {
+        const result = validateConfigUpdate({
+            cooldownSeconds: 12,
+            unknownNested: { can: 'not be stored' },
+            __proto__: { polluted: true },
+        });
+
+        expect(result.valid).toBe(true);
+        expect(result.sanitized).toEqual({ cooldownSeconds: 12 });
+        expect(result.sanitized).not.toHaveProperty('unknownNested');
+        expect(Object.prototype).not.toHaveProperty('polluted');
+    });
+
+    it('should normalize allowlist arrays and reject invalid allowlist payloads', () => {
+        const valid = validateConfigUpdate({
+            allowedGuildIds: [' guild-1 ', 'guild-1', 'guild-2'],
+            allowedUserIds: [' user-1 ', 'user-2', 'user-2'],
+        });
+
+        expect(valid.valid).toBe(true);
+        expect(valid.sanitized.allowedGuildIds).toEqual(['guild-1', 'guild-2']);
+        expect(valid.sanitized.allowedUserIds).toEqual(['user-1', 'user-2']);
+
+        expect(validateConfigUpdate({ allowedGuildIds: ['guild-1', 42] })).toMatchObject({
+            valid: false,
+            error: 'allowedGuildIds must be an array of non-empty strings',
+        });
+        expect(validateConfigUpdate({ allowedUserIds: 'user-1' })).toMatchObject({
+            valid: false,
+            error: 'allowedUserIds must be an array of non-empty strings',
+        });
+    });
+
     const rangeCases = [
         ['cooldownSeconds', 0, 301, 60, dashboardMessages.validation.cooldownSeconds],
         ['cacheMaxSize', 9, 2001, 100, dashboardMessages.validation.cacheMaxSize],

@@ -1,5 +1,6 @@
 import type { TranslationCache } from '../translation/cache.js';
 import type { CooldownManager } from '../translation/cooldown.js';
+import type { TranslationRuntimeLimiter } from '../translation/translation-runtime-limiter.js';
 import type { StoreData } from '../../shared/types.js';
 
 export const MANAGED_RUNTIME_CONFIG_KEYS = [
@@ -30,6 +31,7 @@ export interface ConfigRuntimeDependencies {
     cache: TranslationCache;
     cooldown: CooldownManager;
     cooldowns?: CooldownManager[];
+    runtimeLimiter?: TranslationRuntimeLimiter;
     resetProviderState?: () => void;
 }
 
@@ -69,21 +71,27 @@ const CONFIG_EFFECT_DESCRIPTIONS: Record<ManagedRuntimeConfigKey, string> = {
     translationProvider:
         'Clear translation cache and reset provider state so future requests use the new provider.',
     translationMaxConcurrent:
-        'Runtime limiter changes are read when the limiter is constructed on the next process start.',
+        'Update the runtime translation concurrency limit immediately.',
     translationMaxGlobalQueue:
-        'Runtime limiter changes are read when the limiter is constructed on the next process start.',
+        'Update the runtime global queue limit immediately.',
     translationMaxGuildQueue:
-        'Runtime limiter changes are read when the limiter is constructed on the next process start.',
+        'Update the runtime per-server queue limit immediately.',
     translationMaxUserOutstanding:
-        'Runtime limiter changes are read when the limiter is constructed on the next process start.',
+        'Update the runtime per-user outstanding request limit immediately.',
     translationMaxQueueWaitMs:
-        'Runtime limiter changes are read when the limiter is constructed on the next process start.',
+        'Update the runtime queue wait timeout immediately.',
 };
 
 export function applyConfigUpdateEffects(
     currentConfig: StoreData,
     updates: RuntimeConfigUpdate,
-    { cache, cooldown, cooldowns = [cooldown], resetProviderState }: ConfigRuntimeDependencies,
+    {
+        cache,
+        cooldown,
+        cooldowns = [cooldown],
+        runtimeLimiter,
+        resetProviderState,
+    }: ConfigRuntimeDependencies,
 ): ConfigUpdateEffectsResult {
     const changedKeys = MANAGED_RUNTIME_CONFIG_KEYS.filter(
         (key) => updates[key] !== undefined && updates[key] !== currentConfig[key],
@@ -133,10 +141,21 @@ export function applyConfigUpdateEffects(
             case 'maxInputLength':
             case 'dailyBudgetUsd':
             case 'translationMaxConcurrent':
+                runtimeLimiter?.updateLimits({ maxConcurrent: updates.translationMaxConcurrent! });
+                break;
             case 'translationMaxGlobalQueue':
+                runtimeLimiter?.updateLimits({ maxGlobalQueue: updates.translationMaxGlobalQueue! });
+                break;
             case 'translationMaxGuildQueue':
+                runtimeLimiter?.updateLimits({ maxGuildQueue: updates.translationMaxGuildQueue! });
+                break;
             case 'translationMaxUserOutstanding':
+                runtimeLimiter?.updateLimits({
+                    maxUserOutstanding: updates.translationMaxUserOutstanding!,
+                });
+                break;
             case 'translationMaxQueueWaitMs':
+                runtimeLimiter?.updateLimits({ maxQueueWaitMs: updates.translationMaxQueueWaitMs! });
                 break;
         }
     }

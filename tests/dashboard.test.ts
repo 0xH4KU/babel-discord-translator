@@ -259,6 +259,10 @@ import { PendingUserInstallOwnerRepository } from '../src/modules/dashboard/pend
 import { BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE } from '../src/apps/app-profile.js';
 import type { Client } from 'discord.js';
 import type { DatabaseSync } from 'node:sqlite';
+import type {
+    TranslationService,
+    TranslationServiceRequest,
+} from '../src/modules/translation/translation-service.js';
 
 interface TestResponse {
     status: number;
@@ -412,6 +416,8 @@ describe('Dashboard API', () => {
     let userProfileRepository: DiscordUserProfileRepository;
     let pendingOwnerDb: DatabaseSync;
     let pendingUserInstallOwnerRepository: PendingUserInstallOwnerRepository;
+    let dashboardTranslationRequests: TranslationServiceRequest[];
+    let dashboardTranslationService: TranslationService;
 
     beforeAll(async () => {
         cache = new TranslationCache(100);
@@ -459,6 +465,24 @@ describe('Dashboard API', () => {
             db: pendingOwnerDb,
         });
         pendingUserInstallOwnerRepository.recordSeen('pending-owner');
+        dashboardTranslationRequests = [];
+        dashboardTranslationService = {
+            process: vi.fn(async (request: TranslationServiceRequest) => {
+                dashboardTranslationRequests.push(request);
+                return {
+                    status: 'success',
+                    deferred: false,
+                    translatedText: `service translated: ${request.text}`,
+                    originalText: request.text,
+                    cached: false,
+                    targetLanguage: request.targetLanguageOption || 'auto',
+                    langSource: request.targetLanguageOption ? 'option' : 'auto',
+                    inputTokens: 12,
+                    outputTokens: 6,
+                    provider: 'vertex',
+                };
+            }),
+        };
         const guilds = [
             { id: 'guild-1', name: 'Guild One', iconURL: () => '', memberCount: 10 },
             { id: 'guild-2', name: 'Guild Two', iconURL: () => '', memberCount: 20 },
@@ -479,7 +503,9 @@ describe('Dashboard API', () => {
             },
         } as unknown as Client;
 
-        app = createDashboardApp({
+        const dashboardDeps: Parameters<typeof createDashboardApp>[0] & {
+            translationService: TranslationService;
+        } = {
             cache,
             cooldown,
             log,
@@ -492,7 +518,9 @@ describe('Dashboard API', () => {
             sessionRepository: new InMemorySessionRepository(),
             userProfileRepository,
             pendingUserInstallOwnerRepository,
-        });
+            translationService: dashboardTranslationService,
+        };
+        app = createDashboardApp(dashboardDeps);
 
         server = startDashboardServer(app, 0);
     });
@@ -1108,7 +1136,7 @@ describe('Dashboard API', () => {
         expect(versionCheck).not.toHaveBeenCalled();
     });
 
-    it('should expose Prometheus metrics without dashboard authentication by default', async () => {
+    it('should expose Prometheus metrics without dashboard authentication by default in local test mode', async () => {
         metrics.recordTranslationSuccess({ cached: true });
         metrics.recordTranslationFailure();
         metrics.recordBudgetExceeded();
@@ -1198,6 +1226,43 @@ describe('Dashboard API', () => {
         } finally {
             protectedServer.close();
             stopDashboardApp(protectedApp);
+        }
+    });
+
+    it('should require a metrics token by default for production public health dashboards', async () => {
+        const previousNodeEnv = process.env.NODE_ENV;
+        const previousMetricsToken = process.env.BABEL_METRICS_TOKEN;
+        process.env.NODE_ENV = 'production';
+        delete process.env.BABEL_METRICS_TOKEN;
+
+        const healthDeps: Parameters<typeof createHealthDashboardApp>[0] & { host: string } = {
+            cache,
+            metrics,
+            runtimeLimiter,
+            healthCheck,
+            healthProbeCacheTtlMs: 0,
+            host: '0.0.0.0',
+        };
+        const protectedApp = createHealthDashboardApp(healthDeps);
+        const protectedServer = startDashboardServer(protectedApp, 0);
+
+        try {
+            const missing = await requestText(protectedServer, 'GET', '/metrics');
+            expect(missing.status).toBe(401);
+            expect(missing.text).toBe('Metrics token required\n');
+        } finally {
+            protectedServer.close();
+            stopDashboardApp(protectedApp);
+            if (previousNodeEnv === undefined) {
+                delete process.env.NODE_ENV;
+            } else {
+                process.env.NODE_ENV = previousNodeEnv;
+            }
+            if (previousMetricsToken === undefined) {
+                delete process.env.BABEL_METRICS_TOKEN;
+            } else {
+                process.env.BABEL_METRICS_TOKEN = previousMetricsToken;
+            }
         }
     });
 
@@ -1396,6 +1461,8 @@ describe('Dashboard API', () => {
     });
 
     it('should translate test text successfully', async () => {
+        vi.mocked(translateMock).mockClear();
+
         const res = await request(server, 'POST', '/api/translate/test', {
             cookie: sessionCookie,
             csrf: csrfToken,
@@ -1403,15 +1470,29 @@ describe('Dashboard API', () => {
         });
         expect(res.status).toBe(200);
         expect(res.body!.ok).toBe(true);
-        expect(res.body!.translation).toBe('translated: Hello');
+        expect(res.body!.translation).toBe('service translated: Hello');
+        expect(dashboardTranslationService.process).toHaveBeenCalledWith(
+            expect.objectContaining({
+                command: 'translate',
+                commandLabel: 'dashboard translation test',
+                userId: 'dashboard-admin',
+                userTag: 'Dashboard Admin',
+                text: 'Hello',
+                targetLanguageOption: 'ja',
+                bypassAccessControl: true,
+            }),
+        );
+        expect(dashboardTranslationRequests.at(-1)?.beforeTranslate).toEqual(expect.any(Function));
+        expect(translateMock).not.toHaveBeenCalledWith('Hello', 'ja');
     });
 
     it('should sanitize translate test errors before returning them', async () => {
-        vi.mocked(translateMock).mockRejectedValueOnce(
-            new Error(
-                'OpenAI 500 at https://api.openai.com/v1/chat/completions with token abcdefghijklmnopqrstuvwxyz1234567890',
-            ),
-        );
+        vi.mocked(dashboardTranslationService.process).mockResolvedValueOnce({
+            status: 'error',
+            deferred: false,
+            message:
+                'Translation failed: OpenAI 500 at [API endpoint] with token ***',
+        });
 
         const res = await request(server, 'POST', '/api/translate/test', {
             cookie: sessionCookie,

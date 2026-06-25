@@ -147,4 +147,165 @@ describe('createSqliteDatabase', () => {
             db.close();
         }
     });
+
+    it('should migrate a legacy v5 database while preserving glossary and user preferences', async () => {
+        const { DatabaseSync } = await import('node:sqlite');
+        const { runMigrations } = await import('../src/persistence/sqlite-database.js');
+        const db = new DatabaseSync(':memory:');
+
+        try {
+            db.exec(`
+                CREATE TABLE schema_migrations (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    applied_at TEXT NOT NULL
+                );
+
+                CREATE TABLE app_config (
+                    key TEXT PRIMARY KEY,
+                    value_json TEXT NOT NULL
+                );
+
+                CREATE TABLE user_language_preferences (
+                    user_id TEXT PRIMARY KEY,
+                    language TEXT NOT NULL
+                );
+
+                CREATE TABLE guild_glossary (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id TEXT NOT NULL,
+                    source_text TEXT NOT NULL,
+                    target_text TEXT NOT NULL,
+                    notes TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                INSERT INTO schema_migrations (id, name, applied_at)
+                VALUES
+                    (1, 'initial_sqlite_schema', '2026-01-01T00:00:00.000Z'),
+                    (2, 'guild_glossary', '2026-01-01T00:00:00.000Z'),
+                    (3, 'user_budgets_and_usage', '2026-01-01T00:00:00.000Z'),
+                    (4, 'discord_user_profiles', '2026-01-01T00:00:00.000Z'),
+                    (5, 'pending_user_install_owners', '2026-01-01T00:00:00.000Z');
+
+                INSERT INTO user_language_preferences (user_id, language)
+                VALUES ('user-1', 'ja');
+
+                INSERT INTO guild_glossary (
+                    guild_id,
+                    source_text,
+                    target_text,
+                    notes,
+                    created_at,
+                    updated_at
+                )
+                VALUES (
+                    'guild-1',
+                    'raid',
+                    '團本',
+                    'game term',
+                    '2026-01-01T00:00:00.000Z',
+                    '2026-01-01T00:00:00.000Z'
+                );
+            `);
+
+            runMigrations(db);
+
+            const prefs = db
+                .prepare(
+                    `
+                    SELECT guild_id as guildId, user_id as userId, language
+                    FROM user_language_preferences
+                `,
+                )
+                .all() as Array<{ guildId: string; userId: string; language: string }>;
+            expect(prefs).toEqual([{ guildId: '', userId: 'user-1', language: 'ja' }]);
+
+            const glossary = db
+                .prepare(
+                    `
+                    SELECT
+                        guild_id as guildId,
+                        source_text as sourceText,
+                        target_language as targetLanguage,
+                        target_text as targetText,
+                        notes
+                    FROM guild_glossary
+                `,
+                )
+                .get() as {
+                guildId: string;
+                sourceText: string;
+                targetLanguage: string;
+                targetText: string;
+                notes: string;
+            };
+            expect(glossary).toEqual({
+                guildId: 'guild-1',
+                sourceText: 'raid',
+                targetLanguage: 'auto',
+                targetText: '團本',
+                notes: 'game term',
+            });
+        } finally {
+            db.close();
+        }
+    });
+
+    it('should tolerate legacy databases that already have a migration column but missed its migration row', async () => {
+        const { DatabaseSync } = await import('node:sqlite');
+        const { runMigrations } = await import('../src/persistence/sqlite-database.js');
+        const db = new DatabaseSync(':memory:');
+
+        try {
+            db.exec(`
+                CREATE TABLE schema_migrations (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    applied_at TEXT NOT NULL
+                );
+
+                CREATE TABLE app_config (
+                    key TEXT PRIMARY KEY,
+                    value_json TEXT NOT NULL
+                );
+
+                CREATE TABLE user_language_preferences (
+                    guild_id TEXT NOT NULL DEFAULT '',
+                    user_id TEXT NOT NULL,
+                    language TEXT NOT NULL,
+                    PRIMARY KEY (guild_id, user_id)
+                );
+
+                CREATE TABLE guild_glossary (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id TEXT NOT NULL,
+                    source_text TEXT NOT NULL,
+                    target_language TEXT NOT NULL DEFAULT 'auto',
+                    target_text TEXT NOT NULL,
+                    notes TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                INSERT INTO schema_migrations (id, name, applied_at)
+                VALUES
+                    (1, 'initial_sqlite_schema', '2026-01-01T00:00:00.000Z'),
+                    (2, 'guild_glossary', '2026-01-01T00:00:00.000Z'),
+                    (3, 'user_budgets_and_usage', '2026-01-01T00:00:00.000Z'),
+                    (4, 'discord_user_profiles', '2026-01-01T00:00:00.000Z'),
+                    (5, 'pending_user_install_owners', '2026-01-01T00:00:00.000Z');
+            `);
+
+            expect(() => runMigrations(db)).not.toThrow();
+
+            const migrationIds = db
+                .prepare('SELECT id FROM schema_migrations ORDER BY id ASC')
+                .all() as Array<{ id: number }>;
+            expect(migrationIds.map((row) => row.id)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+        } finally {
+            db.close();
+        }
+    });
 });

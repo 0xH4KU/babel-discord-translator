@@ -237,6 +237,8 @@ export interface DashboardDeps {
     clients?: Partial<Record<AppProfile['id'], Client>>;
     pendingUserInstallOwnerRepository?: PendingUserInstallOwnerRepository;
     metricsToken?: string;
+    host?: string;
+    translationService?: TranslationService;
 }
 
 // --- Usage ---

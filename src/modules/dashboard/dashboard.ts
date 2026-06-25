@@ -9,7 +9,7 @@ import { createEmptyAppMetricsSnapshot } from '../../shared/app-metrics.js';
 import { getConfig } from '../config/config.js';
 import { getHealthStatus, getLivenessStatus, getReadinessStatus } from '../../shared/health.js';
 import { usage } from '../usage/usage.js';
-import { translate } from '../translation/translate.js';
+import { createTranslationService } from '../translation/translation-service.js';
 import { createDashboardAuth } from './auth/dashboard-auth.js';
 import { SQLiteSessionRepository } from './auth/sqlite-session-repository.js';
 import { checkVertexAiHealth } from '../../infra/vertex-ai-client.js';
@@ -137,6 +137,8 @@ export function createDashboardApp({
     pendingUserInstallOwnerRepository = new PendingUserInstallOwnerRepository(),
     healthProbeCacheTtlMs = 5_000,
     metricsToken,
+    host,
+    translationService,
 }: DashboardDeps): express.Express {
     const app = express();
     app.set('trust proxy', 1);
@@ -177,6 +179,19 @@ export function createDashboardApp({
           ]
         : [{ prefix: '/api', scope: rootScope }];
     const config = getConfig();
+    const dashboardTranslationService =
+        translationService ??
+        createTranslationService({
+            cache,
+            cooldown,
+            log,
+            stats: getStats(),
+            metrics,
+            runtimeLimiter,
+            accessMode: profile.accessMode,
+            enableGuildGlossary: profile.enableGuildGlossary,
+            pendingUserInstallOwnerRepository,
+        });
     const auth = createDashboardAuth({
         password: config.dashboardPassword,
         sessionRepository: sessionRepository ?? new SQLiteSessionRepository(),
@@ -252,7 +267,7 @@ export function createDashboardApp({
 
     app.get(
         '/metrics',
-        createMetricsAuthMiddleware(metricsToken),
+        createMetricsAuthMiddleware({ token: metricsToken, host }),
         (_req: Request, res: Response) => {
             const metricsSnapshot = metrics?.snapshot() ?? createEmptyAppMetricsSnapshot();
             const runtimeSnapshot = runtimeLimiter?.snapshot() ?? createEmptyRuntimeSnapshot();
@@ -467,6 +482,7 @@ export function createDashboardApp({
             cache,
             cooldown,
             cooldowns: cooldowns ? Object.values(cooldowns) : undefined,
+            runtimeLimiter,
             resetProviderState: resetTranslationProviderState,
         });
 
@@ -938,14 +954,39 @@ export function createDashboardApp({
             }
             try {
                 const start = Date.now();
-                const result = await translate(text, targetLanguage || 'auto');
-                usage.record(result.inputTokens, result.outputTokens);
+                const result = await dashboardTranslationService.process({
+                    command: 'translate',
+                    commandLabel: 'dashboard translation test',
+                    guildId: null,
+                    guildName: 'Dashboard',
+                    userId: 'dashboard-admin',
+                    userTag: 'Dashboard Admin',
+                    locale: undefined,
+                    text,
+                    targetLanguageOption: targetLanguage || 'auto',
+                    bypassAccessControl: true,
+                    beforeTranslate: async () => undefined,
+                });
+
+                if (result.status === 'blocked') {
+                    res.status(400).json({ error: result.message });
+                    return;
+                }
+
+                if (result.status === 'error') {
+                    res.status(500).json({ error: sanitizeError(result.message) });
+                    return;
+                }
+
                 res.json({
                     ok: true,
-                    translation: result.text,
+                    translation: result.translatedText,
                     inputTokens: result.inputTokens,
                     outputTokens: result.outputTokens,
                     latencyMs: Date.now() - start,
+                    cached: result.cached,
+                    provider: result.provider,
+                    fallback: result.fallback,
                 });
             } catch (err) {
                 res.status(500).json({ error: sanitizeError((err as Error).message) });

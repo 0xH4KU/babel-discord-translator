@@ -134,7 +134,7 @@ NODE_ENV=production
 
 `BABEL_DASHBOARD_MODE` defaults to `full`. Set it to `health-only` on constrained hosts when you only need `/livez`, `/readyz`, `/healthz`, and `/metrics`. Set it to `off` only if your platform healthcheck no longer depends on Babel's HTTP endpoints.
 
-Set `BABEL_METRICS_TOKEN` when `/metrics` is reachable from outside a private network. Prometheus or curl can pass it as `Authorization: Bearer <token>` or `x-metrics-token: <token>`.
+Set `BABEL_METRICS_TOKEN` when `/metrics` is reachable from outside a private network. In `NODE_ENV=production` with a public bind such as `DASHBOARD_HOST=0.0.0.0`, Babel requires a metrics token by default. Prometheus or curl can pass it as `Authorization: Bearer <token>` or `x-metrics-token: <token>`.
 
 Verify:
 
