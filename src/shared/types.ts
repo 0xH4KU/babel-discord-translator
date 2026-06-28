@@ -239,6 +239,7 @@ export interface DashboardDeps {
     metricsToken?: string;
     host?: string;
     translationService?: TranslationService;
+    translationServices?: Partial<Record<AppProfile['id'], TranslationService>>;
 }
 
 // --- Usage ---

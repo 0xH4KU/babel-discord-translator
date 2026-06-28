@@ -125,6 +125,7 @@ export function createDashboardApp({
     metricsToken,
     host,
     translationService,
+    translationServices,
 }: DashboardDeps): express.Express {
     const app = express();
     app.set('trust proxy', 1);
@@ -178,6 +179,9 @@ export function createDashboardApp({
             enableGuildGlossary: profile.enableGuildGlossary,
             pendingUserInstallOwnerRepository,
         });
+    const getDashboardTranslationService = (scope: DashboardApiScope) => {
+        return translationServices?.[scope.profile.id] ?? dashboardTranslationService;
+    };
     const auth = createDashboardAuth({
         password: config.dashboardPassword,
         sessionRepository: sessionRepository ?? new SQLiteSessionRepository(),
@@ -943,6 +947,8 @@ export function createDashboardApp({
         auth.requireAuth,
         auth.requireCsrf,
         asyncHandler(async (req: Request, res: Response) => {
+            const scope = getScope(res);
+            const scopedTranslationService = getDashboardTranslationService(scope);
             const { text, targetLanguage } = req.body;
             if (!text?.trim()) {
                 res.status(400).json({ error: dashboardMessages.translationTest.textRequired });
@@ -950,7 +956,7 @@ export function createDashboardApp({
             }
             try {
                 const start = Date.now();
-                const result = await dashboardTranslationService.process({
+                const result = await scopedTranslationService.process({
                     command: 'translate',
                     commandLabel: 'dashboard translation test',
                     guildId: null,

@@ -214,6 +214,9 @@ export async function startBabelApps(profiles: AppProfile[]): Promise<void> {
     const cooldownsByProfile = Object.fromEntries(
         runtimes.map((runtime) => [runtime.profile.id, runtime.cooldown]),
     );
+    const translationServicesByProfile = Object.fromEntries(
+        runtimes.map((runtime) => [runtime.profile.id, runtime.translationService]),
+    );
 
     const startDashboardIfReady = () => {
         if (dashboardApp || dashboardServer || readyProfileIds.size !== runtimes.length) {
@@ -254,6 +257,7 @@ export async function startBabelApps(profiles: AppProfile[]): Promise<void> {
             profiles,
             host: shared.config.dashboardHost,
             translationService: primaryRuntime.translationService,
+            translationServices: translationServicesByProfile,
         });
         dashboardServer = startDashboardServer(
             dashboardApp,

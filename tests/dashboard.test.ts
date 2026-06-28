@@ -1486,6 +1486,85 @@ describe('Dashboard API', () => {
         expect(translateMock).not.toHaveBeenCalledWith('Hello', 'ja');
     });
 
+    it('should route combined translate tests through product-scoped services', async () => {
+        const guildTranslationService: TranslationService = {
+            process: vi.fn(async (request: TranslationServiceRequest) => ({
+                status: 'success',
+                deferred: false,
+                translatedText: `guild translated: ${request.text}`,
+                originalText: request.text,
+                cached: false,
+                targetLanguage: request.targetLanguageOption || 'auto',
+                langSource: request.targetLanguageOption ? 'option' : 'auto',
+                inputTokens: 10,
+                outputTokens: 5,
+                provider: 'vertex',
+            })),
+        };
+        const pocketTranslationService: TranslationService = {
+            process: vi.fn(async (request: TranslationServiceRequest) => ({
+                status: 'success',
+                deferred: false,
+                translatedText: `pocket translated: ${request.text}`,
+                originalText: request.text,
+                cached: false,
+                targetLanguage: request.targetLanguageOption || 'auto',
+                langSource: request.targetLanguageOption ? 'option' : 'auto',
+                inputTokens: 12,
+                outputTokens: 6,
+                provider: 'openai',
+            })),
+        };
+        const combinedApp = createDashboardApp({
+            cache,
+            cooldown: new CooldownManager(5),
+            log,
+            client: createMinimalClient(),
+            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
+            metrics,
+            runtimeLimiter,
+            profile: BABEL_GUILD_PROFILE,
+            profiles: [BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE],
+            sessionRepository: new InMemorySessionRepository(),
+            userProfileRepository,
+            translationService: guildTranslationService,
+            translationServices: {
+                'babel-guild': guildTranslationService,
+                'babel-pocket': pocketTranslationService,
+            },
+        });
+        const combinedServer = startDashboardServer(combinedApp, 0);
+
+        try {
+            const login = await request(combinedServer, 'POST', '/api/login', {
+                body: { password: 'test-pass-123' },
+            });
+            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
+            const csrf = String(login.body!.csrfToken);
+
+            const guildRes = await request(combinedServer, 'POST', '/guild/api/translate/test', {
+                cookie,
+                csrf,
+                body: { text: 'Hello Guild', targetLanguage: 'ja' },
+            });
+            const pocketRes = await request(combinedServer, 'POST', '/pocket/api/translate/test', {
+                cookie,
+                csrf,
+                body: { text: 'Hello Pocket', targetLanguage: 'ko' },
+            });
+
+            expect(guildRes.status).toBe(200);
+            expect(pocketRes.status).toBe(200);
+            expect(guildRes.body!.translation).toBe('guild translated: Hello Guild');
+            expect(pocketRes.body!.translation).toBe('pocket translated: Hello Pocket');
+            expect(guildTranslationService.process).toHaveBeenCalledTimes(1);
+            expect(pocketTranslationService.process).toHaveBeenCalledTimes(1);
+        } finally {
+            stopDashboardApp(combinedApp);
+            combinedServer.close();
+        }
+    });
+
     it('should sanitize translate test errors before returning them', async () => {
         vi.mocked(dashboardTranslationService.process).mockResolvedValueOnce({
             status: 'error',
