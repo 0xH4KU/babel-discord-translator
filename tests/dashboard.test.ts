@@ -1490,8 +1490,7 @@ describe('Dashboard API', () => {
         vi.mocked(dashboardTranslationService.process).mockResolvedValueOnce({
             status: 'error',
             deferred: false,
-            message:
-                'Translation failed: OpenAI 500 at [API endpoint] with token ***',
+            message: 'Translation failed: OpenAI 500 at [API endpoint] with token ***',
         });
 
         const res = await request(server, 'POST', '/api/translate/test', {
@@ -2761,6 +2760,101 @@ describe('Dashboard API', () => {
             usageMock.getUserHistory.mockReturnValue([]);
             usageMock.getGuildHistoryForGuilds.mockReturnValue([]);
             usageMock.getAllUserHistory.mockReturnValue([]);
+            stopDashboardApp(combinedApp);
+            combinedServer.close();
+        }
+    });
+
+    it('should return product-scoped operations metrics for combined dashboard API paths', async () => {
+        const scopedMetrics = new AppMetrics();
+        scopedMetrics.recordTranslationSuccess({ appProfileId: 'babel-guild' });
+        scopedMetrics.recordTranslationApiCall({ appProfileId: 'babel-guild' });
+        scopedMetrics.recordProviderSuccess('vertex', {
+            appProfileId: 'babel-guild',
+            latencyMs: 42,
+        });
+        scopedMetrics.recordTranslationFailure({ appProfileId: 'babel-pocket' });
+        scopedMetrics.recordProviderFailure('openai', {
+            appProfileId: 'babel-pocket',
+            errorType: 'auth',
+            error: 'Pocket OpenAI 401',
+        });
+        scopedMetrics.recordProviderFallback({
+            appProfileId: 'babel-pocket',
+            from: 'openai',
+            to: 'vertex',
+            errorType: 'auth',
+            error: 'Pocket OpenAI 401',
+        });
+
+        const combinedApp = createDashboardApp({
+            cache,
+            cooldown: new CooldownManager(5),
+            log,
+            client: createMinimalClient(),
+            getStats: () => ({ totalTranslations: 99, apiCalls: 88 }),
+            metrics: scopedMetrics,
+            runtimeLimiter,
+            profile: BABEL_GUILD_PROFILE,
+            profiles: [BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE],
+            sessionRepository: new InMemorySessionRepository(),
+            userProfileRepository,
+        });
+        const combinedServer = startDashboardServer(combinedApp, 0);
+
+        try {
+            const login = await request(combinedServer, 'POST', '/api/login', {
+                body: { password: 'test-pass-123' },
+            });
+            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
+
+            const rootRes = await request(combinedServer, 'GET', '/api/stats', { cookie });
+            const guildRes = await request(combinedServer, 'GET', '/guild/api/stats', { cookie });
+            const pocketRes = await request(combinedServer, 'GET', '/pocket/api/stats', {
+                cookie,
+            });
+
+            expect(rootRes.status).toBe(200);
+            expect(guildRes.status).toBe(200);
+            expect(pocketRes.status).toBe(200);
+
+            const rootOperations = rootRes.body!.operations as Record<string, unknown>;
+            const guildOperations = guildRes.body!.operations as Record<string, unknown>;
+            const pocketOperations = pocketRes.body!.operations as Record<string, unknown>;
+            const guildProviders = guildOperations.providers as Record<
+                string,
+                Record<string, unknown>
+            >;
+            const pocketProviders = pocketOperations.providers as Record<
+                string,
+                Record<string, unknown>
+            >;
+            const rootTranslations = rootRes.body!.translations as Record<string, unknown>;
+            const guildTranslations = guildRes.body!.translations as Record<string, unknown>;
+            const pocketTranslations = pocketRes.body!.translations as Record<string, unknown>;
+
+            expect(rootOperations.fallbackTotal).toBe(1);
+            expect(guildOperations.fallbackTotal).toBe(0);
+            expect(pocketOperations.fallbackTotal).toBe(1);
+            expect(guildOperations.lastFallback).toBeNull();
+            expect(pocketOperations.lastFallback).toMatchObject({
+                from: 'openai',
+                to: 'vertex',
+                errorType: 'auth',
+            });
+            expect(guildProviders.vertex.successTotal).toBe(1);
+            expect(guildProviders.openai.failureTotal).toBe(0);
+            expect(pocketProviders.vertex.successTotal).toBe(0);
+            expect(pocketProviders.openai.failureTotal).toBe(1);
+            expect(rootTranslations.total).toBe(99);
+            expect(rootTranslations.apiCalls).toBe(88);
+            expect(guildTranslations.total).toBe(1);
+            expect(guildTranslations.apiCalls).toBe(1);
+            expect(guildTranslations.failures).toBe(0);
+            expect(pocketTranslations.total).toBe(0);
+            expect(pocketTranslations.apiCalls).toBe(0);
+            expect(pocketTranslations.failures).toBe(1);
+        } finally {
             stopDashboardApp(combinedApp);
             combinedServer.close();
         }

@@ -368,6 +368,44 @@ describe('TranslationService', () => {
         });
     });
 
+    it('should record translation metrics into the selected app profile bucket', async () => {
+        const { service, metrics } = createService({
+            appProfileId: 'babel-pocket',
+            accessMode: 'user-install',
+            enableGuildGlossary: false,
+            storeOverrides: {
+                allowedUserIds: ['user1'],
+                userLanguagePreferenceEntries: [{ guildId: '', userId: 'user1', language: 'ja' }],
+            },
+        });
+
+        const result = await service.process({
+            command: 'babel',
+            commandLabel: 'Babel Pocket',
+            guildId: null,
+            guildName: 'Direct Message',
+            userId: 'user1',
+            userTag: 'user#0001',
+            locale: 'en-US',
+            text: 'Hello world',
+        });
+
+        expect(result.status).toBe('success');
+        expect(metrics.snapshot({ appProfileId: 'babel-guild' })).toMatchObject({
+            translationsTotal: 0,
+            translationApiCallsTotal: 0,
+        });
+        expect(metrics.snapshot({ appProfileId: 'babel-pocket' })).toMatchObject({
+            translationsTotal: 1,
+            translationApiCallsTotal: 1,
+            translationFailuresTotal: 0,
+        });
+        expect(metrics.snapshot()).toMatchObject({
+            translationsTotal: 1,
+            translationApiCallsTotal: 1,
+        });
+    });
+
     it('should use global user preferences for Babel Pocket translations', async () => {
         const { service } = createService({
             accessMode: 'user-install',

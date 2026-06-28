@@ -1,8 +1,4 @@
-import express, {
-    type NextFunction,
-    type Request,
-    type Response,
-} from 'express';
+import express, { type NextFunction, type Request, type Response } from 'express';
 import http from 'http';
 import rateLimit from 'express-rate-limit';
 import { createEmptyAppMetricsSnapshot } from '../../shared/app-metrics.js';
@@ -27,14 +23,8 @@ import { dashboardMessages } from '../../shared/messages/dashboard-messages.js';
 import { getVersionMetadataWithUpdate } from '../../shared/version.js';
 import { DiscordUserProfileRepository } from './discord-user-profile-repository.js';
 import { resolveDiscordUserProfiles } from './discord-user-profile-resolver.js';
-import {
-    BABEL_GUILD_PROFILE,
-    BABEL_POCKET_PROFILE,
-} from '../../apps/app-profile.js';
-import {
-    getCombinedDashboardCapabilities,
-    getDashboardCapabilities,
-} from './capabilities.js';
+import { BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE } from '../../apps/app-profile.js';
+import { getCombinedDashboardCapabilities, getDashboardCapabilities } from './capabilities.js';
 import { PendingUserInstallOwnerRepository } from './pending-user-install-owner-repository.js';
 import { validateConfigUpdate } from './config-validation.js';
 import {
@@ -51,11 +41,7 @@ import {
 import { createMetricsAuthMiddleware } from './metrics-auth.js';
 import { createEmptyRuntimeSnapshot, renderPrometheusMetrics } from './prometheus-metrics.js';
 import { applySecurityHeaders } from './security-headers.js';
-import {
-    createScopedApiRouter,
-    getDashboardScope,
-    type DashboardApiScope,
-} from './scoped-api.js';
+import { createScopedApiRouter, getDashboardScope, type DashboardApiScope } from './scoped-api.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import type { DashboardDeps } from '../../shared/types.js';
@@ -348,7 +334,9 @@ export function createDashboardApp({
         const stats = getStats();
         const cacheStats = cache.stats();
         const usageStats = usage.getStats();
-        const metricsSnapshot = metrics?.snapshot() ?? createEmptyAppMetricsSnapshot();
+        const scopeProfileId = isCombinedDashboard ? scope.appProfileIdForLogs : undefined;
+        const metricsSnapshot =
+            metrics?.snapshot({ appProfileId: scopeProfileId }) ?? createEmptyAppMetricsSnapshot();
         const memoryUsage = process.memoryUsage();
         const rssMB = (memoryUsage.rss / BYTES_PER_MB).toFixed(1);
         const heapUsedMB = (memoryUsage.heapUsed / BYTES_PER_MB).toFixed(1);
@@ -356,6 +344,15 @@ export function createDashboardApp({
         const runtimeSnapshot = runtimeLimiter?.snapshot() ?? createEmptyRuntimeSnapshot();
         const runtimeConfig = configRepository.getRuntimeConfig();
         const providerMode = runtimeConfig.translationProvider || 'vertex';
+        const translationTotals = scopeProfileId
+            ? {
+                  total: metricsSnapshot.translationsTotal,
+                  apiCalls: metricsSnapshot.translationApiCallsTotal,
+              }
+            : {
+                  total: stats.totalTranslations,
+                  apiCalls: stats.apiCalls,
+              };
 
         const guildIds = scope.capabilities.guildAccess
             ? scopedClient.guilds.cache.map((guild) => guild.id)
@@ -439,8 +436,8 @@ export function createDashboardApp({
                 guilds: scope.capabilities.guildAccess ? scopedClient.guilds.cache.size : 0,
             },
             translations: {
-                total: stats.totalTranslations,
-                apiCalls: stats.apiCalls,
+                total: translationTotals.total,
+                apiCalls: translationTotals.apiCalls,
                 saved: cacheStats.hits,
                 failures: metricsSnapshot.translationFailuresTotal,
                 failureRate: metricsSnapshot.translationFailureRate,
@@ -856,8 +853,7 @@ export function createDashboardApp({
                               ...entry,
                               guildName: guildsById.get(entry.guildId)?.name ?? entry.guildId,
                               guildIcon: guildsById.get(entry.guildId)?.icon ?? '',
-                              guildMemberCount:
-                                  guildsById.get(entry.guildId)?.memberCount ?? null,
+                              guildMemberCount: guildsById.get(entry.guildId)?.memberCount ?? null,
                           }));
                   })()
                 : allPreferences.filter((entry) => !entry.guildId);

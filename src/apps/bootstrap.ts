@@ -1,5 +1,5 @@
 import { Client, Events, GatewayIntentBits, Options } from 'discord.js';
-import { AppMetrics } from '../shared/app-metrics.js';
+import { AppMetrics, createProfileMetricsCollector } from '../shared/app-metrics.js';
 import { loadConfig } from '../modules/config/config.js';
 import { TranslationCache } from '../modules/translation/cache.js';
 import { CooldownManager } from '../modules/translation/cooldown.js';
@@ -142,7 +142,9 @@ function createProfileRuntime(
             : undefined,
     });
     const webhookService = profile.enableWebhookOutput
-        ? createWebhookService({ metrics: shared.metrics })
+        ? createWebhookService({
+              metrics: createProfileMetricsCollector(shared.metrics, profile.id),
+          })
         : null;
 
     const client = createDiscordClient();

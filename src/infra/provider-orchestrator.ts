@@ -6,6 +6,7 @@ import type { RuntimeConfig } from '../modules/config/config-repository.js';
 
 export interface TranslateOptions {
     logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'>;
+    metrics?: AppMetricsCollector;
     runtimeConfig?: RuntimeConfig;
 }
 
@@ -135,6 +136,7 @@ export function createProviderOrchestrator(
             maxOutputTokens: number,
             options?: TranslateOptions,
         ): Promise<ProviderOrchestratorResult> {
+            const metrics = options?.metrics ?? orchestratorOptions.metrics;
             const ordered = resolveProviderOrder(mode, providers);
             const configured = ordered.filter((p) => p.isConfigured(options));
             const available = configured.filter((p) => !isCircuitOpen(p.name));
@@ -160,7 +162,7 @@ export function createProviderOrchestrator(
 
                 try {
                     if (isFallback) {
-                        orchestratorOptions.metrics?.recordProviderFallback({
+                        metrics?.recordProviderFallback({
                             from: available[i - 1]!.name,
                             to: provider.name,
                             errorType: classifyProviderError(lastError),
@@ -176,7 +178,7 @@ export function createProviderOrchestrator(
 
                     const result = await provider.translate(prompt, maxOutputTokens, options);
                     recordBreakerSuccess(provider.name);
-                    orchestratorOptions.metrics?.recordProviderSuccess(provider.name);
+                    metrics?.recordProviderSuccess(provider.name);
                     return {
                         ...result,
                         provider: provider.name,
@@ -186,7 +188,7 @@ export function createProviderOrchestrator(
                     lastError = toError(error);
                     lastProvider = provider.name;
                     recordBreakerFailure(provider.name);
-                    orchestratorOptions.metrics?.recordProviderFailure(provider.name, {
+                    metrics?.recordProviderFailure(provider.name, {
                         errorType: classifyProviderError(lastError),
                         error: lastError.message,
                     });

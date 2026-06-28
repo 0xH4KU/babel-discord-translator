@@ -4,7 +4,10 @@ import type { AccessMode, AppProfile } from '../../apps/app-profile.js';
 import { ProviderOrchestratorError } from '../../infra/provider-orchestrator.js';
 import type { TranslationLog } from '../../shared/log.js';
 import { isSameLanguage } from './lang.js';
-import type { AppMetricsCollector } from '../../shared/app-metrics.js';
+import {
+    createProfileMetricsCollector,
+    type AppMetricsCollector,
+} from '../../shared/app-metrics.js';
 import { configRepository, type RuntimeConfig } from '../config/config-repository.js';
 import { userPreferenceRepository } from './user-preference-repository.js';
 import { guildGlossaryRepository } from './guild-glossary-repository.js';
@@ -209,6 +212,7 @@ export function createTranslationService({
     pendingUserInstallOwnerRepository,
 }: TranslationServiceDeps): TranslationService {
     const inFlightTranslations = new Map<string, InFlightTranslation>();
+    const profileMetrics = createProfileMetricsCollector(metrics, appProfileId);
 
     return {
         async process(request: TranslationServiceRequest): Promise<TranslationServiceResult> {
@@ -263,7 +267,7 @@ export function createTranslationService({
             };
 
             if (usageTracker.isBudgetExceeded(usageScope)) {
-                metrics?.recordBudgetExceeded();
+                profileMetrics?.recordBudgetExceeded();
                 requestLogger.warn('translation.request.blocked', {
                     blockReason: 'budget_exceeded',
                 });
@@ -308,7 +312,7 @@ export function createTranslationService({
                     ...usageScope,
                 })
             ) {
-                metrics?.recordBudgetExceeded();
+                profileMetrics?.recordBudgetExceeded();
                 requestLogger.warn('translation.request.blocked', {
                     blockReason: 'budget_estimate_exceeded',
                 });
@@ -471,7 +475,7 @@ export function createTranslationService({
                             }
 
                             stats.apiCalls++;
-                            metrics?.recordTranslationApiCall();
+                            profileMetrics?.recordTranslationApiCall();
                             const result = await translator(
                                 originalText,
                                 targetLanguage,
@@ -482,7 +486,7 @@ export function createTranslationService({
                                         userId: getRuntimeLimiterUserId(scope),
                                         command: request.command,
                                     },
-                                    metrics,
+                                    profileMetrics,
                                     selectedGlossaryEntries,
                                     runtimeConfig,
                                 ),
@@ -502,7 +506,7 @@ export function createTranslationService({
                         });
                     } else {
                         stats.apiCalls++;
-                        metrics?.recordTranslationApiCall();
+                        profileMetrics?.recordTranslationApiCall();
                         const result = await translator(
                             originalText,
                             targetLanguage,
@@ -513,7 +517,7 @@ export function createTranslationService({
                                     userId: getRuntimeLimiterUserId(scope),
                                     command: request.command,
                                 },
-                                metrics,
+                                profileMetrics,
                                 selectedGlossaryEntries,
                                 runtimeConfig,
                             ),
@@ -529,7 +533,7 @@ export function createTranslationService({
                     }
                 }
 
-                metrics?.recordTranslationSuccess({ cached });
+                profileMetrics?.recordTranslationSuccess({ cached });
                 log.add({
                     appProfileId,
                     guildId: request.guildId,
@@ -574,7 +578,7 @@ export function createTranslationService({
                               suggestedAction: suggestedActionForErrorType(caughtError.errorType),
                           }
                         : classifyTranslationError(message);
-                metrics?.recordTranslationFailure();
+                profileMetrics?.recordTranslationFailure();
                 log.addError({
                     appProfileId,
                     guildId: request.guildId,

@@ -149,27 +149,23 @@ function getProviders(): Map<string, TranslationProvider> {
 
 /**
  * Memoized orchestrator so circuit-breaker state survives across requests.
- * Rebuilt only when the provider mode or metrics collector changes.
+ * Rebuilt only when the provider mode changes.
  */
 let orchestrator: ReturnType<typeof createProviderOrchestrator> | null = null;
 let orchestratorMode: TranslationProviderMode | null = null;
-let orchestratorMetrics: AppMetricsCollector | undefined;
 
 export function resetTranslationProviderState(): void {
     providers = null;
     orchestrator = null;
     orchestratorMode = null;
-    orchestratorMetrics = undefined;
 }
 
 function getOrchestrator(
     mode: TranslationProviderMode,
-    metrics?: AppMetricsCollector,
 ): ReturnType<typeof createProviderOrchestrator> {
-    if (!orchestrator || orchestratorMode !== mode || orchestratorMetrics !== metrics) {
-        orchestrator = createProviderOrchestrator(mode, getProviders(), { metrics });
+    if (!orchestrator || orchestratorMode !== mode) {
+        orchestrator = createProviderOrchestrator(mode, getProviders());
         orchestratorMode = mode;
-        orchestratorMetrics = metrics;
     }
     return orchestrator;
 }
@@ -200,7 +196,7 @@ export async function translate(
     const maxOutputTokens = config.maxOutputTokens || 1000;
     const mode = config.translationProvider || 'vertex';
 
-    return getOrchestrator(mode, options?.metrics).translate(prompt, maxOutputTokens, options);
+    return getOrchestrator(mode).translate(prompt, maxOutputTokens, options);
 }
 
 export const _test = {
