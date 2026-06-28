@@ -271,6 +271,146 @@ describe('dashboard static assets', () => {
         expect(dashboardJs).toContain('getDashboardUsageScopeLabel(d)');
     });
 
+    it('renders the overview budget card for Babel Pocket daily budget usage', async () => {
+        const html = readFileSync('src/public/index.html', 'utf-8');
+        const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
+        const appJs = readFileSync('src/public/js/app.js', 'utf-8');
+        const dashboardJs = readFileSync('src/public/js/dashboard.js', 'utf-8');
+        const nodes = {
+            'budget-card': {
+                hidden: false,
+                style: { display: '' },
+                setAttribute() {},
+            },
+            'budget-card-label': { textContent: '' },
+            'budget-amount': { textContent: '' },
+            'guild-budget-overview': {
+                children: [] as unknown[],
+                replaceChildren(...children: unknown[]) {
+                    this.children = children;
+                },
+                append(...children: unknown[]) {
+                    this.children.push(...children);
+                },
+            },
+            'bot-name': { textContent: '' },
+            'bot-tag': { textContent: '' },
+            'bot-avatar': { src: '' },
+            'stat-cost': { textContent: '' },
+            'stat-cost-breakdown': { textContent: '' },
+            'stat-total': { textContent: '' },
+            'stat-total-detail': { textContent: '' },
+            'stat-hitrate': { textContent: '' },
+            'stat-saved': { textContent: '' },
+            'stat-uptime': { textContent: '' },
+            'stat-memory': { textContent: '' },
+            'ops-provider-mode': { textContent: '' },
+            'ops-provider-vertex': null,
+            'ops-provider-openai': null,
+            'ops-runtime': null,
+            'ops-budget-risk': null,
+            'ops-guidance': null,
+        };
+        const createdElements: Array<{
+            className: string;
+            textContent: string;
+            children: unknown[];
+        }> = [];
+        const context = {
+            document: {
+                body: { dataset: {} },
+                title: '',
+                addEventListener() {},
+                getElementById(id: string) {
+                    return nodes[id as keyof typeof nodes] || null;
+                },
+                querySelectorAll(selector: string) {
+                    if (selector === '[data-capability]') return [];
+                    return [];
+                },
+                createElement() {
+                    const element = {
+                        className: '',
+                        textContent: '',
+                        style: {},
+                        classList: { add() {}, remove() {} },
+                        children: [] as unknown[],
+                        append(...children: unknown[]) {
+                            this.children.push(...children);
+                        },
+                    };
+                    createdElements.push(element);
+                    return element;
+                },
+            },
+            window: {
+                location: { pathname: '/pocket' },
+            },
+            setInterval() {},
+            fetch: async () => ({
+                ok: true,
+                json: async () => ({
+                    bot: {
+                        name: 'Babel Pocket#0001',
+                        avatar: '',
+                        uptime: 60,
+                        memory: { rssMB: '42.0' },
+                    },
+                    operations: {},
+                    usage: {
+                        totalCost: 0.21,
+                        dailyBudget: 1.25,
+                        inputTokens: 1000,
+                        outputTokens: 2000,
+                        requests: 89,
+                    },
+                    guildBudgets: [],
+                    translations: {
+                        total: 3,
+                        apiCalls: 2,
+                        cacheHitRate: 0,
+                    },
+                    cache: { size: 0, maxSize: 2000 },
+                }),
+            }),
+        };
+
+        expect(html).toContain('id="budget-card"');
+        expect(html).not.toContain('id="budget-card" data-capability="guildAccess"');
+
+        vm.createContext(context);
+        vm.runInContext(
+            [
+                utilsJs,
+                appJs.replace(/init\(\);\s*$/, ''),
+                dashboardJs,
+                `applyDashboardCapabilities({
+                    profile: { id: 'babel-pocket', productName: 'Babel Pocket' },
+                    profiles: [{ id: 'babel-pocket', productName: 'Babel Pocket' }],
+                    capabilities: {
+                        guildAccess: false,
+                        userAccess: true,
+                        guildGlossary: false,
+                        pendingUserInstallOwners: true
+                    }
+                });`,
+                'loadStats();',
+            ].join('\n'),
+            context,
+        );
+
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(nodes['budget-card'].hidden).toBe(false);
+        expect(nodes['budget-card'].style.display).toBe('');
+        expect(nodes['budget-card-label'].textContent).toBe('Daily Budget');
+        expect(nodes['budget-amount'].textContent).toBe('Total: $0.21');
+        expect(nodes['guild-budget-overview'].children).toHaveLength(1);
+        expect(createdElements.some((element) => element.textContent === '$0.21 / $1.25')).toBe(
+            true,
+        );
+    });
+
     it('escapes glossary table fields rendered from stored import data', () => {
         const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
         const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
@@ -363,9 +503,7 @@ describe('dashboard static assets', () => {
             context,
         );
 
-        expect(nodes['guild-list'].innerHTML).toContain(
-            '&lt;img src=x onerror=alert(1)&gt;',
-        );
+        expect(nodes['guild-list'].innerHTML).toContain('&lt;img src=x onerror=alert(1)&gt;');
         expect(nodes['guild-list'].innerHTML).not.toContain('<img src=x');
         expect(nodes['guild-list'].innerHTML).not.toContain('onerror="alert(2)');
         expect(nodes['guild-list'].innerHTML).not.toContain("toggleGuildAllowed('guild');alert");
@@ -405,9 +543,7 @@ describe('dashboard static assets', () => {
             context,
         );
 
-        expect(nodes['session-list'].innerHTML).toContain(
-            '&lt;img src=x onerror=alert(2)&gt;',
-        );
+        expect(nodes['session-list'].innerHTML).toContain('&lt;img src=x onerror=alert(2)&gt;');
         expect(nodes['session-list'].innerHTML).not.toContain('<img src=x');
         expect(nodes['session-list'].innerHTML).not.toContain("revokeSession('abc');alert");
     });

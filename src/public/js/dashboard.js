@@ -95,6 +95,64 @@ function renderGuildBudgetOverview(container, guilds) {
     });
 }
 
+function renderDailyBudgetOverview(container, usage) {
+    container.replaceChildren();
+
+    const item = document.createElement('div');
+    item.className = 'guild-budget-overview-item';
+
+    const name = document.createElement('span');
+    name.className = 'gbo-name';
+    name.textContent = 'All user installs';
+
+    const cost = document.createElement('span');
+    cost.className = 'gbo-cost';
+
+    const budget = Number(usage?.dailyBudget || 0);
+    const totalCost = Number(usage?.totalCost || 0);
+    const requests = Number(usage?.requests || 0);
+
+    if (budget <= 0) {
+        cost.textContent = formatUsd(totalCost) + ' · ' + formatOpsNumber(requests) + ' req';
+
+        const limit = document.createElement('span');
+        limit.className = 'gbo-limit';
+        limit.textContent = 'Unlimited';
+
+        item.append(name, cost, limit);
+        container.append(item);
+        return;
+    }
+
+    cost.textContent = formatUsd(totalCost) + ' / ' + formatUsd(budget);
+
+    const rawPct = (totalCost / budget) * 100;
+    const pct = Number.isFinite(rawPct) ? Math.min(Math.max(rawPct, 0), 100) : 0;
+    const bar = document.createElement('div');
+    bar.className = 'gbo-bar';
+
+    const fill = document.createElement('div');
+    fill.className = 'fill';
+    if (pct > 90) {
+        fill.classList.add('danger');
+    } else if (pct > 60) {
+        fill.classList.add('warning');
+    }
+    fill.style.width = pct + '%';
+    bar.append(fill);
+
+    item.append(name, cost, bar);
+
+    if (usage?.budgetExceeded) {
+        const exceeded = document.createElement('span');
+        exceeded.className = 'gbo-exceeded';
+        exceeded.textContent = 'EXCEEDED';
+        item.append(exceeded);
+    }
+
+    container.append(item);
+}
+
 function renderProviderCard(id, label, providerKey, provider, fallbackTotal, lastFallback) {
     const card = document.getElementById(id);
     if (!card) return;
@@ -284,16 +342,24 @@ async function loadStats() {
         const budgetCard = document.getElementById('budget-card');
         const guilds = d.guildBudgets || [];
         const hasGuildBudgetCapability = hasDashboardCapability('guildAccess');
+        const hasUserBudgetCapability = hasDashboardCapability('userAccess');
         const hasAnyBudget = guilds.some((g) => g.budget > 0);
+        const hasDailyBudget = Number(d.usage.dailyBudget || 0) > 0;
+        const hasBudgetUsage = Number(d.usage.totalCost || 0) > 0 || Number(d.usage.requests || 0) > 0;
 
-        if (hasGuildBudgetCapability && (hasAnyBudget || d.usage.dailyBudget > 0)) {
+        if (
+            (hasGuildBudgetCapability && (hasAnyBudget || hasDailyBudget)) ||
+            (hasUserBudgetCapability && (hasDailyBudget || hasBudgetUsage))
+        ) {
             budgetCard.style.display = '';
             document.getElementById('budget-amount').textContent =
                 'Total: ' + formatUsd(d.usage.totalCost);
 
             const container = document.getElementById('guild-budget-overview');
-            if (guilds.length > 0) {
+            if (hasGuildBudgetCapability && guilds.length > 0) {
                 renderGuildBudgetOverview(container, guilds);
+            } else if (hasUserBudgetCapability) {
+                renderDailyBudgetOverview(container, d.usage);
             } else {
                 container.replaceChildren();
             }
