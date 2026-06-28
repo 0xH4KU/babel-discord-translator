@@ -365,6 +365,30 @@ describe('dashboard static assets', () => {
                         requests: 89,
                     },
                     guildBudgets: [],
+                    userBudgets: [
+                        {
+                            id: 'user-custom',
+                            displayName: 'Custom User',
+                            budget: 0.2,
+                            isCustom: true,
+                            allowed: true,
+                            pending: false,
+                            totalCost: 0.1,
+                            requests: 12,
+                            exceeded: false,
+                        },
+                        {
+                            id: 'user-default',
+                            displayName: 'Default User',
+                            budget: 0.5,
+                            isCustom: false,
+                            allowed: true,
+                            pending: false,
+                            totalCost: 0,
+                            requests: 0,
+                            exceeded: false,
+                        },
+                    ],
                     translations: {
                         total: 3,
                         apiCalls: 2,
@@ -405,10 +429,23 @@ describe('dashboard static assets', () => {
         expect(nodes['budget-card'].style.display).toBe('');
         expect(nodes['budget-card-label'].textContent).toBe('Daily Budget');
         expect(nodes['budget-amount'].textContent).toBe('Total: $0.21');
-        expect(nodes['guild-budget-overview'].children).toHaveLength(1);
+        expect(nodes['guild-budget-overview'].children).toHaveLength(3);
+        expect(
+            createdElements.some((element) => element.textContent === 'Global Safety Budget'),
+        ).toBe(true);
+        expect(createdElements.some((element) => element.textContent === 'Custom User')).toBe(
+            true,
+        );
+        expect(createdElements.some((element) => element.textContent === 'Default User')).toBe(
+            true,
+        );
         expect(createdElements.some((element) => element.textContent === '$0.21 / $1.25')).toBe(
             true,
         );
+        expect(createdElements.some((element) => element.textContent === '$0.10 / $0.20')).toBe(
+            true,
+        );
+        expect(createdElements.some((element) => element.textContent === '$0 / $0.50')).toBe(true);
     });
 
     it('escapes glossary table fields rendered from stored import data', () => {

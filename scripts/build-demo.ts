@@ -76,6 +76,20 @@ type DemoLogFixture = Array<{
     timestamp: number;
 }>;
 
+interface DemoUserBudgetOverviewFixture {
+    id: string;
+    name: string;
+    username: string;
+    avatar: string;
+    budget: number;
+    isCustom: boolean;
+    allowed: boolean;
+    pending: boolean;
+    totalCost: number;
+    requests: number;
+    exceeded: boolean;
+}
+
 const DEMO_VARIANTS: DemoVariant[] = [
     {
         kind: 'guild',
@@ -275,6 +289,7 @@ const DEMO_STATS = {
             exceeded: false,
         },
     ],
+    userBudgets: [] as DemoUserBudgetOverviewFixture[],
     errors: 9,
 };
 
@@ -775,6 +790,7 @@ function createStatsFixture(variant: DemoVariant): typeof DEMO_STATS {
                 ...DEMO_STATS.bot,
                 name: variant.botName,
             },
+            userBudgets: [],
         };
     }
 
@@ -797,6 +813,47 @@ function createStatsFixture(variant: DemoVariant): typeof DEMO_STATS {
             budgetUsedPercent: 14.76,
         },
         guildBudgets: [],
+        userBudgets: [
+            {
+                id: '200000000000000001',
+                name: 'Alex Chen',
+                username: 'alexchen',
+                avatar: '',
+                budget: 1.25,
+                isCustom: true,
+                allowed: true,
+                pending: false,
+                totalCost: 0.052,
+                requests: 129,
+                exceeded: false,
+            },
+            {
+                id: '200000000000000002',
+                name: 'Mei Lin',
+                username: 'meilin',
+                avatar: '',
+                budget: 0.5,
+                isCustom: false,
+                allowed: true,
+                pending: false,
+                totalCost: 0.0218,
+                requests: 112,
+                exceeded: false,
+            },
+            {
+                id: '200000000000000003',
+                name: 'Waiting Operator',
+                username: 'waiting',
+                avatar: '',
+                budget: 0.5,
+                isCustom: false,
+                allowed: false,
+                pending: true,
+                totalCost: 0,
+                requests: 0,
+                exceeded: false,
+            },
+        ],
         operations: {
             ...DEMO_STATS.operations,
             budgetRisk: {

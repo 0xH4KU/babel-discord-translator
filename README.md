@@ -250,6 +250,8 @@ After starting the bot, open `http://localhost:3000`:
 | **Users**    | View and manage per-user language preferences                               |
 | **Monitor**  | API health, cache hit rate, failure rate, API call volume, translation test |
 
+For the exact Guild and Pocket budget semantics, see [Budget model](docs/operations/budget-model.md).
+
 ---
 
 ## Multi-language Support

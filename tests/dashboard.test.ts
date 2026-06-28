@@ -984,6 +984,87 @@ describe('Dashboard API', () => {
         }
     });
 
+    it('should include user budget overview data in Babel Pocket stats', async () => {
+        const { store } = await import('../src/persistence/store.js');
+        const previousAllowedUserIds = store.get('allowedUserIds');
+        const previousDefaultUserBudget = store.get('defaultUserDailyBudgetUsd');
+        const previousUserBudgets = store.get('userBudgets');
+        const pocketApp = createDashboardApp({
+            cache,
+            cooldown: new CooldownManager(5),
+            log,
+            client: createMinimalClient(),
+            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
+            metrics,
+            runtimeLimiter,
+            profile: BABEL_POCKET_PROFILE,
+            sessionRepository: new InMemorySessionRepository(),
+            userProfileRepository,
+            pendingUserInstallOwnerRepository,
+        });
+        const pocketServer = startDashboardServer(pocketApp, 0);
+
+        try {
+            store.update({
+                allowedUserIds: ['user-1', 'user-2'],
+                defaultUserDailyBudgetUsd: 0.5,
+                userBudgets: { 'user-1': { dailyBudgetUsd: 1.25 } },
+            });
+            usageMock.getUserStats.mockClear();
+
+            const login = await request(pocketServer, 'POST', '/api/login', {
+                body: { password: 'test-pass-123' },
+            });
+            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
+            const res = await request(pocketServer, 'GET', '/api/stats', {
+                cookie,
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.body!.guildBudgets).toEqual([]);
+            expect(res.body!.userBudgets).toEqual([
+                expect.objectContaining({
+                    id: 'user-1',
+                    budget: 1.25,
+                    isCustom: true,
+                    allowed: true,
+                    pending: false,
+                    totalCost: 0.01,
+                    requests: 1,
+                    exceeded: false,
+                }),
+                expect.objectContaining({
+                    id: 'user-2',
+                    budget: 0.5,
+                    isCustom: false,
+                    allowed: true,
+                    pending: false,
+                    totalCost: 0,
+                    requests: 0,
+                    exceeded: false,
+                }),
+                expect.objectContaining({
+                    id: 'pending-owner',
+                    budget: 0.5,
+                    isCustom: false,
+                    allowed: false,
+                    pending: true,
+                }),
+            ]);
+            expect(usageMock.getUserStats).toHaveBeenCalledWith('user-1');
+            expect(usageMock.getUserStats).toHaveBeenCalledWith('user-2');
+            expect(usageMock.getUserStats).toHaveBeenCalledWith('pending-owner');
+        } finally {
+            store.update({
+                allowedUserIds: previousAllowedUserIds,
+                defaultUserDailyBudgetUsd: previousDefaultUserBudget,
+                userBudgets: previousUserBudgets,
+            });
+            stopDashboardApp(pocketApp);
+            pocketServer.close();
+        }
+    });
+
     it('should resolve combined user budget profiles with the Pocket Discord client', async () => {
         const { store } = await import('../src/persistence/store.js');
         const previousAllowedUserIds = store.get('allowedUserIds');

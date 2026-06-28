@@ -140,5 +140,46 @@
     "budgetExceeded": false
   },
   "guildBudgets": [],
+  "userBudgets": [
+    {
+      "id": "200000000000000001",
+      "name": "Alex Chen",
+      "username": "alexchen",
+      "avatar": "",
+      "budget": 1.25,
+      "isCustom": true,
+      "allowed": true,
+      "pending": false,
+      "totalCost": 0.052,
+      "requests": 129,
+      "exceeded": false
+    },
+    {
+      "id": "200000000000000002",
+      "name": "Mei Lin",
+      "username": "meilin",
+      "avatar": "",
+      "budget": 0.5,
+      "isCustom": false,
+      "allowed": true,
+      "pending": false,
+      "totalCost": 0.0218,
+      "requests": 112,
+      "exceeded": false
+    },
+    {
+      "id": "200000000000000003",
+      "name": "Waiting Operator",
+      "username": "waiting",
+      "avatar": "",
+      "budget": 0.5,
+      "isCustom": false,
+      "allowed": false,
+      "pending": true,
+      "totalCost": 0,
+      "requests": 0,
+      "exceeded": false
+    }
+  ],
   "errors": 9
 }

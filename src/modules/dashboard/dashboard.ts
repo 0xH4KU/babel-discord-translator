@@ -332,7 +332,10 @@ export function createDashboardApp({
         },
     );
 
-    api.get('/stats', auth.requireAuth, (_req: Request, res: Response) => {
+    api.get(
+        '/stats',
+        auth.requireAuth,
+        asyncHandler(async (_req: Request, res: Response) => {
         const scope = getScope(res);
         const scopedClient = scope.client;
         const stats = getStats();
@@ -381,6 +384,47 @@ export function createDashboardApp({
                       isCustom: hasCustom,
                       totalCost,
                       requests,
+                      exceeded: budget > 0 && totalCost >= budget,
+                  };
+              })
+            : [];
+        const cfg = configRepository.getDashboardConfig();
+        const userBudgetConfigs = userBudgetRepository.listBudgets();
+        const allowedUserIds = new Set(cfg.allowedUserIds);
+        const pendingUserIds = new Set(pendingUserInstallOwnerRepository.listUserIds());
+        const userIds = scope.capabilities.userAccess
+            ? [
+                  ...new Set([
+                      ...cfg.allowedUserIds,
+                      ...pendingUserIds,
+                      ...Object.keys(userBudgetConfigs),
+                  ]),
+              ]
+            : [];
+        const userProfiles = scope.capabilities.userAccess
+            ? await resolveDiscordUserProfiles({
+                  client: userInstallClient,
+                  repository: userProfileRepository,
+                  userIds,
+              })
+            : {};
+        const userBudgetList = scope.capabilities.userAccess
+            ? userIds.map((userId) => {
+                  const customBudget = userBudgetConfigs[userId];
+                  const userStats = usage.getUserStats(userId);
+                  const budget = customBudget?.dailyBudgetUsd ?? cfg.defaultUserDailyBudgetUsd;
+                  const totalCost = userStats.totalCost ?? 0;
+                  return {
+                      id: userId,
+                      name: userProfiles[userId]?.displayName ?? userId,
+                      username: userProfiles[userId]?.username ?? userId,
+                      avatar: userProfiles[userId]?.avatarUrl ?? '',
+                      budget,
+                      isCustom: customBudget !== undefined,
+                      allowed: allowedUserIds.has(userId),
+                      pending: pendingUserIds.has(userId) && !allowedUserIds.has(userId),
+                      totalCost,
+                      requests: userStats.requests ?? 0,
                       exceeded: budget > 0 && totalCost >= budget,
                   };
               })
@@ -456,9 +500,11 @@ export function createDashboardApp({
             cache: cacheStats,
             usage: usageStats,
             guildBudgets: guildBudgetList,
+            userBudgets: userBudgetList,
             errors: log.errorCount,
         });
-    });
+    }),
+    );
 
     api.get('/config', auth.requireAuth, (_req: Request, res: Response) => {
         const cfg = configRepository.getDashboardConfig();

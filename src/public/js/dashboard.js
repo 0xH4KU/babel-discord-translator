@@ -32,85 +32,31 @@ function createOpsMetric(label, value) {
     return metric;
 }
 
-function renderGuildBudgetOverview(container, guilds) {
-    container.replaceChildren();
-
-    guilds.forEach((guild) => {
-        const item = document.createElement('div');
-        item.className = 'guild-budget-overview-item';
-
-        const name = document.createElement('span');
-        name.className = 'gbo-name';
-        name.textContent = guild.name || 'Unknown server';
-        if (!guild.isCustom && guild.budget > 0) {
-            const tag = document.createElement('span');
-            tag.className = 'gbo-tag';
-            tag.textContent = 'global';
-            name.append(' ', tag);
-        }
-
-        const cost = document.createElement('span');
-        cost.className = 'gbo-cost';
-
-        if (guild.budget <= 0) {
-            cost.textContent =
-                formatUsd(guild.totalCost) + ' · ' + formatOpsNumber(guild.requests) + ' req';
-
-            const limit = document.createElement('span');
-            limit.className = 'gbo-limit';
-            limit.textContent = 'Unlimited';
-
-            item.append(name, cost, limit);
-            container.append(item);
-            return;
-        }
-
-        cost.textContent = formatUsd(guild.totalCost) + ' / ' + formatUsd(guild.budget);
-
-        const rawPct = (Number(guild.totalCost || 0) / Number(guild.budget || 1)) * 100;
-        const pct = Number.isFinite(rawPct) ? Math.min(Math.max(rawPct, 0), 100) : 0;
-        const bar = document.createElement('div');
-        bar.className = 'gbo-bar';
-
-        const fill = document.createElement('div');
-        fill.className = 'fill';
-        if (pct > 90) {
-            fill.classList.add('danger');
-        } else if (pct > 60) {
-            fill.classList.add('warning');
-        }
-        fill.style.width = pct + '%';
-        bar.append(fill);
-
-        item.append(name, cost, bar);
-
-        if (guild.exceeded) {
-            const exceeded = document.createElement('span');
-            exceeded.className = 'gbo-exceeded';
-            exceeded.textContent = 'EXCEEDED';
-            item.append(exceeded);
-        }
-
-        container.append(item);
-    });
-}
-
-function renderDailyBudgetOverview(container, usage) {
-    container.replaceChildren();
-
+function createBudgetOverviewItem({
+    name: itemName,
+    tags = [],
+    budget,
+    totalCost,
+    requests,
+    exceeded,
+}) {
     const item = document.createElement('div');
     item.className = 'guild-budget-overview-item';
 
     const name = document.createElement('span');
     name.className = 'gbo-name';
-    name.textContent = 'All user installs';
+    name.textContent = itemName;
+
+    tags.forEach((tagText) => {
+        if (!tagText) return;
+        const tag = document.createElement('span');
+        tag.className = 'gbo-tag';
+        tag.textContent = tagText;
+        name.append(' ', tag);
+    });
 
     const cost = document.createElement('span');
     cost.className = 'gbo-cost';
-
-    const budget = Number(usage?.dailyBudget || 0);
-    const totalCost = Number(usage?.totalCost || 0);
-    const requests = Number(usage?.requests || 0);
 
     if (budget <= 0) {
         cost.textContent = formatUsd(totalCost) + ' · ' + formatOpsNumber(requests) + ' req';
@@ -120,13 +66,12 @@ function renderDailyBudgetOverview(container, usage) {
         limit.textContent = 'Unlimited';
 
         item.append(name, cost, limit);
-        container.append(item);
-        return;
+        return item;
     }
 
     cost.textContent = formatUsd(totalCost) + ' / ' + formatUsd(budget);
 
-    const rawPct = (totalCost / budget) * 100;
+    const rawPct = (Number(totalCost || 0) / Number(budget || 1)) * 100;
     const pct = Number.isFinite(rawPct) ? Math.min(Math.max(rawPct, 0), 100) : 0;
     const bar = document.createElement('div');
     bar.className = 'gbo-bar';
@@ -143,14 +88,70 @@ function renderDailyBudgetOverview(container, usage) {
 
     item.append(name, cost, bar);
 
-    if (usage?.budgetExceeded) {
-        const exceeded = document.createElement('span');
-        exceeded.className = 'gbo-exceeded';
-        exceeded.textContent = 'EXCEEDED';
-        item.append(exceeded);
+    if (exceeded) {
+        const exceededLabel = document.createElement('span');
+        exceededLabel.className = 'gbo-exceeded';
+        exceededLabel.textContent = 'EXCEEDED';
+        item.append(exceededLabel);
     }
 
-    container.append(item);
+    return item;
+}
+
+function renderGuildBudgetOverview(container, guilds) {
+    container.replaceChildren();
+
+    guilds.forEach((guild) => {
+        container.append(
+            createBudgetOverviewItem({
+                name: guild.name || 'Unknown server',
+                tags: !guild.isCustom && guild.budget > 0 ? ['global'] : [],
+                budget: Number(guild.budget || 0),
+                totalCost: Number(guild.totalCost || 0),
+                requests: Number(guild.requests || 0),
+                exceeded: Boolean(guild.exceeded),
+            }),
+        );
+    });
+}
+
+function renderDailyBudgetOverview(container, usage, users = []) {
+    container.replaceChildren();
+
+    const budget = Number(usage?.dailyBudget || 0);
+    const totalCost = Number(usage?.totalCost || 0);
+    const requests = Number(usage?.requests || 0);
+
+    container.append(
+        createBudgetOverviewItem({
+            name: 'Global Safety Budget',
+            budget,
+            totalCost,
+            requests,
+            exceeded: Boolean(usage?.budgetExceeded),
+        }),
+    );
+
+    users.forEach((user) => {
+        const tags = [];
+        if (user.pending) {
+            tags.push('pending');
+        } else if (!user.allowed) {
+            tags.push('disabled');
+        }
+        tags.push(user.isCustom ? 'custom' : 'default');
+
+        container.append(
+            createBudgetOverviewItem({
+                name: user.name || user.displayName || user.username || user.id || 'Unknown user',
+                tags,
+                budget: Number(user.budget || 0),
+                totalCost: Number(user.totalCost || 0),
+                requests: Number(user.requests || 0),
+                exceeded: Boolean(user.exceeded),
+            }),
+        );
+    });
 }
 
 function renderProviderCard(id, label, providerKey, provider, fallbackTotal, lastFallback) {
@@ -359,7 +360,7 @@ async function loadStats() {
             if (hasGuildBudgetCapability && guilds.length > 0) {
                 renderGuildBudgetOverview(container, guilds);
             } else if (hasUserBudgetCapability) {
-                renderDailyBudgetOverview(container, d.usage);
+                renderDailyBudgetOverview(container, d.usage, d.userBudgets || []);
             } else {
                 container.replaceChildren();
             }
