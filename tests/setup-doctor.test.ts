@@ -157,6 +157,57 @@ describe('runSetupDoctor', () => {
         );
     });
 
+    it('skips command checks when registration env is missing', async () => {
+        const fetchFn = vi.fn();
+
+        const report = await runSetupDoctor({
+            profile: BABEL_GUILD_PROFILE,
+            profiles: [BABEL_GUILD_PROFILE],
+            client: client(),
+            configStore: configStore(),
+            healthCheck: vi.fn(async () => ({ healthy: true, latencyMs: 12 })),
+            openAiHealthCheck: vi.fn(async () => ({ healthy: true, latencyMs: 10 })),
+            env: {},
+            fetchFn,
+            sqliteProbe: vi.fn(),
+        });
+
+        expect(report.ok).toBe(true);
+        expect(fetchFn).not.toHaveBeenCalled();
+        expect(report.checks).toContainEqual(
+            expect.objectContaining({
+                id: 'commands',
+                status: 'skipped',
+                action: expect.stringContaining('registration env'),
+            }),
+        );
+    });
+
+    it('can require profile-specific registration env for a single profile', async () => {
+        const fetchFn = registeredCommandsFetch();
+
+        const report = await runSetupDoctor({
+            profile: BABEL_GUILD_PROFILE,
+            profiles: [BABEL_GUILD_PROFILE],
+            requireProfileSpecificRegistrationEnv: true,
+            client: client(),
+            configStore: configStore(),
+            healthCheck: vi.fn(async () => ({ healthy: true, latencyMs: 12 })),
+            openAiHealthCheck: vi.fn(async () => ({ healthy: true, latencyMs: 10 })),
+            env: { DISCORD_APP_ID: 'app-1', DISCORD_TOKEN: 'token' },
+            fetchFn,
+            sqliteProbe: vi.fn(),
+        });
+
+        expect(fetchFn).not.toHaveBeenCalled();
+        expect(report.checks).toContainEqual(
+            expect.objectContaining({
+                id: 'commands',
+                status: 'skipped',
+            }),
+        );
+    });
+
     it('keeps running later checks when SQLite probe fails', async () => {
         const report = await runSetupDoctor({
             profile: BABEL_POCKET_PROFILE,

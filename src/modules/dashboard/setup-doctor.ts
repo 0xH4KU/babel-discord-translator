@@ -41,6 +41,7 @@ export interface SetupDoctorDeps {
     env?: NodeJS.ProcessEnv;
     fetchFn?: typeof fetch;
     sqliteProbe?: () => void | Promise<void>;
+    requireProfileSpecificRegistrationEnv?: boolean;
 }
 
 const SQLITE_PROBE_KEY = '__setup_doctor_probe__';
@@ -93,18 +94,23 @@ async function commandsCheck({
     profiles,
     env,
     fetchFn,
-}: Pick<SetupDoctorDeps, 'profile' | 'profiles' | 'env' | 'fetchFn'>): Promise<SetupDoctorCheck> {
+    requireProfileSpecificRegistrationEnv,
+}: Pick<
+    SetupDoctorDeps,
+    'profile' | 'profiles' | 'env' | 'fetchFn' | 'requireProfileSpecificRegistrationEnv'
+>): Promise<SetupDoctorCheck> {
     try {
         const { appId, botToken } = resolveRegistrationEnv(profile, env, {
-            requireProfileSpecificEnv: (profiles ?? [profile]).length > 1,
+            requireProfileSpecificEnv:
+                requireProfileSpecificRegistrationEnv ?? (profiles ?? [profile]).length > 1,
         });
 
         if (!appId || !botToken) {
             return {
                 id: 'commands',
-                status: 'fail',
+                status: 'skipped',
                 detail: 'Discord registration credentials are missing',
-                action: 'Set Discord app credentials, then run npm run register.',
+                action: 'Set Discord registration env vars, then run npm run register.',
             };
         }
 
@@ -410,10 +416,17 @@ export async function runSetupDoctor({
     env = process.env,
     fetchFn = fetch,
     sqliteProbe = runSqliteWriteProbe,
+    requireProfileSpecificRegistrationEnv,
 }: SetupDoctorDeps): Promise<SetupDoctorReport> {
     const checks: SetupDoctorCheck[] = [
         discordCheck(client),
-        await commandsCheck({ profile, profiles, env, fetchFn }),
+        await commandsCheck({
+            profile,
+            profiles,
+            env,
+            fetchFn,
+            requireProfileSpecificRegistrationEnv,
+        }),
         ...(await providerChecks(configStore, healthCheck, openAiHealthCheck)),
         await sqliteCheck(sqliteProbe),
         budgetCheck(configStore),
