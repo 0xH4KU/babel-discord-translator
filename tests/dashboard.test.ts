@@ -211,6 +211,7 @@ const usageMock = vi.hoisted(() => ({
     getUserHistory: vi.fn(() => []),
     getGuildHistoryForGuilds: vi.fn(() => []),
     getAllUserHistory: vi.fn(() => []),
+    getUsageExportRows: vi.fn(() => []),
     record: vi.fn(),
     getUserStats: vi.fn((userId: string) => ({
         date: '2025-03-01',
@@ -740,6 +741,58 @@ describe('Dashboard API', () => {
             (res.body!.runtime as Record<string, Record<string, unknown>>).limits.maxConcurrent,
         ).toBe(2);
         expect((res.body!.bot as Record<string, unknown>).memory).toBeDefined();
+    });
+
+    it('should export usage history as CSV with guild and user rows', async () => {
+        usageMock.getUsageExportRows.mockReturnValueOnce([
+            {
+                scope: 'global',
+                id: '',
+                date: '2025-01-01',
+                requests: 2,
+                inputTokens: 100,
+                outputTokens: 50,
+                totalTokens: 150,
+                costUsd: 0.0015,
+            },
+            {
+                scope: 'guild',
+                id: 'guild,1',
+                date: '2025-01-01',
+                requests: 1,
+                inputTokens: 80,
+                outputTokens: 40,
+                totalTokens: 120,
+                costUsd: 0.0012,
+            },
+            {
+                scope: 'user',
+                id: 'user-1',
+                date: '2025-01-01',
+                requests: 1,
+                inputTokens: 20,
+                outputTokens: 10,
+                totalTokens: 30,
+                costUsd: 0.0003,
+            },
+        ]);
+
+        const res = await requestText(server, 'GET', '/api/usage/export.csv', {
+            cookie: sessionCookie,
+        });
+
+        expect(res.status).toBe(200);
+        expect(res.headers['content-type']).toContain('text/csv');
+        expect(res.headers['content-disposition']).toContain('babel-usage-export.csv');
+        expect(res.text).toBe(
+            [
+                'scope,id,date,requests,inputTokens,outputTokens,totalTokens,costUsd',
+                'global,,2025-01-01,2,100,50,150,0.0015',
+                'guild,"guild,1",2025-01-01,1,80,40,120,0.0012',
+                'user,user-1,2025-01-01,1,20,10,30,0.0003',
+                '',
+            ].join('\n'),
+        );
     });
 
     it('should show shared global budget usage for guilds without custom budgets', async () => {

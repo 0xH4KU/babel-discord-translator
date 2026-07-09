@@ -599,6 +599,72 @@ describe('UsageTracker', () => {
             ]);
         });
 
+        it('should export global, guild, and user history rows', () => {
+            mockData.inputPricePerMillion = 1.0;
+            mockData.outputPricePerMillion = 2.0;
+            mockData.usageHistory = [
+                {
+                    date: '2025-01-01',
+                    inputTokens: 1_000_000,
+                    outputTokens: 0,
+                    requests: 2,
+                },
+            ];
+            mockData.guildUsageHistory = {
+                'guild,1': [
+                    {
+                        date: '2025-01-02',
+                        inputTokens: 0,
+                        outputTokens: 500_000,
+                        requests: 3,
+                    },
+                ],
+            };
+            mockData.userUsageHistory = {
+                'user-1': [
+                    {
+                        date: '2025-01-03',
+                        inputTokens: 500_000,
+                        outputTokens: 500_000,
+                        requests: 1,
+                    },
+                ],
+            };
+
+            expect(usage.getUsageExportRows()).toEqual([
+                {
+                    scope: 'global',
+                    id: '',
+                    date: '2025-01-01',
+                    requests: 2,
+                    inputTokens: 1_000_000,
+                    outputTokens: 0,
+                    totalTokens: 1_000_000,
+                    costUsd: 1,
+                },
+                {
+                    scope: 'guild',
+                    id: 'guild,1',
+                    date: '2025-01-02',
+                    requests: 3,
+                    inputTokens: 0,
+                    outputTokens: 500_000,
+                    totalTokens: 500_000,
+                    costUsd: 1,
+                },
+                {
+                    scope: 'user',
+                    id: 'user-1',
+                    date: '2025-01-03',
+                    requests: 1,
+                    inputTokens: 500_000,
+                    outputTokens: 500_000,
+                    totalTokens: 1_000_000,
+                    costUsd: 1.5,
+                },
+            ]);
+        });
+
         it('should not record guild usage when guildId is null', () => {
             usage.record(100, 50, null);
 

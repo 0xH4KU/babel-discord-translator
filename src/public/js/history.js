@@ -77,3 +77,4 @@ function renderHistory() {
 
 function setHistoryPage(p) { historyPage = p; renderHistory(); }
 function setHistoryPageSize(s) { historyPageSize = s; historyPage = 1; renderHistory(); }
+function downloadUsageExport() { window.location.href = getDashboardApiBase() + '/usage/export.csv'; }

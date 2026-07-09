@@ -96,6 +96,44 @@ function asyncHandler(
     };
 }
 
+type UsageExportRow = ReturnType<typeof usage.getUsageExportRows>[number];
+
+function csvCell(value: string | number): string {
+    const text = String(value);
+    return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+function buildUsageExportCsv(rows: UsageExportRow[]): string {
+    const header = [
+        'scope',
+        'id',
+        'date',
+        'requests',
+        'inputTokens',
+        'outputTokens',
+        'totalTokens',
+        'costUsd',
+    ];
+    return [
+        header.join(','),
+        ...rows.map((row) =>
+            [
+                row.scope,
+                row.id,
+                row.date,
+                row.requests,
+                row.inputTokens,
+                row.outputTokens,
+                row.totalTokens,
+                row.costUsd,
+            ]
+                .map(csvCell)
+                .join(','),
+        ),
+        '',
+    ].join('\n');
+}
+
 declare module 'express-serve-static-core' {
     interface Locals {
         disposeDashboardApp?: () => void;
@@ -574,6 +612,12 @@ export function createDashboardApp({
         } else {
             res.json(usage.getHistory());
         }
+    });
+
+    api.get('/usage/export.csv', auth.requireAuth, (_req: Request, res: Response) => {
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', 'attachment; filename="babel-usage-export.csv"');
+        res.send(buildUsageExportCsv(usage.getUsageExportRows()));
     });
 
     api.getIf('guildAccess', '/guild-budgets', auth.requireAuth, (_req: Request, res: Response) => {

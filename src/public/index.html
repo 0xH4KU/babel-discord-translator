@@ -251,7 +251,12 @@
                 <div class="table-card">
                     <div class="table-header">
                         <h3>Usage History (Last 30 Days)</h3>
-                        <span class="sub-info" id="history-summary"></span>
+                        <div class="table-header-actions">
+                            <span class="sub-info" id="history-summary"></span>
+                            <button class="btn btn-secondary btn-sm" data-action="downloadUsageExport">
+                                Export CSV
+                            </button>
+                        </div>
                     </div>
                     <div class="bar-chart" id="history-chart"></div>
                     <div id="history-table-container">

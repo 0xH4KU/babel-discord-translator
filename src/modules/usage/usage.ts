@@ -17,6 +17,19 @@ import type {
     UsageHistoryEntry,
 } from '../../shared/types.js';
 
+export type UsageExportScope = 'global' | 'guild' | 'user';
+
+export interface UsageExportRow {
+    scope: UsageExportScope;
+    id: string;
+    date: string;
+    requests: number;
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    costUsd: number;
+}
+
 class UsageTracker {
     private lastEnsuredDate: string | null = null;
 
@@ -336,6 +349,22 @@ class UsageTracker {
         return aggregateHistoryByDate(Object.values(allHistory).flat());
     }
 
+    getUsageExportRows(): UsageExportRow[] {
+        this.ensureToday();
+        const runtimeConfig = configRepository.getRuntimeConfig();
+        const rows = [
+            ...toUsageExportRows('global', '', usageRepository.getUsageHistory(), runtimeConfig),
+            ...Object.entries(usageRepository.getAllGuildUsageHistory()).flatMap(
+                ([guildId, history]) => toUsageExportRows('guild', guildId, history, runtimeConfig),
+            ),
+            ...Object.entries(usageRepository.getAllUserUsageHistory()).flatMap(
+                ([userId, history]) => toUsageExportRows('user', userId, history, runtimeConfig),
+            ),
+        ];
+
+        return rows.sort(compareUsageExportRows);
+    }
+
     private getSharedGlobalBudgetCost(runtimeConfig: RuntimeConfig): UsageCost {
         this.ensureToday();
         const todayValue = today();
@@ -431,6 +460,33 @@ function aggregateHistoryByDate(history: UsageHistoryEntry[]): UsageHistoryDay[]
             totalTokens: day.inputTokens + day.outputTokens,
             cost: calculateCost(day, runtimeConfig),
         }));
+}
+
+function toUsageExportRows(
+    scope: UsageExportScope,
+    id: string,
+    history: UsageHistoryEntry[],
+    runtimeConfig: RuntimeConfig,
+): UsageExportRow[] {
+    return history.map((day) => ({
+        scope,
+        id,
+        date: day.date,
+        requests: day.requests,
+        inputTokens: day.inputTokens,
+        outputTokens: day.outputTokens,
+        totalTokens: day.inputTokens + day.outputTokens,
+        costUsd: calculateCost(day, runtimeConfig),
+    }));
+}
+
+function compareUsageExportRows(a: UsageExportRow, b: UsageExportRow): number {
+    const scopeOrder: Record<UsageExportScope, number> = { global: 0, guild: 1, user: 2 };
+    return (
+        scopeOrder[a.scope] - scopeOrder[b.scope] ||
+        a.id.localeCompare(b.id) ||
+        a.date.localeCompare(b.date)
+    );
 }
 
 export const usage = new UsageTracker();
