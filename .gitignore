@@ -6,4 +6,5 @@ coverage/
 .wrangler/
 .superpowers/
 .worktrees/
+worktrees/
 .DS_Store
