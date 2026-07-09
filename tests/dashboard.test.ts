@@ -1525,10 +1525,24 @@ describe('Dashboard API', () => {
     });
 
     it('should run setup doctor from the authenticated dashboard', async () => {
-        const originalAppId = process.env.DISCORD_APP_ID;
-        const originalToken = process.env.DISCORD_TOKEN;
-        delete process.env.DISCORD_APP_ID;
-        delete process.env.DISCORD_TOKEN;
+        const registrationEnvKeys = [
+            'DISCORD_APP_ID',
+            'DISCORD_TOKEN',
+            'DISCORD_BOT_TOKEN',
+            'BABEL_GUILD_DISCORD_APP_ID',
+            'BABEL_GUILD_DISCORD_TOKEN',
+            'BABEL_GUILD_DISCORD_BOT_TOKEN',
+            'BABEL_POCKET_DISCORD_APP_ID',
+            'BABEL_POCKET_DISCORD_TOKEN',
+            'BABEL_POCKET_DISCORD_BOT_TOKEN',
+        ] as const;
+        const originalRegistrationEnv = new Map(
+            registrationEnvKeys.map((key) => [key, process.env[key]]),
+        );
+
+        for (const key of registrationEnvKeys) {
+            delete process.env[key];
+        }
 
         try {
             const res = await request(server, 'POST', '/api/setup-doctor/run', {
@@ -1549,15 +1563,13 @@ describe('Dashboard API', () => {
                 ]),
             );
         } finally {
-            if (originalAppId === undefined) {
-                delete process.env.DISCORD_APP_ID;
-            } else {
-                process.env.DISCORD_APP_ID = originalAppId;
-            }
-            if (originalToken === undefined) {
-                delete process.env.DISCORD_TOKEN;
-            } else {
-                process.env.DISCORD_TOKEN = originalToken;
+            for (const key of registrationEnvKeys) {
+                const value = originalRegistrationEnv.get(key);
+                if (value === undefined) {
+                    delete process.env[key];
+                } else {
+                    process.env[key] = value;
+                }
             }
         }
     });
