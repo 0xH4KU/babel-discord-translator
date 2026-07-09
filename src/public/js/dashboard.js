@@ -479,7 +479,18 @@ async function runSetupDoctor() {
             : 'Setup Doctor found issues';
         showToast(message, !report.ok);
     } catch (error) {
-        showToast(error.message || 'Setup Doctor failed', true);
+        const message = error?.message || 'Setup Doctor failed';
+        renderSetupDoctorReport({
+            checks: [
+                {
+                    id: 'setup-doctor',
+                    status: 'fail',
+                    title: 'Setup Doctor',
+                    detail: message,
+                },
+            ],
+        });
+        showToast(message, true);
     } finally {
         if (container) container.setAttribute('aria-busy', 'false');
         if (button) {

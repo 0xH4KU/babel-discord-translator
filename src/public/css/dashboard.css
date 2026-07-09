@@ -567,6 +567,7 @@
   display: grid;
   gap: 0.25rem;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .setup-doctor-body strong {
