@@ -5,4 +5,5 @@ coverage/
 .env
 .wrangler/
 .superpowers/
+.worktrees/
 .DS_Store
