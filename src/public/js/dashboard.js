@@ -416,6 +416,70 @@ async function checkApiHealth() {
     }
 }
 
+function setupDoctorStatusLabel(status) {
+    if (status === 'pass') return 'PASS';
+    if (status === 'warn') return 'WARN';
+    if (status === 'fail') return 'FAIL';
+    return 'SKIP';
+}
+
+function renderSetupDoctorReport(report) {
+    const container = document.getElementById('setup-doctor-results');
+    if (!container) return;
+
+    container.replaceChildren();
+    (report.checks || []).forEach((item) => {
+        const row = document.createElement('div');
+        row.className = 'setup-doctor-row ' + (item.status || 'skipped');
+
+        const status = document.createElement('span');
+        status.className = 'setup-doctor-status';
+        status.textContent = setupDoctorStatusLabel(item.status);
+
+        const body = document.createElement('div');
+        body.className = 'setup-doctor-body';
+
+        const title = document.createElement('strong');
+        title.textContent = item.title || item.id || 'Check';
+
+        const detail = document.createElement('span');
+        detail.textContent = item.detail || '';
+
+        body.append(title, detail);
+        if (item.action) {
+            const action = document.createElement('em');
+            action.textContent = item.action;
+            body.append(action);
+        }
+
+        row.append(status, body);
+        container.append(row);
+    });
+}
+
+async function runSetupDoctor() {
+    const button = document.getElementById('setup-doctor-run');
+    if (button) {
+        button.disabled = true;
+        button.textContent = 'Checking...';
+    }
+
+    try {
+        const res = await api('/setup-doctor/run', { method: 'POST' });
+        const report = await res.json();
+        if (!res.ok) throw new Error(report.error || 'Setup Doctor failed');
+        renderSetupDoctorReport(report);
+        showToast(report.ok ? 'Setup Doctor passed' : 'Setup Doctor found issues', !report.ok);
+    } catch (error) {
+        showToast(error.message || 'Setup Doctor failed', true);
+    } finally {
+        if (button) {
+            button.disabled = false;
+            button.textContent = 'Run Doctor';
+        }
+    }
+}
+
 async function loadDashboard() {
     loadStats();
     checkApiHealth();
