@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Client } from 'discord.js';
+import { PermissionFlagsBits, type Client } from 'discord.js';
 import { getCommandsForProfile } from '../src/apps/commands.js';
 import { BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE } from '../src/apps/app-profile.js';
 import { runSetupDoctor } from '../src/modules/dashboard/setup-doctor.js';
@@ -64,11 +64,36 @@ function client(user: unknown = { id: 'bot-1', tag: 'Babel#1234' }): Client {
     } as unknown as Client;
 }
 
+function clientWithGuilds(guilds: unknown[]): Client {
+    return {
+        user: { id: 'bot-1', tag: 'Babel#1234' },
+        guilds: {
+            cache: {
+                size: guilds.length,
+                values: function* () {
+                    yield* guilds;
+                },
+            },
+        },
+    } as unknown as Client;
+}
+
 function response(body: unknown, status = 200): Response {
     return new Response(JSON.stringify(body), {
         status,
         headers: { 'content-type': 'application/json' },
     });
+}
+
+function registeredCommandsFetch(profile = BABEL_GUILD_PROFILE) {
+    return vi.fn(async () =>
+        response(
+            getCommandsForProfile(profile).map((command, index) => ({
+                id: String(index),
+                name: command.name,
+            })),
+        ),
+    );
 }
 
 describe('runSetupDoctor', () => {
@@ -162,5 +187,74 @@ describe('runSetupDoctor', () => {
         expect(report.checks).toContainEqual(
             expect.objectContaining({ id: 'webhook', status: 'skipped' }),
         );
+    });
+
+    it('fails provider checks when readiness configuration fails', async () => {
+        const report = await runSetupDoctor({
+            profile: BABEL_GUILD_PROFILE,
+            profiles: [BABEL_GUILD_PROFILE],
+            client: client(),
+            configStore: {
+                ...configStore(),
+                getRuntimeConfig: () => {
+                    throw new Error('runtime config unavailable');
+                },
+            },
+            healthCheck: vi.fn(async () => ({ healthy: true, latencyMs: 12 })),
+            openAiHealthCheck: vi.fn(async () => ({ healthy: true, latencyMs: 10 })),
+            env: { DISCORD_APP_ID: 'app-1', DISCORD_TOKEN: 'token' },
+            fetchFn: registeredCommandsFetch(),
+            sqliteProbe: vi.fn(),
+        });
+
+        expect(report.ok).toBe(false);
+        expect(report.checks).toContainEqual(
+            expect.objectContaining({
+                id: 'provider-vertex',
+                status: 'fail',
+                error: 'runtime config unavailable',
+            }),
+        );
+    });
+
+    it('fails webhook check when a cached channel denies Manage Webhooks', async () => {
+        const channelHas = vi.fn(() => false);
+        const permissionsFor = vi.fn(() => ({ has: channelHas }));
+        const guildPermissionHas = vi.fn(() => true);
+
+        const report = await runSetupDoctor({
+            profile: BABEL_GUILD_PROFILE,
+            profiles: [BABEL_GUILD_PROFILE],
+            client: clientWithGuilds([
+                {
+                    name: 'Guild One',
+                    members: { me: { permissions: { has: guildPermissionHas } } },
+                    channels: {
+                        cache: {
+                            values: function* () {
+                                yield { name: 'blocked-channel', permissionsFor };
+                            },
+                        },
+                    },
+                },
+            ]),
+            configStore: configStore(),
+            healthCheck: vi.fn(async () => ({ healthy: true, latencyMs: 12 })),
+            openAiHealthCheck: vi.fn(async () => ({ healthy: true, latencyMs: 10 })),
+            env: { DISCORD_APP_ID: 'app-1', DISCORD_TOKEN: 'token' },
+            fetchFn: registeredCommandsFetch(),
+            sqliteProbe: vi.fn(),
+        });
+
+        expect(report.ok).toBe(false);
+        expect(report.checks).toContainEqual(
+            expect.objectContaining({
+                id: 'webhook',
+                status: 'fail',
+                detail: expect.stringContaining('blocked-channel'),
+            }),
+        );
+        expect(permissionsFor).toHaveBeenCalledWith('bot-1');
+        expect(channelHas).toHaveBeenCalledWith(PermissionFlagsBits.ManageWebhooks);
     });
 });

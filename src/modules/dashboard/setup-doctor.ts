@@ -199,6 +199,23 @@ async function providerChecks(
             openAiHealthCheck,
             cacheTtlMs: 0,
         });
+        if (readiness.checks.configuration.status === 'fail') {
+            const { detail, error } = readiness.checks.configuration;
+            return [
+                {
+                    id: 'provider-vertex',
+                    status: 'fail',
+                    detail,
+                    error,
+                },
+                {
+                    id: 'provider-openai',
+                    status: 'fail',
+                    detail,
+                    error,
+                },
+            ];
+        }
 
         return [
             providerCheck('provider-vertex', 'Vertex AI', readiness.checks.vertexAi),
@@ -318,14 +335,28 @@ function webhookCheck(profile: AppProfile, client: Client): SetupDoctorCheck {
             };
         }
 
-        const missing = guilds.filter((guild) => !canManageWebhooks(guild));
+        if (!client.user) {
+            return {
+                id: 'webhook',
+                status: 'skipped',
+                detail: 'Discord client user is unavailable for webhook permission inspection',
+            };
+        }
+
+        const { inspected, missing } = inspectWebhookChannelPermissions(guilds, client.user.id);
+        if (inspected === 0) {
+            return {
+                id: 'webhook',
+                status: 'skipped',
+                detail: 'No cached guild channel permissions are available for webhook inspection',
+            };
+        }
+
         if (missing.length > 0) {
             return {
                 id: 'webhook',
                 status: 'fail',
-                detail: `Missing Manage Webhooks permission in: ${missing
-                    .map((guild) => guild.name)
-                    .join(', ')}`,
+                detail: `Missing Manage Webhooks permission in: ${missing.join(', ')}`,
                 action: 'Grant the bot Manage Webhooks permission in each server.',
             };
         }
@@ -333,7 +364,7 @@ function webhookCheck(profile: AppProfile, client: Client): SetupDoctorCheck {
         return {
             id: 'webhook',
             status: 'pass',
-            detail: 'Manage Webhooks permission is available in cached guilds',
+            detail: 'Manage Webhooks permission is available in cached guild channels',
         };
     } catch (error) {
         return {
@@ -345,8 +376,28 @@ function webhookCheck(profile: AppProfile, client: Client): SetupDoctorCheck {
     }
 }
 
-function canManageWebhooks(guild: Guild): boolean {
-    return guild.members.me?.permissions.has(PermissionFlagsBits.ManageWebhooks) ?? false;
+function inspectWebhookChannelPermissions(
+    guilds: Guild[],
+    userId: string,
+): { inspected: number; missing: string[] } {
+    let inspected = 0;
+    const missing: string[] = [];
+
+    for (const guild of guilds) {
+        for (const channel of guild.channels.cache.values()) {
+            const permissions = channel.permissionsFor(userId);
+            if (!permissions) {
+                continue;
+            }
+
+            inspected += 1;
+            if (!permissions.has(PermissionFlagsBits.ManageWebhooks)) {
+                missing.push(`${guild.name} / ${channel.name}`);
+            }
+        }
+    }
+
+    return { inspected, missing };
 }
 
 export async function runSetupDoctor({
