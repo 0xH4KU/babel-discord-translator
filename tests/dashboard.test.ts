@@ -1516,6 +1516,52 @@ describe('Dashboard API', () => {
         expect(res.body!.error).toBe('Invalid CSRF token');
     });
 
+    it('should reject setup doctor runs without CSRF token', async () => {
+        const res = await request(server, 'POST', '/api/setup-doctor/run', {
+            cookie: sessionCookie,
+        });
+
+        expect(res.status).toBe(403);
+    });
+
+    it('should run setup doctor from the authenticated dashboard', async () => {
+        const originalAppId = process.env.DISCORD_APP_ID;
+        const originalToken = process.env.DISCORD_TOKEN;
+        delete process.env.DISCORD_APP_ID;
+        delete process.env.DISCORD_TOKEN;
+
+        try {
+            const res = await request(server, 'POST', '/api/setup-doctor/run', {
+                cookie: sessionCookie,
+                csrf: csrfToken,
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.body!.timestamp).toEqual(expect.any(String));
+            expect(res.body!.checks).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({ id: 'discord' }),
+                    expect.objectContaining({ id: 'commands', status: 'skipped' }),
+                    expect.objectContaining({ id: 'provider-vertex' }),
+                    expect.objectContaining({ id: 'sqlite' }),
+                    expect.objectContaining({ id: 'budget' }),
+                    expect.objectContaining({ id: 'webhook' }),
+                ]),
+            );
+        } finally {
+            if (originalAppId === undefined) {
+                delete process.env.DISCORD_APP_ID;
+            } else {
+                process.env.DISCORD_APP_ID = originalAppId;
+            }
+            if (originalToken === undefined) {
+                delete process.env.DISCORD_TOKEN;
+            } else {
+                process.env.DISCORD_TOKEN = originalToken;
+            }
+        }
+    });
+
     // --- Config update protection ---
 
     it('should not overwrite protected fields via POST /api/config', async () => {
