@@ -16,7 +16,7 @@
 - Create: `src/modules/dashboard/setup-doctor.ts`
 - Create: `tests/setup-doctor.test.ts`
 
-- [ ] **Step 1: Write failing setup-doctor tests**
+- [x] **Step 1: Write failing setup-doctor tests**
 
 Create `tests/setup-doctor.test.ts`:
 
@@ -173,7 +173,7 @@ describe('runSetupDoctor', () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify RED**
+- [x] **Step 2: Run tests to verify RED**
 
 Run:
 
@@ -183,7 +183,7 @@ npm test -- tests/setup-doctor.test.ts
 
 Expected: FAIL because `src/modules/dashboard/setup-doctor.ts` does not exist.
 
-- [ ] **Step 3: Add minimal setup-doctor implementation**
+- [x] **Step 3: Add minimal setup-doctor implementation**
 
 Create `src/modules/dashboard/setup-doctor.ts`:
 
@@ -506,7 +506,7 @@ export async function runSetupDoctor({
 }
 ```
 
-- [ ] **Step 4: Run helper tests to verify GREEN**
+- [x] **Step 4: Run helper tests to verify GREEN**
 
 Run:
 
@@ -516,7 +516,7 @@ npm test -- tests/setup-doctor.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit backend helper**
+- [x] **Step 5: Commit backend helper**
 
 Run:
 
@@ -533,7 +533,7 @@ Expected: commit succeeds.
 - Modify: `src/modules/dashboard/dashboard.ts`
 - Modify: `tests/dashboard.test.ts`
 
-- [ ] **Step 1: Add failing dashboard API tests**
+- [x] **Step 1: Add failing dashboard API tests**
 
 In `tests/dashboard.test.ts`, add these tests near the existing CSRF and health endpoint tests:
 
@@ -585,7 +585,7 @@ it('should run setup doctor from the authenticated dashboard', async () => {
 });
 ```
 
-- [ ] **Step 2: Run dashboard tests to verify RED**
+- [x] **Step 2: Run dashboard tests to verify RED**
 
 Run:
 
@@ -595,7 +595,7 @@ npm test -- tests/dashboard.test.ts
 
 Expected: FAIL because `/api/setup-doctor/run` is not registered.
 
-- [ ] **Step 3: Register the route**
+- [x] **Step 3: Register the route**
 
 In `src/modules/dashboard/dashboard.ts`, add the import:
 
@@ -627,7 +627,7 @@ After the `/api/capabilities` route, add:
     );
 ```
 
-- [ ] **Step 4: Run dashboard tests to verify GREEN**
+- [x] **Step 4: Run dashboard tests to verify GREEN**
 
 Run:
 
@@ -637,7 +637,7 @@ npm test -- tests/dashboard.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit dashboard route**
+- [x] **Step 5: Commit dashboard route**
 
 Run:
 
@@ -655,7 +655,7 @@ Expected: commit succeeds.
 - Modify: `src/public/js/dashboard.js`
 - Modify: `src/public/css/dashboard.css`
 
-- [ ] **Step 1: Add the Overview UI shell**
+- [x] **Step 1: Add the Overview UI shell**
 
 In `src/public/index.html`, inside `#tab-overview`, add this section after the Operations panel and before the stats grid:
 
@@ -676,7 +676,7 @@ In `src/public/index.html`, inside `#tab-overview`, add this section after the O
                 </section>
 ```
 
-- [ ] **Step 2: Add result rendering and click handler**
+- [x] **Step 2: Add result rendering and click handler**
 
 In `src/public/js/dashboard.js`, before `loadDashboard()`, add:
 
@@ -746,7 +746,7 @@ async function runSetupDoctor() {
 }
 ```
 
-- [ ] **Step 3: Add compact styles**
+- [x] **Step 3: Add compact styles**
 
 In `src/public/css/dashboard.css`, add:
 
@@ -834,7 +834,7 @@ In `src/public/css/dashboard.css`, add:
 }
 ```
 
-- [ ] **Step 4: Run asset smoke check**
+- [x] **Step 4: Run asset smoke check**
 
 Run:
 
@@ -844,7 +844,7 @@ npm run smoke:dashboard
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit dashboard UI**
+- [x] **Step 5: Commit dashboard UI**
 
 Run:
 
@@ -861,7 +861,7 @@ Expected: commit succeeds.
 - Read: `docs/superpowers/specs/2026-07-09-setup-doctor-dashboard-design.md`
 - Read: `docs/superpowers/plans/2026-07-09-setup-doctor-dashboard.md`
 
-- [ ] **Step 1: Run focused tests**
+- [x] **Step 1: Run focused tests**
 
 Run:
 
@@ -871,7 +871,7 @@ npm test -- tests/setup-doctor.test.ts tests/dashboard.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 2: Run project checks**
+- [x] **Step 2: Run project checks**
 
 Run:
 
@@ -883,7 +883,7 @@ npm run smoke:dashboard
 
 Expected: all commands exit 0.
 
-- [ ] **Step 3: Check the final diff**
+- [x] **Step 3: Check the final diff**
 
 Run:
 
@@ -894,7 +894,7 @@ git log --oneline -4
 
 Expected: working tree is clean after the task commits; recent commits include setup doctor checks, endpoint, and button.
 
-- [ ] **Step 4: Report skipped scope**
+- [x] **Step 4: Report skipped scope**
 
 Report:
 

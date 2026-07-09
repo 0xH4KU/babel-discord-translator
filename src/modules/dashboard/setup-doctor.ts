@@ -13,6 +13,7 @@ export type SetupDoctorStatus = 'pass' | 'warn' | 'fail' | 'skipped';
 
 export interface SetupDoctorCheck {
     id: string;
+    title: string;
     status: SetupDoctorStatus;
     detail: string;
     action?: string;
@@ -45,9 +46,24 @@ export interface SetupDoctorDeps {
 }
 
 const SQLITE_PROBE_KEY = '__setup_doctor_probe__';
+const CHECK_TITLES: Record<string, string> = {
+    discord: 'Discord',
+    commands: 'Discord commands',
+    'provider-vertex': 'Vertex AI provider',
+    'provider-openai': 'OpenAI provider',
+    sqlite: 'SQLite',
+    budget: 'Budget',
+    webhook: 'Webhook',
+};
+
+type SetupDoctorCheckDraft = Omit<SetupDoctorCheck, 'title'> & { title?: string };
 
 function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+}
+
+function withTitle(check: SetupDoctorCheckDraft): SetupDoctorCheck {
+    return { title: CHECK_TITLES[check.id] ?? check.id, ...check };
 }
 
 export function runSqliteWriteProbe(): void {
@@ -63,7 +79,7 @@ export function runSqliteWriteProbe(): void {
     });
 }
 
-function discordCheck(client: Client): SetupDoctorCheck {
+function discordCheck(client: Client): SetupDoctorCheckDraft {
     try {
         if (!client.user) {
             return {
@@ -98,7 +114,7 @@ async function commandsCheck({
 }: Pick<
     SetupDoctorDeps,
     'profile' | 'profiles' | 'env' | 'fetchFn' | 'requireProfileSpecificRegistrationEnv'
->): Promise<SetupDoctorCheck> {
+>): Promise<SetupDoctorCheckDraft> {
     try {
         const { appId, botToken } = resolveRegistrationEnv(profile, env, {
             requireProfileSpecificEnv:
@@ -183,7 +199,7 @@ function providerCheck(
     id: string,
     providerName: string,
     check: { status: 'pass' | 'fail' | 'skip'; detail: string; error?: string; latencyMs?: number },
-): SetupDoctorCheck {
+): SetupDoctorCheckDraft {
     return {
         id,
         status: check.status === 'skip' ? 'skipped' : check.status,
@@ -197,7 +213,7 @@ async function providerChecks(
     configStore: SetupDoctorConfigStore,
     healthCheck: () => Promise<VertexAiHealthStatus>,
     openAiHealthCheck: () => Promise<OpenAiHealthStatus>,
-): Promise<SetupDoctorCheck[]> {
+): Promise<SetupDoctorCheckDraft[]> {
     try {
         const readiness = await getReadinessStatus({
             configStore,
@@ -245,7 +261,7 @@ async function providerChecks(
     }
 }
 
-async function sqliteCheck(sqliteProbe: () => void | Promise<void>): Promise<SetupDoctorCheck> {
+async function sqliteCheck(sqliteProbe: () => void | Promise<void>): Promise<SetupDoctorCheckDraft> {
     try {
         await sqliteProbe();
         return {
@@ -264,7 +280,7 @@ async function sqliteCheck(sqliteProbe: () => void | Promise<void>): Promise<Set
     }
 }
 
-function budgetCheck(configStore: SetupDoctorConfigStore): SetupDoctorCheck {
+function budgetCheck(configStore: SetupDoctorConfigStore): SetupDoctorCheckDraft {
     try {
         const config = configStore.getDashboardConfig();
         const values = [
@@ -322,7 +338,7 @@ function budgetEntries(
     ]);
 }
 
-function webhookCheck(profile: AppProfile, client: Client): SetupDoctorCheck {
+function webhookCheck(profile: AppProfile, client: Client): SetupDoctorCheckDraft {
     if (profile.id !== 'babel-guild') {
         return {
             id: 'webhook',
@@ -349,8 +365,8 @@ function webhookCheck(profile: AppProfile, client: Client): SetupDoctorCheck {
             };
         }
 
-        const { inspected, missing } = inspectWebhookChannelPermissions(guilds, client.user.id);
-        if (inspected === 0) {
+        const result = inspectWebhookChannelPermissions(guilds, client.user.id);
+        if (!result) {
             return {
                 id: 'webhook',
                 status: 'skipped',
@@ -358,19 +374,19 @@ function webhookCheck(profile: AppProfile, client: Client): SetupDoctorCheck {
             };
         }
 
-        if (missing.length > 0) {
+        if (!result.allowed) {
             return {
                 id: 'webhook',
                 status: 'fail',
-                detail: `Missing Manage Webhooks permission in: ${missing.join(', ')}`,
-                action: 'Grant the bot Manage Webhooks permission in each server.',
+                detail: `Missing Manage Webhooks permission in: ${result.channel}`,
+                action: 'Grant the bot Manage Webhooks permission in this channel.',
             };
         }
 
         return {
             id: 'webhook',
             status: 'pass',
-            detail: 'Manage Webhooks permission is available in cached guild channels',
+            detail: `Manage Webhooks permission is available in ${result.channel}`,
         };
     } catch (error) {
         return {
@@ -385,10 +401,7 @@ function webhookCheck(profile: AppProfile, client: Client): SetupDoctorCheck {
 function inspectWebhookChannelPermissions(
     guilds: Guild[],
     userId: string,
-): { inspected: number; missing: string[] } {
-    let inspected = 0;
-    const missing: string[] = [];
-
+): { allowed: boolean; channel: string } | null {
     for (const guild of guilds) {
         for (const channel of guild.channels.cache.values()) {
             const permissions = channel.permissionsFor(userId);
@@ -396,14 +409,14 @@ function inspectWebhookChannelPermissions(
                 continue;
             }
 
-            inspected += 1;
-            if (!permissions.has(PermissionFlagsBits.ManageWebhooks)) {
-                missing.push(`${guild.name} / ${channel.name}`);
-            }
+            return {
+                allowed: permissions.has(PermissionFlagsBits.ManageWebhooks),
+                channel: `${guild.name} / ${channel.name}`,
+            };
         }
     }
 
-    return { inspected, missing };
+    return null;
 }
 
 export async function runSetupDoctor({
@@ -418,7 +431,7 @@ export async function runSetupDoctor({
     sqliteProbe = runSqliteWriteProbe,
     requireProfileSpecificRegistrationEnv,
 }: SetupDoctorDeps): Promise<SetupDoctorReport> {
-    const checks: SetupDoctorCheck[] = [
+    const checks: SetupDoctorCheckDraft[] = [
         discordCheck(client),
         await commandsCheck({
             profile,
@@ -436,6 +449,6 @@ export async function runSetupDoctor({
     return {
         ok: checks.every((check) => check.status !== 'fail'),
         timestamp: new Date().toISOString(),
-        checks,
+        checks: checks.map(withTitle),
     };
 }

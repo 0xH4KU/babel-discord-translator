@@ -134,6 +134,23 @@ describe('runSetupDoctor', () => {
         );
     });
 
+    it('returns display titles for every check row', async () => {
+        const report = await runSetupDoctor({
+            profile: BABEL_GUILD_PROFILE,
+            profiles: [BABEL_GUILD_PROFILE],
+            client: client(),
+            configStore: configStore({ dailyBudgetUsd: 0 }),
+            healthCheck: vi.fn(async () => ({ healthy: true, latencyMs: 12 })),
+            openAiHealthCheck: vi.fn(async () => ({ healthy: true, latencyMs: 10 })),
+            env: { DISCORD_APP_ID: 'app-1', DISCORD_TOKEN: 'token' },
+            fetchFn: registeredCommandsFetch(),
+            sqliteProbe: vi.fn(),
+        });
+
+        expect(report.checks.every((check) => typeof check.title === 'string')).toBe(true);
+        expect(report.checks.map((check) => check.title)).toContain('Discord');
+    });
+
     it('fails the report when an expected command is missing', async () => {
         const report = await runSetupDoctor({
             profile: BABEL_GUILD_PROFILE,
@@ -307,5 +324,46 @@ describe('runSetupDoctor', () => {
         );
         expect(permissionsFor).toHaveBeenCalledWith('bot-1');
         expect(channelHas).toHaveBeenCalledWith(PermissionFlagsBits.ManageWebhooks);
+    });
+
+    it('checks only the first cached webhook channel with inspectable permissions', async () => {
+        const allowedHas = vi.fn(() => true);
+        const blockedHas = vi.fn(() => false);
+        const allowedPermissionsFor = vi.fn(() => ({ has: allowedHas }));
+        const blockedPermissionsFor = vi.fn(() => ({ has: blockedHas }));
+
+        const report = await runSetupDoctor({
+            profile: BABEL_GUILD_PROFILE,
+            profiles: [BABEL_GUILD_PROFILE],
+            client: clientWithGuilds([
+                {
+                    name: 'Guild One',
+                    channels: {
+                        cache: {
+                            values: function* () {
+                                yield { name: 'allowed-channel', permissionsFor: allowedPermissionsFor };
+                                yield { name: 'blocked-channel', permissionsFor: blockedPermissionsFor };
+                            },
+                        },
+                    },
+                },
+            ]),
+            configStore: configStore(),
+            healthCheck: vi.fn(async () => ({ healthy: true, latencyMs: 12 })),
+            openAiHealthCheck: vi.fn(async () => ({ healthy: true, latencyMs: 10 })),
+            env: { DISCORD_APP_ID: 'app-1', DISCORD_TOKEN: 'token' },
+            fetchFn: registeredCommandsFetch(),
+            sqliteProbe: vi.fn(),
+        });
+
+        expect(report.checks).toContainEqual(
+            expect.objectContaining({
+                id: 'webhook',
+                status: 'pass',
+                detail: expect.stringContaining('allowed-channel'),
+            }),
+        );
+        expect(allowedPermissionsFor).toHaveBeenCalledWith('bot-1');
+        expect(blockedPermissionsFor).not.toHaveBeenCalled();
     });
 });
