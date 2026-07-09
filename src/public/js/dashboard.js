@@ -459,20 +459,29 @@ function renderSetupDoctorReport(report) {
 
 async function runSetupDoctor() {
     const button = document.getElementById('setup-doctor-run');
+    const container = document.getElementById('setup-doctor-results');
     if (button) {
         button.disabled = true;
         button.textContent = 'Checking...';
     }
+    if (container) container.setAttribute('aria-busy', 'true');
 
     try {
         const res = await api('/setup-doctor/run', { method: 'POST' });
-        const report = await res.json();
+        const report = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(report.error || 'Setup Doctor failed');
         renderSetupDoctorReport(report);
-        showToast(report.ok ? 'Setup Doctor passed' : 'Setup Doctor found issues', !report.ok);
+        const hasWarnings = (report.checks || []).some((item) => item.status === 'warn');
+        const message = report.ok
+            ? hasWarnings
+                ? 'Setup Doctor completed with warnings'
+                : 'Setup Doctor passed'
+            : 'Setup Doctor found issues';
+        showToast(message, !report.ok);
     } catch (error) {
         showToast(error.message || 'Setup Doctor failed', true);
     } finally {
+        if (container) container.setAttribute('aria-busy', 'false');
         if (button) {
             button.disabled = false;
             button.textContent = 'Run Doctor';
