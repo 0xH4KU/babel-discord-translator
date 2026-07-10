@@ -1,4 +1,4 @@
-import express, { type NextFunction, type Request, type Response } from 'express';
+import express, { type Request, type Response } from 'express';
 import http from 'http';
 import rateLimit from 'express-rate-limit';
 import { createEmptyAppMetricsSnapshot } from '../../shared/app-metrics.js';
@@ -86,15 +86,6 @@ function sanitizeUserPreferenceRef(value: unknown): { guildId: string; userId: s
     const userId = String(source.userId ?? '').trim();
 
     return userId ? { guildId, userId } : null;
-}
-
-/** Wrap an async Express handler to forward errors to Express error handling (Express 4 compat). */
-function asyncHandler(
-    fn: (req: Request, res: Response) => Promise<void>,
-): (req: Request, res: Response, next: NextFunction) => void {
-    return (req, res, next) => {
-        fn(req, res).catch(next);
-    };
 }
 
 type UsageExportRow = ReturnType<typeof usage.getUsageExportRows>[number];
@@ -270,29 +261,23 @@ export function createDashboardApp({
         res.status(health.live ? 200 : 503).json(health);
     });
 
-    app.get(
-        '/readyz',
-        asyncHandler(async (_req: Request, res: Response) => {
-            const health = await getReadinessStatus({
-                healthCheck,
-                openAiHealthCheck,
-                cacheTtlMs: healthProbeCacheTtlMs,
-            });
-            res.status(health.ready ? 200 : 503).json(health);
-        }),
-    );
+    app.get('/readyz', async (_req: Request, res: Response) => {
+        const health = await getReadinessStatus({
+            healthCheck,
+            openAiHealthCheck,
+            cacheTtlMs: healthProbeCacheTtlMs,
+        });
+        res.status(health.ready ? 200 : 503).json(health);
+    });
 
-    app.get(
-        '/healthz',
-        asyncHandler(async (_req: Request, res: Response) => {
-            const metricsSnapshot = metrics?.snapshot() ?? createEmptyAppMetricsSnapshot();
-            const health = await getHealthStatus(
-                { healthCheck, openAiHealthCheck, cacheTtlMs: healthProbeCacheTtlMs },
-                metricsSnapshot,
-            );
-            res.status(health.live ? 200 : 503).json(health);
-        }),
-    );
+    app.get('/healthz', async (_req: Request, res: Response) => {
+        const metricsSnapshot = metrics?.snapshot() ?? createEmptyAppMetricsSnapshot();
+        const health = await getHealthStatus(
+            { healthCheck, openAiHealthCheck, cacheTtlMs: healthProbeCacheTtlMs },
+            metricsSnapshot,
+        );
+        res.status(health.live ? 200 : 503).json(health);
+    });
 
     app.get(
         '/metrics',
@@ -329,7 +314,7 @@ export function createDashboardApp({
         '/setup-doctor/run',
         auth.requireAuth,
         auth.requireCsrf,
-        asyncHandler(async (_req: Request, res: Response) => {
+        async (_req: Request, res: Response) => {
             const scope = getScope(res);
             res.json(
                 await runSetupDoctor({
@@ -342,24 +327,20 @@ export function createDashboardApp({
                     requireProfileSpecificRegistrationEnv: isCombinedDashboard,
                 }),
             );
-        }),
+        },
     );
 
-    api.get(
-        '/version',
-        auth.requireAuth,
-        asyncHandler(async (_req: Request, res: Response) => {
-            res.json(await versionCheck());
-        }),
-    );
+    api.get('/version', auth.requireAuth, async (_req: Request, res: Response) => {
+        res.json(await versionCheck());
+    });
 
     api.post(
         '/version/refresh',
         auth.requireAuth,
         auth.requireCsrf,
-        asyncHandler(async (_req: Request, res: Response) => {
+        async (_req: Request, res: Response) => {
             res.json(await versionCheck({ forceRefresh: true }));
-        }),
+        },
     );
 
     api.get('/sessions', auth.requireAuth, (req: Request, res: Response) => {
@@ -391,181 +372,175 @@ export function createDashboardApp({
         },
     );
 
-    api.get(
-        '/stats',
-        auth.requireAuth,
-        asyncHandler(async (_req: Request, res: Response) => {
-            const scope = getScope(res);
-            const scopedClient = scope.client;
-            const stats = getStats();
-            const cacheStats = cache.stats();
-            const usageStats = usage.getStats();
-            const scopeProfileId = isCombinedDashboard ? scope.appProfileIdForLogs : undefined;
-            const metricsSnapshot =
-                metrics?.snapshot({ appProfileId: scopeProfileId }) ??
-                createEmptyAppMetricsSnapshot();
-            const memoryUsage = process.memoryUsage();
-            const rssMB = (memoryUsage.rss / BYTES_PER_MB).toFixed(1);
-            const heapUsedMB = (memoryUsage.heapUsed / BYTES_PER_MB).toFixed(1);
-            const externalMB = (memoryUsage.external / BYTES_PER_MB).toFixed(1);
-            const runtimeSnapshot = runtimeLimiter?.snapshot() ?? createEmptyRuntimeSnapshot();
-            const runtimeConfig = configRepository.getRuntimeConfig();
-            const providerMode = runtimeConfig.translationProvider || 'vertex';
-            const translationTotals = scopeProfileId
-                ? {
-                      total: metricsSnapshot.translationsTotal,
-                      apiCalls: metricsSnapshot.translationApiCallsTotal,
-                  }
-                : {
-                      total: stats.totalTranslations,
-                      apiCalls: stats.apiCalls,
-                  };
+    api.get('/stats', auth.requireAuth, async (_req: Request, res: Response) => {
+        const scope = getScope(res);
+        const scopedClient = scope.client;
+        const stats = getStats();
+        const cacheStats = cache.stats();
+        const usageStats = usage.getStats();
+        const scopeProfileId = isCombinedDashboard ? scope.appProfileIdForLogs : undefined;
+        const metricsSnapshot =
+            metrics?.snapshot({ appProfileId: scopeProfileId }) ?? createEmptyAppMetricsSnapshot();
+        const memoryUsage = process.memoryUsage();
+        const rssMB = (memoryUsage.rss / BYTES_PER_MB).toFixed(1);
+        const heapUsedMB = (memoryUsage.heapUsed / BYTES_PER_MB).toFixed(1);
+        const externalMB = (memoryUsage.external / BYTES_PER_MB).toFixed(1);
+        const runtimeSnapshot = runtimeLimiter?.snapshot() ?? createEmptyRuntimeSnapshot();
+        const runtimeConfig = configRepository.getRuntimeConfig();
+        const providerMode = runtimeConfig.translationProvider || 'vertex';
+        const translationTotals = scopeProfileId
+            ? {
+                  total: metricsSnapshot.translationsTotal,
+                  apiCalls: metricsSnapshot.translationApiCallsTotal,
+              }
+            : {
+                  total: stats.totalTranslations,
+                  apiCalls: stats.apiCalls,
+              };
 
-            const guildIds = scope.capabilities.guildAccess
-                ? scopedClient.guilds.cache.map((guild) => guild.id)
-                : [];
-            const guildBudgetConfigs = guildBudgetRepository.listBudgets();
-            const guildStatsById =
-                guildIds.length > 0 ? usage.getGuildStatsForGuilds(guildIds) : {};
-            const guildBudgetList = scope.capabilities.guildAccess
-                ? scopedClient.guilds.cache.map((guild) => {
-                      const guildCfg = guildBudgetConfigs[guild.id];
-                      const hasCustom = Boolean(guildCfg && guildCfg.dailyBudgetUsd !== undefined);
-                      const guildStats = guildStatsById[guild.id];
-                      const scopedStats = hasCustom ? guildStats : usageStats;
-                      const budget = hasCustom
-                          ? (guildCfg?.dailyBudgetUsd ?? 0)
-                          : (scopedStats?.dailyBudget ?? usageStats.dailyBudget);
-                      const totalCost = scopedStats?.totalCost ?? 0;
-                      const requests = scopedStats?.requests ?? 0;
-                      return {
-                          id: guild.id,
-                          name: guild.name,
-                          budget,
-                          isCustom: hasCustom,
-                          totalCost,
-                          requests,
-                          exceeded: budget > 0 && totalCost >= budget,
-                      };
-                  })
-                : [];
-            const cfg = configRepository.getDashboardConfig();
-            const userBudgetConfigs = userBudgetRepository.listBudgets();
-            const allowedUserIds = new Set(cfg.allowedUserIds);
-            const pendingUserIds = new Set(pendingUserInstallOwnerRepository.listUserIds());
-            const userIds = scope.capabilities.userAccess
-                ? [
-                      ...new Set([
-                          ...cfg.allowedUserIds,
-                          ...pendingUserIds,
-                          ...Object.keys(userBudgetConfigs),
-                      ]),
-                  ]
-                : [];
-            const userProfiles = scope.capabilities.userAccess
-                ? await resolveDiscordUserProfiles({
-                      client: userInstallClient,
-                      repository: userProfileRepository,
-                      userIds,
-                  })
-                : {};
-            const userBudgetList = scope.capabilities.userAccess
-                ? userIds.map((userId) => {
-                      const customBudget = userBudgetConfigs[userId];
-                      const userStats = usage.getUserStats(userId);
-                      const budget = customBudget?.dailyBudgetUsd ?? cfg.defaultUserDailyBudgetUsd;
-                      const totalCost = userStats.totalCost ?? 0;
-                      return {
-                          id: userId,
-                          name: userProfiles[userId]?.displayName ?? userId,
-                          username: userProfiles[userId]?.username ?? userId,
-                          avatar: userProfiles[userId]?.avatarUrl ?? '',
-                          budget,
-                          isCustom: customBudget !== undefined,
-                          allowed: allowedUserIds.has(userId),
-                          pending: pendingUserIds.has(userId) && !allowedUserIds.has(userId),
-                          totalCost,
-                          requests: userStats.requests ?? 0,
-                          exceeded: budget > 0 && totalCost >= budget,
-                      };
-                  })
-                : [];
-            const vertexEnabled = providerModeIncludes(providerMode, 'vertex');
-            const openAiEnabled = providerModeIncludes(providerMode, 'openai');
-            const providers = {
-                vertex: providerSummary(metricsSnapshot.providers, 'vertex', {
-                    enabled: vertexEnabled,
-                    configured: Boolean(runtimeConfig.vertexAiApiKey && runtimeConfig.gcpProject),
-                }),
-                openai: providerSummary(metricsSnapshot.providers, 'openai', {
-                    enabled: openAiEnabled,
-                    configured: Boolean(
-                        runtimeConfig.openaiApiKey &&
-                        runtimeConfig.openaiBaseUrl &&
-                        runtimeConfig.openaiModel,
-                    ),
-                }),
-            };
-            const runtimePressure = {
-                inflight: runtimeSnapshot.inflight,
-                queued: runtimeSnapshot.queued,
-                rejectedTotal: runtimeSnapshot.rejectedTotal,
-                rejectionCounts: runtimeSnapshot.rejectionCounts,
-                limits: runtimeSnapshot.limits,
-            };
-            const budgetRisk = budgetRiskForGuilds(guildBudgetList);
-            const operations = {
-                providerMode,
+        const guildIds = scope.capabilities.guildAccess
+            ? scopedClient.guilds.cache.map((guild) => guild.id)
+            : [];
+        const guildBudgetConfigs = guildBudgetRepository.listBudgets();
+        const guildStatsById = guildIds.length > 0 ? usage.getGuildStatsForGuilds(guildIds) : {};
+        const guildBudgetList = scope.capabilities.guildAccess
+            ? scopedClient.guilds.cache.map((guild) => {
+                  const guildCfg = guildBudgetConfigs[guild.id];
+                  const hasCustom = Boolean(guildCfg && guildCfg.dailyBudgetUsd !== undefined);
+                  const guildStats = guildStatsById[guild.id];
+                  const scopedStats = hasCustom ? guildStats : usageStats;
+                  const budget = hasCustom
+                      ? (guildCfg?.dailyBudgetUsd ?? 0)
+                      : (scopedStats?.dailyBudget ?? usageStats.dailyBudget);
+                  const totalCost = scopedStats?.totalCost ?? 0;
+                  const requests = scopedStats?.requests ?? 0;
+                  return {
+                      id: guild.id,
+                      name: guild.name,
+                      budget,
+                      isCustom: hasCustom,
+                      totalCost,
+                      requests,
+                      exceeded: budget > 0 && totalCost >= budget,
+                  };
+              })
+            : [];
+        const cfg = configRepository.getDashboardConfig();
+        const userBudgetConfigs = userBudgetRepository.listBudgets();
+        const allowedUserIds = new Set(cfg.allowedUserIds);
+        const pendingUserIds = new Set(pendingUserInstallOwnerRepository.listUserIds());
+        const userIds = scope.capabilities.userAccess
+            ? [
+                  ...new Set([
+                      ...cfg.allowedUserIds,
+                      ...pendingUserIds,
+                      ...Object.keys(userBudgetConfigs),
+                  ]),
+              ]
+            : [];
+        const userProfiles = scope.capabilities.userAccess
+            ? await resolveDiscordUserProfiles({
+                  client: userInstallClient,
+                  repository: userProfileRepository,
+                  userIds,
+              })
+            : {};
+        const userBudgetList = scope.capabilities.userAccess
+            ? userIds.map((userId) => {
+                  const customBudget = userBudgetConfigs[userId];
+                  const userStats = usage.getUserStats(userId);
+                  const budget = customBudget?.dailyBudgetUsd ?? cfg.defaultUserDailyBudgetUsd;
+                  const totalCost = userStats.totalCost ?? 0;
+                  return {
+                      id: userId,
+                      name: userProfiles[userId]?.displayName ?? userId,
+                      username: userProfiles[userId]?.username ?? userId,
+                      avatar: userProfiles[userId]?.avatarUrl ?? '',
+                      budget,
+                      isCustom: customBudget !== undefined,
+                      allowed: allowedUserIds.has(userId),
+                      pending: pendingUserIds.has(userId) && !allowedUserIds.has(userId),
+                      totalCost,
+                      requests: userStats.requests ?? 0,
+                      exceeded: budget > 0 && totalCost >= budget,
+                  };
+              })
+            : [];
+        const vertexEnabled = providerModeIncludes(providerMode, 'vertex');
+        const openAiEnabled = providerModeIncludes(providerMode, 'openai');
+        const providers = {
+            vertex: providerSummary(metricsSnapshot.providers, 'vertex', {
+                enabled: vertexEnabled,
+                configured: Boolean(runtimeConfig.vertexAiApiKey && runtimeConfig.gcpProject),
+            }),
+            openai: providerSummary(metricsSnapshot.providers, 'openai', {
+                enabled: openAiEnabled,
+                configured: Boolean(
+                    runtimeConfig.openaiApiKey &&
+                    runtimeConfig.openaiBaseUrl &&
+                    runtimeConfig.openaiModel,
+                ),
+            }),
+        };
+        const runtimePressure = {
+            inflight: runtimeSnapshot.inflight,
+            queued: runtimeSnapshot.queued,
+            rejectedTotal: runtimeSnapshot.rejectedTotal,
+            rejectionCounts: runtimeSnapshot.rejectionCounts,
+            limits: runtimeSnapshot.limits,
+        };
+        const budgetRisk = budgetRiskForGuilds(guildBudgetList);
+        const operations = {
+            providerMode,
+            providers,
+            fallbackTotal: metricsSnapshot.providerFallbackTotal,
+            lastFallback: metricsSnapshot.lastProviderFallback,
+            runtimePressure,
+            budgetRisk,
+            guidance: buildOperationsGuidance({
                 providers,
-                fallbackTotal: metricsSnapshot.providerFallbackTotal,
-                lastFallback: metricsSnapshot.lastProviderFallback,
                 runtimePressure,
                 budgetRisk,
-                guidance: buildOperationsGuidance({
-                    providers,
-                    runtimePressure,
-                    budgetRisk,
-                }),
-            };
+            }),
+        };
 
-            res.json({
-                bot: {
-                    name: scopedClient.user?.tag || client.user?.tag || 'Unknown',
-                    avatar:
-                        scopedClient.user?.displayAvatarURL({ size: 64 }) ||
-                        client.user?.displayAvatarURL({ size: 64 }) ||
-                        '',
-                    uptime: Math.floor(process.uptime()),
-                    memoryMB: rssMB,
-                    memory: {
-                        rssMB,
-                        heapUsedMB,
-                        externalMB,
-                    },
-                    guilds: scope.capabilities.guildAccess ? scopedClient.guilds.cache.size : 0,
+        res.json({
+            bot: {
+                name: scopedClient.user?.tag || client.user?.tag || 'Unknown',
+                avatar:
+                    scopedClient.user?.displayAvatarURL({ size: 64 }) ||
+                    client.user?.displayAvatarURL({ size: 64 }) ||
+                    '',
+                uptime: Math.floor(process.uptime()),
+                memoryMB: rssMB,
+                memory: {
+                    rssMB,
+                    heapUsedMB,
+                    externalMB,
                 },
-                translations: {
-                    total: translationTotals.total,
-                    apiCalls: translationTotals.apiCalls,
-                    saved: cacheStats.hits,
-                    failures: metricsSnapshot.translationFailuresTotal,
-                    failureRate: metricsSnapshot.translationFailureRate,
-                    cacheHits: metricsSnapshot.translationCacheHitsTotal,
-                    cacheHitRate: metricsSnapshot.translationCacheHitRate,
-                    budgetExceeded: metricsSnapshot.budgetExceededTotal,
-                    webhookRecreated: metricsSnapshot.webhookRecreateTotal,
-                },
-                metrics: metricsSnapshot,
-                runtime: runtimeSnapshot,
-                operations,
-                cache: cacheStats,
-                usage: usageStats,
-                guildBudgets: guildBudgetList,
-                userBudgets: userBudgetList,
-                errors: log.errorCount,
-            });
-        }),
-    );
+                guilds: scope.capabilities.guildAccess ? scopedClient.guilds.cache.size : 0,
+            },
+            translations: {
+                total: translationTotals.total,
+                apiCalls: translationTotals.apiCalls,
+                saved: cacheStats.hits,
+                failures: metricsSnapshot.translationFailuresTotal,
+                failureRate: metricsSnapshot.translationFailureRate,
+                cacheHits: metricsSnapshot.translationCacheHitsTotal,
+                cacheHitRate: metricsSnapshot.translationCacheHitRate,
+                budgetExceeded: metricsSnapshot.budgetExceededTotal,
+                webhookRecreated: metricsSnapshot.webhookRecreateTotal,
+            },
+            metrics: metricsSnapshot,
+            runtime: runtimeSnapshot,
+            operations,
+            cache: cacheStats,
+            usage: usageStats,
+            guildBudgets: guildBudgetList,
+            userBudgets: userBudgetList,
+            errors: log.errorCount,
+        });
+    });
 
     api.get('/config', auth.requireAuth, (_req: Request, res: Response) => {
         const cfg = configRepository.getDashboardConfig();
@@ -670,7 +645,7 @@ export function createDashboardApp({
         'userAccess',
         '/user-budgets',
         auth.requireAuth,
-        asyncHandler(async (_req: Request, res: Response) => {
+        async (_req: Request, res: Response) => {
             const userBudgets = userBudgetRepository.listBudgets();
             const cfg = configRepository.getDashboardConfig();
             const allowedUserIds = new Set(cfg.allowedUserIds);
@@ -700,7 +675,7 @@ export function createDashboardApp({
             });
 
             res.json({ budgets: result, profiles });
-        }),
+        },
     );
 
     api.postIf(
@@ -944,50 +919,46 @@ export function createDashboardApp({
         res.json(entries);
     });
 
-    api.get(
-        '/user-prefs',
-        auth.requireAuth,
-        asyncHandler(async (_req: Request, res: Response) => {
-            const scope = getScope(res);
-            const allPreferences = userPreferenceRepository.listPreferences();
-            const entries = scope.capabilities.guildAccess
-                ? (() => {
-                      const guildsById = new Map(
-                          scope.client.guilds.cache.map((guild) => [
-                              guild.id,
-                              {
-                                  id: guild.id,
-                                  name: guild.name,
-                                  icon: guild.iconURL({ size: 32 }) || '',
-                                  memberCount: guild.memberCount,
-                              },
-                          ]),
-                      );
+    api.get('/user-prefs', auth.requireAuth, async (_req: Request, res: Response) => {
+        const scope = getScope(res);
+        const allPreferences = userPreferenceRepository.listPreferences();
+        const entries = scope.capabilities.guildAccess
+            ? (() => {
+                  const guildsById = new Map(
+                      scope.client.guilds.cache.map((guild) => [
+                          guild.id,
+                          {
+                              id: guild.id,
+                              name: guild.name,
+                              icon: guild.iconURL({ size: 32 }) || '',
+                              memberCount: guild.memberCount,
+                          },
+                      ]),
+                  );
 
-                      return allPreferences
-                          .filter((entry) => entry.guildId && guildsById.has(entry.guildId))
-                          .map((entry) => ({
-                              ...entry,
-                              guildName: guildsById.get(entry.guildId)?.name ?? entry.guildId,
-                              guildIcon: guildsById.get(entry.guildId)?.icon ?? '',
-                              guildMemberCount: guildsById.get(entry.guildId)?.memberCount ?? null,
-                          }));
-                  })()
-                : allPreferences.filter((entry) => !entry.guildId);
-            const userIds = [...new Set(entries.map((entry) => entry.userId))];
-            const profiles = await resolveDiscordUserProfiles({
-                client: scope.client,
-                repository: userProfileRepository,
-                userIds,
-            });
+                  return allPreferences
+                      .filter((entry) => entry.guildId && guildsById.has(entry.guildId))
+                      .map((entry) => ({
+                          ...entry,
+                          guildName: guildsById.get(entry.guildId)?.name ?? entry.guildId,
+                          guildIcon: guildsById.get(entry.guildId)?.icon ?? '',
+                          guildMemberCount: guildsById.get(entry.guildId)?.memberCount ?? null,
+                      }));
+              })()
+            : allPreferences.filter((entry) => !entry.guildId);
+        const userIds = [...new Set(entries.map((entry) => entry.userId))];
+        const profiles = await resolveDiscordUserProfiles({
+            client: scope.client,
+            repository: userProfileRepository,
+            userIds,
+        });
 
-            res.json({
-                entries,
-                count: entries.length,
-                profiles,
-            });
-        }),
-    );
+        res.json({
+            entries,
+            count: entries.length,
+            profiles,
+        });
+    });
 
     api.post(
         '/user-prefs/batch-delete',
@@ -1059,7 +1030,7 @@ export function createDashboardApp({
         '/translate/test',
         auth.requireAuth,
         auth.requireCsrf,
-        asyncHandler(async (req: Request, res: Response) => {
+        async (req: Request, res: Response) => {
             const scope = getScope(res);
             const scopedTranslationService = getDashboardTranslationService(scope);
             const { text, targetLanguage } = req.body;
@@ -1106,26 +1077,22 @@ export function createDashboardApp({
             } catch (err) {
                 res.status(500).json({ error: sanitizeError((err as Error).message) });
             }
-        }),
+        },
     );
 
-    api.get(
-        '/health',
-        auth.requireAuth,
-        asyncHandler(async (_req: Request, res: Response) => {
-            const readiness = await getReadinessStatus({
-                healthCheck,
-                openAiHealthCheck,
-                cacheTtlMs: healthProbeCacheTtlMs,
-            });
-            res.status(readiness.ready ? 200 : 503).json({
-                healthy: readiness.ready,
-                readiness: readiness.status,
-                vertexAi: readiness.checks.vertexAi,
-                checks: readiness.checks,
-            });
-        }),
-    );
+    api.get('/health', auth.requireAuth, async (_req: Request, res: Response) => {
+        const readiness = await getReadinessStatus({
+            healthCheck,
+            openAiHealthCheck,
+            cacheTtlMs: healthProbeCacheTtlMs,
+        });
+        res.status(readiness.ready ? 200 : 503).json({
+            healthy: readiness.ready,
+            readiness: readiness.status,
+            vertexAi: readiness.checks.vertexAi,
+            checks: readiness.checks,
+        });
+    });
 
     app.get(['/guild', '/guild/', '/pocket', '/pocket/'], (_req: Request, res: Response) => {
         res.sendFile(join(__dirname, '../../public/index.html'));

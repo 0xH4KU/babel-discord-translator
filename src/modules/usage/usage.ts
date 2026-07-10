@@ -7,7 +7,7 @@ import { guildBudgetRepository } from './guild-budget-repository.js';
 import { userBudgetRepository } from './user-budget-repository.js';
 import { usageRepository } from './usage-repository.js';
 import { resolveBudgetScope } from './budget-scope.js';
-import { normalizeUsageScope, type LegacyUsageScope, type UsageScope } from './usage-scope.js';
+import type { UsageScope } from './usage-scope.js';
 import { calculateCost, createEmptyUsage, toUsageStats, withCost } from './usage-cost.js';
 import type {
     UsageCost,
@@ -86,8 +86,7 @@ class UsageTracker {
     }
 
     /** Record a translation's token usage (global + optional guild/user). */
-    record(inputTokens: number, outputTokens: number, scopeInput?: LegacyUsageScope): void {
-        const scope = normalizeUsageScope(scopeInput);
+    record(inputTokens: number, outputTokens: number, scope: UsageScope = {}): void {
         this.ensureToday();
 
         const usage = usageRepository.getDailyUsage() ?? createEmptyUsage(today());
@@ -166,8 +165,7 @@ class UsageTracker {
      * If guildId is provided, checks guild-specific budget first,
      * then falls back to the global budget.
      */
-    isBudgetExceeded(scopeInput?: LegacyUsageScope): boolean {
-        const scope = normalizeUsageScope(scopeInput);
+    isBudgetExceeded(scope: UsageScope = {}): boolean {
         const runtimeConfig = configRepository.getRuntimeConfig();
         const { budget, cost } = this.getBudgetScope(scope, runtimeConfig);
 

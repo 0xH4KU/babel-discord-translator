@@ -4,7 +4,6 @@ import { fileURLToPath } from 'node:url';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const runtimeAssetDirs = ['locales', 'public'];
-const appPath = process.argv[2];
 
 function copyRuntimeAssets(targetSrcDir) {
     for (const assetDir of runtimeAssetDirs) {
@@ -17,7 +16,3 @@ function copyRuntimeAssets(targetSrcDir) {
 }
 
 copyRuntimeAssets(join(rootDir, 'dist', 'src'));
-
-if (appPath) {
-    copyRuntimeAssets(join(rootDir, 'dist', appPath, 'src'));
-}

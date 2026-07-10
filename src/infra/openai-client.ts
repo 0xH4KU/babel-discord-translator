@@ -1,12 +1,17 @@
 import { configRepository, type RuntimeConfig } from '../modules/config/config-repository.js';
 import { appLogger, type StructuredLogFields } from '../shared/structured-logger.js';
-import { ProviderHttpError, classifyStatusCode, parseRetryAfterMs } from './provider-errors.js';
+import {
+    buildProviderHttpError,
+    classifyProviderFailure,
+    DEFAULT_PROVIDER_MAX_RETRIES,
+    DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
+    fetchProviderWithRetry,
+} from './provider-http.js';
 import type { TranslationProvider, TranslateOptions } from './provider-orchestrator.js';
 import type { OpenAIChatResponse, TranslationResult } from '../shared/types.js';
 
-const RETRY_CODES = [429, 500, 502, 503];
-const MAX_RETRIES = 3;
-const REQUEST_TIMEOUT_MS = 10_000;
+const MAX_RETRIES = DEFAULT_PROVIDER_MAX_RETRIES;
+const REQUEST_TIMEOUT_MS = DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS;
 
 interface OpenAiConfig {
     apiKey: string;
@@ -14,21 +19,10 @@ interface OpenAiConfig {
     model: string;
 }
 
-interface FetchWithRetryOptions {
-    retries?: number;
-    timeoutMs?: number;
-    logPrefix?: string;
-    logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'>;
-}
-
 export interface OpenAiHealthStatus {
     healthy: boolean;
     latencyMs?: number;
     error?: string;
-}
-
-function sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function getOpenAiConfig(runtimeConfig?: RuntimeConfig): OpenAiConfig {
@@ -49,97 +43,10 @@ function buildChatCompletionsUrl(baseUrl: string): string {
     return `${base}/v1/chat/completions`;
 }
 
-function buildTimeoutSignal(timeoutMs: number): AbortSignal {
-    return AbortSignal.timeout(timeoutMs);
-}
-
-function classifyOpenAiFailure(value: number | Error): string {
-    if (typeof value === 'number') {
-        return classifyStatusCode(value);
-    }
-
-    if ('errorType' in value && typeof value.errorType === 'string') return value.errorType;
-    if (value.name === 'TimeoutError') return 'timeout';
-    if (value.message.includes('not configured')) return 'configuration';
-    return 'network_error';
-}
-
-function retryDelayMs(response: Response, attempt: number): number {
-    return (
-        parseRetryAfterMs(response.headers?.get('retry-after') ?? null) ??
-        Math.pow(2, attempt) * 500
-    );
-}
-
-async function fetchWithRetry(
-    url: string,
-    options: RequestInit,
-    config: FetchWithRetryOptions = {},
-): Promise<Response> {
-    const {
-        retries = MAX_RETRIES,
-        timeoutMs = REQUEST_TIMEOUT_MS,
-        logPrefix = 'OpenAI',
-        logContext,
-    } = config;
-    const logger = appLogger.child({
-        component: 'openai',
-        ...logContext,
-    });
-
-    for (let attempt = 0; attempt <= retries; attempt++) {
-        try {
-            const response = await fetch(url, {
-                ...options,
-                signal: buildTimeoutSignal(timeoutMs),
-            });
-
-            if (response.ok || !RETRY_CODES.includes(response.status) || attempt === retries) {
-                return response;
-            }
-
-            const delay = retryDelayMs(response, attempt);
-            logger.warn('openai.retry_scheduled', {
-                operation: logPrefix,
-                attempt: attempt + 1,
-                retries,
-                statusCode: response.status,
-                retryAfterMs: delay,
-                errorType: classifyOpenAiFailure(response.status),
-            });
-            await sleep(delay);
-        } catch (error) {
-            if (attempt < retries) {
-                const delay = Math.pow(2, attempt) * 500;
-                const reason =
-                    (error as Error).name === 'TimeoutError' ? 'timeout' : 'network error';
-                logger.warn('openai.retry_scheduled', {
-                    operation: logPrefix,
-                    attempt: attempt + 1,
-                    retries,
-                    retryAfterMs: delay,
-                    errorType: classifyOpenAiFailure(error as Error),
-                    retryReason: reason,
-                });
-                await sleep(delay);
-            } else {
-                throw error;
-            }
-        }
-    }
-
-    throw new Error('fetchWithRetry exhausted retries without a response');
-}
+const classifyOpenAiFailure = classifyProviderFailure;
 
 async function buildOpenAiError(response: Response): Promise<Error> {
-    const body = (await response.text()).replace(/\s+/g, ' ').trim();
-    const detail = body || response.statusText || 'Request failed';
-    return new ProviderHttpError(
-        'openai',
-        response.status,
-        detail.slice(0, 200),
-        parseRetryAfterMs(response.headers?.get('retry-after') ?? null),
-    );
+    return buildProviderHttpError('openai', response);
 }
 
 async function requestChatCompletion(
@@ -191,7 +98,7 @@ async function requestChatCompletion(
 
     let response: Response;
     try {
-        response = await fetchWithRetry(
+        response = await fetchProviderWithRetry(
             url,
             {
                 method: 'POST',
@@ -207,6 +114,7 @@ async function requestChatCompletion(
                 }),
             },
             {
+                provider: 'openai',
                 retries,
                 timeoutMs,
                 logPrefix,

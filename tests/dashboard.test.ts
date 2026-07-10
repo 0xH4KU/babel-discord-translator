@@ -420,6 +420,53 @@ describe('Dashboard API', () => {
     let dashboardTranslationRequests: TranslationServiceRequest[];
     let dashboardTranslationService: TranslationService;
 
+    function startProfileDashboard(
+        profile = BABEL_GUILD_PROFILE,
+        overrides: Partial<Parameters<typeof createDashboardApp>[0]> = {},
+    ) {
+        const testApp = createDashboardApp({
+            cache,
+            cooldown: new CooldownManager(5),
+            log,
+            client: createMinimalClient(),
+            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
+            metrics,
+            runtimeLimiter,
+            profile,
+            sessionRepository: new InMemorySessionRepository(),
+            userProfileRepository,
+            ...overrides,
+        });
+        const testServer = startDashboardServer(testApp, 0);
+        return {
+            app: testApp,
+            server: testServer,
+            close() {
+                stopDashboardApp(testApp);
+                testServer.close();
+            },
+        };
+    }
+
+    function startCombinedDashboard(
+        overrides: Partial<Parameters<typeof createDashboardApp>[0]> = {},
+    ) {
+        return startProfileDashboard(BABEL_GUILD_PROFILE, {
+            profiles: [BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE],
+            ...overrides,
+        });
+    }
+
+    async function loginDashboard(testServer: http.Server) {
+        const login = await request(testServer, 'POST', '/api/login', {
+            body: { password: 'test-pass-123' },
+        });
+        return {
+            cookie: login.rawHeaders['set-cookie']![0].split(';')[0],
+            csrf: login.body!.csrfToken as string,
+        };
+    }
+
     beforeAll(async () => {
         cache = new TranslationCache(100);
         metrics = new AppMetrics();
@@ -2358,249 +2405,122 @@ describe('Dashboard API', () => {
     });
 
     it('should not expose guild glossary routes for Babel Pocket', async () => {
-        const pocketApp = createDashboardApp({
-            cache,
-            cooldown: new CooldownManager(5),
-            log,
-            client: createMinimalClient(),
-            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
-            metrics,
-            runtimeLimiter,
-            profile: BABEL_POCKET_PROFILE,
-            sessionRepository: new InMemorySessionRepository(),
-            userProfileRepository,
-        });
-        const pocketServer = startDashboardServer(pocketApp, 0);
+        const dashboard = startProfileDashboard(BABEL_POCKET_PROFILE);
 
         try {
-            const login = await request(pocketServer, 'POST', '/api/login', {
-                body: { password: 'test-pass-123' },
-            });
-            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
-            const res = await requestText(pocketServer, 'GET', '/api/guild-glossary/guild-1', {
+            const { cookie, csrf } = await loginDashboard(dashboard.server);
+            const res = await requestText(dashboard.server, 'GET', '/api/guild-glossary/guild-1', {
                 cookie,
             });
 
             expect(res.status).toBe(404);
 
-            const csrfRes = await request(pocketServer, 'GET', '/api/auth/check', {
-                cookie,
-            });
-            const pocketCsrf = csrfRes.body!.csrfToken as string;
             const importRes = await requestText(
-                pocketServer,
+                dashboard.server,
                 'POST',
                 '/api/guild-glossary/guild-1/import',
-                {
-                    cookie,
-                    csrf: pocketCsrf,
-                },
+                { cookie, csrf },
             );
             expect(importRes.status).toBe(404);
         } finally {
-            stopDashboardApp(pocketApp);
-            pocketServer.close();
+            dashboard.close();
         }
     });
 
     it('should not expose the legacy pending user-install owner routes', async () => {
-        const createAppForProfile = (profile: typeof BABEL_GUILD_PROFILE) =>
-            createDashboardApp({
-                cache,
-                cooldown: new CooldownManager(5),
-                log,
-                client: createMinimalClient(),
-                getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
-                metrics,
-                runtimeLimiter,
-                profile,
-                sessionRepository: new InMemorySessionRepository(),
-                userProfileRepository,
-            });
-        const guildApp = createAppForProfile(BABEL_GUILD_PROFILE);
-        const pocketApp = createAppForProfile(BABEL_POCKET_PROFILE);
-        const guildServer = startDashboardServer(guildApp, 0);
-        const pocketServer = startDashboardServer(pocketApp, 0);
+        const dashboards = [
+            startProfileDashboard(BABEL_GUILD_PROFILE),
+            startProfileDashboard(BABEL_POCKET_PROFILE),
+        ];
 
         try {
-            for (const appServer of [guildServer, pocketServer]) {
-                const login = await request(appServer, 'POST', '/api/login', {
-                    body: { password: 'test-pass-123' },
-                });
-                const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
-                const res = await requestText(appServer, 'GET', '/api/access/pending-users', {
-                    cookie,
-                });
+            for (const dashboard of dashboards) {
+                const { cookie } = await loginDashboard(dashboard.server);
+                const res = await requestText(
+                    dashboard.server,
+                    'GET',
+                    '/api/access/pending-users',
+                    {
+                        cookie,
+                    },
+                );
 
                 expect(res.status).toBe(404);
             }
         } finally {
-            stopDashboardApp(guildApp);
-            stopDashboardApp(pocketApp);
-            guildServer.close();
-            pocketServer.close();
+            dashboards.forEach((dashboard) => dashboard.close());
         }
     });
 
     it('should not expose user budget access data for Babel Guild', async () => {
-        const guildApp = createDashboardApp({
-            cache,
-            cooldown: new CooldownManager(5),
-            log,
-            client: createMinimalClient(),
-            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
-            metrics,
-            runtimeLimiter,
-            profile: BABEL_GUILD_PROFILE,
-            sessionRepository: new InMemorySessionRepository(),
-            userProfileRepository,
-        });
-        const guildServer = startDashboardServer(guildApp, 0);
+        const dashboard = startProfileDashboard();
 
         try {
-            const login = await request(guildServer, 'POST', '/api/login', {
-                body: { password: 'test-pass-123' },
-            });
-            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
-            const res = await requestText(guildServer, 'GET', '/api/user-budgets', {
+            const { cookie } = await loginDashboard(dashboard.server);
+            const res = await requestText(dashboard.server, 'GET', '/api/user-budgets', {
                 cookie,
             });
 
             expect(res.status).toBe(404);
         } finally {
-            stopDashboardApp(guildApp);
-            guildServer.close();
+            dashboard.close();
         }
     });
 
-    it('should expose dashboard capabilities for Babel Guild', async () => {
-        const guildApp = createDashboardApp({
-            cache,
-            cooldown: new CooldownManager(5),
-            log,
-            client: createMinimalClient(),
-            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
-            metrics,
-            runtimeLimiter,
+    it.each([
+        {
             profile: BABEL_GUILD_PROFILE,
-            sessionRepository: new InMemorySessionRepository(),
-            userProfileRepository,
-        });
-        const guildServer = startDashboardServer(guildApp, 0);
-
-        try {
-            const login = await request(guildServer, 'POST', '/api/login', {
-                body: { password: 'test-pass-123' },
-            });
-            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
-            const res = await requestText(guildServer, 'GET', '/api/capabilities', {
-                cookie,
-            });
-
-            expect(res.status).toBe(200);
-            expect(JSON.parse(res.text)).toEqual({
-                profile: {
-                    id: 'babel-guild',
-                    productName: 'Babel Guild',
-                    commandName: 'Babel',
-                    accessMode: 'guild',
-                },
-                profiles: [
-                    {
-                        id: 'babel-guild',
-                        productName: 'Babel Guild',
-                        commandName: 'Babel',
-                        accessMode: 'guild',
-                    },
-                ],
-                capabilities: {
-                    guildAccess: true,
-                    userAccess: false,
-                    guildGlossary: true,
-                    pendingUserInstallOwners: false,
-                },
-            });
-        } finally {
-            stopDashboardApp(guildApp);
-            guildServer.close();
-        }
-    });
-
-    it('should expose dashboard capabilities for Babel Pocket', async () => {
-        const pocketApp = createDashboardApp({
-            cache,
-            cooldown: new CooldownManager(5),
-            log,
-            client: createMinimalClient(),
-            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
-            metrics,
-            runtimeLimiter,
+            capabilities: {
+                guildAccess: true,
+                userAccess: false,
+                guildGlossary: true,
+                pendingUserInstallOwners: false,
+            },
+        },
+        {
             profile: BABEL_POCKET_PROFILE,
-            sessionRepository: new InMemorySessionRepository(),
-            userProfileRepository,
-        });
-        const pocketServer = startDashboardServer(pocketApp, 0);
+            capabilities: {
+                guildAccess: false,
+                userAccess: true,
+                guildGlossary: false,
+                pendingUserInstallOwners: true,
+            },
+        },
+    ])(
+        'should expose dashboard capabilities for $profile.productName',
+        async ({ profile, capabilities }) => {
+            const dashboard = startProfileDashboard(profile);
 
-        try {
-            const login = await request(pocketServer, 'POST', '/api/login', {
-                body: { password: 'test-pass-123' },
-            });
-            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
-            const res = await requestText(pocketServer, 'GET', '/api/capabilities', {
-                cookie,
-            });
+            try {
+                const { cookie } = await loginDashboard(dashboard.server);
+                const res = await requestText(dashboard.server, 'GET', '/api/capabilities', {
+                    cookie,
+                });
+                const serializedProfile = {
+                    id: profile.id,
+                    productName: profile.productName,
+                    commandName: profile.commandName,
+                    accessMode: profile.accessMode,
+                };
 
-            expect(res.status).toBe(200);
-            expect(JSON.parse(res.text)).toEqual({
-                profile: {
-                    id: 'babel-pocket',
-                    productName: 'Babel Pocket',
-                    commandName: 'Babel Pocket',
-                    accessMode: 'user-install',
-                },
-                profiles: [
-                    {
-                        id: 'babel-pocket',
-                        productName: 'Babel Pocket',
-                        commandName: 'Babel Pocket',
-                        accessMode: 'user-install',
-                    },
-                ],
-                capabilities: {
-                    guildAccess: false,
-                    userAccess: true,
-                    guildGlossary: false,
-                    pendingUserInstallOwners: true,
-                },
-            });
-        } finally {
-            stopDashboardApp(pocketApp);
-            pocketServer.close();
-        }
-    });
+                expect(res.status).toBe(200);
+                expect(JSON.parse(res.text)).toEqual({
+                    profile: serializedProfile,
+                    profiles: [serializedProfile],
+                    capabilities,
+                });
+            } finally {
+                dashboard.close();
+            }
+        },
+    );
 
     it('should expose combined dashboard capabilities without losing separate app identities', async () => {
-        const combinedApp = createDashboardApp({
-            cache,
-            cooldown: new CooldownManager(5),
-            log,
-            client: createMinimalClient(),
-            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
-            metrics,
-            runtimeLimiter,
-            profile: BABEL_GUILD_PROFILE,
-            profiles: [BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE],
-            sessionRepository: new InMemorySessionRepository(),
-            userProfileRepository,
-        });
-        const combinedServer = startDashboardServer(combinedApp, 0);
+        const dashboard = startCombinedDashboard();
 
         try {
-            const login = await request(combinedServer, 'POST', '/api/login', {
-                body: { password: 'test-pass-123' },
-            });
-            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
-            const res = await requestText(combinedServer, 'GET', '/api/capabilities', {
+            const { cookie } = await loginDashboard(dashboard.server);
+            const res = await requestText(dashboard.server, 'GET', '/api/capabilities', {
                 cookie,
             });
 
@@ -2634,120 +2554,64 @@ describe('Dashboard API', () => {
                 },
             });
         } finally {
-            stopDashboardApp(combinedApp);
-            combinedServer.close();
+            dashboard.close();
         }
     });
 
-    it('should expose Guild-scoped capabilities for combined /guild/api/capabilities', async () => {
-        const combinedApp = createDashboardApp({
-            cache,
-            cooldown: new CooldownManager(5),
-            log,
-            client: createMinimalClient(),
-            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
-            metrics,
-            runtimeLimiter,
+    it.each([
+        {
+            path: '/guild/api/capabilities',
             profile: BABEL_GUILD_PROFILE,
-            profiles: [BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE],
-            sessionRepository: new InMemorySessionRepository(),
-            userProfileRepository,
-        });
-        const combinedServer = startDashboardServer(combinedApp, 0);
+            capabilities: {
+                guildAccess: true,
+                userAccess: false,
+                guildGlossary: true,
+                pendingUserInstallOwners: false,
+            },
+        },
+        {
+            path: '/pocket/api/capabilities',
+            profile: BABEL_POCKET_PROFILE,
+            capabilities: {
+                guildAccess: false,
+                userAccess: true,
+                guildGlossary: false,
+                pendingUserInstallOwners: true,
+            },
+        },
+    ])(
+        'should expose $profile.productName capabilities at $path',
+        async ({ path, profile, capabilities }) => {
+            const dashboard = startCombinedDashboard();
 
-        try {
-            const login = await request(combinedServer, 'POST', '/api/login', {
-                body: { password: 'test-pass-123' },
-            });
-            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
-            const res = await requestText(combinedServer, 'GET', '/guild/api/capabilities', {
-                cookie,
-            });
+            try {
+                const { cookie } = await loginDashboard(dashboard.server);
+                const res = await requestText(dashboard.server, 'GET', path, { cookie });
 
-            expect(res.status).toBe(200);
-            expect(JSON.parse(res.text)).toMatchObject({
-                profile: { id: 'babel-guild', productName: 'Babel Guild' },
-                capabilities: {
-                    guildAccess: true,
-                    userAccess: false,
-                    guildGlossary: true,
-                    pendingUserInstallOwners: false,
-                },
-            });
-        } finally {
-            stopDashboardApp(combinedApp);
-            combinedServer.close();
-        }
-    });
-
-    it('should expose Pocket-scoped capabilities for combined /pocket/api/capabilities', async () => {
-        const combinedApp = createDashboardApp({
-            cache,
-            cooldown: new CooldownManager(5),
-            log,
-            client: createMinimalClient(),
-            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
-            metrics,
-            runtimeLimiter,
-            profile: BABEL_GUILD_PROFILE,
-            profiles: [BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE],
-            sessionRepository: new InMemorySessionRepository(),
-            userProfileRepository,
-        });
-        const combinedServer = startDashboardServer(combinedApp, 0);
-
-        try {
-            const login = await request(combinedServer, 'POST', '/api/login', {
-                body: { password: 'test-pass-123' },
-            });
-            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
-            const res = await requestText(combinedServer, 'GET', '/pocket/api/capabilities', {
-                cookie,
-            });
-
-            expect(res.status).toBe(200);
-            expect(JSON.parse(res.text)).toMatchObject({
-                profile: { id: 'babel-pocket', productName: 'Babel Pocket' },
-                capabilities: {
-                    guildAccess: false,
-                    userAccess: true,
-                    guildGlossary: false,
-                    pendingUserInstallOwners: true,
-                },
-            });
-        } finally {
-            stopDashboardApp(combinedApp);
-            combinedServer.close();
-        }
-    });
+                expect(res.status).toBe(200);
+                expect(JSON.parse(res.text)).toMatchObject({
+                    profile: { id: profile.id, productName: profile.productName },
+                    capabilities,
+                });
+            } finally {
+                dashboard.close();
+            }
+        },
+    );
 
     it('should serve dashboard shell for combined /guild and /pocket paths', async () => {
-        const combinedApp = createDashboardApp({
-            cache,
-            cooldown: new CooldownManager(5),
-            log,
-            client: createMinimalClient(),
-            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
-            metrics,
-            runtimeLimiter,
-            profile: BABEL_GUILD_PROFILE,
-            profiles: [BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE],
-            sessionRepository: new InMemorySessionRepository(),
-            userProfileRepository,
-        });
-        const combinedServer = startDashboardServer(combinedApp, 0);
+        const dashboard = startCombinedDashboard();
 
         try {
             for (const path of ['/guild', '/pocket']) {
-                const res = await requestText(combinedServer, 'GET', path);
+                const res = await requestText(dashboard.server, 'GET', path);
 
                 expect(res.status).toBe(200);
                 expect(res.text).toContain('id="login-view"');
                 expect(res.text).toContain('id="profile-select-view"');
             }
         } finally {
-            stopDashboardApp(combinedApp);
-            combinedServer.close();
+            dashboard.close();
         }
     });
 
@@ -2769,31 +2633,15 @@ describe('Dashboard API', () => {
             userTag: 'PocketUser#0001',
             contentPreview: 'pocket log',
         });
-        const combinedApp = createDashboardApp({
-            cache,
-            cooldown: new CooldownManager(5),
-            log: scopedLog,
-            client: createMinimalClient(),
-            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
-            metrics,
-            runtimeLimiter,
-            profile: BABEL_GUILD_PROFILE,
-            profiles: [BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE],
-            sessionRepository: new InMemorySessionRepository(),
-            userProfileRepository,
-        });
-        const combinedServer = startDashboardServer(combinedApp, 0);
+        const dashboard = startCombinedDashboard({ log: scopedLog });
 
         try {
-            const login = await request(combinedServer, 'POST', '/api/login', {
-                body: { password: 'test-pass-123' },
-            });
-            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
+            const { cookie } = await loginDashboard(dashboard.server);
 
-            const guildRes = await request(combinedServer, 'GET', '/guild/api/logs', {
+            const guildRes = await request(dashboard.server, 'GET', '/guild/api/logs', {
                 cookie,
             });
-            const pocketRes = await request(combinedServer, 'GET', '/pocket/api/logs', {
+            const pocketRes = await request(dashboard.server, 'GET', '/pocket/api/logs', {
                 cookie,
             });
 
@@ -2812,8 +2660,7 @@ describe('Dashboard API', () => {
                 }),
             ]);
         } finally {
-            stopDashboardApp(combinedApp);
-            combinedServer.close();
+            dashboard.close();
         }
     });
 
@@ -2846,35 +2693,19 @@ describe('Dashboard API', () => {
             command: '/translate',
             errorType: 'auth',
         });
-        const combinedApp = createDashboardApp({
-            cache,
-            cooldown: new CooldownManager(5),
-            log: scopedLog,
-            client: createMinimalClient(),
-            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
-            metrics,
-            runtimeLimiter,
-            profile: BABEL_GUILD_PROFILE,
-            profiles: [BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE],
-            sessionRepository: new InMemorySessionRepository(),
-            userProfileRepository,
-        });
-        const combinedServer = startDashboardServer(combinedApp, 0);
+        const dashboard = startCombinedDashboard({ log: scopedLog });
 
         try {
-            const login = await request(combinedServer, 'POST', '/api/login', {
-                body: { password: 'test-pass-123' },
-            });
-            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
+            const { cookie } = await loginDashboard(dashboard.server);
 
             const guildRes = await request(
-                combinedServer,
+                dashboard.server,
                 'GET',
                 '/guild/api/logs?errorType=rate_limit',
                 { cookie },
             );
             const pocketRes = await request(
-                combinedServer,
+                dashboard.server,
                 'GET',
                 '/pocket/api/logs?errorType=rate_limit',
                 { cookie },
@@ -2897,8 +2728,7 @@ describe('Dashboard API', () => {
                 }),
             ]);
         } finally {
-            stopDashboardApp(combinedApp);
-            combinedServer.close();
+            dashboard.close();
         }
     });
 
@@ -2967,38 +2797,24 @@ describe('Dashboard API', () => {
                 },
             },
         } as unknown as Client;
-        const combinedApp = createDashboardApp({
-            cache,
-            cooldown: new CooldownManager(5),
-            log,
+        const dashboard = startCombinedDashboard({
             client: guildClient,
             clients: {
                 'babel-guild': guildClient,
                 'babel-pocket': createMinimalClient(),
             },
-            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
-            metrics,
-            runtimeLimiter,
-            profile: BABEL_GUILD_PROFILE,
-            profiles: [BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE],
-            sessionRepository: new InMemorySessionRepository(),
-            userProfileRepository,
         });
-        const combinedServer = startDashboardServer(combinedApp, 0);
 
         try {
-            const login = await request(combinedServer, 'POST', '/api/login', {
-                body: { password: 'test-pass-123' },
-            });
-            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
+            const { cookie } = await loginDashboard(dashboard.server);
 
-            const rootRes = await request(combinedServer, 'GET', '/api/usage/history', {
+            const rootRes = await request(dashboard.server, 'GET', '/api/usage/history', {
                 cookie,
             });
-            const guildRes = await request(combinedServer, 'GET', '/guild/api/usage/history', {
+            const guildRes = await request(dashboard.server, 'GET', '/guild/api/usage/history', {
                 cookie,
             });
-            const pocketRes = await request(combinedServer, 'GET', '/pocket/api/usage/history', {
+            const pocketRes = await request(dashboard.server, 'GET', '/pocket/api/usage/history', {
                 cookie,
             });
 
@@ -3013,7 +2829,7 @@ describe('Dashboard API', () => {
 
             usageMock.getGuildHistory.mockClear();
             const pocketGuildFilterRes = await request(
-                combinedServer,
+                dashboard.server,
                 'GET',
                 '/pocket/api/usage/history?guildId=guild-1',
                 {
@@ -3031,8 +2847,7 @@ describe('Dashboard API', () => {
             usageMock.getUserHistory.mockReturnValue([]);
             usageMock.getGuildHistoryForGuilds.mockReturnValue([]);
             usageMock.getAllUserHistory.mockReturnValue([]);
-            stopDashboardApp(combinedApp);
-            combinedServer.close();
+            dashboard.close();
         }
     });
 
@@ -3058,30 +2873,17 @@ describe('Dashboard API', () => {
             error: 'Pocket OpenAI 401',
         });
 
-        const combinedApp = createDashboardApp({
-            cache,
-            cooldown: new CooldownManager(5),
-            log,
-            client: createMinimalClient(),
+        const dashboard = startCombinedDashboard({
             getStats: () => ({ totalTranslations: 99, apiCalls: 88 }),
             metrics: scopedMetrics,
-            runtimeLimiter,
-            profile: BABEL_GUILD_PROFILE,
-            profiles: [BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE],
-            sessionRepository: new InMemorySessionRepository(),
-            userProfileRepository,
         });
-        const combinedServer = startDashboardServer(combinedApp, 0);
 
         try {
-            const login = await request(combinedServer, 'POST', '/api/login', {
-                body: { password: 'test-pass-123' },
-            });
-            const cookie = login.rawHeaders['set-cookie']![0].split(';')[0];
+            const { cookie } = await loginDashboard(dashboard.server);
 
-            const rootRes = await request(combinedServer, 'GET', '/api/stats', { cookie });
-            const guildRes = await request(combinedServer, 'GET', '/guild/api/stats', { cookie });
-            const pocketRes = await request(combinedServer, 'GET', '/pocket/api/stats', {
+            const rootRes = await request(dashboard.server, 'GET', '/api/stats', { cookie });
+            const guildRes = await request(dashboard.server, 'GET', '/guild/api/stats', { cookie });
+            const pocketRes = await request(dashboard.server, 'GET', '/pocket/api/stats', {
                 cookie,
             });
 
@@ -3126,8 +2928,7 @@ describe('Dashboard API', () => {
             expect(pocketTranslations.apiCalls).toBe(0);
             expect(pocketTranslations.failures).toBe(1);
         } finally {
-            stopDashboardApp(combinedApp);
-            combinedServer.close();
+            dashboard.close();
         }
     });
 

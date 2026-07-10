@@ -59,29 +59,22 @@ const RUNTIME_CONFIG_KEYS: (keyof RuntimeConfig)[] = [
     'translationProvider',
 ];
 
-export interface ConfigRepository {
-    getRuntimeConfig(): RuntimeConfig;
-    getDashboardConfig(): StoreData;
-    updateConfig(updates: Partial<StoreData>): void;
-    isSetupComplete(): boolean;
-}
-
-class StoreBackedConfigRepository implements ConfigRepository {
+export const configRepository = {
     getRuntimeConfig(): RuntimeConfig {
         return store.getConfigValues(RUNTIME_CONFIG_KEYS) as RuntimeConfig;
-    }
+    },
 
     getDashboardConfig(): StoreData {
         return normalizeStoreData(store.getAll() as Partial<StoreData>);
-    }
+    },
 
     updateConfig(updates: Partial<StoreData>): void {
         store.update(updates);
-    }
+    },
 
     isSetupComplete(): boolean {
         return store.isSetupComplete();
-    }
-}
+    },
+};
 
-export const configRepository = new StoreBackedConfigRepository();
+export type ConfigRepository = typeof configRepository;

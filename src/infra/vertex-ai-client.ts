@@ -1,14 +1,20 @@
 import type { TranslationProvider, TranslateOptions } from './provider-orchestrator.js';
 import { configRepository, type RuntimeConfig } from '../modules/config/config-repository.js';
 import { appLogger, type StructuredLogFields } from '../shared/structured-logger.js';
-import { ProviderHttpError, classifyStatusCode, parseRetryAfterMs } from './provider-errors.js';
+import {
+    buildProviderHttpError,
+    classifyProviderFailure,
+    DEFAULT_PROVIDER_MAX_RETRIES,
+    DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
+    fetchProviderWithRetry,
+    type ProviderFetchOptions,
+} from './provider-http.js';
 import type { TranslationResult, VertexAIResponse } from '../shared/types.js';
 
 export { ProviderHttpError } from './provider-errors.js';
 
-const RETRY_CODES = [429, 500, 502, 503];
-const MAX_RETRIES = 3;
-const REQUEST_TIMEOUT_MS = 10_000;
+const MAX_RETRIES = DEFAULT_PROVIDER_MAX_RETRIES;
+const REQUEST_TIMEOUT_MS = DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS;
 
 interface VertexAiConfig {
     apiKey: string;
@@ -17,21 +23,14 @@ interface VertexAiConfig {
     model: string;
 }
 
-interface FetchWithRetryOptions {
-    retries?: number;
-    timeoutMs?: number;
+interface FetchWithRetryOptions extends Omit<ProviderFetchOptions, 'provider' | 'logPrefix'> {
     logPrefix?: string;
-    logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'>;
 }
 
 export interface VertexAiHealthStatus {
     healthy: boolean;
     latencyMs?: number;
     error?: string;
-}
-
-function sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function getVertexAiConfig(runtimeConfig?: RuntimeConfig): VertexAiConfig {
@@ -60,97 +59,23 @@ function buildGenerateContentUrl({ project, location, model }: VertexAiConfig): 
     return `${baseUrl}/v1beta1/projects/${project}/locations/${location}/publishers/google/models/${model}:generateContent`;
 }
 
-function buildTimeoutSignal(timeoutMs: number): AbortSignal {
-    return AbortSignal.timeout(timeoutMs);
-}
-
-function classifyVertexAiFailure(value: number | Error): string {
-    if (typeof value === 'number') {
-        return classifyStatusCode(value);
-    }
-
-    if ('errorType' in value && typeof value.errorType === 'string') return value.errorType;
-    if (value.name === 'TimeoutError') return 'timeout';
-    if (value.message.includes('API not configured')) return 'configuration';
-    return 'network_error';
-}
-
-function retryDelayMs(response: Response, attempt: number): number {
-    return (
-        parseRetryAfterMs(response.headers?.get('retry-after') ?? null) ??
-        Math.pow(2, attempt) * 500
-    );
-}
+const classifyVertexAiFailure = classifyProviderFailure;
 
 export async function fetchWithRetry(
     url: string,
     options: RequestInit,
     config: FetchWithRetryOptions | number = {},
 ): Promise<Response> {
-    const {
-        retries = MAX_RETRIES,
-        timeoutMs = REQUEST_TIMEOUT_MS,
-        logPrefix = 'VertexAI',
-        logContext,
-    } = typeof config === 'number' ? { retries: config } : config;
-    const logger = appLogger.child({
-        component: 'vertex_ai',
-        ...logContext,
+    const normalized = typeof config === 'number' ? { retries: config } : config;
+    return fetchProviderWithRetry(url, options, {
+        provider: 'vertex',
+        ...normalized,
+        logPrefix: normalized.logPrefix ?? 'VertexAI',
     });
-
-    for (let attempt = 0; attempt <= retries; attempt++) {
-        try {
-            const response = await fetch(url, {
-                ...options,
-                signal: buildTimeoutSignal(timeoutMs),
-            });
-
-            if (response.ok || !RETRY_CODES.includes(response.status) || attempt === retries) {
-                return response;
-            }
-
-            const delay = retryDelayMs(response, attempt);
-            logger.warn('vertex_ai.retry_scheduled', {
-                operation: logPrefix,
-                attempt: attempt + 1,
-                retries,
-                statusCode: response.status,
-                retryAfterMs: delay,
-                errorType: classifyVertexAiFailure(response.status),
-            });
-            await sleep(delay);
-        } catch (error) {
-            if (attempt < retries) {
-                const delay = Math.pow(2, attempt) * 500;
-                const reason =
-                    (error as Error).name === 'TimeoutError' ? 'timeout' : 'network error';
-                logger.warn('vertex_ai.retry_scheduled', {
-                    operation: logPrefix,
-                    attempt: attempt + 1,
-                    retries,
-                    retryAfterMs: delay,
-                    errorType: classifyVertexAiFailure(error as Error),
-                    retryReason: reason,
-                });
-                await sleep(delay);
-            } else {
-                throw error;
-            }
-        }
-    }
-
-    throw new Error('fetchWithRetry exhausted retries without a response');
 }
 
 async function buildVertexAiError(response: Response): Promise<Error> {
-    const body = (await response.text()).replace(/\s+/g, ' ').trim();
-    const detail = body || response.statusText || 'Request failed';
-    return new ProviderHttpError(
-        'vertex',
-        response.status,
-        detail.slice(0, 200),
-        parseRetryAfterMs(response.headers?.get('retry-after') ?? null),
-    );
+    return buildProviderHttpError('vertex', response);
 }
 
 async function requestGenerateContent(

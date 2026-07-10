@@ -21,13 +21,11 @@ describe('deployment configuration', () => {
         };
 
         expect(rootPackageJson.scripts['build:assets']).toBe('node scripts/copy-assets.js');
-        expect(rootPackageJson.scripts.build).toContain('npm run build:assets');
-        expect(guildPackageJson.scripts.build).toContain(
-            'node ../../scripts/copy-assets.js apps/babel-guild',
-        );
-        expect(pocketPackageJson.scripts.build).toContain(
-            'node ../../scripts/copy-assets.js apps/babel-pocket',
-        );
+        expect(rootPackageJson.scripts.build).toBe('tsc -p tsconfig.json && npm run build:assets');
+        expect(guildPackageJson.scripts.build).toContain('node ../../scripts/copy-assets.js');
+        expect(pocketPackageJson.scripts.build).toContain('node ../../scripts/copy-assets.js');
+        expect(guildPackageJson.scripts.build).not.toContain('apps/babel-guild');
+        expect(pocketPackageJson.scripts.build).not.toContain('apps/babel-pocket');
     });
 
     it('allows the asset copy helper to run on a clean dist directory', () => {

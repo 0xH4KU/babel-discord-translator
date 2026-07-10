@@ -319,7 +319,7 @@ describe('UsageTracker', () => {
 
     describe('Per-Guild Budget', () => {
         it('should record both global and guild usage', () => {
-            usage.record(100, 50, 'guild-123');
+            usage.record(100, 50, { guildId: 'guild-123' });
 
             const global = mockData.tokenUsage as { inputTokens: number; requests: number };
             expect(global.inputTokens).toBe(100);
@@ -334,9 +334,9 @@ describe('UsageTracker', () => {
         });
 
         it('should accumulate guild usage separately', () => {
-            usage.record(100, 50, 'guild-A');
-            usage.record(200, 100, 'guild-B');
-            usage.record(50, 25, 'guild-A');
+            usage.record(100, 50, { guildId: 'guild-A' });
+            usage.record(200, 100, { guildId: 'guild-B' });
+            usage.record(50, 25, { guildId: 'guild-A' });
 
             const guildUsage = mockData.guildTokenUsage as Record<
                 string,
@@ -359,9 +359,9 @@ describe('UsageTracker', () => {
             mockData.inputPricePerMillion = 1.0;
             mockData.outputPricePerMillion = 0;
 
-            usage.record(1_000_000, 0, 'guild-123'); // $1 cost = $1 guild budget
+            usage.record(1_000_000, 0, { guildId: 'guild-123' }); // $1 cost = $1 guild budget
 
-            expect(usage.isBudgetExceeded('guild-123')).toBe(true);
+            expect(usage.isBudgetExceeded({ guildId: 'guild-123' })).toBe(true);
         });
 
         it('should fallback to global budget when guild has no budget', () => {
@@ -370,9 +370,9 @@ describe('UsageTracker', () => {
             mockData.inputPricePerMillion = 1.0;
             mockData.outputPricePerMillion = 0;
 
-            usage.record(1_000_000, 0, 'guild-456'); // $1 cost = $1 global budget
+            usage.record(1_000_000, 0, { guildId: 'guild-456' }); // $1 cost = $1 global budget
 
-            expect(usage.isBudgetExceeded('guild-456')).toBe(true);
+            expect(usage.isBudgetExceeded({ guildId: 'guild-456' })).toBe(true);
         });
 
         it('should enforce a shared global budget for guilds without a custom budget', () => {
@@ -381,11 +381,11 @@ describe('UsageTracker', () => {
             mockData.inputPricePerMillion = 1.0;
             mockData.outputPricePerMillion = 0;
 
-            usage.record(600_000, 0, 'guild-A');
-            usage.record(400_000, 0, 'guild-B');
+            usage.record(600_000, 0, { guildId: 'guild-A' });
+            usage.record(400_000, 0, { guildId: 'guild-B' });
 
-            expect(usage.isBudgetExceeded('guild-A')).toBe(true);
-            expect(usage.isBudgetExceeded('guild-B')).toBe(true);
+            expect(usage.isBudgetExceeded({ guildId: 'guild-A' })).toBe(true);
+            expect(usage.isBudgetExceeded({ guildId: 'guild-B' })).toBe(true);
         });
 
         it('should keep custom guild usage out of the shared global budget pool', () => {
@@ -394,9 +394,9 @@ describe('UsageTracker', () => {
             mockData.inputPricePerMillion = 1.0;
             mockData.outputPricePerMillion = 0;
 
-            usage.record(600_000, 0, 'guild-custom');
+            usage.record(600_000, 0, { guildId: 'guild-custom' });
 
-            expect(usage.isBudgetExceeded('guild-global')).toBe(false);
+            expect(usage.isBudgetExceeded({ guildId: 'guild-global' })).toBe(false);
             expect(
                 usage.wouldExceedBudget({
                     estimatedInputTokens: 400_000,
@@ -412,7 +412,7 @@ describe('UsageTracker', () => {
             mockData.inputPricePerMillion = 1.0;
             mockData.outputPricePerMillion = 0;
 
-            usage.record(600_000, 0, 'guild-A');
+            usage.record(600_000, 0, { guildId: 'guild-A' });
 
             expect(
                 usage.wouldExceedBudget({
@@ -428,8 +428,8 @@ describe('UsageTracker', () => {
             mockData.inputPricePerMillion = 1.0;
             mockData.outputPricePerMillion = 0;
 
-            usage.record(1_000_000, 0, 'guild-456');
-            usage.isBudgetExceeded('guild-456');
+            usage.record(1_000_000, 0, { guildId: 'guild-456' });
+            usage.isBudgetExceeded({ guildId: 'guild-456' });
 
             expect(mockedStore.getConfigValues).toHaveBeenCalledOnce();
             expect(mockedStore.getAll).not.toHaveBeenCalled();
@@ -441,9 +441,9 @@ describe('UsageTracker', () => {
             mockData.inputPricePerMillion = 1.0;
             mockData.outputPricePerMillion = 0;
 
-            usage.record(1_000_000, 0, 'guild-rich'); // $1 cost < $5 guild budget
+            usage.record(1_000_000, 0, { guildId: 'guild-rich' }); // $1 cost < $5 guild budget
 
-            expect(usage.isBudgetExceeded('guild-rich')).toBe(false);
+            expect(usage.isBudgetExceeded({ guildId: 'guild-rich' })).toBe(false);
         });
 
         it('should estimate custom guild budgets independently from the global budget pool', () => {
@@ -452,7 +452,7 @@ describe('UsageTracker', () => {
             mockData.inputPricePerMillion = 1.0;
             mockData.outputPricePerMillion = 0;
 
-            usage.record(600_000, 0, 'guild-global');
+            usage.record(600_000, 0, { guildId: 'guild-global' });
 
             expect(
                 usage.wouldExceedBudget({
@@ -469,9 +469,9 @@ describe('UsageTracker', () => {
             mockData.inputPricePerMillion = 1.0;
             mockData.outputPricePerMillion = 0;
 
-            usage.record(10_000_000, 0, 'guild-free'); // $10 cost
+            usage.record(10_000_000, 0, { guildId: 'guild-free' }); // $10 cost
 
-            expect(usage.isBudgetExceeded('guild-free')).toBe(false);
+            expect(usage.isBudgetExceeded({ guildId: 'guild-free' })).toBe(false);
         });
 
         it('should return correct guild stats', () => {
@@ -479,7 +479,7 @@ describe('UsageTracker', () => {
             mockData.inputPricePerMillion = 1.0;
             mockData.outputPricePerMillion = 0;
 
-            usage.record(500_000, 0, 'guild-X');
+            usage.record(500_000, 0, { guildId: 'guild-X' });
 
             const stats = usage.getGuildStats('guild-X');
             expect(stats.inputTokens).toBe(500_000);
@@ -665,8 +665,8 @@ describe('UsageTracker', () => {
             ]);
         });
 
-        it('should not record guild usage when guildId is null', () => {
-            usage.record(100, 50, null);
+        it('should not record guild usage when scope is omitted', () => {
+            usage.record(100, 50);
 
             const global = mockData.tokenUsage as { inputTokens: number; requests: number };
             expect(global.inputTokens).toBe(100);
@@ -680,7 +680,7 @@ describe('UsageTracker', () => {
             mockData.inputPricePerMillion = 1.0;
             mockData.outputPricePerMillion = 1.0;
 
-            usage.record(900_000, 0, 'guild-estimate');
+            usage.record(900_000, 0, { guildId: 'guild-estimate' });
 
             expect(
                 usage.wouldExceedBudget({
@@ -706,17 +706,6 @@ describe('UsageTracker', () => {
             >;
             expect(userUsage['user-123'].inputTokens).toBe(100);
             expect(userUsage['user-123'].requests).toBe(1);
-        });
-
-        it('should keep legacy guild string scope working', () => {
-            usage.record(100, 50, 'guild-legacy');
-
-            const guildUsage = mockData.guildTokenUsage as Record<
-                string,
-                { inputTokens: number; requests: number }
-            >;
-            expect(guildUsage['guild-legacy'].inputTokens).toBe(100);
-            expect(guildUsage['guild-legacy'].requests).toBe(1);
         });
 
         it('should use user budget before default user budget', () => {
