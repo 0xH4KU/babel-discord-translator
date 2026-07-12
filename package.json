@@ -36,6 +36,8 @@
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src/ apps/ tests/",
     "smoke:dashboard": "node scripts/smoke-dashboard-build.js",
+    "presmoke:worker": "node scripts/build-worker-assets.js",
+    "smoke:worker": "node scripts/smoke-worker.js",
     "format": "prettier --write .",
     "prepare": "node scripts/prepare-husky.js"
   },

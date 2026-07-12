@@ -6,6 +6,7 @@
     "workers_dev": false,
     "preview_urls": false,
     "routes": [{ "pattern": "babel.lum.bio", "custom_domain": true }],
+    "placement": { "mode": "smart" },
     "vars": {
         "BABEL_APP": "combined",
     },
@@ -21,8 +22,6 @@
         "directory": "../../dist/worker-public",
         "binding": "ASSETS",
         "run_worker_first": [
-            "/css/*",
-            "/js/*",
             "/api/*",
             "/guild/api/*",
             "/pocket/api/*",

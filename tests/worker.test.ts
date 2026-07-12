@@ -14,18 +14,24 @@ interface TestStatement {
     run(): Promise<unknown>;
 }
 
-function env(overrides: Partial<WorkerEnv> = {}, firstResult: unknown = null): WorkerEnv {
+function env(
+    overrides: Partial<WorkerEnv> = {},
+    firstResult: unknown = null,
+    allResults: unknown[] = [],
+): WorkerEnv & { queries: string[] } {
     let cached: { translated_text: string; provider: string } | null = null;
+    const queries: string[] = [];
     return {
         DB: {
             prepare: (query: string) => {
+                queries.push(query);
                 let values: Array<string | number | null> = [];
                 const statement: TestStatement = {
                     bind: (...bound) => {
                         values = bound;
                         return statement;
                     },
-                    all: async <T>() => ({ results: [] as T[] }),
+                    all: async <T>() => ({ results: allResults as T[] }),
                     first: async <T>() =>
                         (query.includes('RETURNING expires_at')
                             ? { expires_at: Date.now() + 5000 }
@@ -37,7 +43,9 @@ function env(overrides: Partial<WorkerEnv> = {}, firstResult: unknown = null): W
                                         'SELECT translated_text, provider FROM translation_cache',
                                     )
                                   ? cached
-                                  : firstResult) as T | null,
+                                  : query.includes('FROM sqlite_master')
+                                    ? firstResult
+                                    : firstResult) as T | null,
                     run: async () => {
                         if (query.includes('INSERT INTO translation_cache')) {
                             cached = {
@@ -54,13 +62,19 @@ function env(overrides: Partial<WorkerEnv> = {}, firstResult: unknown = null): W
                 Promise.all(statements.map((statement) => statement.run())),
         },
         DISCORD_PUBLIC_KEY: '',
+        queries,
         ...overrides,
     };
 }
 
-function dashboardEnv(): WorkerEnv {
+function dashboardEnv(overrides: Partial<WorkerEnv> = {}): WorkerEnv & {
+    usageWrites: string[];
+    stats: { configReads: number };
+} {
     const sessions = new Map<string, { expiry: number; csrf: string }>();
     const config = new Map<string, string>();
+    const usageWrites: string[] = [];
+    const stats = { configReads: 0 };
     let loginAttempts = 0;
 
     return {
@@ -75,6 +89,7 @@ function dashboardEnv(): WorkerEnv {
                     },
                     all: async <T>() => {
                         if (query.includes('FROM app_config')) {
+                            stats.configReads++;
                             return {
                                 results: [...config].map(([key, value]) => ({ key, value })) as T[],
                             };
@@ -99,10 +114,26 @@ function dashboardEnv(): WorkerEnv {
                             const found = sessions.get(token);
                             return (found ? { token, ...found } : null) as T | null;
                         }
-                        if (query.includes('SELECT 1 AS ok')) return { ok: 1 } as T;
+                        if (query.includes('FROM sqlite_master')) {
+                            return { table_count: 20 } as T;
+                        }
+                        if (query.includes('RETURNING expires_at')) {
+                            return { expires_at: Date.now() + 5000 } as T;
+                        }
+                        if (query.includes('AS user_rank')) {
+                            return {
+                                user_rank: 1,
+                                global_queue_rank: 1,
+                                guild_queue_rank: 1,
+                            } as T;
+                        }
+                        if (query.includes('RETURNING lease_id')) {
+                            return { lease_id: 'dashboard-lease' } as T;
+                        }
                         return null;
                     },
                     run: async () => {
+                        if (query.includes('INSERT INTO daily_usage')) usageWrites.push(query);
                         if (query.startsWith('INSERT INTO sessions')) {
                             sessions.set(String(values[0]), {
                                 expiry: Number(values[1]),
@@ -123,6 +154,9 @@ function dashboardEnv(): WorkerEnv {
             batch: async (statements) =>
                 Promise.all(statements.map((statement) => statement.run())),
         },
+        usageWrites,
+        stats,
+        ...overrides,
     };
 }
 
@@ -206,6 +240,37 @@ describe('Cloudflare Worker runtime', () => {
         expect(payload.data.content).not.toContain('Quick translation');
     });
 
+    it('uses the profile public key on the single-profile interaction endpoint', async () => {
+        const keys = await crypto.subtle.generateKey('Ed25519', true, ['sign', 'verify']);
+        const publicKey = await crypto.subtle.exportKey('raw', keys.publicKey);
+        const timestamp = '1234567890';
+        const body = JSON.stringify({ type: 1, application_id: 'app', token: 'token' });
+        const signature = await crypto.subtle.sign(
+            'Ed25519',
+            keys.privateKey,
+            new TextEncoder().encode(timestamp + body),
+        );
+
+        const response = await worker.fetch(
+            new Request('https://worker.example/interactions', {
+                method: 'POST',
+                headers: {
+                    'x-signature-ed25519': hex(signature),
+                    'x-signature-timestamp': timestamp,
+                },
+                body,
+            }),
+            env({
+                BABEL_APP: 'pocket',
+                BABEL_POCKET_DISCORD_PUBLIC_KEY: hex(publicKey),
+            }),
+            { waitUntil: vi.fn() },
+        );
+
+        expect(response.status).toBe(200);
+        await expect(response.json()).resolves.toEqual({ type: 1 });
+    });
+
     it('reports ready only when the active runtime is fully configured', async () => {
         globalThis.fetch = vi.fn().mockResolvedValue(
             Response.json({
@@ -222,7 +287,7 @@ describe('Cloudflare Worker runtime', () => {
                     GCP_PROJECT: 'project',
                     ALLOWED_GUILD_IDS: 'guild-id',
                 },
-                { ok: 1 },
+                { table_count: 20 },
             ),
             { waitUntil: vi.fn() },
         );
@@ -240,6 +305,63 @@ describe('Cloudflare Worker runtime', () => {
         });
         const request = vi.mocked(globalThis.fetch).mock.calls[0]?.[1] as RequestInit;
         expect(JSON.parse(String(request.body)).generationConfig.maxOutputTokens).toBe(64);
+    });
+
+    it('stays ready when one fallback provider is healthy', async () => {
+        globalThis.fetch = vi
+            .fn()
+            .mockResolvedValueOnce(new Response('unavailable', { status: 503 }))
+            .mockResolvedValueOnce(Response.json({ choices: [{ message: { content: 'OK' } }] }));
+        const response = await worker.fetch(
+            new Request('https://worker.example/readyz'),
+            env(
+                {
+                    DISCORD_PUBLIC_KEY: 'public-key',
+                    DISCORD_BOT_TOKEN: 'bot-token',
+                    TRANSLATION_PROVIDER: 'vertex+openai',
+                    VERTEX_AI_API_KEY: 'provider-key',
+                    GCP_PROJECT: 'fallback-project',
+                    OPENAI_API_KEY: 'openai-key',
+                    OPENAI_BASE_URL: 'https://api.example',
+                    OPENAI_MODEL: 'model',
+                    ALLOWED_GUILD_IDS: 'guild-id',
+                },
+                { table_count: 20 },
+            ),
+            { waitUntil: vi.fn() },
+        );
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+            status: 'ready',
+            checks: { database: true, provider: true },
+        });
+    });
+
+    it('reports not ready when a D1 migration is missing', async () => {
+        globalThis.fetch = vi
+            .fn()
+            .mockResolvedValue(Response.json({ choices: [{ message: { content: 'OK' } }] }));
+        const response = await worker.fetch(
+            new Request('https://worker.example/readyz'),
+            env(
+                {
+                    DISCORD_PUBLIC_KEY: 'public-key',
+                    DISCORD_BOT_TOKEN: 'bot-token',
+                    VERTEX_AI_API_KEY: 'provider-key',
+                    GCP_PROJECT: 'missing-schema-project',
+                    ALLOWED_GUILD_IDS: 'guild-id',
+                },
+                { table_count: 19 },
+            ),
+            { waitUntil: vi.fn() },
+        );
+
+        expect(response.status).toBe(503);
+        expect(await response.json()).toMatchObject({
+            status: 'not_ready',
+            checks: { database: false },
+        });
     });
 
     it('caches only content-hashed dashboard assets through the Worker binding', async () => {
@@ -272,6 +394,41 @@ describe('Cloudflare Worker runtime', () => {
             { waitUntil: vi.fn() },
         );
         expect(fallback.headers.get('cache-control')).toBeNull();
+    });
+
+    it('exports combined runtime counters by profile and daily usage as gauges', async () => {
+        const response = await worker.fetch(
+            new Request('https://worker.example/metrics'),
+            env({ BABEL_APP: 'combined' }, { input_tokens: 120, output_tokens: 30, requests: 4 }, [
+                {
+                    app_profile_id: 'babel-guild',
+                    translations_total: 7,
+                    api_calls_total: 6,
+                    cache_hits_total: 1,
+                    failures_total: 2,
+                    rejected_total: 3,
+                    provider_fallback_total: 4,
+                },
+                {
+                    app_profile_id: 'babel-pocket',
+                    translations_total: 11,
+                    api_calls_total: 10,
+                    cache_hits_total: 5,
+                    failures_total: 0,
+                    rejected_total: 1,
+                    provider_fallback_total: 2,
+                },
+            ]),
+            { waitUntil: vi.fn() },
+        );
+        const body = await response.text();
+
+        expect(body).toContain('babel_translations_total{app_profile_id="babel-guild"} 7');
+        expect(body).toContain('babel_translations_total{app_profile_id="babel-pocket"} 11');
+        expect(body).toContain('# TYPE babel_daily_translation_input_tokens gauge');
+        expect(body).toContain('babel_daily_translation_input_tokens 120');
+        expect(body).toContain('babel_daily_translation_requests 4');
+        expect(body).not.toContain('babel_translation_input_tokens_total');
     });
 
     it('authenticates dashboard sessions and applies D1 configuration updates', async () => {
@@ -323,6 +480,65 @@ describe('Cloudflare Worker runtime', () => {
             hasOpenaiApiKey: true,
             allowedGuildIds: ['guild-id'],
         });
+
+        await worker.fetch(
+            new Request('https://worker.example/api/config', { headers: { cookie } }),
+            runtimeEnv,
+            { waitUntil: vi.fn() },
+        );
+        expect(runtimeEnv.stats.configReads).toBe(2);
+    });
+
+    it('records dashboard test translations and returns their real cache state', async () => {
+        globalThis.fetch = vi.fn().mockResolvedValue(
+            Response.json({
+                choices: [{ message: { content: 'dashboard result' } }],
+                usage: { prompt_tokens: 8, completion_tokens: 3 },
+            }),
+        );
+        const runtimeEnv = dashboardEnv({
+            TRANSLATION_PROVIDER: 'openai',
+            OPENAI_API_KEY: 'key',
+            OPENAI_BASE_URL: 'https://api.example',
+            OPENAI_MODEL: 'model',
+            ALLOWED_GUILD_IDS: 'guild-id',
+        });
+        const login = await worker.fetch(
+            new Request('https://worker.example/api/login', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ password: 'correct-password' }),
+            }),
+            runtimeEnv,
+            { waitUntil: vi.fn() },
+        );
+        const loginPayload = (await login.json()) as { csrfToken: string };
+        const cookie = login.headers.get('set-cookie')?.split(';')[0] ?? '';
+
+        const response = await worker.fetch(
+            new Request('https://worker.example/api/translate/test', {
+                method: 'POST',
+                headers: {
+                    cookie,
+                    'content-type': 'application/json',
+                    'x-csrf-token': loginPayload.csrfToken,
+                },
+                body: JSON.stringify({ text: 'Hello', targetLanguage: 'zh-TW' }),
+            }),
+            runtimeEnv,
+            { waitUntil: vi.fn() },
+        );
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+            ok: true,
+            translation: 'dashboard result',
+            inputTokens: 8,
+            outputTokens: 3,
+            cached: false,
+            fallback: false,
+        });
+        expect(runtimeEnv.usageWrites).toHaveLength(1);
     });
 
     it('defers translation and edits the interaction response', async () => {
@@ -430,6 +646,15 @@ describe('Cloudflare Worker runtime', () => {
             .mockResolvedValueOnce(new Response(null, { status: 204 }));
         let task: Promise<unknown> | undefined;
 
+        const runtimeEnv = env({
+            TRANSLATION_PROVIDER: 'vertex+openai',
+            VERTEX_AI_API_KEY: 'vertex-key',
+            GCP_PROJECT: 'project',
+            OPENAI_API_KEY: 'openai-key',
+            OPENAI_BASE_URL: 'https://api.example',
+            OPENAI_MODEL: 'model',
+            ALLOWED_GUILD_IDS: 'guild-id',
+        });
         await handleInteraction(
             {
                 type: 2,
@@ -448,15 +673,7 @@ describe('Cloudflare Worker runtime', () => {
                     ],
                 },
             },
-            env({
-                TRANSLATION_PROVIDER: 'vertex+openai',
-                VERTEX_AI_API_KEY: 'vertex-key',
-                GCP_PROJECT: 'project',
-                OPENAI_API_KEY: 'openai-key',
-                OPENAI_BASE_URL: 'https://api.example',
-                OPENAI_MODEL: 'model',
-                ALLOWED_GUILD_IDS: 'guild-id',
-            }),
+            runtimeEnv,
             { waitUntil: (promise) => (task = promise) },
         );
         await task;
@@ -474,6 +691,12 @@ describe('Cloudflare Worker runtime', () => {
                 body: JSON.stringify({ content: 'fallback result' }),
             }),
         );
+        const metricWrites = runtimeEnv.queries.filter((query) =>
+            query.includes('INSERT INTO runtime_metrics'),
+        );
+        expect(metricWrites).toHaveLength(1);
+        expect(metricWrites[0]).toContain('vertex_failure_total');
+        expect(metricWrites[0]).toContain('openai_success_total');
     });
 
     it('denies translation when the allowlist is empty', async () => {

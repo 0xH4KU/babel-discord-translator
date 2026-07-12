@@ -13,7 +13,12 @@ import {
     discordMessages,
     getDiscordLanguageName,
 } from '../../../src/shared/messages/discord-messages.js';
-import { configuredEnv, handleDashboardRequest, recordWorkerLog } from './dashboard.js';
+import {
+    configuredEnv,
+    databaseReady,
+    handleDashboardRequest,
+    recordWorkerLog,
+} from './dashboard.js';
 
 type D1Value = string | number | null;
 
@@ -135,6 +140,16 @@ interface UsageRow {
     requests: number;
 }
 
+interface RuntimeMetricsExportRow {
+    app_profile_id: string;
+    translations_total: number;
+    api_calls_total: number;
+    cache_hits_total: number;
+    failures_total: number;
+    rejected_total: number;
+    provider_fallback_total: number;
+}
+
 interface GlossaryRow {
     id: number;
     guild_id: string;
@@ -158,6 +173,11 @@ interface CachedTranslationRow {
     provider: string;
 }
 
+interface WorkerTranslationScope {
+    guildId?: string | null;
+    userId?: string;
+}
+
 const INTERACTION_PING = 1;
 const INTERACTION_APPLICATION_COMMAND = 2;
 const COMMAND_MESSAGE = 3;
@@ -166,6 +186,11 @@ const RESPONSE_CHANNEL_MESSAGE = 4;
 const RESPONSE_DEFERRED_CHANNEL_MESSAGE = 5;
 const EPHEMERAL = 1 << 6;
 const DISCORD_API = 'https://discord.com/api/v10';
+const BUDGET_EXCEEDED_ERROR = 'Daily budget exceeded';
+const BACKGROUND_TRANSLATION_TIMEOUT_MS = 25_000;
+const PROVIDER_REQUEST_TIMEOUT_MS = 10_000;
+const DISCORD_REQUEST_TIMEOUT_MS = 5_000;
+const PROVIDER_HEALTH_CACHE_MS = 60_000;
 const providerBreakers = new Map<string, { failures: number; openUntil: number }>();
 interface ProviderHealthCheck {
     status: 'pass' | 'fail' | 'skip';
@@ -190,6 +215,11 @@ const DASHBOARD_CSP = [
 
 function json(data: unknown, status = 200): Response {
     return Response.json(data, { status });
+}
+
+function timeoutSignal(timeoutMs: number, parent?: AbortSignal | null): AbortSignal {
+    const timeout = AbortSignal.timeout(timeoutMs);
+    return parent ? AbortSignal.any([parent, timeout]) : timeout;
 }
 
 function ephemeral(content: string): Response {
@@ -256,6 +286,12 @@ function profileFor(env: WorkerEnv) {
         : BABEL_GUILD_PROFILE;
 }
 
+function singleProfilePublicKey(env: WorkerEnv): string | undefined {
+    return profileFor(env).id === BABEL_POCKET_PROFILE.id
+        ? (env.BABEL_POCKET_DISCORD_PUBLIC_KEY ?? env.DISCORD_PUBLIC_KEY)
+        : (env.BABEL_GUILD_DISCORD_PUBLIC_KEY ?? env.DISCORD_PUBLIC_KEY);
+}
+
 function interactionEndpoint(
     pathname: string,
     env: WorkerEnv,
@@ -273,37 +309,38 @@ function interactionEndpoint(
         };
     }
     if (pathname === '/interactions') {
-        return { publicKey: env.DISCORD_PUBLIC_KEY, runtimeEnv: env };
+        const combined = env.BABEL_APP === 'combined' || env.BABEL_APP === 'both';
+        return {
+            publicKey: combined ? env.DISCORD_PUBLIC_KEY : singleProfilePublicKey(env),
+            runtimeEnv: env,
+        };
     }
     return null;
 }
 
 async function readiness(env: WorkerEnv): Promise<Response> {
     env = await configuredEnv(env);
-    const combined = env.BABEL_APP === 'combined';
-    const pocketOnly = env.BABEL_APP === 'pocket' || env.BABEL_APP === 'babel-pocket';
+    const combined = env.BABEL_APP === 'combined' || env.BABEL_APP === 'both';
+    const profile = profileFor(env);
     const providerChecks = await providerHealth(env);
     const checks = {
-        database: false,
+        database: await databaseReady(env),
         discord: combined
             ? !!(env.BABEL_GUILD_DISCORD_PUBLIC_KEY && env.BABEL_POCKET_DISCORD_PUBLIC_KEY)
-            : pocketOnly
-              ? !!(env.BABEL_POCKET_DISCORD_PUBLIC_KEY ?? env.DISCORD_PUBLIC_KEY)
-              : !!(env.BABEL_GUILD_DISCORD_PUBLIC_KEY ?? env.DISCORD_PUBLIC_KEY),
-        provider: Object.values(providerChecks).every((check) => check.status !== 'fail'),
+            : !!singleProfilePublicKey(env),
+        provider: Object.values(providerChecks).some((check) => check.status === 'pass'),
         access: combined
             ? commaSeparatedIds(env.ALLOWED_GUILD_IDS).size > 0 &&
               commaSeparatedIds(env.ALLOWED_USER_IDS).size > 0
-            : commaSeparatedIds(pocketOnly ? env.ALLOWED_USER_IDS : env.ALLOWED_GUILD_IDS).size > 0,
+            : commaSeparatedIds(
+                  profile.accessMode === 'user-install'
+                      ? env.ALLOWED_USER_IDS
+                      : env.ALLOWED_GUILD_IDS,
+              ).size > 0,
         publicOutput:
-            pocketOnly ||
+            (!combined && !profile.enableWebhookOutput) ||
             !!(env.BABEL_GUILD_DISCORD_TOKEN ?? env.DISCORD_BOT_TOKEN ?? env.DISCORD_TOKEN),
     };
-    try {
-        checks.database = !!(await env.DB.prepare('SELECT 1 AS ok').first<{ ok: number }>())?.ok;
-    } catch {
-        checks.database = false;
-    }
     const ready = Object.values(checks).every(Boolean);
     return json({ status: ready ? 'ready' : 'not_ready', checks }, ready ? 200 : 503);
 }
@@ -353,7 +390,7 @@ async function providerHealth(
         probeProvider('openai', env),
     ]);
     const checks = { vertexAi, openAi };
-    providerHealthCache.set(key, { checks, expires: Date.now() + 5000 });
+    providerHealthCache.set(key, { checks, expires: Date.now() + PROVIDER_HEALTH_CACHE_MS });
     return checks;
 }
 
@@ -365,46 +402,57 @@ async function metrics(request: Request, env: WorkerEnv): Promise<Response> {
     if (metricsToken && provided !== metricsToken) {
         return new Response('Unauthorized', { status: 401 });
     }
-    const [usage, runtime] = await Promise.all([
+    const profileIds =
+        env.BABEL_APP === 'combined' || env.BABEL_APP === 'both'
+            ? [BABEL_GUILD_PROFILE.id, BABEL_POCKET_PROFILE.id]
+            : [appProfileId(env)];
+    const [usage, runtimeRows] = await Promise.all([
         env.DB.prepare(
-            'SELECT input_tokens, output_tokens, requests FROM daily_usage WHERE id = 1',
-        ).first<UsageRow>(),
-        env.DB.prepare(
-            `SELECT translations_total, api_calls_total, cache_hits_total, failures_total,
-                    rejected_total, provider_fallback_total
-             FROM runtime_metrics WHERE app_profile_id = ?`,
+            'SELECT input_tokens, output_tokens, requests FROM daily_usage WHERE id = 1 AND date = ?',
         )
-            .bind(appProfileId(env))
-            .first<{
-                translations_total: number;
-                api_calls_total: number;
-                cache_hits_total: number;
-                failures_total: number;
-                rejected_total: number;
-                provider_fallback_total: number;
-            }>(),
+            .bind(new Date().toISOString().slice(0, 10))
+            .first<UsageRow>(),
+        env.DB.prepare(
+            `SELECT app_profile_id, translations_total, api_calls_total, cache_hits_total, failures_total,
+                    rejected_total, provider_fallback_total
+             FROM runtime_metrics
+             WHERE app_profile_id IN (${profileIds.map(() => '?').join(', ')})`,
+        )
+            .bind(...profileIds)
+            .all<RuntimeMetricsExportRow>(),
     ]);
+    const runtimeByProfile = new Map(
+        runtimeRows.results.map((row) => [row.app_profile_id, row] as const),
+    );
+    const runtimeMetrics = [
+        ['babel_translations_total', 'translations_total'],
+        ['babel_translation_api_calls_total', 'api_calls_total'],
+        ['babel_translation_cache_hits_total', 'cache_hits_total'],
+        ['babel_translation_failures_total', 'failures_total'],
+        ['babel_runtime_rejected_total', 'rejected_total'],
+        ['babel_provider_fallback_total', 'provider_fallback_total'],
+    ] as const;
     return new Response(
         [
             '# HELP babel_worker_info Cloudflare Worker runtime information.',
             '# TYPE babel_worker_info gauge',
             'babel_worker_info{runtime="cloudflare-worker"} 1',
-            '# TYPE babel_translations_total counter',
-            `babel_translations_total ${runtime?.translations_total ?? 0}`,
-            '# TYPE babel_translation_api_calls_total counter',
-            `babel_translation_api_calls_total ${runtime?.api_calls_total ?? 0}`,
-            '# TYPE babel_translation_cache_hits_total counter',
-            `babel_translation_cache_hits_total ${runtime?.cache_hits_total ?? 0}`,
-            '# TYPE babel_translation_failures_total counter',
-            `babel_translation_failures_total ${runtime?.failures_total ?? 0}`,
-            '# TYPE babel_runtime_rejected_total counter',
-            `babel_runtime_rejected_total ${runtime?.rejected_total ?? 0}`,
-            '# TYPE babel_provider_fallback_total counter',
-            `babel_provider_fallback_total ${runtime?.provider_fallback_total ?? 0}`,
-            '# TYPE babel_translation_input_tokens_total counter',
-            `babel_translation_input_tokens_total ${usage?.input_tokens ?? 0}`,
-            '# TYPE babel_translation_output_tokens_total counter',
-            `babel_translation_output_tokens_total ${usage?.output_tokens ?? 0}`,
+            ...runtimeMetrics.flatMap(([name, column]) => [
+                `# TYPE ${name} counter`,
+                ...profileIds.map(
+                    (profileId) =>
+                        `${name}{app_profile_id="${profileId}"} ${runtimeByProfile.get(profileId)?.[column] ?? 0}`,
+                ),
+            ]),
+            '# HELP babel_daily_translation_input_tokens Translation input tokens used today (UTC).',
+            '# TYPE babel_daily_translation_input_tokens gauge',
+            `babel_daily_translation_input_tokens ${usage?.input_tokens ?? 0}`,
+            '# HELP babel_daily_translation_output_tokens Translation output tokens used today (UTC).',
+            '# TYPE babel_daily_translation_output_tokens gauge',
+            `babel_daily_translation_output_tokens ${usage?.output_tokens ?? 0}`,
+            '# HELP babel_daily_translation_requests Translation requests completed today (UTC).',
+            '# TYPE babel_daily_translation_requests gauge',
+            `babel_daily_translation_requests ${usage?.requests ?? 0}`,
             '',
         ].join('\n'),
         { headers: { 'Content-Type': 'text/plain; version=0.0.4; charset=utf-8' } },
@@ -587,16 +635,22 @@ function appProfileId(env: WorkerEnv): string {
 }
 
 async function incrementMetrics(env: WorkerEnv, columns: RuntimeMetricColumn[]): Promise<void> {
-    if (columns.length === 0) return;
+    const statement = incrementMetricsStatement(env, columns);
+    if (statement) await statement.run();
+}
+
+function incrementMetricsStatement(
+    env: WorkerEnv,
+    columns: RuntimeMetricColumn[],
+): D1PreparedStatement | null {
+    if (columns.length === 0) return null;
     const unique = [...new Set(columns)];
-    await env.DB.prepare(
+    return env.DB.prepare(
         `INSERT INTO runtime_metrics (app_profile_id, ${unique.join(', ')})
          VALUES (?, ${unique.map(() => '1').join(', ')})
          ON CONFLICT (app_profile_id) DO UPDATE SET
              ${unique.map((column) => `${column} = ${column} + 1`).join(', ')}`,
-    )
-        .bind(appProfileId(env))
-        .run();
+    ).bind(appProfileId(env));
 }
 
 async function translationCacheKey(
@@ -625,7 +679,6 @@ async function translationCacheKey(
 async function cachedTranslation(
     env: WorkerEnv,
     cacheKey: string,
-    recordMiss = true,
 ): Promise<CachedTranslationRow | null> {
     const row = await env.DB.prepare(
         `SELECT translated_text, provider FROM translation_cache
@@ -633,10 +686,7 @@ async function cachedTranslation(
     )
         .bind(appProfileId(env), cacheKey)
         .first<CachedTranslationRow>();
-    if (!row) {
-        if (recordMiss) await incrementMetrics(env, ['cache_misses_total']);
-        return null;
-    }
+    if (!row) return null;
     await env.DB.batch([
         env.DB.prepare(
             `UPDATE translation_cache SET last_accessed = ?
@@ -653,13 +703,13 @@ async function cachedTranslation(
     return row;
 }
 
-async function cacheTranslation(
+function cacheTranslationStatements(
     env: WorkerEnv,
     cacheKey: string,
     result: TranslationResult,
-): Promise<void> {
+): D1PreparedStatement[] {
     const maxSize = boundedInteger(env.CACHE_MAX_SIZE, 2000, 10_000);
-    await env.DB.batch([
+    return [
         env.DB.prepare(
             `INSERT INTO translation_cache
                 (app_profile_id, cache_key, translated_text, provider, last_accessed)
@@ -676,7 +726,7 @@ async function cacheTranslation(
                  ORDER BY last_accessed DESC LIMIT ?
              )`,
         ).bind(appProfileId(env), appProfileId(env), maxSize),
-    ]);
+    ];
 }
 
 async function cooldown(interaction: DiscordInteraction, env: WorkerEnv) {
@@ -705,8 +755,9 @@ async function cooldown(interaction: DiscordInteraction, env: WorkerEnv) {
 
 async function withRuntimeLease<T>(
     env: WorkerEnv,
-    scope: { guildId?: string | null; userId?: string },
+    scope: WorkerTranslationScope,
     task: () => Promise<T>,
+    signal?: AbortSignal,
 ): Promise<T> {
     const profileId = appProfileId(env);
     const leaseId = crypto.randomUUID();
@@ -726,6 +777,7 @@ async function withRuntimeLease<T>(
 
     await env.DB.batch([
         env.DB.prepare('DELETE FROM runtime_leases WHERE expires_at <= ?').bind(createdAt),
+        env.DB.prepare('DELETE FROM budget_reservations WHERE expires_at <= ?').bind(createdAt),
         env.DB.prepare(
             `INSERT INTO runtime_leases
                 (lease_id, app_profile_id, user_id, guild_id, status, created_at, expires_at)
@@ -788,6 +840,12 @@ async function withRuntimeLease<T>(
     const deadline = createdAt + maxQueueWaitMs;
     let active = false;
     while (Date.now() <= deadline) {
+        if (signal?.aborted) {
+            await env.DB.prepare('DELETE FROM runtime_leases WHERE lease_id = ?')
+                .bind(leaseId)
+                .run();
+            throw signal.reason;
+        }
         const now = Date.now();
         const activated = await env.DB.prepare(
             `UPDATE runtime_leases SET status = 'active', expires_at = ?
@@ -834,102 +892,135 @@ async function recordPendingUser(interaction: DiscordInteraction, env: WorkerEnv
         .run();
 }
 
-function usageCost(usage: UsageRow | null, env: WorkerEnv): number {
-    if (!usage) return 0;
-    return (
-        (usage.input_tokens / 1_000_000) * nonNegativeNumber(env.INPUT_PRICE_PER_MILLION) +
-        (usage.output_tokens / 1_000_000) * nonNegativeNumber(env.OUTPUT_PRICE_PER_MILLION)
-    );
-}
-
-async function globalUsage(env: WorkerEnv, date: string): Promise<UsageRow | null> {
-    return env.DB.prepare(
-        `SELECT
-            MAX(d.input_tokens - COALESCE(SUM(g.input_tokens), 0), 0) AS input_tokens,
-            MAX(d.output_tokens - COALESCE(SUM(g.output_tokens), 0), 0) AS output_tokens,
-            MAX(d.requests - COALESCE(SUM(g.requests), 0), 0) AS requests
-         FROM daily_usage d
-         LEFT JOIN guild_daily_usage g
-           ON g.date = d.date
-          AND g.guild_id IN (SELECT guild_id FROM guild_budgets)
-         WHERE d.id = 1 AND d.date = ?
-         GROUP BY d.id`,
-    )
-        .bind(date)
-        .first<UsageRow>();
-}
-
-async function scopedUsage(
-    env: WorkerEnv,
-    kind: 'guild' | 'user',
-    id: string,
-    date: string,
-): Promise<UsageRow | null> {
-    const idColumn = kind === 'guild' ? 'guild_id' : 'user_id';
-    return env.DB.prepare(
-        `SELECT input_tokens, output_tokens, requests
-         FROM ${kind}_daily_usage
-         WHERE ${idColumn} = ? AND date = ?`,
-    )
-        .bind(id, date)
-        .first<UsageRow>();
-}
-
-async function wouldExceedBudget(
-    interaction: DiscordInteraction,
+async function reserveBudget(
+    scope: WorkerTranslationScope,
     text: string,
     env: WorkerEnv,
-): Promise<boolean> {
+): Promise<string | false | null> {
     const estimatedCost =
         (Math.ceil(text.length / 4) / 1_000_000) * nonNegativeNumber(env.INPUT_PRICE_PER_MILLION) +
         (boundedInteger(env.MAX_OUTPUT_TOKENS, 1000, 8192) / 1_000_000) *
             nonNegativeNumber(env.OUTPUT_PRICE_PER_MILLION);
-    if (estimatedCost === 0) return false;
+    if (estimatedCost === 0) return null;
 
-    const date = new Date().toISOString().slice(0, 10);
+    const profile = profileFor(env);
+    const guildId = scope.guildId ?? '';
+    const userId = scope.userId ?? 'dashboard-admin';
     const globalBudget = nonNegativeNumber(env.DAILY_BUDGET_USD);
+    let scopeKind: 'guild' | 'user' | 'none' = 'none';
+    let scopeBudget = 0;
+    let usesGlobalBudget = true;
 
-    if (profileFor(env).accessMode === 'user-install') {
-        const userId = billingUserId(interaction);
-        if (!userId) return true;
+    if (profile.accessMode === 'user-install') {
         const override = await env.DB.prepare(
             'SELECT daily_budget_usd FROM user_budgets WHERE user_id = ?',
         )
             .bind(userId)
             .first<{ daily_budget_usd: number }>();
-        const userBudget =
+        scopeKind = 'user';
+        scopeBudget =
             override?.daily_budget_usd ?? nonNegativeNumber(env.DEFAULT_USER_DAILY_BUDGET_USD);
-        if (
-            userBudget > 0 &&
-            usageCost(await scopedUsage(env, 'user', userId, date), env) + estimatedCost >=
-                userBudget
-        ) {
-            return true;
+    } else if (guildId) {
+        const override = await env.DB.prepare(
+            'SELECT daily_budget_usd FROM guild_budgets WHERE guild_id = ?',
+        )
+            .bind(guildId)
+            .first<{ daily_budget_usd: number }>();
+        if (override) {
+            scopeKind = 'guild';
+            scopeBudget = override.daily_budget_usd;
+            usesGlobalBudget = false;
         }
-        return (
-            globalBudget > 0 &&
-            usageCost(await globalUsage(env, date), env) + estimatedCost >= globalBudget
-        );
     }
 
-    const guildId = interaction.guild_id;
-    if (!guildId) return true;
-    const override = await env.DB.prepare(
-        'SELECT daily_budget_usd FROM guild_budgets WHERE guild_id = ?',
+    const effectiveGlobalBudget = usesGlobalBudget ? globalBudget : 0;
+    if (scopeBudget <= 0 && effectiveGlobalBudget <= 0) return null;
+
+    const reservationId = crypto.randomUUID();
+    const now = Date.now();
+    const row = await env.DB.prepare(
+        `WITH params (
+             reservation_id, app_profile_id, guild_id, user_id, estimated_cost,
+             uses_global_budget, expires_at, now, date, input_price, output_price,
+             scope_kind, scope_budget, global_budget
+         ) AS (VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)),
+         costs AS (
+             SELECT p.*,
+                 CASE p.scope_kind
+                     WHEN 'user' THEN COALESCE((
+                         SELECT (u.input_tokens * p.input_price + u.output_tokens * p.output_price)
+                                / 1000000.0
+                         FROM user_daily_usage u
+                         WHERE u.user_id = p.user_id AND u.date = p.date
+                     ), 0)
+                     WHEN 'guild' THEN COALESCE((
+                         SELECT (g.input_tokens * p.input_price + g.output_tokens * p.output_price)
+                                / 1000000.0
+                         FROM guild_daily_usage g
+                         WHERE g.guild_id = p.guild_id AND g.date = p.date
+                     ), 0)
+                     ELSE 0
+                 END AS scope_cost,
+                 COALESCE((
+                     SELECT (
+                         MAX(d.input_tokens - COALESCE(SUM(g.input_tokens), 0), 0)
+                             * p.input_price +
+                         MAX(d.output_tokens - COALESCE(SUM(g.output_tokens), 0), 0)
+                             * p.output_price
+                     ) / 1000000.0
+                     FROM daily_usage d
+                     LEFT JOIN guild_daily_usage g
+                       ON g.date = d.date
+                      AND g.guild_id IN (SELECT guild_id FROM guild_budgets)
+                     WHERE d.id = 1 AND d.date = p.date
+                     GROUP BY d.id
+                 ), 0) AS global_cost
+             FROM params p
+         ),
+         committed AS (
+             SELECT c.*,
+                 COALESCE((
+                     SELECT SUM(r.estimated_cost_usd) FROM budget_reservations r
+                     WHERE r.expires_at > c.now AND (
+                         (c.scope_kind = 'user' AND r.user_id = c.user_id) OR
+                         (c.scope_kind = 'guild' AND r.guild_id = c.guild_id
+                             AND r.uses_global_budget = 0)
+                     )
+                 ), 0) AS scope_reserved,
+                 COALESCE((
+                     SELECT SUM(r.estimated_cost_usd) FROM budget_reservations r
+                     WHERE r.expires_at > c.now AND r.uses_global_budget = 1
+                 ), 0) AS global_reserved
+             FROM costs c
+         )
+         INSERT INTO budget_reservations
+             (reservation_id, app_profile_id, guild_id, user_id, estimated_cost_usd,
+              uses_global_budget, expires_at)
+         SELECT reservation_id, app_profile_id, guild_id, user_id, estimated_cost,
+                uses_global_budget, expires_at
+         FROM committed
+         WHERE (scope_budget <= 0 OR scope_cost + scope_reserved + estimated_cost < scope_budget)
+           AND (global_budget <= 0 OR global_cost + global_reserved + estimated_cost < global_budget)
+         RETURNING reservation_id`,
     )
-        .bind(guildId)
-        .first<{ daily_budget_usd: number }>();
-    if (override) {
-        return (
-            override.daily_budget_usd > 0 &&
-            usageCost(await scopedUsage(env, 'guild', guildId, date), env) + estimatedCost >=
-                override.daily_budget_usd
-        );
-    }
-    return (
-        globalBudget > 0 &&
-        usageCost(await globalUsage(env, date), env) + estimatedCost >= globalBudget
-    );
+        .bind(
+            reservationId,
+            profile.id,
+            guildId,
+            userId,
+            estimatedCost,
+            usesGlobalBudget ? 1 : 0,
+            now + 60_000,
+            now,
+            new Date().toISOString().slice(0, 10),
+            nonNegativeNumber(env.INPUT_PRICE_PER_MILLION),
+            nonNegativeNumber(env.OUTPUT_PRICE_PER_MILLION),
+            scopeKind,
+            scopeBudget,
+            effectiveGlobalBudget,
+        )
+        .first<{ reservation_id: string }>();
+    return row?.reservation_id ?? false;
 }
 
 function usageUpsert(
@@ -985,19 +1076,20 @@ function usageArchive(
     ).bind(id, date);
 }
 
-async function recordUsage(
-    interaction: DiscordInteraction,
+function recordUsageStatements(
+    scope: WorkerTranslationScope,
     inputTokens: number,
     outputTokens: number,
     env: WorkerEnv,
-): Promise<void> {
+    reservationId: string | null = null,
+): D1PreparedStatement[] {
     const date = new Date().toISOString().slice(0, 10);
     const statements = [
         usageArchive(env, 'global', 1, date),
         usageUpsert(env, 'daily_usage', 'id', 1, date, inputTokens, outputTokens),
     ];
     if (profileFor(env).accessMode === 'user-install') {
-        const userId = billingUserId(interaction);
+        const userId = scope.userId;
         if (userId) {
             statements.push(
                 usageArchive(env, 'user', userId, date),
@@ -1012,21 +1104,28 @@ async function recordUsage(
                 ),
             );
         }
-    } else if (interaction.guild_id) {
+    } else if (scope.guildId) {
         statements.push(
-            usageArchive(env, 'guild', interaction.guild_id, date),
+            usageArchive(env, 'guild', scope.guildId, date),
             usageUpsert(
                 env,
                 'guild_daily_usage',
                 'guild_id',
-                interaction.guild_id,
+                scope.guildId,
                 date,
                 inputTokens,
                 outputTokens,
             ),
         );
     }
-    await env.DB.batch(statements);
+    if (reservationId) {
+        statements.push(
+            env.DB.prepare('DELETE FROM budget_reservations WHERE reservation_id = ?').bind(
+                reservationId,
+            ),
+        );
+    }
+    return statements;
 }
 
 async function glossaryEntries(
@@ -1066,7 +1165,10 @@ async function glossaryEntries(
 
 async function providerFetch(url: string, init: RequestInit): Promise<Response> {
     // ponytail: one 10s attempt keeps waitUntil below 30s; move retries to a Queue if needed.
-    const response = await fetch(url, { ...init, signal: AbortSignal.timeout(10_000) });
+    const response = await fetch(url, {
+        ...init,
+        signal: timeoutSignal(PROVIDER_REQUEST_TIMEOUT_MS, init.signal),
+    });
     if (response.ok) return response;
     const detail = (await response.text()).replace(/\s+/g, ' ').trim().slice(0, 200);
     throw new Error(`Provider returned ${response.status}${detail ? `: ${detail}` : ''}`);
@@ -1100,7 +1202,11 @@ function providerFailed(provider: string, env: WorkerEnv): void {
     });
 }
 
-async function translateWithVertex(prompt: string, env: WorkerEnv): Promise<TranslationResult> {
+async function translateWithVertex(
+    prompt: string,
+    env: WorkerEnv,
+    signal?: AbortSignal,
+): Promise<TranslationResult> {
     if (!env.VERTEX_AI_API_KEY || !env.GCP_PROJECT) throw new Error('Vertex AI is not configured.');
     const location = env.GCP_LOCATION || 'global';
     const model = env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
@@ -1123,6 +1229,7 @@ async function translateWithVertex(prompt: string, env: WorkerEnv): Promise<Tran
                     temperature: 0.1,
                 },
             }),
+            signal,
         },
     );
     const data = (await response.json()) as {
@@ -1139,7 +1246,11 @@ async function translateWithVertex(prompt: string, env: WorkerEnv): Promise<Tran
     };
 }
 
-async function translateWithOpenAI(prompt: string, env: WorkerEnv): Promise<TranslationResult> {
+async function translateWithOpenAI(
+    prompt: string,
+    env: WorkerEnv,
+    signal?: AbortSignal,
+): Promise<TranslationResult> {
     if (!env.OPENAI_API_KEY || !env.OPENAI_BASE_URL || !env.OPENAI_MODEL) {
         throw new Error('OpenAI provider is not configured.');
     }
@@ -1157,6 +1268,7 @@ async function translateWithOpenAI(prompt: string, env: WorkerEnv): Promise<Tran
                 max_tokens: boundedInteger(env.MAX_OUTPUT_TOKENS, 1000, 8192),
                 temperature: 0.1,
             }),
+            signal,
         },
     );
     const data = (await response.json()) as {
@@ -1178,7 +1290,8 @@ async function translateText(
     language: string,
     env: WorkerEnv,
     glossary: Awaited<ReturnType<typeof glossaryEntries>>,
-    scope: { guildId?: string | null; userId?: string } = {},
+    scope: WorkerTranslationScope = {},
+    signal?: AbortSignal,
 ): Promise<TranslationResult> {
     const prompt = buildTranslationPrompt(text, language, env.TRANSLATION_PROMPT, glossary);
     const cacheKey = await translationCacheKey(text, language, prompt, glossary, env);
@@ -1194,76 +1307,113 @@ async function translateText(
         };
     }
 
-    return withRuntimeLease(env, scope, async () => {
-        const queuedCached = await cachedTranslation(env, cacheKey, false);
-        if (queuedCached) {
-            return {
-                text: queuedCached.translated_text,
-                provider: queuedCached.provider,
-                inputTokens: 0,
-                outputTokens: 0,
-                cached: true,
-                fallback: false,
-            };
-        }
-
-        const mode = env.TRANSLATION_PROVIDER ?? 'vertex';
-        const configured = mode
-            .split('+')
-            .filter((provider) => translationProviderConfigured(provider, env));
-        if (configured.length === 0) {
-            await incrementMetrics(env, ['failures_total']);
-            throw new Error(
-                'No translation provider is configured. Please complete setup in the dashboard.',
-            );
-        }
-        const providers = configured.filter((provider) => providerAvailable(provider, env));
-        if (providers.length === 0) {
-            await incrementMetrics(env, ['failures_total']);
-            throw new Error('All configured translation providers are temporarily unavailable.');
-        }
-        await incrementMetrics(env, ['api_calls_total']);
-        let lastError: unknown;
-
-        for (const [index, provider] of providers.entries()) {
-            let result: TranslationResult;
-            try {
-                result =
-                    provider === 'openai'
-                        ? await translateWithOpenAI(prompt, env)
-                        : await translateWithVertex(prompt, env);
-            } catch (error) {
-                lastError = error;
-                providerFailed(provider, env);
-                await incrementMetrics(env, [
-                    provider === 'openai' ? 'openai_failure_total' : 'vertex_failure_total',
-                ]);
-                continue;
+    return withRuntimeLease(
+        env,
+        scope,
+        async () => {
+            const queuedCached = await cachedTranslation(env, cacheKey);
+            if (queuedCached) {
+                return {
+                    text: queuedCached.translated_text,
+                    provider: queuedCached.provider,
+                    inputTokens: 0,
+                    outputTokens: 0,
+                    cached: true,
+                    fallback: false,
+                };
             }
 
-            providerSucceeded(provider, env);
-            const metrics: RuntimeMetricColumn[] = [
-                'translations_total',
-                provider === 'openai' ? 'openai_success_total' : 'vertex_success_total',
-            ];
-            if (index > 0) {
-                metrics.push(
-                    'provider_fallback_total',
-                    provider === 'openai' ? 'openai_fallback_to_total' : 'vertex_fallback_to_total',
-                    providers[0] === 'openai'
-                        ? 'openai_fallback_from_total'
-                        : 'vertex_fallback_from_total',
+            const mode = env.TRANSLATION_PROVIDER ?? 'vertex';
+            const configured = mode
+                .split('+')
+                .filter((provider) => translationProviderConfigured(provider, env));
+            if (configured.length === 0) {
+                await incrementMetrics(env, ['cache_misses_total', 'failures_total']);
+                throw new Error(
+                    'No translation provider is configured. Please complete setup in the dashboard.',
                 );
             }
-            await Promise.all([
-                cacheTranslation(env, cacheKey, result),
-                incrementMetrics(env, metrics),
-            ]);
-            return { ...result, cached: false, fallback: index > 0 };
-        }
-        await incrementMetrics(env, ['failures_total']);
-        throw lastError ?? new Error('No translation provider is configured.');
-    });
+            const providers = configured.filter((provider) => providerAvailable(provider, env));
+            if (providers.length === 0) {
+                await incrementMetrics(env, ['cache_misses_total', 'failures_total']);
+                throw new Error(
+                    'All configured translation providers are temporarily unavailable.',
+                );
+            }
+            const reservation = await reserveBudget(scope, text, env);
+            if (reservation === false) {
+                await incrementMetrics(env, ['cache_misses_total', 'budget_exceeded_total']);
+                throw new Error(BUDGET_EXCEEDED_ERROR);
+            }
+
+            let reservationId = reservation;
+            try {
+                const attemptMetrics: RuntimeMetricColumn[] = [
+                    'cache_misses_total',
+                    'api_calls_total',
+                ];
+                let lastError: unknown;
+
+                for (const [index, provider] of providers.entries()) {
+                    let result: TranslationResult;
+                    try {
+                        result =
+                            provider === 'openai'
+                                ? await translateWithOpenAI(prompt, env, signal)
+                                : await translateWithVertex(prompt, env, signal);
+                    } catch (error) {
+                        lastError = error;
+                        providerFailed(provider, env);
+                        attemptMetrics.push(
+                            provider === 'openai' ? 'openai_failure_total' : 'vertex_failure_total',
+                        );
+                        continue;
+                    }
+
+                    providerSucceeded(provider, env);
+                    const metrics: RuntimeMetricColumn[] = [
+                        ...attemptMetrics,
+                        'translations_total',
+                        provider === 'openai' ? 'openai_success_total' : 'vertex_success_total',
+                    ];
+                    if (index > 0) {
+                        metrics.push(
+                            'provider_fallback_total',
+                            provider === 'openai'
+                                ? 'openai_fallback_to_total'
+                                : 'vertex_fallback_to_total',
+                            providers[0] === 'openai'
+                                ? 'openai_fallback_from_total'
+                                : 'vertex_fallback_from_total',
+                        );
+                    }
+                    const metricStatement = incrementMetricsStatement(env, metrics);
+                    await env.DB.batch([
+                        ...recordUsageStatements(
+                            scope,
+                            result.inputTokens,
+                            result.outputTokens,
+                            env,
+                            reservationId,
+                        ),
+                        ...cacheTranslationStatements(env, cacheKey, result),
+                        ...(metricStatement ? [metricStatement] : []),
+                    ]);
+                    reservationId = null;
+                    return { ...result, cached: false, fallback: index > 0 };
+                }
+                await incrementMetrics(env, [...attemptMetrics, 'failures_total']);
+                throw lastError ?? new Error('No translation provider is configured.');
+            } finally {
+                if (reservationId) {
+                    await env.DB.prepare('DELETE FROM budget_reservations WHERE reservation_id = ?')
+                        .bind(reservationId)
+                        .run();
+                }
+            }
+        },
+        signal,
+    );
 }
 
 function botToken(env: WorkerEnv): string | null {
@@ -1277,6 +1427,7 @@ async function discordBotRequest(
     method: 'GET' | 'POST',
     token: string,
     body?: unknown,
+    signal?: AbortSignal,
 ): Promise<Response> {
     const response = await fetch(`${DISCORD_API}${path}`, {
         method,
@@ -1285,6 +1436,7 @@ async function discordBotRequest(
             ...(body ? { 'Content-Type': 'application/json' } : {}),
         },
         body: body ? JSON.stringify(body) : undefined,
+        signal: timeoutSignal(DISCORD_REQUEST_TIMEOUT_MS, signal),
     });
     if (!response.ok) {
         throw new Error(`Discord API returned ${response.status}`);
@@ -1295,13 +1447,20 @@ async function discordBotRequest(
 async function getTranslationWebhook(
     interaction: DiscordInteraction,
     env: WorkerEnv,
+    signal?: AbortSignal,
 ): Promise<Required<Pick<DiscordWebhookObject, 'id' | 'token'>>> {
     if (!interaction.channel_id) throw new Error('Discord channel is unavailable.');
     const token = botToken(env);
     if (!token) throw new Error('Discord bot token is not configured.');
 
     const existing = (await (
-        await discordBotRequest(`/channels/${interaction.channel_id}/webhooks`, 'GET', token)
+        await discordBotRequest(
+            `/channels/${interaction.channel_id}/webhooks`,
+            'GET',
+            token,
+            undefined,
+            signal,
+        )
     ).json()) as DiscordWebhookObject[];
     let webhook = existing.find(
         (candidate) =>
@@ -1311,9 +1470,13 @@ async function getTranslationWebhook(
     );
     if (!webhook) {
         webhook = (await (
-            await discordBotRequest(`/channels/${interaction.channel_id}/webhooks`, 'POST', token, {
-                name: 'Babel',
-            })
+            await discordBotRequest(
+                `/channels/${interaction.channel_id}/webhooks`,
+                'POST',
+                token,
+                { name: 'Babel' },
+                signal,
+            )
         ).json()) as DiscordWebhookObject;
     }
     if (!webhook.id || !webhook.token) throw new Error('Discord webhook token is unavailable.');
@@ -1338,8 +1501,9 @@ async function sendPublicTranslations(
     interaction: DiscordInteraction,
     messages: string[],
     env: WorkerEnv,
+    signal?: AbortSignal,
 ): Promise<void> {
-    const webhook = await getTranslationWebhook(interaction, env);
+    const webhook = await getTranslationWebhook(interaction, env, signal);
     const display = interactionDisplay(interaction);
     for (const content of messages) {
         const response = await fetch(
@@ -1353,6 +1517,7 @@ async function sendPublicTranslations(
                     avatar_url: display.avatarUrl,
                     allowed_mentions: { parse: [] },
                 }),
+                signal: timeoutSignal(DISCORD_REQUEST_TIMEOUT_MS, signal),
             },
         );
         if (!response.ok) throw new Error(`Discord webhook returned ${response.status}`);
@@ -1364,6 +1529,7 @@ async function discordWebhook(
     path: string,
     method: 'POST' | 'PATCH' | 'DELETE',
     body?: unknown,
+    signal?: AbortSignal,
 ): Promise<void> {
     const response = await fetch(
         `${DISCORD_API}/webhooks/${interaction.application_id}/${interaction.token}${path}`,
@@ -1371,6 +1537,7 @@ async function discordWebhook(
             method,
             headers: body ? { 'Content-Type': 'application/json' } : undefined,
             body: body ? JSON.stringify(body) : undefined,
+            signal: timeoutSignal(DISCORD_REQUEST_TIMEOUT_MS, signal),
         },
     );
     if (!response.ok) throw new Error(`Discord webhook returned ${response.status}`);
@@ -1380,15 +1547,28 @@ async function editTranslationReply(
     interaction: DiscordInteraction,
     messages: string[],
     ephemeralReply: boolean,
+    signal?: AbortSignal,
 ): Promise<void> {
-    await discordWebhook(interaction, '/messages/@original', 'PATCH', {
-        content: messages[0] ?? '',
-    });
+    await discordWebhook(
+        interaction,
+        '/messages/@original',
+        'PATCH',
+        {
+            content: messages[0] ?? '',
+        },
+        signal,
+    );
     for (const content of messages.slice(1)) {
-        await discordWebhook(interaction, '', 'POST', {
-            content,
-            flags: ephemeralReply ? EPHEMERAL : undefined,
-        });
+        await discordWebhook(
+            interaction,
+            '',
+            'POST',
+            {
+                content,
+                flags: ephemeralReply ? EPHEMERAL : undefined,
+            },
+            signal,
+        );
     }
 }
 
@@ -1396,6 +1576,7 @@ async function processTranslation(
     interaction: DiscordInteraction,
     env: WorkerEnv,
     publicOutput: boolean,
+    signal: AbortSignal,
 ): Promise<void> {
     try {
         const contextCommand = interaction.data?.type === COMMAND_MESSAGE;
@@ -1406,7 +1587,7 @@ async function processTranslation(
         const maxInputLength = boundedInteger(env.MAX_INPUT_LENGTH, 2000, 20_000);
 
         if (!text.trim()) {
-            await editTranslationReply(interaction, ['No text content'], true);
+            await editTranslationReply(interaction, ['No text content'], true, signal);
             return;
         }
         if (text.length > maxInputLength) {
@@ -1414,12 +1595,8 @@ async function processTranslation(
                 interaction,
                 [discordMessages.textTooLong(text.length, maxInputLength)],
                 true,
+                signal,
             );
-            return;
-        }
-        if (await wouldExceedBudget(interaction, text, env)) {
-            await incrementMetrics(env, ['budget_exceeded_total']);
-            await editTranslationReply(interaction, ['Daily budget exceeded'], true);
             return;
         }
         if (isSameLanguage(text, language, interaction.locale)) {
@@ -1427,19 +1604,24 @@ async function processTranslation(
                 interaction,
                 ['This message is already in your language!'],
                 true,
+                signal,
             );
             return;
         }
 
         const glossary = await glossaryEntries(interaction, language, env);
-        const result = await translateText(text, language, env, glossary, {
-            guildId: interaction.guild_id ?? null,
-            userId: billingUserId(interaction) ?? interactionUserId(interaction) ?? 'unknown',
-        });
-        if (!result.cached) {
-            await recordUsage(interaction, result.inputTokens, result.outputTokens, env);
-        }
-        await recordWorkerLog(env, 'translation', {
+        const result = await translateText(
+            text,
+            language,
+            env,
+            glossary,
+            {
+                guildId: interaction.guild_id ?? null,
+                userId: billingUserId(interaction) ?? interactionUserId(interaction) ?? 'unknown',
+            },
+            signal,
+        );
+        const translationLog = recordWorkerLog(env, 'translation', {
             guildId: interaction.guild_id ?? null,
             guildName: interaction.guild_id ?? 'Direct Message',
             userId: interactionUserId(interaction) ?? 'unknown',
@@ -1459,16 +1641,27 @@ async function processTranslation(
             includeOriginalPreview: contextCommand,
         });
         if (publicOutput) {
-            await sendPublicTranslations(interaction, messages, env);
-            await discordWebhook(interaction, '/messages/@original', 'DELETE');
+            await Promise.all([
+                sendPublicTranslations(interaction, messages, env, signal),
+                translationLog,
+            ]);
+            await discordWebhook(interaction, '/messages/@original', 'DELETE', undefined, signal);
         } else {
-            await editTranslationReply(interaction, messages, true);
+            await Promise.all([
+                editTranslationReply(interaction, messages, true, signal),
+                translationLog,
+            ]);
         }
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        const replySignal = signal.aborted ? AbortSignal.timeout(4_000) : signal;
+        if (message === BUDGET_EXCEEDED_ERROR) {
+            await editTranslationReply(interaction, [message], true, replySignal);
+            return;
+        }
         const diagnostic = classifyTranslationError(message);
         console.error('translation.failed', { error: message });
-        await recordWorkerLog(env, 'error', {
+        const errorLog = recordWorkerLog(env, 'error', {
             guildId: interaction.guild_id ?? null,
             guildName: interaction.guild_id ?? 'Direct Message',
             userId: interactionUserId(interaction) ?? 'unknown',
@@ -1478,11 +1671,15 @@ async function processTranslation(
             errorType: diagnostic.errorType,
             suggestedAction: diagnostic.suggestedAction,
         }).catch(() => undefined);
-        await editTranslationReply(
-            interaction,
-            [discordMessages.translationFailed(sanitizeError(message))],
-            true,
-        );
+        await Promise.all([
+            editTranslationReply(
+                interaction,
+                [discordMessages.translationFailed(sanitizeError(message))],
+                true,
+                replySignal,
+            ),
+            errorLog,
+        ]);
     }
 }
 
@@ -1532,7 +1729,8 @@ export async function handleInteraction(
     }
 
     const publicOutput = !isContextCommand && option(interaction, 'visibility') !== 'private';
-    ctx.waitUntil(processTranslation(interaction, env, publicOutput));
+    const signal = AbortSignal.timeout(BACKGROUND_TRANSLATION_TIMEOUT_MS);
+    ctx.waitUntil(processTranslation(interaction, env, publicOutput, signal));
     return json({
         type: RESPONSE_DEFERRED_CHANNEL_MESSAGE,
         data: { flags: EPHEMERAL },

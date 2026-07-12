@@ -61,6 +61,7 @@ describe('deployment configuration', () => {
 
             const outputDir = join(tempRoot, 'dist/worker-public');
             const html = readFileSync(join(outputDir, 'index.html'), 'utf8');
+            const headers = readFileSync(join(outputDir, '_headers'), 'utf8');
             const refs = [...html.matchAll(/(?:src|href)="(\/(?:css|js)\/[^"?]+)"/g)].map(
                 (match) => match[1],
             );
@@ -68,6 +69,9 @@ describe('deployment configuration', () => {
             expect(refs).not.toHaveLength(0);
             expect(refs.every((ref) => /\.[a-f0-9]{12}\.(?:css|js)$/.test(ref))).toBe(true);
             expect(refs.every((ref) => existsSync(join(outputDir, ref.slice(1))))).toBe(true);
+            expect(headers).toContain("Content-Security-Policy: default-src 'self'");
+            expect(headers).toContain('X-Frame-Options: DENY');
+            expect(headers).toContain('Cache-Control: public, max-age=31536000, immutable');
         } finally {
             rmSync(tempRoot, { force: true, recursive: true });
         }
@@ -172,6 +176,7 @@ describe('deployment configuration', () => {
         expect(config).toContain('"name": "babel-discord-translator"');
         expect(config).toContain('"pattern": "babel.lum.bio"');
         expect(config).toContain('"custom_domain": true');
+        expect(config).toContain('"placement": { "mode": "smart" }');
         expect(vars).toContain('"BABEL_APP": "combined"');
         expect(vars.match(/^\s*"[^"]+"\s*:/gm)).toHaveLength(1);
     });

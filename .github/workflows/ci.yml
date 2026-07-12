@@ -48,6 +48,9 @@ jobs:
       - name: Validate Worker Bundle
         run: npx wrangler deploy --dry-run --config apps/babel-worker/wrangler.jsonc
 
+      - name: Smoke Worker Runtime
+        run: npm run smoke:worker
+
       - name: Smoke Built Artifact
         run: |
           test -f dist/src/index.js

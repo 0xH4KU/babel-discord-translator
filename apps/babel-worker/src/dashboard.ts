@@ -57,6 +57,8 @@ interface DashboardOptions {
         inputTokens: number;
         outputTokens: number;
         provider: string;
+        cached?: boolean;
+        fallback?: boolean;
     }>;
     resetProviderState(): void;
     providerHealth(
@@ -92,11 +94,39 @@ const SESSION_TTL_MS = 86_400_000;
 const LOGIN_WINDOW_MS = 15 * 60_000;
 const LOGIN_ATTEMPT_LIMIT = 5;
 const DISCORD_API = 'https://discord.com/api/v10';
+const RUNTIME_CONFIG_CACHE_MS = 5_000;
+const REQUIRED_D1_TABLES = [
+    'user_language_preferences',
+    'guild_budgets',
+    'user_budgets',
+    'daily_usage',
+    'guild_daily_usage',
+    'user_daily_usage',
+    'guild_glossary',
+    'usage_history',
+    'guild_usage_history',
+    'user_usage_history',
+    'app_config',
+    'sessions',
+    'dashboard_login_attempts',
+    'worker_logs',
+    'translation_cache',
+    'cooldowns',
+    'pending_user_install_owners',
+    'runtime_metrics',
+    'runtime_leases',
+    'budget_reservations',
+] as const;
 const discordCache = new Map<
     string,
     { expires: number; me: DiscordMe | null; guilds: GuildRow[] }
 >();
 const discordUserCache = new Map<string, { expires: number; user: DiscordMe }>();
+// ponytail: isolate-local cache; use versioned KV invalidation only if 5s cross-isolate staleness matters.
+const runtimeConfigCache = new WeakMap<
+    WorkerEnv['DB'],
+    Map<string, { expires: number; config: StoreData }>
+>();
 
 function json(data: unknown, status = 200, extraHeaders: HeadersInit = {}): Response {
     return Response.json(data, {
@@ -124,6 +154,21 @@ function splitIds(value: string | undefined): string[] {
     ];
 }
 
+export async function databaseReady(env: WorkerEnv): Promise<boolean> {
+    try {
+        const placeholders = REQUIRED_D1_TABLES.map(() => '?').join(', ');
+        const row = await env.DB.prepare(
+            `SELECT COUNT(*) AS table_count FROM sqlite_master
+             WHERE type = 'table' AND name IN (${placeholders})`,
+        )
+            .bind(...REQUIRED_D1_TABLES)
+            .first<{ table_count: number }>();
+        return row?.table_count === REQUIRED_D1_TABLES.length;
+    } catch {
+        return false;
+    }
+}
+
 async function storedConfig(env: WorkerEnv): Promise<Partial<StoreData>> {
     try {
         const { results } = await env.DB.prepare(
@@ -144,13 +189,16 @@ async function storedConfig(env: WorkerEnv): Promise<Partial<StoreData>> {
 }
 
 export async function getRuntimeConfig(env: WorkerEnv): Promise<StoreData> {
+    const cacheKey = env.BABEL_APP ?? 'guild';
+    const cached = runtimeConfigCache.get(env.DB)?.get(cacheKey);
+    if (cached && cached.expires > Date.now()) return cached.config;
     const profile =
         env.BABEL_APP === 'pocket' || env.BABEL_APP === 'babel-pocket'
             ? BABEL_POCKET_PROFILE
             : BABEL_GUILD_PROFILE;
     const providerReady = (env.TRANSLATION_PROVIDER ?? 'vertex')
         .split('+')
-        .every((provider) =>
+        .some((provider) =>
             provider === 'openai'
                 ? !!(env.OPENAI_API_KEY && env.OPENAI_BASE_URL && env.OPENAI_MODEL)
                 : !!(env.VERTEX_AI_API_KEY && env.GCP_PROJECT),
@@ -202,7 +250,14 @@ export async function getRuntimeConfig(env: WorkerEnv): Promise<StoreData> {
         defaultUserDailyBudgetUsd: nonNegative(env.DEFAULT_USER_DAILY_BUDGET_USD),
         setupComplete: providerReady && accessReady,
     };
-    return normalizeStoreData({ ...defaults, ...(await storedConfig(env)) });
+    const config = normalizeStoreData({ ...defaults, ...(await storedConfig(env)) });
+    let cache = runtimeConfigCache.get(env.DB);
+    if (!cache) {
+        cache = new Map();
+        runtimeConfigCache.set(env.DB, cache);
+    }
+    cache.set(cacheKey, { expires: Date.now() + RUNTIME_CONFIG_CACHE_MS, config });
+    return config;
 }
 
 export async function configuredEnv(env: WorkerEnv): Promise<WorkerEnv> {
@@ -372,6 +427,7 @@ async function saveConfig(env: WorkerEnv, updates: Partial<StoreData>): Promise<
         ).bind(key, JSON.stringify(value), now),
     );
     if (statements.length > 0) await env.DB.batch(statements);
+    runtimeConfigCache.delete(env.DB);
 }
 
 function discordToken(env: WorkerEnv): string | undefined {
@@ -1123,12 +1179,9 @@ async function health(
     config: StoreData,
     options: DashboardOptions,
 ): Promise<Response> {
-    let database = false;
-    try {
-        database = !!(await env.DB.prepare('SELECT 1 AS ok').first<{ ok: number }>())?.ok;
-    } catch {}
+    const database = await databaseReady(env);
     const providerChecks = await options.providerHealth(env);
-    const providerReady = Object.values(providerChecks).every((check) => check.status !== 'fail');
+    const providerReady = Object.values(providerChecks).some((check) => check.status === 'pass');
     const checks = {
         database: { status: database ? 'pass' : 'fail' },
         configuration: {
@@ -1152,13 +1205,10 @@ async function health(
 }
 
 async function setupDoctor(env: WorkerEnv, profile: AppProfile, config: StoreData) {
-    let database = false;
-    try {
-        database = !!(await env.DB.prepare('SELECT 1 AS ok').first<{ ok: number }>())?.ok;
-    } catch {}
+    const database = await databaseReady(env);
     const provider = config.translationProvider
         .split('+')
-        .every((name) =>
+        .some((name) =>
             name === 'vertex'
                 ? !!(config.vertexAiApiKey && config.gcpProject)
                 : !!(config.openaiApiKey && config.openaiBaseUrl && config.openaiModel),
@@ -1520,9 +1570,9 @@ export async function handleDashboardRequest(
                 inputTokens: result.inputTokens,
                 outputTokens: result.outputTokens,
                 latencyMs: Date.now() - start,
-                cached: false,
+                cached: result.cached ?? false,
                 provider: result.provider,
-                fallback: false,
+                fallback: result.fallback ?? false,
             });
         } catch (error) {
             return json({ error: error instanceof Error ? error.message : String(error) }, 500);
