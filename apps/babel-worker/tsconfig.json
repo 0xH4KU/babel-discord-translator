@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true
+  },
+  "include": [
+    "src/**/*.ts",
+    "../../src/modules/translation/translation-prompt.ts",
+    "../../src/modules/translation/lang.ts",
+    "../../src/shared/**/*.ts"
+  ],
+  "exclude": ["../../node_modules", "../../dist"]
+}

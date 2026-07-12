@@ -327,7 +327,7 @@ async function loadStats() {
         // Header
         document.getElementById('bot-name').textContent = d.bot.name.split('#')[0];
         document.getElementById('bot-tag').textContent = d.bot.name;
-        if (d.bot.avatar) document.getElementById('bot-avatar').src = d.bot.avatar;
+        document.getElementById('bot-avatar').src = d.bot.avatar || genAvatar(d.bot.name);
 
         renderOperations(d.operations);
 

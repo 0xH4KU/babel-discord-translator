@@ -89,6 +89,13 @@
 }
 
 @media (max-width: 480px) {
+    .tab-btn {
+        flex: 1 1 0;
+        min-width: 0;
+        padding-inline: 0.35rem;
+        font-size: 0.75rem;
+    }
+
     .grid {
         grid-template-columns: 1fr;
     }
@@ -228,7 +235,7 @@
         margin-top: 0.65rem;
     }
 
-    .user-prefs-table td[data-label="User"] {
+    .user-prefs-table td[data-label='User'] {
         margin-top: 0;
     }
 
@@ -243,7 +250,7 @@
         text-transform: uppercase;
     }
 
-    .user-prefs-table td[data-label="Action"] .btn-danger {
+    .user-prefs-table td[data-label='Action'] .btn-danger {
         width: 100%;
         padding: 0.35rem 0.5rem;
     }

@@ -75,6 +75,10 @@ describe('deployment configuration', () => {
             'node scripts/smoke-dashboard-build.js',
         );
         expect(ci).toContain('npm run smoke:dashboard');
+        expect(ci).toContain('npm run typecheck:worker');
+        expect(ci).toContain(
+            'npx wrangler deploy --dry-run --config apps/babel-worker/wrangler.jsonc',
+        );
     });
 
     it('keeps the README TypeScript badge aligned with package.json', () => {
@@ -124,10 +128,24 @@ describe('deployment configuration', () => {
         expect(dockerfile).toContain(
             'COPY apps/babel-pocket/package.json ./apps/babel-pocket/package.json',
         );
+        expect(dockerfile).toContain(
+            'COPY apps/babel-worker/package.json ./apps/babel-worker/package.json',
+        );
         expect(dockerfile).toContain('COPY apps/ ./apps/');
         expect(dockerfile).toContain(
             'CMD ["sh", "-c", "node --max-old-space-size=${BABEL_NODE_MAX_OLD_SPACE_MB:-64} --max-semi-space-size=${BABEL_NODE_MAX_SEMI_SPACE_MB:-4} dist/src/index.js"]',
         );
+    });
+
+    it('keeps the production Worker on the custom domain with dashboard-owned config', () => {
+        const config = readFileSync('apps/babel-worker/wrangler.jsonc', 'utf8');
+        const vars = config.match(/"vars":\s*{(?<vars>[\s\S]*?)}/)?.groups?.vars ?? '';
+
+        expect(config).toContain('"name": "babel-discord-translator"');
+        expect(config).toContain('"pattern": "babel.lum.bio"');
+        expect(config).toContain('"custom_domain": true');
+        expect(vars).toContain('"BABEL_APP": "combined"');
+        expect(vars.match(/^\s*"[^"]+"\s*:/gm)).toHaveLength(1);
     });
 
     it('defaults Docker Compose deployments to Babel Guild', () => {

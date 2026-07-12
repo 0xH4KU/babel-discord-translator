@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## 0.2.2 - 2026-07-12
+
+- Added a Cloudflare Workers runtime with signed Discord HTTP interactions, combined Guild/Pocket routing, static dashboard assets, and D1-backed config, sessions, usage, cache, cooldowns, logs, metrics, and runtime admission controls.
+- Added SQLite-to-D1 migration tooling and production deployment guidance for Worker secrets, custom domains, health checks, and Discord interaction endpoints.
+- Reused the shared translation prompt and glossary logic across Node and Worker runtimes, and added Worker/D1 regression coverage.
+- Improved the dashboard's Worker compatibility, post-setup metadata refresh, avatar fallback, persistent log messaging, and narrow-mobile tab layout.
+- Added Setup Doctor checks and dashboard diagnostics for database, Discord, provider, command, and webhook readiness.
+- Added Pocket daily-budget and per-user budget views, 30-day CSV usage export, and guild-scoped user language preferences.
+- Scoped combined dashboard metrics and translation tests by active app profile, and hardened config validation, metrics authentication, provider HTTP errors, and retry classification.
+
+## 0.2.1 - 2026-06-22
+
+- Added multilingual server glossary support and CSV/TSV glossary import workflows.
+- Scoped combined dashboard logs and usage history by active app profile.
+- Added optional metrics token authentication and safer dashboard error handling.
+- Fixed Pocket history scope bypass and escaped stored glossary fields in dashboard rendering.
+- Pinned `undici` through an npm override to satisfy the high-severity audit gate.
+
 ## 0.2.0 - 2026-06-13
 
 - Added combined mode with one Node.js process, two Discord clients, one SQLite database, and separate dashboard entrypoints: `/` shows a product chooser, `/guild` manages Babel Guild, and `/pocket` manages Babel Pocket.

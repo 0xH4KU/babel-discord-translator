@@ -32,7 +32,7 @@ Right-click any message → **Apps** → **Babel** or **Babel Pocket** → get a
 [![Node.js](https://img.shields.io/badge/Node.js-22.13%2B-green.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue.svg)](https://www.typescriptlang.org/)
 [![discord.js](https://img.shields.io/badge/discord.js-v14-blue.svg)](https://discord.js.org)
-[![Version](https://img.shields.io/badge/version-0.2.1-brightgreen.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-0.2.2-brightgreen.svg)](package.json)
 [![CI](https://github.com/0xH4KU/babel-discord-translator/actions/workflows/ci.yml/badge.svg)](https://github.com/0xH4KU/babel-discord-translator/actions)
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/babel-discord-tran-1?referralCode=euhy-o&utm_medium=integration&utm_source=template&utm_campaign=generic)
@@ -41,6 +41,7 @@ Right-click any message → **Apps** → **Babel** or **Babel Pocket** → get a
 
 [Live Dashboard Demo](https://0xh4ku.github.io/babel-discord-translator/demo/) ·
 [Deployment Guide](docs/operations/deployment.md) ·
+[Cloudflare Worker](apps/babel-worker/README.md) ·
 [Railway](docs/operations/railway.md) ·
 [Docker Ops](docs/operations/docker.md) ·
 [Changelog](CHANGELOG.md)
@@ -138,7 +139,7 @@ Sponsorship is optional and does not unlock private features. Supporting mainten
 
 ### Infrastructure
 
-- **SQLite Persistence** — Config, usage, preferences, guild/user budgets, pending Pocket owners, and dashboard sessions stored in a migrated SQLite database
+- **Portable Persistence** — Node deployments use SQLite; Cloudflare Workers use D1 for config, usage, preferences, budgets, sessions, cache, and runtime controls
 - **Repository Pattern** — Commands, services, and dashboard routes talk to focused repositories instead of reaching into the store directly
 - **Governed Message Catalogs** — Discord and dashboard error messages centralized into separate message catalogs
 - **Graceful Shutdown** — Clean `SIGTERM`/`SIGINT` handling with ordered teardown for Docker & PM2
@@ -198,7 +199,7 @@ docker compose up -d --build
 Open `http://localhost:3000` → Login → Complete the setup wizard.
 On first boot, Babel creates `data/babel.sqlite` and auto-imports `data/config.json` if a legacy JSON store exists.
 
-For Railway, Docker, VPS, PM2, and static dashboard demo notes, see the [deployment guide](docs/operations/deployment.md). For one-click Railway template publishing notes, see [Railway deployment](docs/operations/railway.md). For copy-paste Docker operations, updates, cleanup, and server migration, see [Docker deployment and operations](docs/operations/docker.md).
+For Cloudflare Workers, Railway, Docker, VPS, PM2, and static dashboard demo notes, see the [deployment guide](docs/operations/deployment.md). The [Worker guide](apps/babel-worker/README.md) covers D1 and HTTP interactions; the [Railway guide](docs/operations/railway.md) and [Docker operations guide](docs/operations/docker.md) cover Node/SQLite deployments.
 
 ---
 
@@ -274,16 +275,16 @@ Babel automatically translates to the language that makes sense for you:
 
 All configuration is managed through the web dashboard. The `.env` file only needs:
 
-| Variable              | Description                                                                         | Default                                           |
-| --------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------- |
-| `DISCORD_TOKEN`       | Discord bot token                                                                   | _required_                                        |
-| `PORT`                | Platform-provided dashboard web server port; takes precedence over `DASHBOARD_PORT` | unset                                             |
-| `DASHBOARD_PORT`      | Dashboard web server port                                                           | `3000`                                            |
-| `DASHBOARD_HOST`      | Dashboard bind host                                                                 | `0.0.0.0`                                         |
-| `DASHBOARD_PASSWORD`  | Dashboard login password                                                            | `admin` (development only; refused in production) |
-| `BABEL_METRICS_TOKEN` | Bearer/header token for `GET /metrics`; required by default for production public binds | unset                                          |
-| `BABEL_DB_PATH`       | SQLite database path                                                                | `data/babel.sqlite`                               |
-| `BABEL_APP`           | Root app selector: `guild` for Babel Guild, `pocket` for Babel Pocket               | `guild`                                           |
+| Variable              | Description                                                                             | Default                                           |
+| --------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `DISCORD_TOKEN`       | Discord bot token                                                                       | _required_                                        |
+| `PORT`                | Platform-provided dashboard web server port; takes precedence over `DASHBOARD_PORT`     | unset                                             |
+| `DASHBOARD_PORT`      | Dashboard web server port                                                               | `3000`                                            |
+| `DASHBOARD_HOST`      | Dashboard bind host                                                                     | `0.0.0.0`                                         |
+| `DASHBOARD_PASSWORD`  | Dashboard login password                                                                | `admin` (development only; refused in production) |
+| `BABEL_METRICS_TOKEN` | Bearer/header token for `GET /metrics`; required by default for production public binds | unset                                             |
+| `BABEL_DB_PATH`       | SQLite database path                                                                    | `data/babel.sqlite`                               |
+| `BABEL_APP`           | Root app selector: `guild` for Babel Guild, `pocket` for Babel Pocket                   | `guild`                                           |
 
 If `DASHBOARD_PASSWORD` is omitted, Babel warns in local development and test environments, but exits during startup when `NODE_ENV=production`.
 
@@ -433,13 +434,15 @@ src/
 npm run dev             # Run root app in watch mode, selected by BABEL_APP
 npm run dev:guild       # Run Babel Guild in watch mode
 npm run dev:pocket      # Run Babel Pocket in watch mode
+npm run dev:worker      # Run the Cloudflare Worker locally with persistent D1 state
 npm run typecheck       # Type check (no emit)
+npm run typecheck:worker # Type check the Worker runtime
 npm test                # Run tests
 npm run test:coverage   # Run tests with v8 coverage
 npm run test:watch      # Run tests in watch mode
 npm run lint            # Run ESLint
 npm run format          # Format with Prettier
-npm run build           # Build both apps for production
+npm run build           # Build the Node runtime for production
 npm run build:guild     # Build Babel Guild
 npm run build:pocket    # Build Babel Pocket
 npm run register:guild  # Register Babel Guild commands
@@ -450,6 +453,8 @@ npm run start:guild     # Run Babel Guild production artifact
 npm run start:pocket    # Run Babel Pocket production artifact
 npm run db:migrate      # Import legacy JSON → SQLite
 npm run db:export:json  # Export SQLite → JSON
+npm run db:export:d1    # Export SQLite data as D1-compatible SQL
+npm run deploy:worker   # Deploy the configured Cloudflare Worker
 npm run benchmark:runtime-config -- 20000  # Compare config-only reads vs full store snapshots
 ```
 
@@ -461,7 +466,7 @@ Hooks are installed automatically on normal local Git checkouts. The `prepare` s
 
 ### Test Coverage
 
-295 tests across 38 suites covering all modules:
+The test suite covers both the Node/SQLite and Worker/D1 runtimes. Run `npm test` for the current total; selected suites are summarized below:
 
 | Suite                                           | Tests | Covers                                                                                                                                      |
 | ----------------------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -479,7 +484,9 @@ Hooks are installed automatically on normal local Git checkouts. The `prepare` s
 | `build-demo.test.ts`                            | 1     | Static Guild/Pocket dashboard demo mirroring and fixture injection                                                                          |
 | `sqlite-session-repository.test.ts`             | 2     | Persistent session storage, enumeration, delete/clear                                                                                       |
 | `dashboard.test.ts`                             | 42    | Auth flow, session revoke, metrics, health endpoints, stats, config protection, version refresh, async error handling, app capability gates |
-| `deployment-config.test.ts`                     | 3     | Root app selection scripts, Docker workspace build context, Compose default app                                                             |
+| `deployment-config.test.ts`                     | 16    | Node/Worker deployment scripts, domains, bindings, Docker workspace context, and documented runtime defaults                                |
+| `worker.test.ts`                                | 11    | Signed Discord interactions, HTTP routing, D1 dashboard APIs, translation cache, cooldowns, and runtime leases                              |
+| `d1-export.test.ts`                             | 1     | SQLite-to-D1 config, preference, and glossary import compatibility                                                                          |
 | `discord-user-profile-repository.test.ts`       | 2     | Discord user profile persistence                                                                                                            |
 | `discord-message-format.test.ts`                | 3     | Discord-safe chunking and metadata rendering                                                                                                |
 | `message-extraction.test.ts`                    | 3     | Context menu extraction from content, embeds, attachments, and referenced context                                                           |
@@ -512,6 +519,26 @@ This compares `configRepository.getRuntimeConfig()` against `store.getAll()` ove
 ---
 
 ## Production Deployment
+
+### Cloudflare Workers
+
+The `apps/babel-worker` workspace runs both products with Discord HTTP interactions, static assets, and D1-backed dashboard/config/runtime state. The checked-in production config uses `BABEL_APP=combined`, Worker name `babel-discord-translator`, and custom domain [babel.lum.bio](https://babel.lum.bio).
+
+```bash
+npm install
+npm run typecheck:worker
+npm run db:migrate:remote -w @babel-discord-translator/worker
+npm run deploy:worker
+```
+
+Keep runtime/provider/allowlist/budget settings in the dashboard. Cloudflare only needs `BABEL_APP` as a plain variable plus the Dashboard password and profile-specific Discord app credentials as secrets. Set the Discord applications' Interactions Endpoint URLs to:
+
+```text
+https://babel.lum.bio/guild/interactions
+https://babel.lum.bio/pocket/interactions
+```
+
+Forks should replace the Worker name, D1 database ID, and custom domain in `apps/babel-worker/wrangler.jsonc`. See the [Cloudflare Worker guide](apps/babel-worker/README.md) for first-time D1 creation, secrets, validation, and Railway-to-D1 migration.
 
 ### Railway
 
@@ -563,18 +590,19 @@ The Dockerfile uses a **multi-stage build** with Node.js `22-alpine`:
 
 ### Health Endpoints
 
-| Endpoint       | Purpose                                                                                        | Use As                        |
-| -------------- | ---------------------------------------------------------------------------------------------- | ----------------------------- |
-| `GET /livez`   | Process health + config repository check                                                       | Container **liveness** probe  |
-| `GET /readyz`  | Setup completeness + live Vertex AI probe                                                      | Container **readiness** probe |
-| `GET /healthz` | Combined liveness + readiness with degraded/ok status                                          | Operator **monitoring**       |
-| `GET /metrics` | Prometheus text metrics with version, translation, provider, queue, cache, and budget counters | Alerting and dashboards       |
+| Endpoint       | Purpose                                                                                        | Use As                       |
+| -------------- | ---------------------------------------------------------------------------------------------- | ---------------------------- |
+| `GET /livez`   | Runtime liveness                                                                               | Platform **liveness** probe  |
+| `GET /readyz`  | Database, Discord, provider, access, and public-output readiness                               | Platform **readiness** probe |
+| `GET /healthz` | Combined readiness status                                                                      | Operator **monitoring**      |
+| `GET /metrics` | Prometheus text metrics with version, translation, provider, queue, cache, and budget counters | Alerting and dashboards      |
 
 Set `BABEL_METRICS_TOKEN` before exposing `/metrics` outside a private network. When `NODE_ENV=production` and `DASHBOARD_HOST` is a public bind such as `0.0.0.0`, Babel requires a metrics token by default. Scrapers can pass it with `Authorization: Bearer <token>` or `x-metrics-token: <token>`.
 
 ### Operations Guides
 
 - [Deployment guide](docs/operations/deployment.md)
+- [Cloudflare Worker guide](apps/babel-worker/README.md)
 - [Alerts runbook](docs/operations/alerts-runbook.md)
 - [SQLite backup and restore](docs/operations/sqlite-backup-restore.md)
 

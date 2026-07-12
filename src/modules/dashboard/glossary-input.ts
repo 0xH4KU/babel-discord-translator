@@ -108,7 +108,7 @@ export function sanitizeGlossaryImportRequest(body: Record<string, unknown>):
         return { ok: false, error: 'Glossary import text is required' };
     }
 
-    if (Buffer.byteLength(text, 'utf8') > MAX_GLOSSARY_IMPORT_BYTES) {
+    if (new TextEncoder().encode(text).byteLength > MAX_GLOSSARY_IMPORT_BYTES) {
         return { ok: false, error: 'Glossary import text must be 128KB or smaller' };
     }
 
