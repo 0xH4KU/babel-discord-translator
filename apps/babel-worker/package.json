@@ -1,6 +1,6 @@
 {
   "name": "@babel-discord-translator/worker",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Cloudflare Workers runtime for Babel",
   "private": true,
   "type": "module",

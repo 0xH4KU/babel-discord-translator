@@ -1,6 +1,6 @@
 {
   "name": "babel-discord-translator",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Discord right-click translation bot powered by Vertex AI Gemini — with LRU cache, cost tracking, multilingual support, and web dashboard",
   "private": true,
   "workspaces": [
