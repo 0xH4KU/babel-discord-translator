@@ -20,7 +20,9 @@ describe('deployment configuration', () => {
             scripts: Record<string, string>;
         };
 
-        expect(rootPackageJson.scripts['build:assets']).toBe('node scripts/copy-assets.js');
+        expect(rootPackageJson.scripts['build:assets']).toContain(
+            'node scripts/build-worker-assets.js',
+        );
         expect(rootPackageJson.scripts.build).toBe('tsc -p tsconfig.json && npm run build:assets');
         expect(guildPackageJson.scripts.build).toContain('node ../../scripts/copy-assets.js');
         expect(pocketPackageJson.scripts.build).toContain('node ../../scripts/copy-assets.js');
@@ -40,6 +42,32 @@ describe('deployment configuration', () => {
 
             expect(existsSync(join(tempRoot, 'dist/src/locales/help.json'))).toBe(true);
             expect(existsSync(join(tempRoot, 'dist/src/public/index.html'))).toBe(true);
+        } finally {
+            rmSync(tempRoot, { force: true, recursive: true });
+        }
+    });
+
+    it('builds content-hashed Worker dashboard assets', () => {
+        const tempRoot = mkdtempSync(join(tmpdir(), 'babel-worker-assets-'));
+
+        try {
+            cpSync(
+                'scripts/build-worker-assets.js',
+                join(tempRoot, 'scripts/build-worker-assets.js'),
+            );
+            cpSync('src/public', join(tempRoot, 'src/public'), { recursive: true });
+
+            execFileSync(process.execPath, [join(tempRoot, 'scripts/build-worker-assets.js')]);
+
+            const outputDir = join(tempRoot, 'dist/worker-public');
+            const html = readFileSync(join(outputDir, 'index.html'), 'utf8');
+            const refs = [...html.matchAll(/(?:src|href)="(\/(?:css|js)\/[^"?]+)"/g)].map(
+                (match) => match[1],
+            );
+
+            expect(refs).not.toHaveLength(0);
+            expect(refs.every((ref) => /\.[a-f0-9]{12}\.(?:css|js)$/.test(ref))).toBe(true);
+            expect(refs.every((ref) => existsSync(join(outputDir, ref.slice(1))))).toBe(true);
         } finally {
             rmSync(tempRoot, { force: true, recursive: true });
         }

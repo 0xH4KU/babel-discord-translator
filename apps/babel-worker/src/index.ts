@@ -200,6 +200,14 @@ async function staticAsset(request: Request, env: WorkerEnv): Promise<Response> 
     if (!env.ASSETS) return new Response('Not Found', { status: 404 });
     const asset = await env.ASSETS.fetch(request);
     const response = new Response(asset.body, asset);
+    const pathname = new URL(request.url).pathname;
+    const contentType = response.headers.get('Content-Type') ?? '';
+    if (
+        /\.[a-f0-9]{12}\.(?:css|js)$/.test(pathname) &&
+        (contentType.startsWith('text/css') || contentType.includes('javascript'))
+    ) {
+        response.headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+    }
     response.headers.set('Content-Security-Policy', DASHBOARD_CSP);
     response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
     response.headers.set('Referrer-Policy', 'no-referrer');

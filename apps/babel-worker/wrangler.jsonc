@@ -18,9 +18,11 @@
         },
     ],
     "assets": {
-        "directory": "../../src/public",
+        "directory": "../../dist/worker-public",
         "binding": "ASSETS",
         "run_worker_first": [
+            "/css/*",
+            "/js/*",
             "/api/*",
             "/guild/api/*",
             "/pocket/api/*",

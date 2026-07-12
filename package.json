@@ -17,7 +17,7 @@
     "dev:pocket": "npm run dev -w @babel-discord-translator/pocket",
     "dev:worker": "npm run dev -w @babel-discord-translator/worker",
     "build": "tsc -p tsconfig.json && npm run build:assets",
-    "build:assets": "node scripts/copy-assets.js",
+    "build:assets": "node scripts/copy-assets.js && node scripts/build-worker-assets.js",
     "build:guild": "npm run build -w @babel-discord-translator/guild",
     "build:pocket": "npm run build -w @babel-discord-translator/pocket",
     "typecheck:worker": "npm run typecheck -w @babel-discord-translator/worker",

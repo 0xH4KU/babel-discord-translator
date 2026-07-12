@@ -242,17 +242,36 @@ describe('Cloudflare Worker runtime', () => {
         expect(JSON.parse(String(request.body)).generationConfig.maxOutputTokens).toBe(64);
     });
 
-    it('serves static dashboard assets through the Worker binding', async () => {
-        const assets = { fetch: vi.fn().mockResolvedValue(new Response('<html>dashboard</html>')) };
+    it('caches only content-hashed dashboard assets through the Worker binding', async () => {
+        const assets = {
+            fetch: vi
+                .fn()
+                .mockResolvedValueOnce(
+                    new Response('body {}', { headers: { 'Content-Type': 'text/css' } }),
+                )
+                .mockResolvedValueOnce(
+                    new Response('<html>fallback</html>', {
+                        headers: { 'Content-Type': 'text/html' },
+                    }),
+                ),
+        };
         const response = await worker.fetch(
-            new Request('https://worker.example/'),
+            new Request('https://worker.example/css/variables.abcdef123456.css'),
             env({ ASSETS: assets }),
             { waitUntil: vi.fn() },
         );
 
         expect(response.status).toBe(200);
-        expect(await response.text()).toContain('dashboard');
+        expect(await response.text()).toContain('body');
+        expect(response.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
         expect(response.headers.get('x-frame-options')).toBe('DENY');
+
+        const fallback = await worker.fetch(
+            new Request('https://worker.example/css/missing.abcdef123456.css'),
+            env({ ASSETS: assets }),
+            { waitUntil: vi.fn() },
+        );
+        expect(fallback.headers.get('cache-control')).toBeNull();
     });
 
     it('authenticates dashboard sessions and applies D1 configuration updates', async () => {
