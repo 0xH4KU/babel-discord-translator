@@ -81,6 +81,7 @@ async function wizFinish() {
   if (res.ok) {
     showToast('Setup complete!');
     show('dashboard-view');
+    loadVersionMetadata();
     loadDashboard();
   } else {
     showToast('Save failed', true);

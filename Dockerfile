@@ -4,6 +4,7 @@ WORKDIR /app
 COPY package.json package-lock.json tsconfig.json tsconfig.base.json ./
 COPY apps/babel-guild/package.json ./apps/babel-guild/package.json
 COPY apps/babel-pocket/package.json ./apps/babel-pocket/package.json
+COPY apps/babel-worker/package.json ./apps/babel-worker/package.json
 COPY scripts/prepare-husky.js ./scripts/prepare-husky.js
 RUN npm ci
 COPY apps/ ./apps/

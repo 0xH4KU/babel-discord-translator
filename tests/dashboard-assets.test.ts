@@ -195,7 +195,7 @@ describe('dashboard static assets', () => {
             /@media\s*\(max-width:\s*480px\)[\s\S]*\.user-prefs-table\s+td\[data-label\]::before\s*{[\s\S]*content:\s*attr\(data-label\)/s,
         );
         expect(responsiveCss).toMatch(
-            /@media\s*\(max-width:\s*480px\)[\s\S]*\.user-prefs-table\s+td\[data-label="Action"\]\s+\.btn-danger\s*{[\s\S]*width:\s*100%/s,
+            /@media\s*\(max-width:\s*480px\)[\s\S]*\.user-prefs-table\s+td\[data-label=["']Action["']\]\s+\.btn-danger\s*{[\s\S]*width:\s*100%/s,
         );
         expect(responsiveCss).toMatch(
             /@media\s*\(max-width:\s*480px\)[\s\S]*\.user-prefs-table\s+td:last-child\s*{[\s\S]*width:\s*100%[\s\S]*white-space:\s*normal/s,
@@ -433,9 +433,7 @@ describe('dashboard static assets', () => {
         expect(
             createdElements.some((element) => element.textContent === 'Global Safety Budget'),
         ).toBe(true);
-        expect(createdElements.some((element) => element.textContent === 'Custom User')).toBe(
-            true,
-        );
+        expect(createdElements.some((element) => element.textContent === 'Custom User')).toBe(true);
         expect(createdElements.some((element) => element.textContent === 'Default User')).toBe(
             true,
         );

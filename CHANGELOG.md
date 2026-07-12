@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Added a Cloudflare Workers runtime with signed Discord HTTP interactions, combined Guild/Pocket routing, static dashboard assets, and D1-backed config, sessions, usage, cache, cooldowns, logs, metrics, and runtime admission controls.
+- Added SQLite-to-D1 migration tooling and production deployment guidance for Worker secrets, custom domains, health checks, and Discord interaction endpoints.
+- Reused the shared translation prompt and glossary logic across Node and Worker runtimes, and added Worker/D1 regression coverage.
+- Improved the dashboard's Worker compatibility, post-setup metadata refresh, avatar fallback, persistent log messaging, and narrow-mobile tab layout.
+
 ## 0.2.0 - 2026-06-13
 
 - Added combined mode with one Node.js process, two Discord clients, one SQLite database, and separate dashboard entrypoints: `/` shows a product chooser, `/guild` manages Babel Guild, and `/pocket` manages Babel Pocket.

@@ -9,13 +9,13 @@ This guide covers common ways to run Babel Guild and Babel Pocket from the `babe
 You need:
 
 - A Discord application with a bot token
-- Node.js `22.13+` for local/VPS installs, or Docker for container installs
+- Node.js `22.13+` for local/VPS installs and deployment tooling, or Docker for container installs
 - A dashboard password that is not `admin`
 - At least one configured translation provider in the dashboard after startup
 
 Babel does not require privileged Discord intents.
 
-Babel stores runtime data with native `node:sqlite`. Before upgrading Node.js on a self-hosted install, back up `data/babel.sqlite`, rebuild, and run `npm run smoke:dashboard` after upgrading Node.
+Node/Docker/Railway deployments store runtime data with native `node:sqlite`. Before upgrading Node.js on those installs, back up `data/babel.sqlite`, rebuild, and run `npm run smoke:dashboard` after upgrading Node. The Cloudflare runtime uses D1 instead.
 
 ## Choose The Product Profile
 
@@ -65,6 +65,33 @@ DISCORD_APP_ID=your_app_id DISCORD_BOT_TOKEN=your_token npm run register
 ```
 
 This registers the default Babel Guild command set unless `BABEL_APP=pocket` is set. Use `npm run register:guild` or `npm run register:pocket` when you want the command surface to be explicit.
+
+## Cloudflare Workers
+
+The Worker workspace replaces the long-running Discord Gateway clients with signed HTTP interactions. It serves the same dashboard assets and persists configuration, sessions, usage, cache, cooldowns, logs, and runtime controls in D1.
+
+Create the D1 database once, add its generated ID to `apps/babel-worker/wrangler.jsonc`, then migrate and deploy:
+
+```bash
+npx wrangler d1 create babel-worker --config apps/babel-worker/wrangler.jsonc
+npm run db:migrate:remote -w @babel-discord-translator/worker
+npm run deploy:worker
+```
+
+Keep Cloudflare bindings small:
+
+- Variable: `BABEL_APP=combined`
+- Secrets: `DASHBOARD_PASSWORD` plus each profile's Discord token, public key, and application ID
+- Dashboard/D1: provider credentials, models, allowlists, prompts, runtime limits, prices, and budgets
+
+The checked-in deployment uses Worker `babel-discord-translator` and custom domain `babel.lum.bio`. Forks must replace the Worker name, D1 database ID, and route. Configure the Discord applications with separate endpoints:
+
+```text
+https://babel.lum.bio/guild/interactions
+https://babel.lum.bio/pocket/interactions
+```
+
+Discord validates each URL with a signed PING when it is saved. Do not retire the previous runtime until `/readyz` returns `200` and both endpoint updates succeed. See the [Worker guide](../../apps/babel-worker/README.md) for required secret names, local development, D1 import, and validation details.
 
 ## Railway
 
@@ -176,9 +203,10 @@ When the dashboard UI changes, run `npm run demo:build` before committing to ref
 After any deploy:
 
 ```bash
-curl -fsS http://localhost:3000/livez
-curl -fsS http://localhost:3000/readyz
-curl -fsS -H "Authorization: Bearer $BABEL_METRICS_TOKEN" http://localhost:3000/metrics | head
+BABEL_BASE_URL=${BABEL_BASE_URL:-http://localhost:3000}
+curl -fsS "$BABEL_BASE_URL/livez"
+curl -fsS "$BABEL_BASE_URL/readyz"
+curl -fsS -H "Authorization: Bearer $BABEL_METRICS_TOKEN" "$BABEL_BASE_URL/metrics" | head
 ```
 
 In the dashboard, check:

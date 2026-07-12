@@ -2,8 +2,10 @@ node_modules/
 data/
 dist/
 coverage/
+backups/
 docs/demo/
 .env
+.dev.vars*
 .wrangler/
 .superpowers/
 .worktrees/
