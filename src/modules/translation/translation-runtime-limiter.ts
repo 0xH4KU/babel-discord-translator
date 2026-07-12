@@ -90,7 +90,7 @@ function guildKey(guildId?: string | null): string {
 }
 
 export class TranslationRuntimeLimiter {
-    private readonly limits: TranslationRuntimeLimits;
+    private limits: TranslationRuntimeLimits;
     private inflight = 0;
     private readonly queue = new Map<number, QueueEntry>();
     private readonly outstandingByUser = new Map<string, number>();
@@ -177,6 +177,14 @@ export class TranslationRuntimeLimiter {
             rejectionCounts: { ...this.rejectionCounts },
             limits: { ...this.limits },
         };
+    }
+
+    updateLimits(limits: Partial<TranslationRuntimeLimits>): void {
+        this.limits = {
+            ...this.limits,
+            ...limits,
+        };
+        this.activateQueuedEntries();
     }
 
     private createActiveReservation(

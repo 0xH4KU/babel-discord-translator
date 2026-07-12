@@ -60,6 +60,9 @@ describe('ConfigStore', () => {
         const second = new ConfigStore({ dbPath, autoImportLegacyJson: false });
         expect(second.get('cooldownSeconds')).toBe(15);
         expect(second.get('userLanguagePrefs')).toEqual({ user1: 'ja' });
+        expect(second.get('userLanguagePreferenceEntries')).toEqual([
+            { guildId: '', userId: 'user1', language: 'ja' },
+        ]);
         expect(second.get('tokenUsage')).toEqual({
             date: '2026-03-27',
             inputTokens: 100,
@@ -127,6 +130,32 @@ describe('ConfigStore', () => {
         expect(store.get('cooldownSeconds')).toBe(12);
         expect(store.get('allowedGuildIds')).toEqual(['guild-1']);
         expect(store.get('userLanguagePrefs')).toEqual({ user1: 'ja' });
+        store.close();
+    });
+
+    it('should support guild-scoped user language preferences', async () => {
+        const { ConfigStore } = await importStoreModule();
+        const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+
+        expect(store.getUserLanguage('guild-1', 'user-1')).toBeNull();
+
+        store.setUserLanguage('guild-1', 'user-1', 'ja');
+        store.setUserLanguage('guild-2', 'user-1', 'ko');
+        store.setUserLanguage('guild-1', 'user-2', 'zh-TW');
+
+        expect(store.getUserLanguage('guild-1', 'user-1')).toBe('ja');
+        expect(store.getUserLanguage('guild-2', 'user-1')).toBe('ko');
+        expect(store.getUserLanguage('guild-3', 'user-1')).toBeNull();
+        expect(store.get('userLanguagePreferenceEntries')).toEqual([
+            { guildId: 'guild-1', userId: 'user-1', language: 'ja' },
+            { guildId: 'guild-1', userId: 'user-2', language: 'zh-TW' },
+            { guildId: 'guild-2', userId: 'user-1', language: 'ko' },
+        ]);
+
+        expect(store.deleteUserLanguage('guild-1', 'user-1')).toBe(true);
+        expect(store.getUserLanguage('guild-1', 'user-1')).toBeNull();
+        expect(store.getUserLanguage('guild-2', 'user-1')).toBe('ko');
+        expect(store.deleteUserLanguage('guild-1', 'user-1')).toBe(false);
         store.close();
     });
 
@@ -356,6 +385,9 @@ describe('ConfigStore', () => {
         expect(store.get('cooldownSeconds')).toBe(10);
         expect(store.get('setupComplete')).toBe(true);
         expect(store.get('userLanguagePrefs')).toEqual({ user2: 'ko' });
+        expect(store.get('userLanguagePreferenceEntries')).toEqual([
+            { guildId: '', userId: 'user2', language: 'ko' },
+        ]);
         store.close();
     });
 

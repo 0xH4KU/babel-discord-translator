@@ -1,16 +1,11 @@
-import express, {
-    type NextFunction,
-    type Request,
-    type RequestHandler,
-    type Response,
-} from 'express';
+import express, { type Request, type Response } from 'express';
 import http from 'http';
 import rateLimit from 'express-rate-limit';
 import { createEmptyAppMetricsSnapshot } from '../../shared/app-metrics.js';
 import { getConfig } from '../config/config.js';
 import { getHealthStatus, getLivenessStatus, getReadinessStatus } from '../../shared/health.js';
 import { usage } from '../usage/usage.js';
-import { translate } from '../translation/translate.js';
+import { createTranslationService } from '../translation/translation-service.js';
 import { createDashboardAuth } from './auth/dashboard-auth.js';
 import { SQLiteSessionRepository } from './auth/sqlite-session-repository.js';
 import { checkVertexAiHealth } from '../../infra/vertex-ai-client.js';
@@ -28,18 +23,11 @@ import { dashboardMessages } from '../../shared/messages/dashboard-messages.js';
 import { getVersionMetadataWithUpdate } from '../../shared/version.js';
 import { DiscordUserProfileRepository } from './discord-user-profile-repository.js';
 import { resolveDiscordUserProfiles } from './discord-user-profile-resolver.js';
-import {
-    BABEL_GUILD_PROFILE,
-    BABEL_POCKET_PROFILE,
-    type AppProfile,
-} from '../../apps/app-profile.js';
-import {
-    getCombinedDashboardCapabilities,
-    getDashboardCapabilities,
-    type DashboardCapabilities,
-} from './capabilities.js';
+import { BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE } from '../../apps/app-profile.js';
+import { getCombinedDashboardCapabilities, getDashboardCapabilities } from './capabilities.js';
 import { PendingUserInstallOwnerRepository } from './pending-user-install-owner-repository.js';
 import { validateConfigUpdate } from './config-validation.js';
+import { runSetupDoctor } from './setup-doctor.js';
 import {
     parseGlossaryImport,
     sanitizeGlossaryImportRequest,
@@ -53,22 +41,14 @@ import {
 } from './operations-summary.js';
 import { createMetricsAuthMiddleware } from './metrics-auth.js';
 import { createEmptyRuntimeSnapshot, renderPrometheusMetrics } from './prometheus-metrics.js';
+import { applySecurityHeaders } from './security-headers.js';
+import { createScopedApiRouter, getDashboardScope, type DashboardApiScope } from './scoped-api.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import type { DashboardDeps } from '../../shared/types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BYTES_PER_MB = 1024 * 1024;
-
-interface DashboardApiScope {
-    profile: AppProfile;
-    profiles: AppProfile[];
-    capabilities: DashboardCapabilities;
-    client: DashboardDeps['client'];
-    appProfileIdForLogs?: AppProfile['id'];
-}
-
-type DashboardCapabilityName = keyof DashboardCapabilities;
 
 function serializeProfile(profile: NonNullable<DashboardDeps['profile']>): {
     id: string;
@@ -96,35 +76,54 @@ function normalizeGlossaryKey(sourceText: string, targetLanguage: string): strin
     return `${normalizeGlossarySource(sourceText)}\u0000${normalizeGlossaryLanguage(targetLanguage)}`;
 }
 
-function applySecurityHeaders(_req: Request, res: Response, next: NextFunction): void {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('Referrer-Policy', 'no-referrer');
-    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-    res.setHeader(
-        'Content-Security-Policy',
-        [
-            "default-src 'self'",
-            "base-uri 'self'",
-            "object-src 'none'",
-            "frame-ancestors 'none'",
-            "connect-src 'self'",
-            "img-src 'self' data: https:",
-            "font-src 'self' https://fonts.gstatic.com",
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-            "script-src 'self' 'unsafe-inline'",
-        ].join('; '),
-    );
-    next();
+function sanitizeUserPreferenceRef(value: unknown): { guildId: string; userId: string } | null {
+    if (!value || typeof value !== 'object') {
+        return null;
+    }
+
+    const source = value as { guildId?: unknown; userId?: unknown };
+    const guildId = String(source.guildId ?? '').trim();
+    const userId = String(source.userId ?? '').trim();
+
+    return userId ? { guildId, userId } : null;
 }
 
-/** Wrap an async Express handler to forward errors to Express error handling (Express 4 compat). */
-function asyncHandler(
-    fn: (req: Request, res: Response) => Promise<void>,
-): (req: Request, res: Response, next: NextFunction) => void {
-    return (req, res, next) => {
-        fn(req, res).catch(next);
-    };
+type UsageExportRow = ReturnType<typeof usage.getUsageExportRows>[number];
+
+function csvCell(value: string | number): string {
+    const text = String(value);
+    return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+function buildUsageExportCsv(rows: UsageExportRow[]): string {
+    const header = [
+        'scope',
+        'id',
+        'date',
+        'requests',
+        'inputTokens',
+        'outputTokens',
+        'totalTokens',
+        'costUsd',
+    ];
+    return [
+        header.join(','),
+        ...rows.map((row) =>
+            [
+                row.scope,
+                row.id,
+                row.date,
+                row.requests,
+                row.inputTokens,
+                row.outputTokens,
+                row.totalTokens,
+                row.costUsd,
+            ]
+                .map(csvCell)
+                .join(','),
+        ),
+        '',
+    ].join('\n');
 }
 
 declare module 'express-serve-static-core' {
@@ -154,6 +153,9 @@ export function createDashboardApp({
     pendingUserInstallOwnerRepository = new PendingUserInstallOwnerRepository(),
     healthProbeCacheTtlMs = 5_000,
     metricsToken,
+    host,
+    translationService,
+    translationServices,
 }: DashboardDeps): express.Express {
     const app = express();
     app.set('trust proxy', 1);
@@ -194,6 +196,22 @@ export function createDashboardApp({
           ]
         : [{ prefix: '/api', scope: rootScope }];
     const config = getConfig();
+    const dashboardTranslationService =
+        translationService ??
+        createTranslationService({
+            cache,
+            cooldown,
+            log,
+            stats: getStats(),
+            metrics,
+            runtimeLimiter,
+            accessMode: profile.accessMode,
+            enableGuildGlossary: profile.enableGuildGlossary,
+            pendingUserInstallOwnerRepository,
+        });
+    const getDashboardTranslationService = (scope: DashboardApiScope) => {
+        return translationServices?.[scope.profile.id] ?? dashboardTranslationService;
+    };
     const auth = createDashboardAuth({
         password: config.dashboardPassword,
         sessionRepository: sessionRepository ?? new SQLiteSessionRepository(),
@@ -215,52 +233,8 @@ export function createDashboardApp({
         legacyHeaders: false,
     });
 
-    const getScope = (res: Response): DashboardApiScope => res.locals.dashboardScope ?? rootScope;
-    const setScope =
-        (scope: DashboardApiScope): RequestHandler =>
-        (_req, res, next) => {
-            res.locals.dashboardScope = scope;
-            next();
-        };
-    const requireDashboardCapability =
-        (capability: DashboardCapabilityName): RequestHandler =>
-        (_req, res, next) => {
-            if (!getScope(res).capabilities[capability]) {
-                res.status(404).json({ error: 'Not found' });
-                return;
-            }
-
-            next();
-        };
-    const registerApiRoute = (
-        method: 'get' | 'post' | 'delete',
-        path: string,
-        handlers: RequestHandler[],
-    ): void => {
-        for (const { prefix, scope } of apiScopes) {
-            app[method](prefix + path, setScope(scope), ...handlers);
-        }
-    };
-    const api = {
-        get(path: string, ...handlers: RequestHandler[]): void {
-            registerApiRoute('get', path, handlers);
-        },
-        post(path: string, ...handlers: RequestHandler[]): void {
-            registerApiRoute('post', path, handlers);
-        },
-        delete(path: string, ...handlers: RequestHandler[]): void {
-            registerApiRoute('delete', path, handlers);
-        },
-        getIf(capability: DashboardCapabilityName, path: string, ...handlers: RequestHandler[]) {
-            registerApiRoute('get', path, [requireDashboardCapability(capability), ...handlers]);
-        },
-        postIf(capability: DashboardCapabilityName, path: string, ...handlers: RequestHandler[]) {
-            registerApiRoute('post', path, [requireDashboardCapability(capability), ...handlers]);
-        },
-        deleteIf(capability: DashboardCapabilityName, path: string, ...handlers: RequestHandler[]) {
-            registerApiRoute('delete', path, [requireDashboardCapability(capability), ...handlers]);
-        },
-    };
+    const getScope = (res: Response): DashboardApiScope => getDashboardScope(res, rootScope);
+    const api = createScopedApiRouter(app, apiScopes, getScope);
 
     api.post('/login', loginLimiter, (req: Request, res: Response) => {
         const result = auth.login(req.body.password, req);
@@ -287,33 +261,27 @@ export function createDashboardApp({
         res.status(health.live ? 200 : 503).json(health);
     });
 
-    app.get(
-        '/readyz',
-        asyncHandler(async (_req: Request, res: Response) => {
-            const health = await getReadinessStatus({
-                healthCheck,
-                openAiHealthCheck,
-                cacheTtlMs: healthProbeCacheTtlMs,
-            });
-            res.status(health.ready ? 200 : 503).json(health);
-        }),
-    );
+    app.get('/readyz', async (_req: Request, res: Response) => {
+        const health = await getReadinessStatus({
+            healthCheck,
+            openAiHealthCheck,
+            cacheTtlMs: healthProbeCacheTtlMs,
+        });
+        res.status(health.ready ? 200 : 503).json(health);
+    });
 
-    app.get(
-        '/healthz',
-        asyncHandler(async (_req: Request, res: Response) => {
-            const metricsSnapshot = metrics?.snapshot() ?? createEmptyAppMetricsSnapshot();
-            const health = await getHealthStatus(
-                { healthCheck, openAiHealthCheck, cacheTtlMs: healthProbeCacheTtlMs },
-                metricsSnapshot,
-            );
-            res.status(health.live ? 200 : 503).json(health);
-        }),
-    );
+    app.get('/healthz', async (_req: Request, res: Response) => {
+        const metricsSnapshot = metrics?.snapshot() ?? createEmptyAppMetricsSnapshot();
+        const health = await getHealthStatus(
+            { healthCheck, openAiHealthCheck, cacheTtlMs: healthProbeCacheTtlMs },
+            metricsSnapshot,
+        );
+        res.status(health.live ? 200 : 503).json(health);
+    });
 
     app.get(
         '/metrics',
-        createMetricsAuthMiddleware(metricsToken),
+        createMetricsAuthMiddleware({ token: metricsToken, host }),
         (_req: Request, res: Response) => {
             const metricsSnapshot = metrics?.snapshot() ?? createEmptyAppMetricsSnapshot();
             const runtimeSnapshot = runtimeLimiter?.snapshot() ?? createEmptyRuntimeSnapshot();
@@ -342,21 +310,37 @@ export function createDashboardApp({
         });
     });
 
-    api.get(
-        '/version',
+    api.post(
+        '/setup-doctor/run',
         auth.requireAuth,
-        asyncHandler(async (_req: Request, res: Response) => {
-            res.json(await versionCheck());
-        }),
+        auth.requireCsrf,
+        async (_req: Request, res: Response) => {
+            const scope = getScope(res);
+            res.json(
+                await runSetupDoctor({
+                    profile: scope.profile,
+                    profiles: scope.profiles,
+                    client: scope.client,
+                    configStore: configRepository,
+                    healthCheck,
+                    openAiHealthCheck,
+                    requireProfileSpecificRegistrationEnv: isCombinedDashboard,
+                }),
+            );
+        },
     );
+
+    api.get('/version', auth.requireAuth, async (_req: Request, res: Response) => {
+        res.json(await versionCheck());
+    });
 
     api.post(
         '/version/refresh',
         auth.requireAuth,
         auth.requireCsrf,
-        asyncHandler(async (_req: Request, res: Response) => {
+        async (_req: Request, res: Response) => {
             res.json(await versionCheck({ forceRefresh: true }));
-        }),
+        },
     );
 
     api.get('/sessions', auth.requireAuth, (req: Request, res: Response) => {
@@ -388,13 +372,15 @@ export function createDashboardApp({
         },
     );
 
-    api.get('/stats', auth.requireAuth, (_req: Request, res: Response) => {
+    api.get('/stats', auth.requireAuth, async (_req: Request, res: Response) => {
         const scope = getScope(res);
         const scopedClient = scope.client;
         const stats = getStats();
         const cacheStats = cache.stats();
         const usageStats = usage.getStats();
-        const metricsSnapshot = metrics?.snapshot() ?? createEmptyAppMetricsSnapshot();
+        const scopeProfileId = isCombinedDashboard ? scope.appProfileIdForLogs : undefined;
+        const metricsSnapshot =
+            metrics?.snapshot({ appProfileId: scopeProfileId }) ?? createEmptyAppMetricsSnapshot();
         const memoryUsage = process.memoryUsage();
         const rssMB = (memoryUsage.rss / BYTES_PER_MB).toFixed(1);
         const heapUsedMB = (memoryUsage.heapUsed / BYTES_PER_MB).toFixed(1);
@@ -402,6 +388,15 @@ export function createDashboardApp({
         const runtimeSnapshot = runtimeLimiter?.snapshot() ?? createEmptyRuntimeSnapshot();
         const runtimeConfig = configRepository.getRuntimeConfig();
         const providerMode = runtimeConfig.translationProvider || 'vertex';
+        const translationTotals = scopeProfileId
+            ? {
+                  total: metricsSnapshot.translationsTotal,
+                  apiCalls: metricsSnapshot.translationApiCallsTotal,
+              }
+            : {
+                  total: stats.totalTranslations,
+                  apiCalls: stats.apiCalls,
+              };
 
         const guildIds = scope.capabilities.guildAccess
             ? scopedClient.guilds.cache.map((guild) => guild.id)
@@ -426,6 +421,47 @@ export function createDashboardApp({
                       isCustom: hasCustom,
                       totalCost,
                       requests,
+                      exceeded: budget > 0 && totalCost >= budget,
+                  };
+              })
+            : [];
+        const cfg = configRepository.getDashboardConfig();
+        const userBudgetConfigs = userBudgetRepository.listBudgets();
+        const allowedUserIds = new Set(cfg.allowedUserIds);
+        const pendingUserIds = new Set(pendingUserInstallOwnerRepository.listUserIds());
+        const userIds = scope.capabilities.userAccess
+            ? [
+                  ...new Set([
+                      ...cfg.allowedUserIds,
+                      ...pendingUserIds,
+                      ...Object.keys(userBudgetConfigs),
+                  ]),
+              ]
+            : [];
+        const userProfiles = scope.capabilities.userAccess
+            ? await resolveDiscordUserProfiles({
+                  client: userInstallClient,
+                  repository: userProfileRepository,
+                  userIds,
+              })
+            : {};
+        const userBudgetList = scope.capabilities.userAccess
+            ? userIds.map((userId) => {
+                  const customBudget = userBudgetConfigs[userId];
+                  const userStats = usage.getUserStats(userId);
+                  const budget = customBudget?.dailyBudgetUsd ?? cfg.defaultUserDailyBudgetUsd;
+                  const totalCost = userStats.totalCost ?? 0;
+                  return {
+                      id: userId,
+                      name: userProfiles[userId]?.displayName ?? userId,
+                      username: userProfiles[userId]?.username ?? userId,
+                      avatar: userProfiles[userId]?.avatarUrl ?? '',
+                      budget,
+                      isCustom: customBudget !== undefined,
+                      allowed: allowedUserIds.has(userId),
+                      pending: pendingUserIds.has(userId) && !allowedUserIds.has(userId),
+                      totalCost,
+                      requests: userStats.requests ?? 0,
                       exceeded: budget > 0 && totalCost >= budget,
                   };
               })
@@ -485,8 +521,8 @@ export function createDashboardApp({
                 guilds: scope.capabilities.guildAccess ? scopedClient.guilds.cache.size : 0,
             },
             translations: {
-                total: stats.totalTranslations,
-                apiCalls: stats.apiCalls,
+                total: translationTotals.total,
+                apiCalls: translationTotals.apiCalls,
                 saved: cacheStats.hits,
                 failures: metricsSnapshot.translationFailuresTotal,
                 failureRate: metricsSnapshot.translationFailureRate,
@@ -501,6 +537,7 @@ export function createDashboardApp({
             cache: cacheStats,
             usage: usageStats,
             guildBudgets: guildBudgetList,
+            userBudgets: userBudgetList,
             errors: log.errorCount,
         });
     });
@@ -528,6 +565,7 @@ export function createDashboardApp({
             cache,
             cooldown,
             cooldowns: cooldowns ? Object.values(cooldowns) : undefined,
+            runtimeLimiter,
             resetProviderState: resetTranslationProviderState,
         });
 
@@ -574,6 +612,12 @@ export function createDashboardApp({
         }
     });
 
+    api.get('/usage/export.csv', auth.requireAuth, (_req: Request, res: Response) => {
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', 'attachment; filename="babel-usage-export.csv"');
+        res.send(buildUsageExportCsv(usage.getUsageExportRows()));
+    });
+
     api.getIf('guildAccess', '/guild-budgets', auth.requireAuth, (_req: Request, res: Response) => {
         const scope = getScope(res);
         const guildBudgets = guildBudgetRepository.listBudgets();
@@ -601,7 +645,7 @@ export function createDashboardApp({
         'userAccess',
         '/user-budgets',
         auth.requireAuth,
-        asyncHandler(async (_req: Request, res: Response) => {
+        async (_req: Request, res: Response) => {
             const userBudgets = userBudgetRepository.listBudgets();
             const cfg = configRepository.getDashboardConfig();
             const allowedUserIds = new Set(cfg.allowedUserIds);
@@ -631,7 +675,7 @@ export function createDashboardApp({
             });
 
             res.json({ budgets: result, profiles });
-        }),
+        },
     );
 
     api.postIf(
@@ -875,50 +919,79 @@ export function createDashboardApp({
         res.json(entries);
     });
 
-    api.get(
-        '/user-prefs',
-        auth.requireAuth,
-        asyncHandler(async (_req: Request, res: Response) => {
-            const scope = getScope(res);
-            const prefs = userPreferenceRepository.listPreferences();
-            const profiles = await resolveDiscordUserProfiles({
-                client: scope.client,
-                repository: userProfileRepository,
-                userIds: Object.keys(prefs),
-            });
+    api.get('/user-prefs', auth.requireAuth, async (_req: Request, res: Response) => {
+        const scope = getScope(res);
+        const allPreferences = userPreferenceRepository.listPreferences();
+        const entries = scope.capabilities.guildAccess
+            ? (() => {
+                  const guildsById = new Map(
+                      scope.client.guilds.cache.map((guild) => [
+                          guild.id,
+                          {
+                              id: guild.id,
+                              name: guild.name,
+                              icon: guild.iconURL({ size: 32 }) || '',
+                              memberCount: guild.memberCount,
+                          },
+                      ]),
+                  );
 
-            res.json({
-                prefs,
-                count: Object.keys(prefs).length,
-                profiles,
-            });
-        }),
-    );
+                  return allPreferences
+                      .filter((entry) => entry.guildId && guildsById.has(entry.guildId))
+                      .map((entry) => ({
+                          ...entry,
+                          guildName: guildsById.get(entry.guildId)?.name ?? entry.guildId,
+                          guildIcon: guildsById.get(entry.guildId)?.icon ?? '',
+                          guildMemberCount: guildsById.get(entry.guildId)?.memberCount ?? null,
+                      }));
+              })()
+            : allPreferences.filter((entry) => !entry.guildId);
+        const userIds = [...new Set(entries.map((entry) => entry.userId))];
+        const profiles = await resolveDiscordUserProfiles({
+            client: scope.client,
+            repository: userProfileRepository,
+            userIds,
+        });
+
+        res.json({
+            entries,
+            count: entries.length,
+            profiles,
+        });
+    });
 
     api.post(
         '/user-prefs/batch-delete',
         auth.requireAuth,
         auth.requireCsrf,
         (req: Request, res: Response) => {
-            const userIds: string[] = Array.isArray(req.body.userIds)
-                ? req.body.userIds
-                      .map((userId: unknown) => String(userId).trim())
-                      .filter((userId: string) => userId.length > 0)
+            const refs = Array.isArray(req.body.entries)
+                ? (req.body.entries as unknown[])
+                      .map((entry: unknown) => sanitizeUserPreferenceRef(entry))
+                      .filter((entry): entry is { guildId: string; userId: string } => !!entry)
                 : [];
 
-            if (userIds.length === 0) {
-                res.status(400).json({ error: 'userIds must be a non-empty array' });
+            if (refs.length === 0) {
+                res.status(400).json({
+                    error: 'entries must be a non-empty array of guildId/userId pairs',
+                });
                 return;
             }
 
-            const deleted: string[] = [];
-            const notFound: string[] = [];
+            const deleted: Array<{ guildId: string; userId: string }> = [];
+            const notFound: Array<{ guildId: string; userId: string }> = [];
+            const seen = new Set<string>();
 
-            for (const userId of [...new Set(userIds)]) {
-                if (userPreferenceRepository.clearLanguage(userId)) {
-                    deleted.push(userId);
+            for (const ref of refs) {
+                const key = `${ref.guildId}\u0000${ref.userId}`;
+                if (seen.has(key)) {
+                    continue;
+                }
+                seen.add(key);
+                if (userPreferenceRepository.clearLanguage(ref.guildId, ref.userId)) {
+                    deleted.push(ref);
                 } else {
-                    notFound.push(userId);
+                    notFound.push(ref);
                 }
             }
 
@@ -931,9 +1004,16 @@ export function createDashboardApp({
         auth.requireAuth,
         auth.requireCsrf,
         (req: Request, res: Response) => {
+            const scope = getScope(res);
             const userId = req.params.userId as string;
-            if (userPreferenceRepository.clearLanguage(userId)) {
-                res.json({ ok: true, deleted: userId });
+            const guildId = String(req.query.guildId ?? '').trim();
+            if (scope.capabilities.guildAccess && !guildId) {
+                res.status(400).json({ error: 'guildId is required' });
+                return;
+            }
+
+            if (userPreferenceRepository.clearLanguage(guildId, userId)) {
+                res.json({ ok: true, deleted: { guildId, userId } });
             } else {
                 res.status(404).json({ error: dashboardMessages.userPreferences.notFound });
             }
@@ -950,7 +1030,9 @@ export function createDashboardApp({
         '/translate/test',
         auth.requireAuth,
         auth.requireCsrf,
-        asyncHandler(async (req: Request, res: Response) => {
+        async (req: Request, res: Response) => {
+            const scope = getScope(res);
+            const scopedTranslationService = getDashboardTranslationService(scope);
             const { text, targetLanguage } = req.body;
             if (!text?.trim()) {
                 res.status(400).json({ error: dashboardMessages.translationTest.textRequired });
@@ -958,38 +1040,59 @@ export function createDashboardApp({
             }
             try {
                 const start = Date.now();
-                const result = await translate(text, targetLanguage || 'auto');
-                usage.record(result.inputTokens, result.outputTokens);
+                const result = await scopedTranslationService.process({
+                    command: 'translate',
+                    commandLabel: 'dashboard translation test',
+                    guildId: null,
+                    guildName: 'Dashboard',
+                    userId: 'dashboard-admin',
+                    userTag: 'Dashboard Admin',
+                    locale: undefined,
+                    text,
+                    targetLanguageOption: targetLanguage || 'auto',
+                    bypassAccessControl: true,
+                    beforeTranslate: async () => undefined,
+                });
+
+                if (result.status === 'blocked') {
+                    res.status(400).json({ error: result.message });
+                    return;
+                }
+
+                if (result.status === 'error') {
+                    res.status(500).json({ error: sanitizeError(result.message) });
+                    return;
+                }
+
                 res.json({
                     ok: true,
-                    translation: result.text,
+                    translation: result.translatedText,
                     inputTokens: result.inputTokens,
                     outputTokens: result.outputTokens,
                     latencyMs: Date.now() - start,
+                    cached: result.cached,
+                    provider: result.provider,
+                    fallback: result.fallback,
                 });
             } catch (err) {
                 res.status(500).json({ error: sanitizeError((err as Error).message) });
             }
-        }),
+        },
     );
 
-    api.get(
-        '/health',
-        auth.requireAuth,
-        asyncHandler(async (_req: Request, res: Response) => {
-            const readiness = await getReadinessStatus({
-                healthCheck,
-                openAiHealthCheck,
-                cacheTtlMs: healthProbeCacheTtlMs,
-            });
-            res.status(readiness.ready ? 200 : 503).json({
-                healthy: readiness.ready,
-                readiness: readiness.status,
-                vertexAi: readiness.checks.vertexAi,
-                checks: readiness.checks,
-            });
-        }),
-    );
+    api.get('/health', auth.requireAuth, async (_req: Request, res: Response) => {
+        const readiness = await getReadinessStatus({
+            healthCheck,
+            openAiHealthCheck,
+            cacheTtlMs: healthProbeCacheTtlMs,
+        });
+        res.status(readiness.ready ? 200 : 503).json({
+            healthy: readiness.ready,
+            readiness: readiness.status,
+            vertexAi: readiness.checks.vertexAi,
+            checks: readiness.checks,
+        });
+    });
 
     app.get(['/guild', '/guild/', '/pocket', '/pocket/'], (_req: Request, res: Response) => {
         res.sendFile(join(__dirname, '../../public/index.html'));

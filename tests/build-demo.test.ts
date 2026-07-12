@@ -71,6 +71,16 @@ describe('build-dashboard-demo', () => {
         expect(readFileSync(join(demoDir, 'guild', 'demo', 'demo-api.js'), 'utf-8')).toContain(
             '/guild-glossary/100000000000000001/import',
         );
+        expect(readFileSync(join(demoDir, 'guild', 'demo', 'demo-api.js'), 'utf-8')).toContain(
+            "if (method !== 'GET' && route !== '/version/refresh')",
+        );
+        const guildReadonly = readFileSync(
+            join(demoDir, 'guild', 'demo', 'demo-readonly.js'),
+            'utf-8',
+        );
+        expect(guildReadonly).toContain('[data-action^="save"]');
+        expect(guildReadonly).toContain('[data-action="clearCache"]');
+        expect(guildReadonly).not.toContain('[onclick*=');
         const guildStats = JSON.parse(
             readFileSync(join(demoDir, 'guild', 'demo', 'fixtures', 'stats.json'), 'utf-8'),
         ) as { bot: { name: string }; guildBudgets: unknown[] };
@@ -137,6 +147,22 @@ describe('build-dashboard-demo', () => {
         expect(
             readFileSync(join(demoDir, 'guild', 'demo', 'fixtures', 'user-prefs.json'), 'utf-8'),
         ).toContain('Alex Chen');
+        const pocketUserPrefs = JSON.parse(
+            readFileSync(join(demoDir, 'pocket', 'demo', 'fixtures', 'user-prefs.json'), 'utf-8'),
+        ) as {
+            entries: Array<{ guildId: string; userId: string; language: string }>;
+            count: number;
+        };
+        expect(pocketUserPrefs.entries).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    guildId: '',
+                    userId: '200000000000000001',
+                    language: 'zh-TW',
+                }),
+            ]),
+        );
+        expect(pocketUserPrefs.count).toBe(pocketUserPrefs.entries.length);
         const pocketUserBudgets = JSON.parse(
             readFileSync(join(demoDir, 'pocket', 'demo', 'fixtures', 'user-budgets.json'), 'utf-8'),
         ) as {

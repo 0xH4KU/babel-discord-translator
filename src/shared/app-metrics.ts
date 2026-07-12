@@ -1,4 +1,5 @@
 import { sanitizeError } from './errors.js';
+import type { AppProfile } from '../apps/app-profile.js';
 
 export interface ProviderMetricsSnapshot {
     successTotal: number;
@@ -35,20 +36,27 @@ export interface AppMetricsSnapshot {
 }
 
 export interface AppMetricsCollector {
-    recordTranslationSuccess(options?: { cached?: boolean }): void;
-    recordTranslationApiCall(): void;
-    recordTranslationFailure(): void;
-    recordBudgetExceeded(): void;
-    recordWebhookRecreate(): void;
-    recordProviderSuccess(provider: string, options?: { latencyMs?: number }): void;
-    recordProviderFailure(provider: string, options: { errorType: string; error: string }): void;
+    recordTranslationSuccess(options?: { cached?: boolean; appProfileId?: AppProfile['id'] }): void;
+    recordTranslationApiCall(options?: { appProfileId?: AppProfile['id'] }): void;
+    recordTranslationFailure(options?: { appProfileId?: AppProfile['id'] }): void;
+    recordBudgetExceeded(options?: { appProfileId?: AppProfile['id'] }): void;
+    recordWebhookRecreate(options?: { appProfileId?: AppProfile['id'] }): void;
+    recordProviderSuccess(
+        provider: string,
+        options?: { latencyMs?: number; appProfileId?: AppProfile['id'] },
+    ): void;
+    recordProviderFailure(
+        provider: string,
+        options: { errorType: string; error: string; appProfileId?: AppProfile['id'] },
+    ): void;
     recordProviderFallback(options: {
         from: string;
         to: string;
         errorType: string;
         error: string;
+        appProfileId?: AppProfile['id'];
     }): void;
-    snapshot(): AppMetricsSnapshot;
+    snapshot(options?: { appProfileId?: AppProfile['id'] }): AppMetricsSnapshot;
 }
 
 const EMPTY_APP_METRICS_SNAPSHOT: AppMetricsSnapshot = {
@@ -71,57 +79,139 @@ export function createEmptyAppMetricsSnapshot(): AppMetricsSnapshot {
     return { ...EMPTY_APP_METRICS_SNAPSHOT, providers: {} };
 }
 
+export function createProfileMetricsCollector(
+    metrics: AppMetricsCollector | undefined,
+    appProfileId: AppProfile['id'] | undefined,
+): AppMetricsCollector | undefined {
+    if (!metrics || !appProfileId) {
+        return metrics;
+    }
+
+    return {
+        recordTranslationSuccess(options = {}) {
+            metrics.recordTranslationSuccess({ ...options, appProfileId });
+        },
+        recordTranslationApiCall() {
+            metrics.recordTranslationApiCall({ appProfileId });
+        },
+        recordTranslationFailure() {
+            metrics.recordTranslationFailure({ appProfileId });
+        },
+        recordBudgetExceeded() {
+            metrics.recordBudgetExceeded({ appProfileId });
+        },
+        recordWebhookRecreate() {
+            metrics.recordWebhookRecreate({ appProfileId });
+        },
+        recordProviderSuccess(provider, options = {}) {
+            metrics.recordProviderSuccess(provider, { ...options, appProfileId });
+        },
+        recordProviderFailure(provider, options) {
+            metrics.recordProviderFailure(provider, { ...options, appProfileId });
+        },
+        recordProviderFallback(options) {
+            metrics.recordProviderFallback({ ...options, appProfileId });
+        },
+        snapshot(options) {
+            return metrics.snapshot(options ?? { appProfileId });
+        },
+    };
+}
+
+interface AppMetricsState {
+    translationsTotal: number;
+    translationApiCallsTotal: number;
+    translationCacheHitsTotal: number;
+    translationFailuresTotal: number;
+    budgetExceededTotal: number;
+    webhookRecreateTotal: number;
+    providers: Map<string, ProviderMetricsSnapshot>;
+    providerFallbackTotal: number;
+    lastProviderFallback: LastProviderFallback | null;
+}
+
+function createAppMetricsState(): AppMetricsState {
+    return {
+        translationsTotal: 0,
+        translationApiCallsTotal: 0,
+        translationCacheHitsTotal: 0,
+        translationFailuresTotal: 0,
+        budgetExceededTotal: 0,
+        webhookRecreateTotal: 0,
+        providers: new Map<string, ProviderMetricsSnapshot>(),
+        providerFallbackTotal: 0,
+        lastProviderFallback: null,
+    };
+}
+
 export class AppMetrics implements AppMetricsCollector {
-    private translationsTotal = 0;
-    private translationApiCallsTotal = 0;
-    private translationCacheHitsTotal = 0;
-    private translationFailuresTotal = 0;
-    private budgetExceededTotal = 0;
-    private webhookRecreateTotal = 0;
-    private providers = new Map<string, ProviderMetricsSnapshot>();
-    private providerFallbackTotal = 0;
-    private lastProviderFallback: LastProviderFallback | null = null;
+    private aggregate = createAppMetricsState();
+    private profileStates = new Map<AppProfile['id'], AppMetricsState>();
 
-    recordTranslationSuccess(options?: { cached?: boolean }): void {
-        this.translationsTotal += 1;
+    recordTranslationSuccess(options?: {
+        cached?: boolean;
+        appProfileId?: AppProfile['id'];
+    }): void {
+        for (const state of this.recordingStates(options?.appProfileId)) {
+            state.translationsTotal += 1;
 
-        if (options?.cached) {
-            this.translationCacheHitsTotal += 1;
+            if (options?.cached) {
+                state.translationCacheHitsTotal += 1;
+            }
         }
     }
 
-    recordTranslationApiCall(): void {
-        this.translationApiCallsTotal += 1;
-    }
-
-    recordTranslationFailure(): void {
-        this.translationFailuresTotal += 1;
-    }
-
-    recordBudgetExceeded(): void {
-        this.budgetExceededTotal += 1;
-    }
-
-    recordWebhookRecreate(): void {
-        this.webhookRecreateTotal += 1;
-    }
-
-    recordProviderSuccess(provider: string, options?: { latencyMs?: number }): void {
-        const providerMetrics = this.providerMetrics(provider);
-
-        providerMetrics.successTotal += 1;
-
-        if (options?.latencyMs !== undefined) {
-            providerMetrics.lastLatencyMs = options.latencyMs;
+    recordTranslationApiCall(options?: { appProfileId?: AppProfile['id'] }): void {
+        for (const state of this.recordingStates(options?.appProfileId)) {
+            state.translationApiCallsTotal += 1;
         }
     }
 
-    recordProviderFailure(provider: string, options: { errorType: string; error: string }): void {
-        const providerMetrics = this.providerMetrics(provider);
+    recordTranslationFailure(options?: { appProfileId?: AppProfile['id'] }): void {
+        for (const state of this.recordingStates(options?.appProfileId)) {
+            state.translationFailuresTotal += 1;
+        }
+    }
 
-        providerMetrics.failureTotal += 1;
-        providerMetrics.lastErrorType = options.errorType;
-        providerMetrics.lastError = sanitizeError(options.error);
+    recordBudgetExceeded(options?: { appProfileId?: AppProfile['id'] }): void {
+        for (const state of this.recordingStates(options?.appProfileId)) {
+            state.budgetExceededTotal += 1;
+        }
+    }
+
+    recordWebhookRecreate(options?: { appProfileId?: AppProfile['id'] }): void {
+        for (const state of this.recordingStates(options?.appProfileId)) {
+            state.webhookRecreateTotal += 1;
+        }
+    }
+
+    recordProviderSuccess(
+        provider: string,
+        options?: { latencyMs?: number; appProfileId?: AppProfile['id'] },
+    ): void {
+        for (const state of this.recordingStates(options?.appProfileId)) {
+            const providerMetrics = this.providerMetrics(state, provider);
+
+            providerMetrics.successTotal += 1;
+
+            if (options?.latencyMs !== undefined) {
+                providerMetrics.lastLatencyMs = options.latencyMs;
+            }
+        }
+    }
+
+    recordProviderFailure(
+        provider: string,
+        options: { errorType: string; error: string; appProfileId?: AppProfile['id'] },
+    ): void {
+        const sanitizedError = sanitizeError(options.error);
+        for (const state of this.recordingStates(options.appProfileId)) {
+            const providerMetrics = this.providerMetrics(state, provider);
+
+            providerMetrics.failureTotal += 1;
+            providerMetrics.lastErrorType = options.errorType;
+            providerMetrics.lastError = sanitizedError;
+        }
     }
 
     recordProviderFallback(options: {
@@ -129,57 +219,85 @@ export class AppMetrics implements AppMetricsCollector {
         to: string;
         errorType: string;
         error: string;
+        appProfileId?: AppProfile['id'];
     }): void {
-        const fromProviderMetrics = this.providerMetrics(options.from);
-        const toProviderMetrics = this.providerMetrics(options.to);
+        const sanitizedError = sanitizeError(options.error);
+        const timestamp = Date.now();
+        for (const state of this.recordingStates(options.appProfileId)) {
+            const fromProviderMetrics = this.providerMetrics(state, options.from);
+            const toProviderMetrics = this.providerMetrics(state, options.to);
 
-        this.providerFallbackTotal += 1;
-        fromProviderMetrics.fallbackFromTotal += 1;
-        toProviderMetrics.fallbackToTotal += 1;
-        this.lastProviderFallback = {
-            from: options.from,
-            to: options.to,
-            errorType: options.errorType,
-            error: sanitizeError(options.error),
-            timestamp: Date.now(),
-        };
+            state.providerFallbackTotal += 1;
+            fromProviderMetrics.fallbackFromTotal += 1;
+            toProviderMetrics.fallbackToTotal += 1;
+            state.lastProviderFallback = {
+                from: options.from,
+                to: options.to,
+                errorType: options.errorType,
+                error: sanitizedError,
+                timestamp,
+            };
+        }
     }
 
-    snapshot(): AppMetricsSnapshot {
-        const completedTranslationAttempts = this.translationsTotal + this.translationFailuresTotal;
+    snapshot(options?: { appProfileId?: AppProfile['id'] }): AppMetricsSnapshot {
+        const state = options?.appProfileId
+            ? (this.profileStates.get(options.appProfileId) ?? createAppMetricsState())
+            : this.aggregate;
+        const completedTranslationAttempts =
+            state.translationsTotal + state.translationFailuresTotal;
 
         return {
-            translationsTotal: this.translationsTotal,
-            translationApiCallsTotal: this.translationApiCallsTotal,
-            translationCacheHitsTotal: this.translationCacheHitsTotal,
-            translationFailuresTotal: this.translationFailuresTotal,
-            budgetExceededTotal: this.budgetExceededTotal,
-            webhookRecreateTotal: this.webhookRecreateTotal,
+            translationsTotal: state.translationsTotal,
+            translationApiCallsTotal: state.translationApiCallsTotal,
+            translationCacheHitsTotal: state.translationCacheHitsTotal,
+            translationFailuresTotal: state.translationFailuresTotal,
+            budgetExceededTotal: state.budgetExceededTotal,
+            webhookRecreateTotal: state.webhookRecreateTotal,
             translationSuccessRate:
                 completedTranslationAttempts > 0
-                    ? this.translationsTotal / completedTranslationAttempts
+                    ? state.translationsTotal / completedTranslationAttempts
                     : 0,
             translationFailureRate:
                 completedTranslationAttempts > 0
-                    ? this.translationFailuresTotal / completedTranslationAttempts
+                    ? state.translationFailuresTotal / completedTranslationAttempts
                     : 0,
             translationCacheHitRate:
-                this.translationsTotal > 0
-                    ? this.translationCacheHitsTotal / this.translationsTotal
+                state.translationsTotal > 0
+                    ? state.translationCacheHitsTotal / state.translationsTotal
                     : 0,
             translationApiCallRate:
-                this.translationsTotal > 0
-                    ? this.translationApiCallsTotal / this.translationsTotal
+                state.translationsTotal > 0
+                    ? state.translationApiCallsTotal / state.translationsTotal
                     : 0,
-            providers: this.snapshotProviders(),
-            providerFallbackTotal: this.providerFallbackTotal,
+            providers: this.snapshotProviders(state),
+            providerFallbackTotal: state.providerFallbackTotal,
             lastProviderFallback:
-                this.lastProviderFallback === null ? null : { ...this.lastProviderFallback },
+                state.lastProviderFallback === null ? null : { ...state.lastProviderFallback },
         };
     }
 
-    private providerMetrics(provider: string): ProviderMetricsSnapshot {
-        const existingMetrics = this.providers.get(provider);
+    private recordingStates(appProfileId?: AppProfile['id']): AppMetricsState[] {
+        if (!appProfileId) {
+            return [this.aggregate];
+        }
+
+        return [this.aggregate, this.profileState(appProfileId)];
+    }
+
+    private profileState(appProfileId: AppProfile['id']): AppMetricsState {
+        const existing = this.profileStates.get(appProfileId);
+        if (existing) {
+            return existing;
+        }
+
+        const state = createAppMetricsState();
+        this.profileStates.set(appProfileId, state);
+        return state;
+    }
+
+    private providerMetrics(state: AppMetricsState, provider: string): ProviderMetricsSnapshot {
+        const existingMetrics = state.providers.get(provider);
 
         if (existingMetrics !== undefined) {
             return existingMetrics;
@@ -195,14 +313,14 @@ export class AppMetrics implements AppMetricsCollector {
             lastError: null,
         };
 
-        this.providers.set(provider, metrics);
+        state.providers.set(provider, metrics);
 
         return metrics;
     }
 
-    private snapshotProviders(): Record<string, ProviderMetricsSnapshot> {
+    private snapshotProviders(state: AppMetricsState): Record<string, ProviderMetricsSnapshot> {
         return Object.fromEntries(
-            Array.from(this.providers.entries()).map(([provider, metrics]) => [
+            Array.from(state.providers.entries()).map(([provider, metrics]) => [
                 provider,
                 { ...metrics },
             ]),

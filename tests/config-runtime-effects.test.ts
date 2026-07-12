@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { TranslationCache } from '../src/modules/translation/cache.js';
 import { CooldownManager } from '../src/modules/translation/cooldown.js';
+import { TranslationRuntimeLimiter } from '../src/modules/translation/translation-runtime-limiter.js';
 import { applyConfigUpdateEffects } from '../src/modules/config/config-runtime-effects.js';
 import { DEFAULT_STORE_DATA } from '../src/persistence/store-defaults.js';
 import type { StoreData } from '../src/shared/types.js';
@@ -126,9 +127,16 @@ describe('applyConfigUpdateEffects', () => {
         expect(cooldown.seconds).toBe(5);
     });
 
-    it('should report runtime limit config changes as read on restart settings', () => {
+    it('should update runtime limiter limits immediately', () => {
         const cache = new TranslationCache(100);
         const cooldown = new CooldownManager(5);
+        const runtimeLimiter = new TranslationRuntimeLimiter({
+            maxConcurrent: 4,
+            maxGlobalQueue: 25,
+            maxGuildQueue: 5,
+            maxUserOutstanding: 1,
+            maxQueueWaitMs: 30000,
+        });
 
         const result = applyConfigUpdateEffects(
             createConfig(),
@@ -139,10 +147,17 @@ describe('applyConfigUpdateEffects', () => {
                 translationMaxUserOutstanding: 2,
                 translationMaxQueueWaitMs: 15000,
             },
-            { cache, cooldown },
+            { cache, cooldown, runtimeLimiter },
         );
 
         expect(result.cacheCleared).toBe(false);
+        expect(runtimeLimiter.snapshot().limits).toEqual({
+            maxConcurrent: 8,
+            maxGlobalQueue: 50,
+            maxGuildQueue: 10,
+            maxUserOutstanding: 2,
+            maxQueueWaitMs: 15000,
+        });
         expect(result.changedKeys).toEqual([
             'translationMaxConcurrent',
             'translationMaxGlobalQueue',

@@ -37,8 +37,11 @@ function renderHistory() {
   const maxReqs = Math.max(...allHistoryData.map(d => d.requests), 1);
   chart.innerHTML = allHistoryData.map(d => {
     const h = Math.max((d.requests / maxReqs) * 100, 3);
-    return `<div class="bar" style="height:${h}%" data-tip="${d.date}: ${d.requests} reqs · ${formatUsd(d.cost)}"></div>`;
+    return `<div class="bar" data-height="${h}" data-tip="${escapeHtml(d.date)}: ${escapeHtml(d.requests)} reqs · ${escapeHtml(formatUsd(d.cost))}"></div>`;
   }).join('');
+  chart.querySelectorAll?.('.bar[data-height]').forEach((node) => {
+    node.style.height = node.dataset.height + '%';
+  });
 
   // Table with pagination (newest first)
   const reversed = [...allHistoryData].reverse();
@@ -52,11 +55,11 @@ function renderHistory() {
 
   for (const d of pageData) {
     html += `<tr>
-      <td class="mono">${d.date}</td>
-      <td>${d.requests}</td>
-      <td class="dim">${formatTokens(d.inputTokens)}</td>
-      <td class="dim">${formatTokens(d.outputTokens)}</td>
-      <td>${formatUsd(d.cost)}</td>
+      <td class="mono">${escapeHtml(d.date)}</td>
+      <td>${escapeHtml(d.requests)}</td>
+      <td class="dim">${escapeHtml(formatTokens(d.inputTokens))}</td>
+      <td class="dim">${escapeHtml(formatTokens(d.outputTokens))}</td>
+      <td>${escapeHtml(formatUsd(d.cost))}</td>
     </tr>`;
   }
 
@@ -74,3 +77,4 @@ function renderHistory() {
 
 function setHistoryPage(p) { historyPage = p; renderHistory(); }
 function setHistoryPageSize(s) { historyPageSize = s; historyPage = 1; renderHistory(); }
+function downloadUsageExport() { window.location.href = getDashboardApiBase() + '/usage/export.csv'; }

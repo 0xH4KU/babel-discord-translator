@@ -80,18 +80,21 @@ describe('userPreferenceRepository', () => {
         mockStore.getUserLanguage.mockReturnValue('ja');
         mockStore.deleteUserLanguage.mockReturnValue(true);
 
-        expect(userPreferenceRepository.getLanguage('user-1')).toBe('ja');
-        userPreferenceRepository.setLanguage('user-1', 'ko');
-        expect(mockStore.setUserLanguage).toHaveBeenCalledWith('user-1', 'ko');
-        expect(userPreferenceRepository.clearLanguage('user-1')).toBe(true);
-        expect(mockStore.deleteUserLanguage).toHaveBeenCalledWith('user-1');
+        expect(userPreferenceRepository.getLanguage('guild-1', 'user-1')).toBe('ja');
+        expect(mockStore.getUserLanguage).toHaveBeenCalledWith('guild-1', 'user-1');
+        userPreferenceRepository.setLanguage('guild-1', 'user-1', 'ko');
+        expect(mockStore.setUserLanguage).toHaveBeenCalledWith('guild-1', 'user-1', 'ko');
+        expect(userPreferenceRepository.clearLanguage('guild-1', 'user-1')).toBe(true);
+        expect(mockStore.deleteUserLanguage).toHaveBeenCalledWith('guild-1', 'user-1');
     });
 
     it('should list cloned preferences and tolerate a missing store entry', () => {
-        mockStore.get.mockReturnValue({ 'user-1': 'ja' });
-        expect(userPreferenceRepository.listPreferences()).toEqual({ 'user-1': 'ja' });
+        mockStore.get.mockReturnValue([{ guildId: 'guild-1', userId: 'user-1', language: 'ja' }]);
+        expect(userPreferenceRepository.listPreferences()).toEqual([
+            { guildId: 'guild-1', userId: 'user-1', language: 'ja' },
+        ]);
 
         mockStore.get.mockReturnValue(undefined);
-        expect(userPreferenceRepository.listPreferences()).toEqual({});
+        expect(userPreferenceRepository.listPreferences()).toEqual([]);
     });
 });

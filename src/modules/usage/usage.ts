@@ -7,7 +7,7 @@ import { guildBudgetRepository } from './guild-budget-repository.js';
 import { userBudgetRepository } from './user-budget-repository.js';
 import { usageRepository } from './usage-repository.js';
 import { resolveBudgetScope } from './budget-scope.js';
-import { normalizeUsageScope, type LegacyUsageScope, type UsageScope } from './usage-scope.js';
+import type { UsageScope } from './usage-scope.js';
 import { calculateCost, createEmptyUsage, toUsageStats, withCost } from './usage-cost.js';
 import type {
     UsageCost,
@@ -16,6 +16,19 @@ import type {
     TokenUsage,
     UsageHistoryEntry,
 } from '../../shared/types.js';
+
+export type UsageExportScope = 'global' | 'guild' | 'user';
+
+export interface UsageExportRow {
+    scope: UsageExportScope;
+    id: string;
+    date: string;
+    requests: number;
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    costUsd: number;
+}
 
 class UsageTracker {
     private lastEnsuredDate: string | null = null;
@@ -73,8 +86,7 @@ class UsageTracker {
     }
 
     /** Record a translation's token usage (global + optional guild/user). */
-    record(inputTokens: number, outputTokens: number, scopeInput?: LegacyUsageScope): void {
-        const scope = normalizeUsageScope(scopeInput);
+    record(inputTokens: number, outputTokens: number, scope: UsageScope = {}): void {
         this.ensureToday();
 
         const usage = usageRepository.getDailyUsage() ?? createEmptyUsage(today());
@@ -153,8 +165,7 @@ class UsageTracker {
      * If guildId is provided, checks guild-specific budget first,
      * then falls back to the global budget.
      */
-    isBudgetExceeded(scopeInput?: LegacyUsageScope): boolean {
-        const scope = normalizeUsageScope(scopeInput);
+    isBudgetExceeded(scope: UsageScope = {}): boolean {
         const runtimeConfig = configRepository.getRuntimeConfig();
         const { budget, cost } = this.getBudgetScope(scope, runtimeConfig);
 
@@ -336,6 +347,22 @@ class UsageTracker {
         return aggregateHistoryByDate(Object.values(allHistory).flat());
     }
 
+    getUsageExportRows(): UsageExportRow[] {
+        this.ensureToday();
+        const runtimeConfig = configRepository.getRuntimeConfig();
+        const rows = [
+            ...toUsageExportRows('global', '', usageRepository.getUsageHistory(), runtimeConfig),
+            ...Object.entries(usageRepository.getAllGuildUsageHistory()).flatMap(
+                ([guildId, history]) => toUsageExportRows('guild', guildId, history, runtimeConfig),
+            ),
+            ...Object.entries(usageRepository.getAllUserUsageHistory()).flatMap(
+                ([userId, history]) => toUsageExportRows('user', userId, history, runtimeConfig),
+            ),
+        ];
+
+        return rows.sort(compareUsageExportRows);
+    }
+
     private getSharedGlobalBudgetCost(runtimeConfig: RuntimeConfig): UsageCost {
         this.ensureToday();
         const todayValue = today();
@@ -431,6 +458,33 @@ function aggregateHistoryByDate(history: UsageHistoryEntry[]): UsageHistoryDay[]
             totalTokens: day.inputTokens + day.outputTokens,
             cost: calculateCost(day, runtimeConfig),
         }));
+}
+
+function toUsageExportRows(
+    scope: UsageExportScope,
+    id: string,
+    history: UsageHistoryEntry[],
+    runtimeConfig: RuntimeConfig,
+): UsageExportRow[] {
+    return history.map((day) => ({
+        scope,
+        id,
+        date: day.date,
+        requests: day.requests,
+        inputTokens: day.inputTokens,
+        outputTokens: day.outputTokens,
+        totalTokens: day.inputTokens + day.outputTokens,
+        costUsd: calculateCost(day, runtimeConfig),
+    }));
+}
+
+function compareUsageExportRows(a: UsageExportRow, b: UsageExportRow): number {
+    const scopeOrder: Record<UsageExportScope, number> = { global: 0, guild: 1, user: 2 };
+    return (
+        scopeOrder[a.scope] - scopeOrder[b.scope] ||
+        a.id.localeCompare(b.id) ||
+        a.date.localeCompare(b.date)
+    );
 }
 
 export const usage = new UsageTracker();

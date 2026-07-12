@@ -111,6 +111,90 @@ describe('AppMetrics', () => {
         });
     });
 
+    it('should return profile-scoped snapshots without losing aggregate metrics', () => {
+        const metrics = new AppMetrics();
+
+        metrics.recordTranslationSuccess({ appProfileId: 'babel-guild' });
+        metrics.recordTranslationSuccess({ appProfileId: 'babel-guild', cached: true });
+        metrics.recordTranslationApiCall({ appProfileId: 'babel-guild' });
+        metrics.recordProviderSuccess('vertex', {
+            appProfileId: 'babel-guild',
+            latencyMs: 120,
+        });
+
+        metrics.recordTranslationFailure({ appProfileId: 'babel-pocket' });
+        metrics.recordBudgetExceeded({ appProfileId: 'babel-pocket' });
+        metrics.recordProviderFailure('openai', {
+            appProfileId: 'babel-pocket',
+            errorType: 'auth',
+            error: 'Pocket OpenAI 401',
+        });
+        metrics.recordProviderFallback({
+            appProfileId: 'babel-pocket',
+            from: 'openai',
+            to: 'vertex',
+            errorType: 'auth',
+            error: 'Pocket OpenAI 401',
+        });
+
+        expect(metrics.snapshot()).toMatchObject({
+            translationsTotal: 2,
+            translationApiCallsTotal: 1,
+            translationCacheHitsTotal: 1,
+            translationFailuresTotal: 1,
+            budgetExceededTotal: 1,
+            providerFallbackTotal: 1,
+        });
+
+        const guildSnapshot = metrics.snapshot({ appProfileId: 'babel-guild' });
+        expect(guildSnapshot).toMatchObject({
+            translationsTotal: 2,
+            translationApiCallsTotal: 1,
+            translationCacheHitsTotal: 1,
+            translationFailuresTotal: 0,
+            budgetExceededTotal: 0,
+            providerFallbackTotal: 0,
+        });
+        expect(guildSnapshot.providers.vertex).toMatchObject({
+            successTotal: 1,
+            failureTotal: 0,
+            fallbackFromTotal: 0,
+            fallbackToTotal: 0,
+            lastLatencyMs: 120,
+        });
+        expect(guildSnapshot.providers.openai).toBeUndefined();
+        expect(guildSnapshot.lastProviderFallback).toBeNull();
+
+        const pocketSnapshot = metrics.snapshot({ appProfileId: 'babel-pocket' });
+        expect(pocketSnapshot).toMatchObject({
+            translationsTotal: 0,
+            translationApiCallsTotal: 0,
+            translationCacheHitsTotal: 0,
+            translationFailuresTotal: 1,
+            budgetExceededTotal: 1,
+            providerFallbackTotal: 1,
+        });
+        expect(pocketSnapshot.providers.openai).toMatchObject({
+            successTotal: 0,
+            failureTotal: 1,
+            fallbackFromTotal: 1,
+            fallbackToTotal: 0,
+            lastErrorType: 'auth',
+            lastError: 'Pocket OpenAI 401',
+        });
+        expect(pocketSnapshot.providers.vertex).toMatchObject({
+            successTotal: 0,
+            failureTotal: 0,
+            fallbackFromTotal: 0,
+            fallbackToTotal: 1,
+        });
+        expect(pocketSnapshot.lastProviderFallback).toMatchObject({
+            from: 'openai',
+            to: 'vertex',
+            errorType: 'auth',
+        });
+    });
+
     it('should sanitize provider errors before exposing metric snapshots', () => {
         const metrics = new AppMetrics();
         const rawError =

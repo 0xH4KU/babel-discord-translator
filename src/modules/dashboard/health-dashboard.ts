@@ -16,6 +16,7 @@ type HealthDashboardDeps = Pick<
     | 'openAiHealthCheck'
     | 'healthProbeCacheTtlMs'
     | 'metricsToken'
+    | 'host'
 >;
 
 function asyncHandler(
@@ -34,6 +35,7 @@ export function createHealthDashboardApp({
     openAiHealthCheck = checkOpenAiHealth,
     healthProbeCacheTtlMs = 5_000,
     metricsToken,
+    host,
 }: HealthDashboardDeps): express.Express {
     const app = express();
     app.set('trust proxy', 1);
@@ -69,7 +71,7 @@ export function createHealthDashboardApp({
 
     app.get(
         '/metrics',
-        createMetricsAuthMiddleware(metricsToken),
+        createMetricsAuthMiddleware({ token: metricsToken, host }),
         (_req: Request, res: Response) => {
             const metricsSnapshot = metrics?.snapshot() ?? createEmptyAppMetricsSnapshot();
             const runtimeSnapshot = runtimeLimiter?.snapshot() ?? createEmptyRuntimeSnapshot();

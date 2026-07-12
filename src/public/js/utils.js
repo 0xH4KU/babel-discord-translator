@@ -1,12 +1,64 @@
 
 /**
  * Shared utility functions used across all modules.
- * Exposes: show, showToast, api, formatUptime, formatUsd, formatTokens, renderPagination, genAvatar
+ * Exposes: show, showToast, api, formatUptime, formatUsd, formatTokens, escapeHtml, renderPagination, genAvatar
  */
 
 let _csrfToken = '';
 
 function setCsrfToken(token) { _csrfToken = token || ''; }
+
+function parseActionArgs(node) {
+  if (!node?.dataset?.actionArgs) return [];
+
+  try {
+    const parsed = JSON.parse(node.dataset.actionArgs);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function resolveActionArgs(node) {
+  const args = parseActionArgs(node);
+  if (node.dataset.actionValue === 'value') args.push(node.value);
+  if (node.dataset.actionValue === 'number') args.push(Number(node.value));
+  if (node.dataset.actionValue === 'checked') args.push(Boolean(node.checked));
+  if (node.dataset.actionElement === 'true') args.push(node);
+  return args;
+}
+
+function invokeDashboardAction(node, event) {
+  const actionName = node?.dataset?.action;
+  if (!actionName) return;
+
+  const action = globalThis[actionName];
+  if (typeof action !== 'function') return;
+
+  event.preventDefault();
+  action(...resolveActionArgs(node));
+}
+
+function shouldHandleClickAction(node) {
+  return !['INPUT', 'SELECT', 'TEXTAREA', 'OPTION'].includes(node?.tagName || '');
+}
+
+if (document.addEventListener) {
+  document.addEventListener('click', (event) => {
+    const target = event.target?.closest?.('[data-action]');
+    if (target && shouldHandleClickAction(target)) invokeDashboardAction(target, event);
+  });
+
+  document.addEventListener('change', (event) => {
+    const target = event.target?.closest?.('[data-action]');
+    if (target) invokeDashboardAction(target, event);
+  });
+
+  document.addEventListener('input', (event) => {
+    const target = event.target?.closest?.('[data-action]');
+    if (target) invokeDashboardAction(target, event);
+  });
+}
 
 function show(id) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -60,8 +112,33 @@ function formatTokens(n) {
   return String(n);
 }
 
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (char) => {
+    const entities = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    };
+    return entities[char];
+  });
+}
+
+function actionArgsAttr(args) {
+  return escapeHtml(JSON.stringify(args));
+}
+
+function actionAttrs(action, args = [], options = {}) {
+  const attrs = [`data-action="${escapeHtml(action)}"`];
+  if (args.length > 0) attrs.push(`data-action-args="${actionArgsAttr(args)}"`);
+  if (options.value) attrs.push(`data-action-value="${escapeHtml(options.value)}"`);
+  if (options.element) attrs.push('data-action-element="true"');
+  return attrs.join(' ');
+}
+
 function genAvatar(name) {
-  const c = (name || '?')[0];
+  const c = encodeURIComponent((String(name || '?'))[0]);
   return `data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2228%22 height=%2228%22><rect width=%2228%22 height=%2228%22 rx=%2214%22 fill=%22%2336393f%22/><text x=%2214%22 y=%2219%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2214%22>${c}</text></svg>`;
 }
 
@@ -71,20 +148,20 @@ function renderPagination(targetId, { total, page, pageSize, onPageChange, onSiz
   if (total <= pageSize) { container.innerHTML = ''; return; }
 
   let btns = '';
-  btns += `<button class="page-btn" ${page <= 1 ? 'disabled' : ''} onclick="${onPageChange}(${page - 1})">‹</button>`;
+  btns += `<button class="page-btn" ${page <= 1 ? 'disabled' : ''} ${actionAttrs(onPageChange, [page - 1])}>‹</button>`;
   for (let i = 1; i <= totalPages; i++) {
     if (totalPages > 7 && i > 2 && i < totalPages - 1 && Math.abs(i - page) > 1) {
-      if (i === 3 || i === totalPages - 2) btns += '<span style="padding:0 0.3rem">…</span>';
+      if (i === 3 || i === totalPages - 2) btns += '<span class="page-ellipsis">…</span>';
       continue;
     }
-    btns += `<button class="page-btn ${i === page ? 'active' : ''}" onclick="${onPageChange}(${i})">${i}</button>`;
+    btns += `<button class="page-btn ${i === page ? 'active' : ''}" ${actionAttrs(onPageChange, [i])}>${i}</button>`;
   }
-  btns += `<button class="page-btn" ${page >= totalPages ? 'disabled' : ''} onclick="${onPageChange}(${page + 1})">›</button>`;
+  btns += `<button class="page-btn" ${page >= totalPages ? 'disabled' : ''} ${actionAttrs(onPageChange, [page + 1])}>›</button>`;
 
   container.innerHTML = `<div class="pagination">
     <div class="page-info">
       <span>${total} items</span>
-      <select onchange="${onSizeChange}(+this.value)">
+      <select ${actionAttrs(onSizeChange, [], { value: 'number' })}>
         ${[15, 25, 50].map(s => `<option value="${s}" ${s === pageSize ? 'selected' : ''}>${s}/page</option>`).join('')}
       </select>
     </div>

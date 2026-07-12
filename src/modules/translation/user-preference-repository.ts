@@ -1,29 +1,21 @@
 import { store } from '../../persistence/store.js';
-import { cloneUserLanguagePrefs } from '../../persistence/store-data-normalizer.js';
+import { cloneUserLanguagePreferenceEntries } from '../../persistence/store-data-normalizer.js';
+import type { UserLanguagePreferenceEntry } from '../../shared/types.js';
 
-export interface UserPreferenceRepository {
-    getLanguage(userId: string): string | null;
-    listPreferences(): Record<string, string>;
-    setLanguage(userId: string, language: string): void;
-    clearLanguage(userId: string): boolean;
-}
+export const userPreferenceRepository = {
+    getLanguage(guildId: string, userId: string): string | null {
+        return store.getUserLanguage(guildId, userId);
+    },
 
-class StoreBackedUserPreferenceRepository implements UserPreferenceRepository {
-    getLanguage(userId: string): string | null {
-        return store.getUserLanguage(userId);
-    }
+    listPreferences(): UserLanguagePreferenceEntry[] {
+        return cloneUserLanguagePreferenceEntries(store.get('userLanguagePreferenceEntries'));
+    },
 
-    listPreferences(): Record<string, string> {
-        return cloneUserLanguagePrefs(store.get('userLanguagePrefs') ?? {});
-    }
+    setLanguage(guildId: string, userId: string, language: string): void {
+        store.setUserLanguage(guildId, userId, language);
+    },
 
-    setLanguage(userId: string, language: string): void {
-        store.setUserLanguage(userId, language);
-    }
-
-    clearLanguage(userId: string): boolean {
-        return store.deleteUserLanguage(userId);
-    }
-}
-
-export const userPreferenceRepository = new StoreBackedUserPreferenceRepository();
+    clearLanguage(guildId: string, userId: string): boolean {
+        return store.deleteUserLanguage(guildId, userId);
+    },
+};

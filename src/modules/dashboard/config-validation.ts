@@ -2,13 +2,103 @@ import { dashboardMessages } from '../../shared/messages/dashboard-messages.js';
 import type { StoreData } from '../../shared/types.js';
 
 const MAX_CACHE_SIZE = 2000;
+const STRING_CONFIG_KEYS = [
+    'vertexAiApiKey',
+    'gcpProject',
+    'gcpLocation',
+    'geminiModel',
+    'translationPrompt',
+    'openaiApiKey',
+    'openaiBaseUrl',
+    'openaiModel',
+] as const;
+const ARRAY_CONFIG_KEYS = ['allowedGuildIds', 'allowedUserIds'] as const;
+const BOOLEAN_CONFIG_KEYS = ['setupComplete'] as const;
+const NUMBER_CONFIG_KEYS = [
+    'cooldownSeconds',
+    'cacheMaxSize',
+    'maxInputLength',
+    'maxOutputTokens',
+    'dailyBudgetUsd',
+    'defaultUserDailyBudgetUsd',
+    'inputPricePerMillion',
+    'outputPricePerMillion',
+    'translationMaxConcurrent',
+    'translationMaxGlobalQueue',
+    'translationMaxGuildQueue',
+    'translationMaxUserOutstanding',
+    'translationMaxQueueWaitMs',
+] as const;
+const OTHER_CONFIG_KEYS = ['translationProvider'] as const;
+const ALLOWED_CONFIG_KEYS = new Set<string>([
+    ...STRING_CONFIG_KEYS,
+    ...ARRAY_CONFIG_KEYS,
+    ...BOOLEAN_CONFIG_KEYS,
+    ...NUMBER_CONFIG_KEYS,
+    ...OTHER_CONFIG_KEYS,
+]);
+
+function sanitizeStringArrayField(
+    value: unknown,
+    key: 'allowedGuildIds' | 'allowedUserIds',
+): { ok: true; value: string[] } | { ok: false; error: string } {
+    if (!Array.isArray(value)) {
+        return { ok: false, error: `${key} must be an array of non-empty strings` };
+    }
+
+    const normalized: string[] = [];
+    const seen = new Set<string>();
+    for (const item of value) {
+        if (typeof item !== 'string') {
+            return { ok: false, error: `${key} must be an array of non-empty strings` };
+        }
+
+        const trimmed = item.trim();
+        if (!trimmed) {
+            return { ok: false, error: `${key} must be an array of non-empty strings` };
+        }
+
+        if (!seen.has(trimmed)) {
+            seen.add(trimmed);
+            normalized.push(trimmed);
+        }
+    }
+
+    return { ok: true, value: normalized };
+}
+
+function sanitizeNonNegativeNumberField(
+    sanitized: Record<string, unknown>,
+    key: keyof StoreData,
+    error: string,
+): { valid: true } | { valid: false; error: string; sanitized: Partial<StoreData> } {
+    if (sanitized[key] === undefined) {
+        return { valid: true };
+    }
+
+    const v = parseFloat(String(sanitized[key]));
+    if (isNaN(v) || v < 0) {
+        return {
+            valid: false,
+            error,
+            sanitized: sanitized as Partial<StoreData>,
+        };
+    }
+    sanitized[key] = v;
+    return { valid: true };
+}
 
 export function validateConfigUpdate(updates: Record<string, unknown>): {
     valid: boolean;
     error?: string;
     sanitized: Partial<StoreData>;
 } {
-    const sanitized: Record<string, unknown> = { ...updates };
+    const sanitized: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(updates)) {
+        if (ALLOWED_CONFIG_KEYS.has(key)) {
+            sanitized[key] = value;
+        }
+    }
 
     if (!sanitized.vertexAiApiKey || String(sanitized.vertexAiApiKey).startsWith('••••')) {
         delete sanitized.vertexAiApiKey;
@@ -18,12 +108,19 @@ export function validateConfigUpdate(updates: Record<string, unknown>): {
         delete sanitized.openaiApiKey;
     }
 
-    delete sanitized.tokenUsage;
-    delete sanitized.usageHistory;
-    delete sanitized.userLanguagePrefs;
-    delete sanitized.guildBudgets;
-    delete sanitized.guildTokenUsage;
-    delete sanitized.guildUsageHistory;
+    for (const key of ARRAY_CONFIG_KEYS) {
+        if (sanitized[key] !== undefined) {
+            const result = sanitizeStringArrayField(sanitized[key], key);
+            if (!result.ok) {
+                return {
+                    valid: false,
+                    error: result.error,
+                    sanitized: sanitized as Partial<StoreData>,
+                };
+            }
+            sanitized[key] = result.value;
+        }
+    }
 
     if (sanitized.cooldownSeconds !== undefined) {
         const v = parseInt(String(sanitized.cooldownSeconds));
@@ -69,17 +166,18 @@ export function validateConfigUpdate(updates: Record<string, unknown>): {
         }
         sanitized.maxOutputTokens = v;
     }
-    if (sanitized.dailyBudgetUsd !== undefined) {
-        const v = parseFloat(String(sanitized.dailyBudgetUsd));
-        if (isNaN(v) || v < 0) {
-            return {
-                valid: false,
-                error: dashboardMessages.validation.dailyBudgetUsd,
-                sanitized: sanitized as Partial<StoreData>,
-            };
-        }
-        sanitized.dailyBudgetUsd = v;
-    }
+    const dailyBudget = sanitizeNonNegativeNumberField(
+        sanitized,
+        'dailyBudgetUsd',
+        dashboardMessages.validation.dailyBudgetUsd,
+    );
+    if (!dailyBudget.valid) return dailyBudget;
+    const defaultUserDailyBudget = sanitizeNonNegativeNumberField(
+        sanitized,
+        'defaultUserDailyBudgetUsd',
+        dashboardMessages.validation.dailyBudgetUsd,
+    );
+    if (!defaultUserDailyBudget.valid) return defaultUserDailyBudget;
     for (const key of [
         'translationMaxConcurrent',
         'translationMaxGlobalQueue',
@@ -99,28 +197,18 @@ export function validateConfigUpdate(updates: Record<string, unknown>): {
             sanitized[key] = v;
         }
     }
-    if (sanitized.inputPricePerMillion !== undefined) {
-        const v = parseFloat(String(sanitized.inputPricePerMillion));
-        if (isNaN(v) || v < 0) {
-            return {
-                valid: false,
-                error: dashboardMessages.validation.inputPricePerMillion,
-                sanitized: sanitized as Partial<StoreData>,
-            };
-        }
-        sanitized.inputPricePerMillion = v;
-    }
-    if (sanitized.outputPricePerMillion !== undefined) {
-        const v = parseFloat(String(sanitized.outputPricePerMillion));
-        if (isNaN(v) || v < 0) {
-            return {
-                valid: false,
-                error: dashboardMessages.validation.outputPricePerMillion,
-                sanitized: sanitized as Partial<StoreData>,
-            };
-        }
-        sanitized.outputPricePerMillion = v;
-    }
+    const inputPrice = sanitizeNonNegativeNumberField(
+        sanitized,
+        'inputPricePerMillion',
+        dashboardMessages.validation.inputPricePerMillion,
+    );
+    if (!inputPrice.valid) return inputPrice;
+    const outputPrice = sanitizeNonNegativeNumberField(
+        sanitized,
+        'outputPricePerMillion',
+        dashboardMessages.validation.outputPricePerMillion,
+    );
+    if (!outputPrice.valid) return outputPrice;
 
     if (sanitized.translationProvider !== undefined) {
         const valid = ['vertex', 'openai', 'vertex+openai', 'openai+vertex'];

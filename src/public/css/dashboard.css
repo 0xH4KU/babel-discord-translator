@@ -499,6 +499,89 @@
   border-color: var(--red);
 }
 
+.setup-doctor-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.setup-doctor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.setup-doctor-header h2 {
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.setup-doctor-results {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.setup-doctor-row {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.setup-doctor-status {
+  align-self: start;
+  border-radius: 999px;
+  padding: 0.2rem 0.45rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.setup-doctor-row.pass .setup-doctor-status {
+  color: var(--green);
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.setup-doctor-row.warn .setup-doctor-status {
+  color: var(--yellow);
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.setup-doctor-row.fail .setup-doctor-status {
+  color: var(--red);
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.setup-doctor-row.skipped .setup-doctor-status {
+  color: var(--text-dim);
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.setup-doctor-body {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.setup-doctor-body strong {
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.setup-doctor-body span,
+.setup-doctor-body em {
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  font-style: normal;
+}
+
 /* --- Per-Server Budget Overview Items --- */
 .guild-budget-overview-item {
   display: flex;
@@ -701,12 +784,14 @@
 
 .prefs-tools {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.75rem;
   align-items: center;
   margin: 0.75rem 0 1rem;
 }
 
-.prefs-tools input {
+.prefs-tools input,
+.prefs-tools select {
   flex: 1;
   min-width: 0;
   padding: 0.65rem 0.85rem;
@@ -722,7 +807,12 @@
   transition: border-color 0.2s, background 0.2s;
 }
 
-.prefs-tools input:focus {
+.prefs-tools select {
+  flex: 0 1 17rem;
+}
+
+.prefs-tools input:focus,
+.prefs-tools select:focus {
   border-color: var(--accent);
   background: var(--surface);
 }
@@ -743,6 +833,34 @@
 }
 
 .user-prefs-table .mono {
+  overflow-wrap: anywhere;
+}
+
+.user-prefs-selected-server {
+  margin-top: 0;
+}
+
+.user-prefs-guild-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 0.5rem;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.user-prefs-guild-heading img {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.user-prefs-guild-id {
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.78rem;
+  font-weight: 500;
   overflow-wrap: anywhere;
 }
 

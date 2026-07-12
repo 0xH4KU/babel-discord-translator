@@ -21,13 +21,11 @@ describe('deployment configuration', () => {
         };
 
         expect(rootPackageJson.scripts['build:assets']).toBe('node scripts/copy-assets.js');
-        expect(rootPackageJson.scripts.build).toContain('npm run build:assets');
-        expect(guildPackageJson.scripts.build).toContain(
-            'node ../../scripts/copy-assets.js apps/babel-guild',
-        );
-        expect(pocketPackageJson.scripts.build).toContain(
-            'node ../../scripts/copy-assets.js apps/babel-pocket',
-        );
+        expect(rootPackageJson.scripts.build).toBe('tsc -p tsconfig.json && npm run build:assets');
+        expect(guildPackageJson.scripts.build).toContain('node ../../scripts/copy-assets.js');
+        expect(pocketPackageJson.scripts.build).toContain('node ../../scripts/copy-assets.js');
+        expect(guildPackageJson.scripts.build).not.toContain('apps/babel-guild');
+        expect(pocketPackageJson.scripts.build).not.toContain('apps/babel-pocket');
     });
 
     it('allows the asset copy helper to run on a clean dist directory', () => {
@@ -67,6 +65,57 @@ describe('deployment configuration', () => {
         );
     });
 
+    it('runs a built dashboard smoke check in package scripts and CI', () => {
+        const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as {
+            scripts: Record<string, string>;
+        };
+        const ci = readFileSync('.github/workflows/ci.yml', 'utf8');
+
+        expect(packageJson.scripts['smoke:dashboard']).toBe(
+            'node scripts/smoke-dashboard-build.js',
+        );
+        expect(ci).toContain('npm run smoke:dashboard');
+        expect(ci).toContain('npm run typecheck:worker');
+        expect(ci).toContain(
+            'npx wrangler deploy --dry-run --config apps/babel-worker/wrangler.jsonc',
+        );
+    });
+
+    it('keeps the README TypeScript badge aligned with package.json', () => {
+        const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as {
+            devDependencies: Record<string, string>;
+        };
+        const readme = readFileSync('README.md', 'utf8');
+        const typescriptVersion = packageJson.devDependencies.typescript.replace(/^[^\d]*/, '');
+        const majorMinor = typescriptVersion.split('.').slice(0, 2).join('.');
+
+        expect(readme).toContain(
+            `[![TypeScript](https://img.shields.io/badge/TypeScript-${majorMinor}-blue.svg)]`,
+        );
+    });
+
+    it('documents and tests the supported Node runtime range for native SQLite', () => {
+        const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as {
+            engines: Record<string, string>;
+        };
+        const packageLock = JSON.parse(readFileSync('package-lock.json', 'utf8')) as {
+            packages: Record<string, { engines?: Record<string, string> }>;
+        };
+        const ci = readFileSync('.github/workflows/ci.yml', 'utf8');
+        const readme = readFileSync('README.md', 'utf8');
+        const deploymentDocs = readFileSync('docs/operations/deployment.md', 'utf8');
+        const dockerDocs = readFileSync('docs/operations/docker.md', 'utf8');
+
+        expect(packageJson.engines.node).toBe('>=22.13.0');
+        expect(packageLock.packages[''].engines?.node).toBe('>=22.13.0');
+        expect(ci).toContain('node-version: [22, 24]');
+        for (const doc of [readme, deploymentDocs, dockerDocs]) {
+            expect(doc).toContain('Node.js `22.13+`');
+            expect(doc).toContain('native `node:sqlite`');
+            expect(doc).toContain('run `npm run smoke:dashboard` after upgrading Node');
+        }
+    });
+
     it('builds the Docker image with workspace app manifests and sources', () => {
         const dockerfile = readFileSync('Dockerfile', 'utf8');
 
@@ -79,10 +128,24 @@ describe('deployment configuration', () => {
         expect(dockerfile).toContain(
             'COPY apps/babel-pocket/package.json ./apps/babel-pocket/package.json',
         );
+        expect(dockerfile).toContain(
+            'COPY apps/babel-worker/package.json ./apps/babel-worker/package.json',
+        );
         expect(dockerfile).toContain('COPY apps/ ./apps/');
         expect(dockerfile).toContain(
             'CMD ["sh", "-c", "node --max-old-space-size=${BABEL_NODE_MAX_OLD_SPACE_MB:-64} --max-semi-space-size=${BABEL_NODE_MAX_SEMI_SPACE_MB:-4} dist/src/index.js"]',
         );
+    });
+
+    it('keeps the production Worker on the custom domain with dashboard-owned config', () => {
+        const config = readFileSync('apps/babel-worker/wrangler.jsonc', 'utf8');
+        const vars = config.match(/"vars":\s*{(?<vars>[\s\S]*?)}/)?.groups?.vars ?? '';
+
+        expect(config).toContain('"name": "babel-discord-translator"');
+        expect(config).toContain('"pattern": "babel.lum.bio"');
+        expect(config).toContain('"custom_domain": true');
+        expect(vars).toContain('"BABEL_APP": "combined"');
+        expect(vars.match(/^\s*"[^"]+"\s*:/gm)).toHaveLength(1);
     });
 
     it('defaults Docker Compose deployments to Babel Guild', () => {
@@ -182,8 +245,11 @@ describe('deployment configuration', () => {
 
         expect(envExample).toContain('BABEL_METRICS_TOKEN=');
         expect(readme).toContain('BABEL_METRICS_TOKEN');
+        expect(readme).toContain('requires a metrics token by default');
         expect(dockerDocs).toContain('BABEL_METRICS_TOKEN');
+        expect(dockerDocs).toContain('requires a metrics token by default');
         expect(deploymentDocs).toContain('BABEL_METRICS_TOKEN');
+        expect(deploymentDocs).toContain('requires a metrics token by default');
         expect(alertsRunbook).toContain('Authorization: Bearer $BABEL_METRICS_TOKEN');
     });
 

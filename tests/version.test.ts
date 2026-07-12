@@ -26,19 +26,24 @@ describe('version metadata', () => {
         const pocketPackage = JSON.parse(
             readFileSync('apps/babel-pocket/package.json', 'utf8'),
         ) as { version: string };
+        const workerPackage = JSON.parse(
+            readFileSync('apps/babel-worker/package.json', 'utf8'),
+        ) as { version: string };
         const lockfile = JSON.parse(readFileSync('package-lock.json', 'utf8')) as {
             version: string;
             packages: Record<string, { version?: string }>;
         };
 
-        expect(APP_VERSION).toBe('0.2.1');
+        expect(APP_VERSION).toBe('0.2.2');
         expect(rootPackage.version).toBe(APP_VERSION);
         expect(guildPackage.version).toBe(APP_VERSION);
         expect(pocketPackage.version).toBe(APP_VERSION);
+        expect(workerPackage.version).toBe(APP_VERSION);
         expect(lockfile.version).toBe(APP_VERSION);
         expect(lockfile.packages[''].version).toBe(APP_VERSION);
         expect(lockfile.packages['apps/babel-guild'].version).toBe(APP_VERSION);
         expect(lockfile.packages['apps/babel-pocket'].version).toBe(APP_VERSION);
+        expect(lockfile.packages['apps/babel-worker'].version).toBe(APP_VERSION);
     });
 
     it('should report outdated when the latest release tag is newer', async () => {

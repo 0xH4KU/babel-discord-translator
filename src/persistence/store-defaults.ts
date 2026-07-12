@@ -18,6 +18,7 @@ export const DEFAULT_STORE_DATA: StoreData = {
     usageHistory: [],
     translationPrompt: '',
     userLanguagePrefs: {},
+    userLanguagePreferenceEntries: [],
     maxInputLength: 2000,
     maxOutputTokens: 1000,
     translationMaxConcurrent: 4,

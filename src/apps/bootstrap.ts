@@ -1,5 +1,5 @@
 import { Client, Events, GatewayIntentBits, Options } from 'discord.js';
-import { AppMetrics } from '../shared/app-metrics.js';
+import { AppMetrics, createProfileMetricsCollector } from '../shared/app-metrics.js';
 import { loadConfig } from '../modules/config/config.js';
 import { TranslationCache } from '../modules/translation/cache.js';
 import { CooldownManager } from '../modules/translation/cooldown.js';
@@ -21,6 +21,7 @@ import { createWebhookService } from '../modules/translation/webhook-service.js'
 import { PendingUserInstallOwnerRepository } from '../modules/dashboard/pending-user-install-owner-repository.js';
 import type { BotStats } from '../shared/types.js';
 import type { AppProfile } from './app-profile.js';
+import type { TranslationService } from '../modules/translation/translation-service.js';
 import type express from 'express';
 import type http from 'http';
 
@@ -39,6 +40,7 @@ interface ProfileBabelRuntime {
     profile: AppProfile;
     client: Client;
     cooldown: CooldownManager;
+    translationService: TranslationService;
 }
 
 function installProcessErrorHandlers(): void {
@@ -140,7 +142,9 @@ function createProfileRuntime(
             : undefined,
     });
     const webhookService = profile.enableWebhookOutput
-        ? createWebhookService({ metrics: shared.metrics })
+        ? createWebhookService({
+              metrics: createProfileMetricsCollector(shared.metrics, profile.id),
+          })
         : null;
 
     const client = createDiscordClient();
@@ -149,7 +153,7 @@ function createProfileRuntime(
         if (interaction.isChatInputCommand()) {
             switch (interaction.commandName) {
                 case 'setlang':
-                    return handleSetlang(interaction);
+                    return handleSetlang(interaction, { profile });
                 case 'translate':
                     if (profile.enableTranslateCommand && webhookService) {
                         return handleTranslate(interaction, { translationService, webhookService });
@@ -158,7 +162,7 @@ function createProfileRuntime(
                 case 'help':
                     return handleHelp(interaction, { profile });
                 case 'mylang':
-                    return handleMylang(interaction);
+                    return handleMylang(interaction, { profile });
             }
         }
 
@@ -170,7 +174,7 @@ function createProfileRuntime(
         }
     });
 
-    return { profile, client, cooldown };
+    return { profile, client, cooldown, translationService };
 }
 
 function resolveDiscordTokenForProfile(
@@ -210,6 +214,9 @@ export async function startBabelApps(profiles: AppProfile[]): Promise<void> {
     const cooldownsByProfile = Object.fromEntries(
         runtimes.map((runtime) => [runtime.profile.id, runtime.cooldown]),
     );
+    const translationServicesByProfile = Object.fromEntries(
+        runtimes.map((runtime) => [runtime.profile.id, runtime.translationService]),
+    );
 
     const startDashboardIfReady = () => {
         if (dashboardApp || dashboardServer || readyProfileIds.size !== runtimes.length) {
@@ -226,6 +233,7 @@ export async function startBabelApps(profiles: AppProfile[]): Promise<void> {
                 cache: shared.cache,
                 metrics: shared.metrics,
                 runtimeLimiter: shared.runtimeLimiter,
+                host: shared.config.dashboardHost,
             });
             dashboardServer = startDashboardServer(
                 dashboardApp,
@@ -247,6 +255,9 @@ export async function startBabelApps(profiles: AppProfile[]): Promise<void> {
             runtimeLimiter: shared.runtimeLimiter,
             profile: primaryRuntime.profile,
             profiles,
+            host: shared.config.dashboardHost,
+            translationService: primaryRuntime.translationService,
+            translationServices: translationServicesByProfile,
         });
         dashboardServer = startDashboardServer(
             dashboardApp,

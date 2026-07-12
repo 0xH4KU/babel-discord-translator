@@ -55,6 +55,153 @@ describe('dashboard static assets', () => {
         expect(accessJs).toContain("api('/user-budgets')");
     });
 
+    it('filters user language preferences by selected guild', () => {
+        const html = readFileSync('src/public/index.html', 'utf-8');
+        const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
+        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const nodes = {
+            'prefs-count': { textContent: '' },
+            'prefs-guild-filter': { disabled: false, innerHTML: '', value: '' },
+            'prefs-pagination': { innerHTML: '' },
+            'prefs-batch-delete': { disabled: false, textContent: '' },
+            'user-prefs-container': { innerHTML: '' },
+        };
+        const context = {
+            document: {
+                getElementById(id: string) {
+                    return nodes[id as keyof typeof nodes] || null;
+                },
+            },
+            hasDashboardCapability(name: string) {
+                return name === 'guildAccess';
+            },
+            genAvatar(value: string) {
+                return `avatar:${value}`;
+            },
+            renderPagination() {},
+        };
+
+        expect(html).toContain('id="prefs-guild-filter"');
+
+        expect(accessJs).toContain('entry.guildId');
+        expect(accessJs).toContain('entry.userId');
+        expect(accessJs).toContain('setPrefsGuildFilter');
+        expect(accessJs).toContain('renderPrefsGuildFilter');
+        expect(accessJs).toContain('body: JSON.stringify({ entries })');
+        expect(accessJs).toContain('const query = userPrefsUseGuildFilter()');
+        expect(accessJs).toContain("'?guildId=' + encodeURIComponent(guildId)");
+        expect(accessJs).toContain("api('/user-prefs/' + encodeURIComponent(userId) + query");
+
+        vm.createContext(context);
+        vm.runInContext(
+            [
+                utilsJs,
+                accessJs,
+                `allPrefsData = [
+                    {
+                        guildId: 'guild-1',
+                        guildName: 'Server 1',
+                        guildIcon: '',
+                        userId: 'user-1',
+                        language: 'zh-TW'
+                    },
+                    {
+                        guildId: 'guild-2',
+                        guildName: 'Server 2',
+                        guildIcon: '',
+                        userId: 'user-2',
+                        language: 'ja'
+                    }
+                ];`,
+                'renderUserPrefs();',
+                "setPrefsGuildFilter('guild-2');",
+            ].join('\n'),
+            context,
+        );
+
+        expect(nodes['prefs-guild-filter'].innerHTML).toContain('Server 1');
+        expect(nodes['prefs-guild-filter'].innerHTML).toContain('Server 2');
+        expect(nodes['user-prefs-container'].innerHTML).toContain('user-2');
+        expect(nodes['user-prefs-container'].innerHTML).not.toContain('user-1');
+        expect(nodes['prefs-count'].textContent).toBe('1 shown in Server 2 / 2 total');
+    });
+
+    it('renders Pocket user preferences without server filtering controls', () => {
+        const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
+        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const nodes = {
+            'prefs-count': { textContent: '' },
+            'prefs-guild-filter': { disabled: false, hidden: false, innerHTML: '', value: '' },
+            'prefs-pagination': { innerHTML: '' },
+            'prefs-batch-delete': { disabled: false, textContent: '' },
+            'user-prefs-container': { innerHTML: '' },
+        };
+        const context = {
+            document: {
+                getElementById(id: string) {
+                    return nodes[id as keyof typeof nodes] || null;
+                },
+            },
+            hasDashboardCapability() {
+                return false;
+            },
+            genAvatar(value: string) {
+                return `avatar:${value}`;
+            },
+            renderPagination() {},
+        };
+
+        vm.createContext(context);
+        vm.runInContext(
+            [
+                utilsJs,
+                accessJs,
+                `allPrefsData = [{
+                    guildId: '',
+                    userId: 'user-pocket',
+                    language: 'ko'
+                }];`,
+                'renderUserPrefs();',
+            ].join('\n'),
+            context,
+        );
+
+        expect(nodes['prefs-guild-filter'].hidden).toBe(true);
+        expect(nodes['user-prefs-container'].innerHTML).toContain('user-pocket');
+        expect(nodes['user-prefs-container'].innerHTML).not.toContain('user-prefs-guild-id');
+        expect(nodes['prefs-count'].textContent).toBe('1 shown / 1 total');
+    });
+
+    it('keeps user preference controls usable on narrow mobile screens', () => {
+        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const responsiveCss = readFileSync('src/public/css/responsive.css', 'utf-8');
+
+        expect(accessJs).toContain('data-label="User"');
+        expect(accessJs).toContain('data-label="Language"');
+        expect(accessJs).toContain('data-label="Action"');
+        expect(responsiveCss).toMatch(
+            /@media\s*\(max-width:\s*480px\)[\s\S]*\.prefs-tools\s*{[\s\S]*flex-direction:\s*column/s,
+        );
+        expect(responsiveCss).toMatch(
+            /@media\s*\(max-width:\s*480px\)[\s\S]*#prefs-guild-filter\s*{[\s\S]*flex:\s*0\s+0\s+auto/s,
+        );
+        expect(responsiveCss).toMatch(
+            /@media\s*\(max-width:\s*480px\)[\s\S]*#prefs-guild-filter\s*{[\s\S]*width:\s*100%/s,
+        );
+        expect(responsiveCss).toMatch(
+            /@media\s*\(max-width:\s*480px\)[\s\S]*\.user-prefs-table\s+thead\s*{[\s\S]*display:\s*none/s,
+        );
+        expect(responsiveCss).toMatch(
+            /@media\s*\(max-width:\s*480px\)[\s\S]*\.user-prefs-table\s+td\[data-label\]::before\s*{[\s\S]*content:\s*attr\(data-label\)/s,
+        );
+        expect(responsiveCss).toMatch(
+            /@media\s*\(max-width:\s*480px\)[\s\S]*\.user-prefs-table\s+td\[data-label=["']Action["']\]\s+\.btn-danger\s*{[\s\S]*width:\s*100%/s,
+        );
+        expect(responsiveCss).toMatch(
+            /@media\s*\(max-width:\s*480px\)[\s\S]*\.user-prefs-table\s+td:last-child\s*{[\s\S]*width:\s*100%[\s\S]*white-space:\s*normal/s,
+        );
+    });
+
     it('exposes Server Glossary import controls and client import flow', () => {
         const html = readFileSync('src/public/index.html', 'utf-8');
         const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
@@ -70,7 +217,7 @@ describe('dashboard static assets', () => {
         expect(html).toContain('class="glossary-import-textarea"');
         expect(html).toContain('name="glossary-import-mode"');
         expect(html).toContain('class="glossary-import-option"');
-        expect(html).toContain('onclick="importGlossaryEntries()"');
+        expect(html).toContain('data-action="importGlossaryEntries"');
         expect(accessJs).toContain('function readGlossaryImportFile');
         expect(accessJs).toContain('glossary-target-language');
         expect(accessJs).toContain('entry.targetLanguage');
@@ -106,7 +253,7 @@ describe('dashboard static assets', () => {
         expect(html).toContain('id="user-access-list"');
         expect(html).toContain('id="user-access-pagination"');
         expect(html).toContain('id="add-user-input"');
-        expect(html).toContain('onclick="saveUserWhitelist()"');
+        expect(html).toContain('data-action="saveUserWhitelist"');
         expect(accessJs).toContain('accessAllowedUserIdsDraft');
         expect(accessJs).toContain("api('/user-budgets')");
         expect(accessJs).toContain('setAllowedUserEnabled');
@@ -124,7 +271,183 @@ describe('dashboard static assets', () => {
         expect(dashboardJs).toContain('getDashboardUsageScopeLabel(d)');
     });
 
+    it('renders the overview budget card for Babel Pocket daily budget usage', async () => {
+        const html = readFileSync('src/public/index.html', 'utf-8');
+        const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
+        const appJs = readFileSync('src/public/js/app.js', 'utf-8');
+        const dashboardJs = readFileSync('src/public/js/dashboard.js', 'utf-8');
+        const nodes = {
+            'budget-card': {
+                hidden: false,
+                style: { display: '' },
+                setAttribute() {},
+            },
+            'budget-card-label': { textContent: '' },
+            'budget-amount': { textContent: '' },
+            'guild-budget-overview': {
+                children: [] as unknown[],
+                replaceChildren(...children: unknown[]) {
+                    this.children = children;
+                },
+                append(...children: unknown[]) {
+                    this.children.push(...children);
+                },
+            },
+            'bot-name': { textContent: '' },
+            'bot-tag': { textContent: '' },
+            'bot-avatar': { src: '' },
+            'stat-cost': { textContent: '' },
+            'stat-cost-breakdown': { textContent: '' },
+            'stat-total': { textContent: '' },
+            'stat-total-detail': { textContent: '' },
+            'stat-hitrate': { textContent: '' },
+            'stat-saved': { textContent: '' },
+            'stat-uptime': { textContent: '' },
+            'stat-memory': { textContent: '' },
+            'ops-provider-mode': { textContent: '' },
+            'ops-provider-vertex': null,
+            'ops-provider-openai': null,
+            'ops-runtime': null,
+            'ops-budget-risk': null,
+            'ops-guidance': null,
+        };
+        const createdElements: Array<{
+            className: string;
+            textContent: string;
+            children: unknown[];
+        }> = [];
+        const context = {
+            document: {
+                body: { dataset: {} },
+                title: '',
+                addEventListener() {},
+                getElementById(id: string) {
+                    return nodes[id as keyof typeof nodes] || null;
+                },
+                querySelectorAll(selector: string) {
+                    if (selector === '[data-capability]') return [];
+                    return [];
+                },
+                createElement() {
+                    const element = {
+                        className: '',
+                        textContent: '',
+                        style: {},
+                        classList: { add() {}, remove() {} },
+                        children: [] as unknown[],
+                        append(...children: unknown[]) {
+                            this.children.push(...children);
+                        },
+                    };
+                    createdElements.push(element);
+                    return element;
+                },
+            },
+            window: {
+                location: { pathname: '/pocket' },
+            },
+            setInterval() {},
+            fetch: async () => ({
+                ok: true,
+                json: async () => ({
+                    bot: {
+                        name: 'Babel Pocket#0001',
+                        avatar: '',
+                        uptime: 60,
+                        memory: { rssMB: '42.0' },
+                    },
+                    operations: {},
+                    usage: {
+                        totalCost: 0.21,
+                        dailyBudget: 1.25,
+                        inputTokens: 1000,
+                        outputTokens: 2000,
+                        requests: 89,
+                    },
+                    guildBudgets: [],
+                    userBudgets: [
+                        {
+                            id: 'user-custom',
+                            displayName: 'Custom User',
+                            budget: 0.2,
+                            isCustom: true,
+                            allowed: true,
+                            pending: false,
+                            totalCost: 0.1,
+                            requests: 12,
+                            exceeded: false,
+                        },
+                        {
+                            id: 'user-default',
+                            displayName: 'Default User',
+                            budget: 0.5,
+                            isCustom: false,
+                            allowed: true,
+                            pending: false,
+                            totalCost: 0,
+                            requests: 0,
+                            exceeded: false,
+                        },
+                    ],
+                    translations: {
+                        total: 3,
+                        apiCalls: 2,
+                        cacheHitRate: 0,
+                    },
+                    cache: { size: 0, maxSize: 2000 },
+                }),
+            }),
+        };
+
+        expect(html).toContain('id="budget-card"');
+        expect(html).not.toContain('id="budget-card" data-capability="guildAccess"');
+
+        vm.createContext(context);
+        vm.runInContext(
+            [
+                utilsJs,
+                appJs.replace(/init\(\);\s*$/, ''),
+                dashboardJs,
+                `applyDashboardCapabilities({
+                    profile: { id: 'babel-pocket', productName: 'Babel Pocket' },
+                    profiles: [{ id: 'babel-pocket', productName: 'Babel Pocket' }],
+                    capabilities: {
+                        guildAccess: false,
+                        userAccess: true,
+                        guildGlossary: false,
+                        pendingUserInstallOwners: true
+                    }
+                });`,
+                'loadStats();',
+            ].join('\n'),
+            context,
+        );
+
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(nodes['budget-card'].hidden).toBe(false);
+        expect(nodes['budget-card'].style.display).toBe('');
+        expect(nodes['budget-card-label'].textContent).toBe('Daily Budget');
+        expect(nodes['budget-amount'].textContent).toBe('Total: $0.21');
+        expect(nodes['guild-budget-overview'].children).toHaveLength(3);
+        expect(
+            createdElements.some((element) => element.textContent === 'Global Safety Budget'),
+        ).toBe(true);
+        expect(createdElements.some((element) => element.textContent === 'Custom User')).toBe(true);
+        expect(createdElements.some((element) => element.textContent === 'Default User')).toBe(
+            true,
+        );
+        expect(createdElements.some((element) => element.textContent === '$0.21 / $1.25')).toBe(
+            true,
+        );
+        expect(createdElements.some((element) => element.textContent === '$0.10 / $0.20')).toBe(
+            true,
+        );
+        expect(createdElements.some((element) => element.textContent === '$0 / $0.50')).toBe(true);
+    });
+
     it('escapes glossary table fields rendered from stored import data', () => {
+        const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
         const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
         const glossaryContainer = { innerHTML: '' };
         const context = {
@@ -141,6 +464,7 @@ describe('dashboard static assets', () => {
         vm.createContext(context);
         vm.runInContext(
             [
+                utilsJs,
                 accessJs,
                 "glossaryGuildId = 'guild-1';",
                 `glossaryEntries = [{
@@ -162,5 +486,147 @@ describe('dashboard static assets', () => {
         expect(glossaryContainer.innerHTML).not.toContain('<img src=x');
         expect(glossaryContainer.innerHTML).not.toContain('<b>owned</b>');
         expect(glossaryContainer.innerHTML).not.toContain('<svg onload');
+    });
+
+    it('escapes guild access rows rendered from Discord data', () => {
+        const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
+        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const nodes = {
+            'guild-list': { innerHTML: '' },
+            'guild-pagination': { innerHTML: '' },
+        };
+        const context = {
+            document: {
+                getElementById(id: string) {
+                    return nodes[id as keyof typeof nodes] || null;
+                },
+                querySelectorAll() {
+                    return [];
+                },
+            },
+            hasDashboardCapability(name: string) {
+                return name === 'guildAccess';
+            },
+            renderPagination() {},
+            formatUsd(value: number) {
+                return `$${value}`;
+            },
+            window: {
+                location: { pathname: '/' },
+            },
+        };
+
+        vm.createContext(context);
+        vm.runInContext(
+            [
+                utilsJs,
+                accessJs,
+                `currentConfig = {
+                    allowedGuildIds: ["guild');alert(1)//"],
+                    dailyBudgetUsd: 0
+                };`,
+                `accessAllowedGuildIdsDraft = ["guild');alert(1)//"];`,
+                `allGuilds = [{
+                    id: "guild');alert(1)//",
+                    name: '<img src=x onerror=alert(1)>',
+                    icon: 'https://cdn.example/avatar.png" onerror="alert(2)',
+                    memberCount: 12
+                }];`,
+                'guildBudgetData = {};',
+                'renderGuilds();',
+            ].join('\n'),
+            context,
+        );
+
+        expect(nodes['guild-list'].innerHTML).toContain('&lt;img src=x onerror=alert(1)&gt;');
+        expect(nodes['guild-list'].innerHTML).not.toContain('<img src=x');
+        expect(nodes['guild-list'].innerHTML).not.toContain('onerror="alert(2)');
+        expect(nodes['guild-list'].innerHTML).not.toContain("toggleGuildAllowed('guild');alert");
+    });
+
+    it('escapes session rows before rendering dashboard session metadata', () => {
+        const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
+        const settingsJs = readFileSync('src/public/js/settings.js', 'utf-8');
+        const nodes = {
+            'session-list': { innerHTML: '' },
+        };
+        const context = {
+            document: {
+                getElementById(id: string) {
+                    return nodes[id as keyof typeof nodes] || null;
+                },
+                querySelectorAll() {
+                    return [];
+                },
+            },
+            window: {
+                location: { pathname: '/' },
+            },
+        };
+
+        vm.createContext(context);
+        vm.runInContext(
+            [
+                utilsJs,
+                settingsJs,
+                `renderSessions([{
+                    id: "abc');alert(1)//<img src=x onerror=alert(2)>",
+                    current: false,
+                    expiresAt: '2026-06-23T00:00:00.000Z'
+                }]);`,
+            ].join('\n'),
+            context,
+        );
+
+        expect(nodes['session-list'].innerHTML).toContain('&lt;img src=x onerror=alert(2)&gt;');
+        expect(nodes['session-list'].innerHTML).not.toContain('<img src=x');
+        expect(nodes['session-list'].innerHTML).not.toContain("revokeSession('abc');alert");
+    });
+
+    it('escapes usage history rows and chart tooltips before rendering', () => {
+        const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
+        const historyJs = readFileSync('src/public/js/history.js', 'utf-8');
+        const nodes = {
+            'history-table-container': { innerHTML: '' },
+            'history-chart': { innerHTML: '' },
+            'history-summary': { textContent: '' },
+            'history-pagination': { innerHTML: '' },
+        };
+        const context = {
+            document: {
+                getElementById(id: string) {
+                    return nodes[id as keyof typeof nodes] || null;
+                },
+                querySelectorAll() {
+                    return [];
+                },
+            },
+            window: {
+                location: { pathname: '/' },
+            },
+        };
+
+        vm.createContext(context);
+        vm.runInContext(
+            [
+                utilsJs,
+                historyJs,
+                `allHistoryData = [{
+                    date: '2026-06-23" onmouseover="alert(1)<script>alert(2)</script>',
+                    requests: 3,
+                    inputTokens: 12,
+                    outputTokens: 5,
+                    cost: 0.01
+                }];`,
+                'renderHistory();',
+            ].join('\n'),
+            context,
+        );
+
+        expect(nodes['history-table-container'].innerHTML).toContain(
+            '&lt;script&gt;alert(2)&lt;/script&gt;',
+        );
+        expect(nodes['history-chart'].innerHTML).not.toContain('onmouseover="alert(1)');
+        expect(nodes['history-table-container'].innerHTML).not.toContain('<script>');
     });
 });

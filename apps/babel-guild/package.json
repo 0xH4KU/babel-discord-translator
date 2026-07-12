@@ -1,13 +1,13 @@
 {
     "name": "@babel-discord-translator/guild",
-    "version": "0.2.1",
+    "version": "0.2.2",
     "description": "Babel Guild server-install Discord translator",
     "type": "module",
     "main": "../../dist/apps/babel-guild/src/index.js",
     "scripts": {
         "start": "node ../../dist/apps/babel-guild/src/index.js",
         "dev": "tsx watch src/index.ts",
-        "build": "tsc -p tsconfig.json && node ../../scripts/copy-assets.js apps/babel-guild",
+        "build": "tsc -p tsconfig.json && node ../../scripts/copy-assets.js",
         "register": "tsx scripts/register.ts"
     }
 }

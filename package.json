@@ -1,6 +1,6 @@
 {
   "name": "babel-discord-translator",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Discord right-click translation bot powered by Vertex AI Gemini — with LRU cache, cost tracking, multilingual support, and web dashboard",
   "private": true,
   "workspaces": [
@@ -15,22 +15,27 @@
     "dev": "tsx watch src/index.ts",
     "dev:guild": "npm run dev -w @babel-discord-translator/guild",
     "dev:pocket": "npm run dev -w @babel-discord-translator/pocket",
-    "build": "npm run build:guild && npm run build:pocket && npm run build:assets",
+    "dev:worker": "npm run dev -w @babel-discord-translator/worker",
+    "build": "tsc -p tsconfig.json && npm run build:assets",
     "build:assets": "node scripts/copy-assets.js",
     "build:guild": "npm run build -w @babel-discord-translator/guild",
     "build:pocket": "npm run build -w @babel-discord-translator/pocket",
+    "typecheck:worker": "npm run typecheck -w @babel-discord-translator/worker",
+    "deploy:worker": "npm run deploy -w @babel-discord-translator/worker",
     "typecheck": "tsc --noEmit",
     "register": "tsx scripts/register.ts",
     "register:guild": "npm run register -w @babel-discord-translator/guild",
     "register:pocket": "npm run register -w @babel-discord-translator/pocket",
     "db:migrate": "tsx scripts/migrate-json-to-sqlite.ts",
     "db:export:json": "tsx scripts/export-sqlite-to-json.ts",
+    "db:export:d1": "tsx scripts/export-sqlite-to-d1.ts",
     "demo:build": "tsx scripts/build-demo.ts",
     "benchmark:runtime-config": "tsx scripts/benchmark-runtime-config.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src/ apps/ tests/",
+    "smoke:dashboard": "node scripts/smoke-dashboard-build.js",
     "format": "prettier --write .",
     "prepare": "node scripts/prepare-husky.js"
   },
@@ -49,7 +54,7 @@
     "url": "https://github.com/0xH4KU/babel-discord-translator"
   },
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.13.0"
   },
   "dependencies": {
     "discord.js": "^14.18.0",

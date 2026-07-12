@@ -62,6 +62,7 @@ function createStoreMock(overrides: Partial<StoreData> = {}) {
         usageHistory: [],
         translationPrompt: '',
         userLanguagePrefs: {},
+        userLanguagePreferenceEntries: [],
         maxInputLength: 2000,
         maxOutputTokens: 1000,
         translationMaxConcurrent: 4,
@@ -114,8 +115,12 @@ function createStoreMock(overrides: Partial<StoreData> = {}) {
 function createUserPreferenceStoreMock(overrides: Partial<StoreData> = {}) {
     const configStore = createStoreMock(overrides);
     return {
-        getLanguage(userId: string): string | null {
-            return configStore.data.userLanguagePrefs[userId] ?? null;
+        getLanguage(guildId: string, userId: string): string | null {
+            return (
+                (configStore.data.userLanguagePreferenceEntries ?? []).find(
+                    (entry) => entry.guildId === guildId && entry.userId === userId,
+                )?.language ?? null
+            );
         },
     };
 }
@@ -226,7 +231,9 @@ describe('TranslationService', () => {
         const { service, usageTracker, translator, log, stats, metrics, loggerState } =
             createService({
                 storeOverrides: {
-                    userLanguagePrefs: { user1: 'ja' },
+                    userLanguagePreferenceEntries: [
+                        { guildId: 'guild-1', userId: 'user1', language: 'ja' },
+                    ],
                 },
             });
 
@@ -311,7 +318,9 @@ describe('TranslationService', () => {
     it('should read runtime config once per request', async () => {
         const { service, configStore } = createService({
             storeOverrides: {
-                userLanguagePrefs: { user1: 'ja' },
+                userLanguagePreferenceEntries: [
+                    { guildId: 'guild-1', userId: 'user1', language: 'ja' },
+                ],
             },
         });
 
@@ -357,6 +366,73 @@ describe('TranslationService', () => {
             appProfileId: 'babel-pocket',
             contentPreview: 'Hello world',
         });
+    });
+
+    it('should record translation metrics into the selected app profile bucket', async () => {
+        const { service, metrics } = createService({
+            appProfileId: 'babel-pocket',
+            accessMode: 'user-install',
+            enableGuildGlossary: false,
+            storeOverrides: {
+                allowedUserIds: ['user1'],
+                userLanguagePreferenceEntries: [{ guildId: '', userId: 'user1', language: 'ja' }],
+            },
+        });
+
+        const result = await service.process({
+            command: 'babel',
+            commandLabel: 'Babel Pocket',
+            guildId: null,
+            guildName: 'Direct Message',
+            userId: 'user1',
+            userTag: 'user#0001',
+            locale: 'en-US',
+            text: 'Hello world',
+        });
+
+        expect(result.status).toBe('success');
+        expect(metrics.snapshot({ appProfileId: 'babel-guild' })).toMatchObject({
+            translationsTotal: 0,
+            translationApiCallsTotal: 0,
+        });
+        expect(metrics.snapshot({ appProfileId: 'babel-pocket' })).toMatchObject({
+            translationsTotal: 1,
+            translationApiCallsTotal: 1,
+            translationFailuresTotal: 0,
+        });
+        expect(metrics.snapshot()).toMatchObject({
+            translationsTotal: 1,
+            translationApiCallsTotal: 1,
+        });
+    });
+
+    it('should use global user preferences for Babel Pocket translations', async () => {
+        const { service } = createService({
+            accessMode: 'user-install',
+            storeOverrides: {
+                allowedUserIds: ['user1'],
+                userLanguagePreferenceEntries: [
+                    { guildId: '', userId: 'user1', language: 'ko' },
+                    { guildId: 'guild-1', userId: 'user1', language: 'ja' },
+                ],
+            },
+        });
+
+        const result = await service.process({
+            command: 'babel',
+            commandLabel: 'Babel Pocket (context menu)',
+            guildId: 'guild-1',
+            guildName: 'Shared Friend Server',
+            userId: 'user1',
+            userTag: 'user#0001',
+            locale: 'en-US',
+            text: 'Hello world',
+            requestId: 'req-pocket-pref',
+        });
+
+        expect(result.status).toBe('success');
+        expect(result.status === 'success' ? result.targetLanguage : '').toBe('ko');
+        expect(result.status === 'success' ? result.langSource : '').toBe('setlang');
     });
 
     it('should reuse the same cached translation for identical requests', async () => {
@@ -1158,7 +1234,9 @@ describe('TranslationService', () => {
         const beforeTranslate = vi.fn(async () => undefined);
         const { service } = createService({
             storeOverrides: {
-                userLanguagePrefs: { user1: 'ja' },
+                userLanguagePreferenceEntries: [
+                    { guildId: 'guild-1', userId: 'user1', language: 'ja' },
+                ],
             },
         });
 
@@ -1187,12 +1265,15 @@ describe('resolveTargetLanguage', () => {
 
     it('should prioritize explicit target option over preferences and locale', () => {
         const preferenceStore = createUserPreferenceStoreMock({
-            userLanguagePrefs: { user1: 'ja' },
+            userLanguagePreferenceEntries: [
+                { guildId: 'guild-1', userId: 'user1', language: 'ja' },
+            ],
         });
 
         expect(
             resolveTargetLanguage(
                 {
+                    guildId: 'guild-1',
                     userId: 'user1',
                     locale: 'ko',
                     targetLanguageOption: 'fr',
@@ -1205,14 +1286,18 @@ describe('resolveTargetLanguage', () => {
         });
     });
 
-    it('should fall back from user preference to locale and then auto', () => {
+    it('should fall back from guild user preference to locale and then auto', () => {
         const preferenceStore = createUserPreferenceStoreMock({
-            userLanguagePrefs: { user1: 'ja' },
+            userLanguagePreferenceEntries: [
+                { guildId: 'guild-1', userId: 'user1', language: 'ja' },
+                { guildId: 'guild-2', userId: 'user1', language: 'ko' },
+            ],
         });
 
         expect(
             resolveTargetLanguage(
                 {
+                    guildId: 'guild-1',
                     userId: 'user1',
                     locale: 'ko',
                 },
@@ -1225,7 +1310,21 @@ describe('resolveTargetLanguage', () => {
         expect(
             resolveTargetLanguage(
                 {
-                    userId: 'user2',
+                    guildId: 'guild-2',
+                    userId: 'user1',
+                    locale: 'ja',
+                },
+                preferenceStore,
+            ),
+        ).toEqual({
+            targetLanguage: 'ko',
+            langSource: 'setlang',
+        });
+        expect(
+            resolveTargetLanguage(
+                {
+                    guildId: 'guild-3',
+                    userId: 'user1',
                     locale: 'ko',
                 },
                 preferenceStore,
@@ -1237,6 +1336,7 @@ describe('resolveTargetLanguage', () => {
         expect(
             resolveTargetLanguage(
                 {
+                    guildId: null,
                     userId: 'user2',
                     locale: 'en-US',
                 },
@@ -1245,6 +1345,30 @@ describe('resolveTargetLanguage', () => {
         ).toEqual({
             targetLanguage: 'auto',
             langSource: 'auto',
+        });
+    });
+
+    it('should resolve user-install preferences from global user scope', () => {
+        const preferenceStore = createUserPreferenceStoreMock({
+            userLanguagePreferenceEntries: [
+                { guildId: '', userId: 'user1', language: 'ko' },
+                { guildId: 'guild-1', userId: 'user1', language: 'ja' },
+            ],
+        });
+
+        expect(
+            resolveTargetLanguage(
+                {
+                    guildId: 'guild-1',
+                    userId: 'user1',
+                    locale: 'en-US',
+                },
+                preferenceStore,
+                { accessMode: 'user-install' },
+            ),
+        ).toEqual({
+            targetLanguage: 'ko',
+            langSource: 'setlang',
         });
     });
 

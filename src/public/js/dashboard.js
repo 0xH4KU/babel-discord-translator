@@ -32,66 +32,125 @@ function createOpsMetric(label, value) {
     return metric;
 }
 
+function createBudgetOverviewItem({
+    name: itemName,
+    tags = [],
+    budget,
+    totalCost,
+    requests,
+    exceeded,
+}) {
+    const item = document.createElement('div');
+    item.className = 'guild-budget-overview-item';
+
+    const name = document.createElement('span');
+    name.className = 'gbo-name';
+    name.textContent = itemName;
+
+    tags.forEach((tagText) => {
+        if (!tagText) return;
+        const tag = document.createElement('span');
+        tag.className = 'gbo-tag';
+        tag.textContent = tagText;
+        name.append(' ', tag);
+    });
+
+    const cost = document.createElement('span');
+    cost.className = 'gbo-cost';
+
+    if (budget <= 0) {
+        cost.textContent = formatUsd(totalCost) + ' · ' + formatOpsNumber(requests) + ' req';
+
+        const limit = document.createElement('span');
+        limit.className = 'gbo-limit';
+        limit.textContent = 'Unlimited';
+
+        item.append(name, cost, limit);
+        return item;
+    }
+
+    cost.textContent = formatUsd(totalCost) + ' / ' + formatUsd(budget);
+
+    const rawPct = (Number(totalCost || 0) / Number(budget || 1)) * 100;
+    const pct = Number.isFinite(rawPct) ? Math.min(Math.max(rawPct, 0), 100) : 0;
+    const bar = document.createElement('div');
+    bar.className = 'gbo-bar';
+
+    const fill = document.createElement('div');
+    fill.className = 'fill';
+    if (pct > 90) {
+        fill.classList.add('danger');
+    } else if (pct > 60) {
+        fill.classList.add('warning');
+    }
+    fill.style.width = pct + '%';
+    bar.append(fill);
+
+    item.append(name, cost, bar);
+
+    if (exceeded) {
+        const exceededLabel = document.createElement('span');
+        exceededLabel.className = 'gbo-exceeded';
+        exceededLabel.textContent = 'EXCEEDED';
+        item.append(exceededLabel);
+    }
+
+    return item;
+}
+
 function renderGuildBudgetOverview(container, guilds) {
     container.replaceChildren();
 
     guilds.forEach((guild) => {
-        const item = document.createElement('div');
-        item.className = 'guild-budget-overview-item';
+        container.append(
+            createBudgetOverviewItem({
+                name: guild.name || 'Unknown server',
+                tags: !guild.isCustom && guild.budget > 0 ? ['global'] : [],
+                budget: Number(guild.budget || 0),
+                totalCost: Number(guild.totalCost || 0),
+                requests: Number(guild.requests || 0),
+                exceeded: Boolean(guild.exceeded),
+            }),
+        );
+    });
+}
 
-        const name = document.createElement('span');
-        name.className = 'gbo-name';
-        name.textContent = guild.name || 'Unknown server';
-        if (!guild.isCustom && guild.budget > 0) {
-            const tag = document.createElement('span');
-            tag.className = 'gbo-tag';
-            tag.textContent = 'global';
-            name.append(' ', tag);
+function renderDailyBudgetOverview(container, usage, users = []) {
+    container.replaceChildren();
+
+    const budget = Number(usage?.dailyBudget || 0);
+    const totalCost = Number(usage?.totalCost || 0);
+    const requests = Number(usage?.requests || 0);
+
+    container.append(
+        createBudgetOverviewItem({
+            name: 'Global Safety Budget',
+            budget,
+            totalCost,
+            requests,
+            exceeded: Boolean(usage?.budgetExceeded),
+        }),
+    );
+
+    users.forEach((user) => {
+        const tags = [];
+        if (user.pending) {
+            tags.push('pending');
+        } else if (!user.allowed) {
+            tags.push('disabled');
         }
+        tags.push(user.isCustom ? 'custom' : 'default');
 
-        const cost = document.createElement('span');
-        cost.className = 'gbo-cost';
-
-        if (guild.budget <= 0) {
-            cost.textContent =
-                formatUsd(guild.totalCost) + ' · ' + formatOpsNumber(guild.requests) + ' req';
-
-            const limit = document.createElement('span');
-            limit.className = 'gbo-limit';
-            limit.textContent = 'Unlimited';
-
-            item.append(name, cost, limit);
-            container.append(item);
-            return;
-        }
-
-        cost.textContent = formatUsd(guild.totalCost) + ' / ' + formatUsd(guild.budget);
-
-        const rawPct = (Number(guild.totalCost || 0) / Number(guild.budget || 1)) * 100;
-        const pct = Number.isFinite(rawPct) ? Math.min(Math.max(rawPct, 0), 100) : 0;
-        const bar = document.createElement('div');
-        bar.className = 'gbo-bar';
-
-        const fill = document.createElement('div');
-        fill.className = 'fill';
-        if (pct > 90) {
-            fill.classList.add('danger');
-        } else if (pct > 60) {
-            fill.classList.add('warning');
-        }
-        fill.style.width = pct + '%';
-        bar.append(fill);
-
-        item.append(name, cost, bar);
-
-        if (guild.exceeded) {
-            const exceeded = document.createElement('span');
-            exceeded.className = 'gbo-exceeded';
-            exceeded.textContent = 'EXCEEDED';
-            item.append(exceeded);
-        }
-
-        container.append(item);
+        container.append(
+            createBudgetOverviewItem({
+                name: user.name || user.displayName || user.username || user.id || 'Unknown user',
+                tags,
+                budget: Number(user.budget || 0),
+                totalCost: Number(user.totalCost || 0),
+                requests: Number(user.requests || 0),
+                exceeded: Boolean(user.exceeded),
+            }),
+        );
     });
 }
 
@@ -249,7 +308,9 @@ function renderOperations(operations) {
 function switchTab(name) {
     document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach((c) => c.classList.remove('active'));
-    document.querySelector(`[onclick="switchTab('${name}')"]`)?.classList.add('active');
+    document
+        .querySelector(`.tab-btn[data-action="switchTab"][data-action-args='["${name}"]']`)
+        ?.classList.add('active');
     document.getElementById('tab-' + name).classList.add('active');
     if (name === 'settings') loadSettings();
     if (name === 'access') loadAccess();
@@ -266,7 +327,7 @@ async function loadStats() {
         // Header
         document.getElementById('bot-name').textContent = d.bot.name.split('#')[0];
         document.getElementById('bot-tag').textContent = d.bot.name;
-        if (d.bot.avatar) document.getElementById('bot-avatar').src = d.bot.avatar;
+        document.getElementById('bot-avatar').src = d.bot.avatar || genAvatar(d.bot.name);
 
         renderOperations(d.operations);
 
@@ -282,16 +343,24 @@ async function loadStats() {
         const budgetCard = document.getElementById('budget-card');
         const guilds = d.guildBudgets || [];
         const hasGuildBudgetCapability = hasDashboardCapability('guildAccess');
+        const hasUserBudgetCapability = hasDashboardCapability('userAccess');
         const hasAnyBudget = guilds.some((g) => g.budget > 0);
+        const hasDailyBudget = Number(d.usage.dailyBudget || 0) > 0;
+        const hasBudgetUsage = Number(d.usage.totalCost || 0) > 0 || Number(d.usage.requests || 0) > 0;
 
-        if (hasGuildBudgetCapability && (hasAnyBudget || d.usage.dailyBudget > 0)) {
+        if (
+            (hasGuildBudgetCapability && (hasAnyBudget || hasDailyBudget)) ||
+            (hasUserBudgetCapability && (hasDailyBudget || hasBudgetUsage))
+        ) {
             budgetCard.style.display = '';
             document.getElementById('budget-amount').textContent =
                 'Total: ' + formatUsd(d.usage.totalCost);
 
             const container = document.getElementById('guild-budget-overview');
-            if (guilds.length > 0) {
+            if (hasGuildBudgetCapability && guilds.length > 0) {
                 renderGuildBudgetOverview(container, guilds);
+            } else if (hasUserBudgetCapability) {
+                renderDailyBudgetOverview(container, d.usage, d.userBudgets || []);
             } else {
                 container.replaceChildren();
             }
@@ -344,6 +413,90 @@ async function checkApiHealth() {
         badge.className = 'health-badge fail';
         badge.textContent = 'API';
         badge.title = 'Connection failed';
+    }
+}
+
+function setupDoctorStatusLabel(status) {
+    if (status === 'pass') return 'PASS';
+    if (status === 'warn') return 'WARN';
+    if (status === 'fail') return 'FAIL';
+    return 'SKIP';
+}
+
+function renderSetupDoctorReport(report) {
+    const container = document.getElementById('setup-doctor-results');
+    if (!container) return;
+
+    container.replaceChildren();
+    (report.checks || []).forEach((item) => {
+        const row = document.createElement('div');
+        row.className = 'setup-doctor-row ' + (item.status || 'skipped');
+
+        const status = document.createElement('span');
+        status.className = 'setup-doctor-status';
+        status.textContent = setupDoctorStatusLabel(item.status);
+
+        const body = document.createElement('div');
+        body.className = 'setup-doctor-body';
+
+        const title = document.createElement('strong');
+        title.textContent = item.title || item.id || 'Check';
+
+        const detail = document.createElement('span');
+        detail.textContent = item.detail || '';
+
+        body.append(title, detail);
+        if (item.action) {
+            const action = document.createElement('em');
+            action.textContent = item.action;
+            body.append(action);
+        }
+
+        row.append(status, body);
+        container.append(row);
+    });
+}
+
+async function runSetupDoctor() {
+    const button = document.getElementById('setup-doctor-run');
+    const container = document.getElementById('setup-doctor-results');
+    if (button) {
+        button.disabled = true;
+        button.textContent = 'Checking...';
+    }
+    if (container) container.setAttribute('aria-busy', 'true');
+
+    try {
+        const res = await api('/setup-doctor/run', { method: 'POST' });
+        const report = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(report.error || 'Setup Doctor failed');
+        renderSetupDoctorReport(report);
+        const hasWarnings = (report.checks || []).some((item) => item.status === 'warn');
+        const message = report.ok
+            ? hasWarnings
+                ? 'Setup Doctor completed with warnings'
+                : 'Setup Doctor passed'
+            : 'Setup Doctor found issues';
+        showToast(message, !report.ok);
+    } catch (error) {
+        const message = error?.message || 'Setup Doctor failed';
+        renderSetupDoctorReport({
+            checks: [
+                {
+                    id: 'setup-doctor',
+                    status: 'fail',
+                    title: 'Setup Doctor',
+                    detail: message,
+                },
+            ],
+        });
+        showToast(message, true);
+    } finally {
+        if (container) container.setAttribute('aria-busy', 'false');
+        if (button) {
+            button.disabled = false;
+            button.textContent = 'Run Doctor';
+        }
     }
 }
 
