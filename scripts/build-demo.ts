@@ -417,50 +417,24 @@ const DEMO_GUILD_BUDGETS = {
     },
 };
 
-const DEMO_HISTORY = [
-    { date: '2026-05-03', inputTokens: 220_100, outputTokens: 73_200, requests: 184, cost: 0.058 },
-    { date: '2026-05-04', inputTokens: 261_900, outputTokens: 91_400, requests: 205, cost: 0.073 },
-    { date: '2026-05-05', inputTokens: 198_000, outputTokens: 64_100, requests: 163, cost: 0.052 },
-    { date: '2026-05-06', inputTokens: 344_400, outputTokens: 121_000, requests: 279, cost: 0.097 },
-    { date: '2026-05-07', inputTokens: 410_200, outputTokens: 139_600, requests: 331, cost: 0.117 },
-    { date: '2026-05-08', inputTokens: 292_500, outputTokens: 103_300, requests: 248, cost: 0.083 },
-    { date: '2026-05-09', inputTokens: 331_700, outputTokens: 112_900, requests: 267, cost: 0.091 },
-    { date: '2026-05-10', inputTokens: 456_100, outputTokens: 151_200, requests: 356, cost: 0.129 },
-    { date: '2026-05-11', inputTokens: 498_000, outputTokens: 172_500, requests: 389, cost: 0.149 },
-    { date: '2026-05-12', inputTokens: 377_300, outputTokens: 119_000, requests: 298, cost: 0.101 },
-    { date: '2026-05-13', inputTokens: 529_900, outputTokens: 188_700, requests: 421, cost: 0.159 },
-    { date: '2026-05-14', inputTokens: 582_400, outputTokens: 201_100, requests: 462, cost: 0.174 },
-    { date: '2026-05-15', inputTokens: 468_300, outputTokens: 160_400, requests: 374, cost: 0.141 },
-    { date: '2026-05-16', inputTokens: 612_800, outputTokens: 209_300, requests: 489, cost: 0.186 },
-    { date: '2026-05-17', inputTokens: 690_100, outputTokens: 244_200, requests: 538, cost: 0.217 },
-    { date: '2026-05-18', inputTokens: 532_000, outputTokens: 188_000, requests: 416, cost: 0.159 },
-    { date: '2026-05-19', inputTokens: 744_300, outputTokens: 260_000, requests: 587, cost: 0.231 },
-    { date: '2026-05-20', inputTokens: 601_500, outputTokens: 214_400, requests: 469, cost: 0.196 },
-    { date: '2026-05-21', inputTokens: 788_800, outputTokens: 284_100, requests: 622, cost: 0.263 },
-    { date: '2026-05-22', inputTokens: 700_300, outputTokens: 240_900, requests: 551, cost: 0.226 },
-    { date: '2026-05-23', inputTokens: 819_900, outputTokens: 303_300, requests: 648, cost: 0.303 },
-    { date: '2026-05-24', inputTokens: 884_400, outputTokens: 328_700, requests: 695, cost: 0.329 },
-    { date: '2026-05-25', inputTokens: 772_100, outputTokens: 279_400, requests: 612, cost: 0.289 },
-    { date: '2026-05-26', inputTokens: 905_000, outputTokens: 338_000, requests: 721, cost: 0.341 },
-    { date: '2026-05-27', inputTokens: 811_400, outputTokens: 292_500, requests: 643, cost: 0.315 },
-    { date: '2026-05-28', inputTokens: 951_300, outputTokens: 360_900, requests: 759, cost: 0.371 },
-    {
-        date: '2026-05-29',
-        inputTokens: 1_022_100,
-        outputTokens: 392_700,
-        requests: 814,
-        cost: 0.399,
-    },
-    { date: '2026-05-30', inputTokens: 873_400, outputTokens: 318_200, requests: 693, cost: 0.346 },
-    {
-        date: '2026-05-31',
-        inputTokens: 1_114_600,
-        outputTokens: 430_800,
-        requests: 884,
-        cost: 0.442,
-    },
-    { date: '2026-06-01', inputTokens: 918_420, outputTokens: 304_880, requests: 713, cost: 0.214 },
-];
+const HISTORY_ACTIVITY = [0.72, 0.86, 0.68, 1.05, 1.18, 0.91, 1] as const;
+const DEMO_HISTORY = Array.from({ length: 30 }, (_, index) => {
+    if (index === 29) {
+        const { date, inputTokens, outputTokens, requests, totalCost: cost } = DEMO_STATS.usage;
+        return { date, inputTokens, outputTokens, requests, cost: Number(cost.toFixed(3)) };
+    }
+
+    const activity = HISTORY_ACTIVITY[index % HISTORY_ACTIVITY.length] ?? 1;
+    const inputTokens = Math.round((300_000 + index * 26_000) * activity);
+    const outputTokens = Math.round(inputTokens * (0.29 + (index % 3) * 0.02));
+    return {
+        date: new Date(DEMO_NOW - (29 - index) * 86_400_000).toISOString().slice(0, 10),
+        inputTokens,
+        outputTokens,
+        requests: Math.round(inputTokens / 1_300),
+        cost: Number(((inputTokens * 0.1 + outputTokens * 0.4) / 1_000_000).toFixed(3)),
+    };
+});
 
 const DEMO_LOGS: DemoLogFixture = [
     {
@@ -529,47 +503,26 @@ const DEMO_LOGS: DemoLogFixture = [
     },
 ];
 
+function demoUserPreference(guildIndex: number, userId: string, language: string) {
+    const guild = DEMO_GUILDS[guildIndex];
+    if (!guild) throw new Error(`Missing demo guild at index ${guildIndex}`);
+
+    return {
+        guildId: guild.id,
+        guildName: guild.name,
+        guildIcon: guild.icon,
+        guildMemberCount: guild.memberCount,
+        userId,
+        language,
+    };
+}
+
 const DEMO_USER_PREFS = [
-    {
-        guildId: '100000000000000001',
-        guildName: 'Builder Lounge',
-        guildIcon: '',
-        guildMemberCount: 1842,
-        userId: '200000000000000001',
-        language: 'zh-TW',
-    },
-    {
-        guildId: '100000000000000001',
-        guildName: 'Builder Lounge',
-        guildIcon: '',
-        guildMemberCount: 1842,
-        userId: '200000000000000002',
-        language: 'ja',
-    },
-    {
-        guildId: '100000000000000002',
-        guildName: 'Indie Game Dev',
-        guildIcon: '',
-        guildMemberCount: 637,
-        userId: '200000000000000001',
-        language: 'ko',
-    },
-    {
-        guildId: '100000000000000003',
-        guildName: 'Open Source Asia',
-        guildIcon: '',
-        guildMemberCount: 1294,
-        userId: '200000000000000004',
-        language: 'en',
-    },
-    {
-        guildId: '100000000000000004',
-        guildName: 'Polyglot Study',
-        guildIcon: '',
-        guildMemberCount: 483,
-        userId: '200000000000000005',
-        language: 'es',
-    },
+    demoUserPreference(0, '200000000000000001', 'zh-TW'),
+    demoUserPreference(0, '200000000000000002', 'ja'),
+    demoUserPreference(1, '200000000000000001', 'ko'),
+    demoUserPreference(2, '200000000000000004', 'en'),
+    demoUserPreference(3, '200000000000000005', 'es'),
 ];
 
 const DEMO_POCKET_USER_PREFS = [
@@ -585,57 +538,32 @@ const DEMO_POCKET_USER_PREFS = [
     },
 ];
 
+function demoUserProfile(
+    userId: string,
+    username: string,
+    displayName: string,
+    color: string,
+    globalName: string | null = displayName,
+) {
+    const initial = displayName.charAt(0).toUpperCase();
+    const timestamp = new Date(DEMO_NOW).toISOString();
+    return {
+        userId,
+        username,
+        globalName,
+        displayName,
+        avatarUrl: `data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2228%22 height=%2228%22%3E%3Crect width=%2228%22 height=%2228%22 rx=%2214%22 fill=%22%23${color}%22/%3E%3Ctext x=%2214%22 y=%2219%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2214%22%3E${initial}%3C/text%3E%3C/svg%3E`,
+        fetchedAt: timestamp,
+        lastSeenAt: timestamp,
+    };
+}
+
 const DEMO_USER_PROFILES = {
-    '200000000000000001': {
-        userId: '200000000000000001',
-        username: 'alex',
-        globalName: 'Alex Chen',
-        displayName: 'Alex Chen',
-        avatarUrl:
-            'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2228%22 height=%2228%22%3E%3Crect width=%2228%22 height=%2228%22 rx=%2214%22 fill=%22%235865f2%22/%3E%3Ctext x=%2214%22 y=%2219%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2214%22%3EA%3C/text%3E%3C/svg%3E',
-        fetchedAt: '2026-06-01T12:00:00.000Z',
-        lastSeenAt: '2026-06-01T12:00:00.000Z',
-    },
-    '200000000000000002': {
-        userId: '200000000000000002',
-        username: 'mei',
-        globalName: 'Mei Lin',
-        displayName: 'Mei Lin',
-        avatarUrl:
-            'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2228%22 height=%2228%22%3E%3Crect width=%2228%22 height=%2228%22 rx=%2214%22 fill=%22%2322c55e%22/%3E%3Ctext x=%2214%22 y=%2219%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2214%22%3EM%3C/text%3E%3C/svg%3E',
-        fetchedAt: '2026-06-01T12:00:00.000Z',
-        lastSeenAt: '2026-06-01T12:00:00.000Z',
-    },
-    '200000000000000003': {
-        userId: '200000000000000003',
-        username: 'sora',
-        globalName: 'Sora',
-        displayName: 'Sora',
-        avatarUrl:
-            'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2228%22 height=%2228%22%3E%3Crect width=%2228%22 height=%2228%22 rx=%2214%22 fill=%22%23f59e0b%22/%3E%3Ctext x=%2214%22 y=%2219%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2214%22%3ES%3C/text%3E%3C/svg%3E',
-        fetchedAt: '2026-06-01T12:00:00.000Z',
-        lastSeenAt: '2026-06-01T12:00:00.000Z',
-    },
-    '200000000000000004': {
-        userId: '200000000000000004',
-        username: 'riley',
-        globalName: null,
-        displayName: 'riley',
-        avatarUrl:
-            'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2228%22 height=%2228%22%3E%3Crect width=%2228%22 height=%2228%22 rx=%2214%22 fill=%22%23ef4444%22/%3E%3Ctext x=%2214%22 y=%2219%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2214%22%3ER%3C/text%3E%3C/svg%3E',
-        fetchedAt: '2026-06-01T12:00:00.000Z',
-        lastSeenAt: '2026-06-01T12:00:00.000Z',
-    },
-    '200000000000000005': {
-        userId: '200000000000000005',
-        username: 'dani',
-        globalName: 'Dani',
-        displayName: 'Dani',
-        avatarUrl:
-            'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2228%22 height=%2228%22%3E%3Crect width=%2228%22 height=%2228%22 rx=%2214%22 fill=%22%238b5cf6%22/%3E%3Ctext x=%2214%22 y=%2219%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2214%22%3ED%3C/text%3E%3C/svg%3E',
-        fetchedAt: '2026-06-01T12:00:00.000Z',
-        lastSeenAt: '2026-06-01T12:00:00.000Z',
-    },
+    '200000000000000001': demoUserProfile('200000000000000001', 'alex', 'Alex Chen', '5865f2'),
+    '200000000000000002': demoUserProfile('200000000000000002', 'mei', 'Mei Lin', '22c55e'),
+    '200000000000000003': demoUserProfile('200000000000000003', 'sora', 'Sora', 'f59e0b'),
+    '200000000000000004': demoUserProfile('200000000000000004', 'riley', 'riley', 'ef4444', null),
+    '200000000000000005': demoUserProfile('200000000000000005', 'dani', 'Dani', '8b5cf6'),
 };
 
 const DEMO_PENDING_USER = {
@@ -643,14 +571,12 @@ const DEMO_PENDING_USER = {
     firstSeenAt: '2026-06-01T09:20:00.000Z',
     lastSeenAt: '2026-06-01T11:45:00.000Z',
     source: 'user-install',
-    profile: {
-        userId: '200000000000000006',
-        username: 'waiting-operator',
-        globalName: 'Waiting Operator',
-        displayName: 'Waiting Operator',
-        avatarUrl:
-            'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2228%22 height=%2228%22%3E%3Crect width=%2228%22 height=%2228%22 rx=%2214%22 fill=%22%230ea5e9%22/%3E%3Ctext x=%2214%22 y=%2219%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2214%22%3EW%3C/text%3E%3C/svg%3E',
-    },
+    profile: demoUserProfile(
+        '200000000000000006',
+        'waiting-operator',
+        'Waiting Operator',
+        '0ea5e9',
+    ),
 };
 
 const DEMO_USER_BUDGETS = {
@@ -728,12 +654,7 @@ const DEMO_GLOSSARY = {
 
 const DEMO_VERSION = {
     version: '0.2.1',
-    repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator',
-    update: {
-        status: 'current',
-        latestVersion: '0.2.1',
-        latestUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases/tag/v0.2.1',
-    },
+    repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases',
 };
 
 const DEMO_HEALTH = {
@@ -924,7 +845,6 @@ function createDemoApiJs(variant: DemoVariant): string {
     '/stats': 'stats.json',
     '/health': 'health.json',
     '/version': 'version.json',
-    '/version/refresh': 'version.json',
     '/config': 'config.json',
     '/guilds': 'guilds.json',
     '/guild-budgets': 'guild-budgets.json',
@@ -955,7 +875,7 @@ function createDemoApiJs(variant: DemoVariant): string {
   window.api = async function demoApi(path, opts) {
     const method = (opts && opts.method ? opts.method : 'GET').toUpperCase();
     const route = normalizePath(path);
-    if (method !== 'GET' && route !== '/version/refresh') {
+    if (method !== 'GET') {
       return jsonResponse({ ok: true, demo: true, message: 'Demo mode: changes are disabled.' });
     }
 

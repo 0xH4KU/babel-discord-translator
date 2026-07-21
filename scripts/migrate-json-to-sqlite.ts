@@ -38,7 +38,7 @@ const store = new ConfigStore({
 });
 
 try {
-    store.update(legacyData);
+    store.importSnapshot(legacyData);
     console.log(`[Migrate] Imported ${legacyConfigPath} into ${dbPath}`);
 } finally {
     store.close();

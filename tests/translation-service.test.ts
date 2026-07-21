@@ -7,7 +7,7 @@ import { TranslationLog } from '../src/shared/log.js';
 import { createTranslationService, _test } from '../src/modules/translation/translation-service.js';
 import { TranslationRuntimeLimiter } from '../src/modules/translation/translation-runtime-limiter.js';
 import type { AccessMode } from '../src/apps/app-profile.js';
-import type { BotStats, StoreData, TranslationResult } from '../src/shared/types.js';
+import type { StoreData, TranslationResult } from '../src/shared/types.js';
 
 function createStructuredLoggerMock(base: Record<string, unknown> = {}) {
     const entries: Array<Record<string, unknown>> = [];
@@ -115,7 +115,7 @@ function createStoreMock(overrides: Partial<StoreData> = {}) {
 function createUserPreferenceStoreMock(overrides: Partial<StoreData> = {}) {
     const configStore = createStoreMock(overrides);
     return {
-        getLanguage(guildId: string, userId: string): string | null {
+        getUserLanguage(guildId: string, userId: string): string | null {
             return (
                 (configStore.data.userLanguagePreferenceEntries ?? []).find(
                     (entry) => entry.guildId === guildId && entry.userId === userId,
@@ -149,7 +149,7 @@ function createGlossaryRepositoryMock(
     > = {},
 ) {
     return {
-        listEntries: vi.fn((guildId: string) => entries[guildId] ?? []),
+        listGuildGlossary: vi.fn((guildId: string) => entries[guildId] ?? []),
     };
 }
 
@@ -185,7 +185,6 @@ function createService({
     const cache = new TranslationCache(100);
     const cooldown = new CooldownManager(0);
     const log = new TranslationLog(100);
-    const stats: BotStats = { totalTranslations: 0, apiCalls: 0 };
     const metrics = new AppMetrics();
     const configStore = createStoreMock(storeOverrides);
     const userPreferenceStore = createUserPreferenceStoreMock(storeOverrides);
@@ -194,7 +193,6 @@ function createService({
         cache,
         cooldown,
         log,
-        stats,
         configStore,
         userPreferenceStore,
         usageTracker,
@@ -214,7 +212,6 @@ function createService({
         cache,
         cooldown,
         log,
-        stats,
         configStore,
         userPreferenceStore,
         usageTracker,
@@ -228,14 +225,13 @@ function createService({
 describe('TranslationService', () => {
     it('should translate successfully and record usage through the shared service', async () => {
         const beforeTranslate = vi.fn(async () => undefined);
-        const { service, usageTracker, translator, log, stats, metrics, loggerState } =
-            createService({
-                storeOverrides: {
-                    userLanguagePreferenceEntries: [
-                        { guildId: 'guild-1', userId: 'user1', language: 'ja' },
-                    ],
-                },
-            });
+        const { service, usageTracker, translator, log, metrics, loggerState } = createService({
+            storeOverrides: {
+                userLanguagePreferenceEntries: [
+                    { guildId: 'guild-1', userId: 'user1', language: 'ja' },
+                ],
+            },
+        });
 
         const result = await service.process({
             command: 'babel',
@@ -283,8 +279,6 @@ describe('TranslationService', () => {
             userId: null,
         });
         expect(log.size).toBe(1);
-        expect(stats.totalTranslations).toBe(1);
-        expect(stats.apiCalls).toBe(1);
         expect(metrics.snapshot()).toMatchObject({
             translationsTotal: 1,
             translationApiCallsTotal: 1,
@@ -793,7 +787,7 @@ describe('TranslationService', () => {
             targetLanguageOption: 'zh-TW',
         });
 
-        glossaryRepository.listEntries.mockReturnValueOnce([
+        glossaryRepository.listGuildGlossary.mockReturnValueOnce([
             {
                 id: 1,
                 guildId: 'guild-1',
@@ -915,7 +909,7 @@ describe('TranslationService', () => {
         });
 
         expect(result.status).toBe('success');
-        expect(glossaryRepository.listEntries).not.toHaveBeenCalled();
+        expect(glossaryRepository.listGuildGlossary).not.toHaveBeenCalled();
         expect(translator.mock.calls[0]?.[2]).not.toHaveProperty('glossaryEntries');
     });
 

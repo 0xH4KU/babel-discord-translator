@@ -12,7 +12,6 @@ import type { TranslationService } from '../modules/translation/translation-serv
 import type { SessionRepository } from '../modules/dashboard/auth/session-repository.js';
 import type { TranslationRuntimeLimiter } from '../modules/translation/translation-runtime-limiter.js';
 import type { TranslationWebhookService } from '../modules/translation/webhook-service.js';
-import type { VersionMetadataWithUpdate } from './version.js';
 import type { DiscordUserProfileRepository } from '../modules/dashboard/discord-user-profile-repository.js';
 import type { PendingUserInstallOwnerRepository } from '../modules/dashboard/pending-user-install-owner-repository.js';
 import type { AppProfile } from '../apps/app-profile.js';
@@ -162,12 +161,6 @@ export interface OpenAIChatResponse {
 }
 
 // --- Command Dependencies ---
-
-export interface BotStats {
-    totalTranslations: number;
-    apiCalls: number;
-}
-
 export interface CommandDeps {
     translationService: TranslationService;
 }
@@ -223,13 +216,11 @@ export interface DashboardDeps {
     cooldowns?: Partial<Record<AppProfile['id'], CooldownManager>>;
     log: TranslationLog;
     client: Client;
-    getStats: () => BotStats;
     metrics?: AppMetricsCollector;
     runtimeLimiter?: TranslationRuntimeLimiter;
     healthProbeCacheTtlMs?: number;
     healthCheck?: () => Promise<VertexAiHealthStatus>;
     openAiHealthCheck?: () => Promise<OpenAiHealthStatus>;
-    versionCheck?: (options?: { forceRefresh?: boolean }) => Promise<VersionMetadataWithUpdate>;
     sessionRepository?: SessionRepository;
     userProfileRepository?: DiscordUserProfileRepository;
     profile?: AppProfile;

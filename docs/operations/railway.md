@@ -44,7 +44,7 @@ For Guild:
 ```bash
 npm run build:guild
 npm run register:guild
-npm run start -w @babel-discord-translator/guild
+npm run start:guild
 ```
 
 For Pocket:
@@ -52,7 +52,7 @@ For Pocket:
 ```bash
 npm run build:pocket
 npm run register:pocket
-npm run start -w @babel-discord-translator/pocket
+npm run start:pocket
 ```
 
 Railway Docker deployments can use the same image for either app. Set `BABEL_APP=guild` for Babel Guild, `BABEL_APP=pocket` for Babel Pocket, or `BABEL_APP=combined` to run both in one service.

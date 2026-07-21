@@ -140,10 +140,8 @@ Sponsorship is optional and does not unlock private features. Supporting mainten
 ### Infrastructure
 
 - **Portable Persistence** — Node deployments use SQLite; Cloudflare Workers use D1 for config, usage, preferences, budgets, sessions, cache, and runtime controls
-- **Repository Pattern** — Commands, services, and dashboard routes talk to focused repositories instead of reaching into the store directly
 - **Governed Message Catalogs** — Discord and dashboard error messages centralized into separate message catalogs
 - **Graceful Shutdown** — Clean `SIGTERM`/`SIGINT` handling with ordered teardown for Docker & PM2
-- **Pre-commit Hooks** — `husky` + `lint-staged` ensure lint and format on every commit
 
 ---
 
@@ -176,7 +174,7 @@ Run in development:
 npm run dev
 ```
 
-Or choose a specific workspace app:
+Or choose a specific product profile:
 
 ```bash
 npm run dev:guild
@@ -342,19 +340,19 @@ Babel stores runtime data through native `node:sqlite`. Before upgrading Node on
 
 ### Module Layout
 
-| Layer            | Path                                      | Responsibility                                                                    |
-| ---------------- | ----------------------------------------- | --------------------------------------------------------------------------------- |
-| **Apps**         | `apps/babel-guild/`, `apps/babel-pocket/` | Product entrypoints for Babel Guild and Babel Pocket                              |
-| **Entry**        | `src/index.ts`                            | Backward-compatible root entrypoint selected by `BABEL_APP`                       |
-| **Commands**     | `src/commands/`                           | Discord interaction handlers (`babel`, `translate`, `setlang`, `mylang`, `help`)  |
-| **Translation**  | `src/modules/translation/`                | Cache, cooldowns, runtime limiter, language detection, webhook delivery           |
-| **Config**       | `src/modules/config/`                     | Environment validation, runtime config repository, config change effects          |
-| **Usage**        | `src/modules/usage/`                      | Token accounting, global/guild/user budgets, usage history                        |
-| **Dashboard**    | `src/modules/dashboard/`                  | Express app, auth/session flow, capability-gated admin API surface                |
-| **Shared**       | `src/shared/`                             | Structured logger, health model, graceful shutdown, app metrics, message catalogs |
-| **Infra**        | `src/infra/`                              | Vertex AI transport with retry, timeout, and health probes                        |
-| **Persistence**  | `src/persistence/`                        | SQLite connection, migrations, legacy JSON import/export                          |
-| **Repositories** | `src/repositories/`                       | Data normalization helpers for store data                                         |
+| Layer           | Path                       | Responsibility                                                                    |
+| --------------- | -------------------------- | --------------------------------------------------------------------------------- |
+| **Profiles**    | `src/apps/`                | Guild/Pocket profiles, bootstrap, and command definitions                         |
+| **Worker**      | `apps/babel-worker/`       | Cloudflare Worker entrypoint, D1 migrations, and deployment config                |
+| **Entry**       | `src/index.ts`             | Node entrypoint selected by `BABEL_APP` or a CLI profile argument                 |
+| **Commands**    | `src/commands/`            | Discord interaction handlers (`babel`, `translate`, `setlang`, `mylang`, `help`)  |
+| **Translation** | `src/modules/translation/` | Cache, cooldowns, runtime limiter, language detection, webhook delivery           |
+| **Config**      | `src/modules/config/`      | Environment validation, runtime config access, config change effects              |
+| **Usage**       | `src/modules/usage/`       | Token accounting, global/guild/user budgets, usage history                        |
+| **Dashboard**   | `src/modules/dashboard/`   | Express app, auth/session flow, capability-gated admin API surface                |
+| **Shared**      | `src/shared/`              | Structured logger, health model, graceful shutdown, app metrics, message catalogs |
+| **Infra**       | `src/infra/`               | Translation provider transports, retry, timeout, and health probes                |
+| **Persistence** | `src/persistence/`         | SQLite store, migrations, normalization, and legacy JSON import/export            |
 
 ### Persistence Model
 
@@ -364,67 +362,6 @@ Babel stores runtime data through native `node:sqlite`. Before upgrading Node on
 | Server glossaries and pending Pocket owners              | SQLite    | yes               |
 | Translation cache, cooldowns, runtime limiter queues     | In-memory | no                |
 | Audit logs, metrics snapshots, webhook channel cache     | In-memory | no                |
-
----
-
-## Project Structure
-
-```
-apps/
-├── babel-guild/           # Babel Guild product entrypoint and command registration
-└── babel-pocket/          # Babel Pocket product entrypoint and command registration
-src/
-├── index.ts                # Entry point: Discord + dashboard + error handlers
-├── apps/                   # App profiles, shared bootstrap, command definitions
-├── commands/               # Discord command handlers
-├── modules/
-│   ├── config/
-│   │   ├── config.ts               # Explicit env loading/validation with startup logging
-│   │   ├── config-repository.ts    # Batch-read runtime config over persistence
-│   │   └── config-runtime-effects.ts # Immediate in-memory reactions to config edits
-│   ├── dashboard/
-│   │   ├── dashboard.ts            # Express app factory + async handler wrapper
-│   │   └── auth/
-│   │       ├── dashboard-auth.ts   # scrypt password hashing, cookie, session, CSRF
-│   │       ├── in-memory-session-repository.ts
-│   │       ├── sqlite-session-repository.ts
-│   │       └── session-repository.ts
-│   ├── translation/
-│   │   ├── cache.ts                # LRU translation cache with versioned keys
-│   │   ├── cooldown.ts             # Per-user cooldown manager
-│   │   ├── lang.ts                 # Locale/script detection helpers
-│   │   ├── translate.ts            # Prompt assembly + translation entrypoint
-│   │   ├── translation-runtime-limiter.ts # Global/guild/user backpressure
-│   │   ├── translation-service.ts  # Translation application workflow
-│   │   ├── webhook-service.ts      # /translate webhook lifecycle + recovery
-│   │   └── user-preference-repository.ts
-│   └── usage/
-│       ├── usage.ts                # Token cost, budget, and history tracker
-│       ├── budget-scope.ts         # Global/guild/user budget selection
-│       ├── guild-budget-repository.ts
-│       ├── user-budget-repository.ts
-│       └── usage-repository.ts
-├── shared/
-│   ├── app-metrics.ts       # In-memory counters and derived rates
-│   ├── health.ts            # Liveness/readiness/composite health model
-│   ├── log.ts               # Ring buffer audit log with O(1) error counter
-│   ├── messages/            # Discord and dashboard message catalogs
-│   ├── shutdown.ts          # Graceful shutdown orchestration
-│   └── structured-logger.ts # JSON logging with auto secret redaction
-├── infra/
-│   └── vertex-ai-client.ts     # Vertex AI transport, retry, timeout, health
-├── persistence/
-│   ├── legacy-json-store.ts    # Legacy config.json import/export
-│   ├── sqlite-database.ts      # SQLite connection + schema migrations
-│   └── store-defaults.ts       # Default StoreData values
-├── repositories/
-│   └── store-data-normalizer.ts # Normalization helpers for store data
-├── store.ts                # SQLite-backed store facade
-├── types.ts                # Shared TypeScript type definitions
-├── locales/
-│   └── help.json           # Help text in 16 languages
-└── public/                 # Dashboard frontend assets
-```
 
 ---
 
@@ -455,66 +392,11 @@ npm run db:migrate      # Import legacy JSON → SQLite
 npm run db:export:json  # Export SQLite → JSON
 npm run db:export:d1    # Export SQLite data as D1-compatible SQL
 npm run deploy:worker   # Deploy the configured Cloudflare Worker
-npm run benchmark:runtime-config -- 20000  # Compare config-only reads vs full store snapshots
 ```
-
-### Pre-commit Hooks
-
-This project uses **husky** + **lint-staged** to automatically run ESLint and Prettier on staged `.ts` files before every commit.
-
-Hooks are installed automatically on normal local Git checkouts. The `prepare` step intentionally skips Husky installation in CI, in Docker/runtime images without Git metadata, or when you set `HUSKY=0`.
 
 ### Test Coverage
 
-The test suite covers both the Node/SQLite and Worker/D1 runtimes. Run `npm test` for the current total; selected suites are summarized below:
-
-| Suite                                           | Tests | Covers                                                                                                                                      |
-| ----------------------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `cache.test.ts`                                 | 10    | LRU eviction, hit/miss stats, versioned cache keys                                                                                          |
-| `babel-command.test.ts`                         | 2     | Context menu command handling and Pocket billing owner resolution                                                                           |
-| `config.test.ts`                                | 6     | Env validation, structured startup logging, development warning, production password refusal                                                |
-| `config-repository.test.ts`                     | 2     | Runtime config reads stay off the full store snapshot path                                                                                  |
-| `config-runtime-effects.test.ts`                | 5     | Unified config side effects, cache invalidation, immediate runtime sync                                                                     |
-| `cooldown.test.ts`                              | 6     | Rate limiting, cleanup, per-user isolation                                                                                                  |
-| `app-metrics.test.ts`                           | 5     | Counter aggregation, provider fallback metrics, and derived success/failure/cache/api rates                                                 |
-| `log.test.ts`                                   | 15    | Ring buffer, addError, type filtering, O(1) error counter                                                                                   |
-| `lang.test.ts`                                  | 29    | Script detection (CJK/Cyrillic/Arabic/Thai/Hindi), locale mapping, same-language check                                                      |
-| `dashboard-auth.test.ts`                        | 4     | scrypt auth flow, CSRF enforcement, session expiry cleanup                                                                                  |
-| `prepare-husky.test.ts`                         | 5     | Husky prepare skip logic for CI, missing git metadata, Windows/local execution                                                              |
-| `build-demo.test.ts`                            | 1     | Static Guild/Pocket dashboard demo mirroring and fixture injection                                                                          |
-| `sqlite-session-repository.test.ts`             | 2     | Persistent session storage, enumeration, delete/clear                                                                                       |
-| `dashboard.test.ts`                             | 42    | Auth flow, session revoke, metrics, health endpoints, stats, config protection, version refresh, async error handling, app capability gates |
-| `deployment-config.test.ts`                     | 16    | Node/Worker deployment scripts, domains, bindings, Docker workspace context, and documented runtime defaults                                |
-| `worker.test.ts`                                | 11    | Signed Discord interactions, HTTP routing, D1 dashboard APIs, translation cache, cooldowns, and runtime leases                              |
-| `d1-export.test.ts`                             | 1     | SQLite-to-D1 config, preference, and glossary import compatibility                                                                          |
-| `discord-user-profile-repository.test.ts`       | 2     | Discord user profile persistence                                                                                                            |
-| `discord-message-format.test.ts`                | 3     | Discord-safe chunking and metadata rendering                                                                                                |
-| `message-extraction.test.ts`                    | 3     | Context menu extraction from content, embeds, attachments, and referenced context                                                           |
-| `provider-orchestrator.test.ts`                 | 5     | Provider fallback ordering, structured errors, and circuit breaker behavior                                                                 |
-| `translation-runtime-limiter.test.ts`           | 4     | FIFO queueing, per-user outstanding cap, queue wait timeout, per-guild/global queue shedding                                                |
-| `register.test.ts`                              | 3     | Guild/Pocket command registration surfaces and app profile selection                                                                        |
-| `pending-user-install-owner-repository.test.ts` | 1     | Pending Pocket owner persistence                                                                                                            |
-| `translation-service.test.ts`                   | 15    | Shared workflow, cache hits, runtime shedding, budget/error handling, runtime config access pattern, Guild/Pocket authorization             |
-| `translate-command.test.ts`                     | 2     | `/translate` public/private delivery behavior                                                                                               |
-| `translate.test.ts`                             | 24    | Retry logic, prompt building, API errors, URL routing, provider metadata                                                                    |
-| `usage.test.ts`                                 | 40    | Cost calculation, budget estimate guard, global/guild/user budget enforcement, day rollover, runtime config access pattern                  |
-| `webhook-service.test.ts`                       | 4     | Stale webhook recovery, error classification, LRU webhook cache eviction                                                                    |
-| `vertex-ai-client.test.ts`                      | 6     | Shared transport, timeout wiring, structured provider errors, health checks, endpoint resolution                                            |
-| `version.test.ts`                               | 5     | Release metadata, synced app versions, GitHub latest-release checks, cache refresh, and update status fallback                              |
-| `sqlite-database.test.ts`                       | 5     | SQLite connection, migrations, and pragma setup                                                                                             |
-| `store.test.ts`                                 | 13    | SQLite persistence, legacy JSON import, defaults, copy safety, config-only reads, direct guild/user row operations                          |
-| `structured-logger.test.ts`                     | 2     | JSON shape, inherited request context, secret redaction                                                                                     |
-| `shutdown.test.ts`                              | 3     | Shutdown order, timeout forcing, signal deduplication                                                                                       |
-
-### Runtime Config Benchmark
-
-If you want to sanity-check the runtime-config hot path after refactors, run:
-
-```bash
-npm run benchmark:runtime-config -- 20000
-```
-
-This compares `configRepository.getRuntimeConfig()` against `store.getAll()` over the same number of iterations and prints total time, ops/sec, and relative speedup.
+The test suite exercises both the Node/SQLite and Worker/D1 runtimes. Run `npm test` for the executable suite and `npm run test:coverage` for coverage.
 
 ---
 
@@ -656,17 +538,16 @@ User Request
 
 ## Tech Stack
 
-| Technology                                                                                             | Version  | Role                                        |
-| ------------------------------------------------------------------------------------------------------ | -------- | ------------------------------------------- |
-| [TypeScript](https://www.typescriptlang.org)                                                           | 6.0      | Strict mode with `noUncheckedIndexedAccess` |
-| [Node.js](https://nodejs.org)                                                                          | 22.13+   | Runtime with native `node:sqlite`           |
-| [discord.js](https://discord.js.org)                                                                   | v14      | Discord gateway client                      |
-| [Express](https://expressjs.com)                                                                       | v4       | Dashboard & API server                      |
-| [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit)                         | v8       | Login throttling                            |
-| [Vertex AI Gemini](https://cloud.google.com/vertex-ai)                                                 | —        | Translation engine                          |
-| [Vitest](https://vitest.dev)                                                                           | v4       | 249 tests, 30 test files, v8 coverage       |
-| [ESLint](https://eslint.org) + [Prettier](https://prettier.io)                                         | v9 / v3  | Code quality                                |
-| [husky](https://typicode.github.io/husky/) + [lint-staged](https://github.com/lint-staged/lint-staged) | v9 / v16 | Pre-commit hooks                            |
+| Technology                                                                     | Version | Role                                        |
+| ------------------------------------------------------------------------------ | ------- | ------------------------------------------- |
+| [TypeScript](https://www.typescriptlang.org)                                   | 6.0     | Strict mode with `noUncheckedIndexedAccess` |
+| [Node.js](https://nodejs.org)                                                  | 22.13+  | Runtime with native `node:sqlite`           |
+| [discord.js](https://discord.js.org)                                           | v14     | Discord gateway client                      |
+| [Express](https://expressjs.com)                                               | v5      | Dashboard & API server                      |
+| [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) | v8      | Login throttling                            |
+| [Vertex AI Gemini](https://cloud.google.com/vertex-ai)                         | —       | Translation engine                          |
+| [Vitest](https://vitest.dev)                                                   | v4      | Test runner with v8 coverage                |
+| [ESLint](https://eslint.org) + [Prettier](https://prettier.io)                 | v9 / v3 | Code quality                                |
 
 ---
 

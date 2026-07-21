@@ -15,7 +15,7 @@ const store = new ConfigStore({
 });
 
 try {
-    writeLegacyStoreData(store.getAll(), legacyConfigPath);
+    writeLegacyStoreData(store.exportSnapshot(), legacyConfigPath);
     console.log(`[Export] Wrote ${legacyConfigPath} from ${dbPath}`);
 } finally {
     store.close();

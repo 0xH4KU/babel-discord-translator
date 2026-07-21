@@ -9,8 +9,7 @@ import {
     type AppMetricsCollector,
 } from '../../shared/app-metrics.js';
 import { configRepository, type RuntimeConfig } from '../config/config-repository.js';
-import { userPreferenceRepository } from './user-preference-repository.js';
-import { guildGlossaryRepository } from './guild-glossary-repository.js';
+import { store } from '../../persistence/store.js';
 import type {
     RuntimeLimitReason,
     TranslationRuntimeLimiter,
@@ -48,7 +47,7 @@ import {
     type ServiceCommand,
     type TranslatorOptions,
 } from './translation-service-helpers.js';
-import type { BotStats, GuildGlossaryEntry, TranslationResult } from '../../shared/types.js';
+import type { GuildGlossaryEntry, TranslationResult } from '../../shared/types.js';
 
 interface ConfigRepositoryLike {
     getRuntimeConfig(): RuntimeConfig;
@@ -56,7 +55,7 @@ interface ConfigRepositoryLike {
 }
 
 interface GlossaryRepositoryLike {
-    listEntries(guildId: string): GuildGlossaryEntry[];
+    listGuildGlossary(guildId: string): GuildGlossaryEntry[];
 }
 
 interface UsageLike {
@@ -131,14 +130,13 @@ export interface TranslationServiceDeps {
     cache: TranslationCache;
     cooldown: CooldownManager;
     log: TranslationLog;
-    stats: BotStats;
     appProfileId?: AppProfile['id'];
     configStore?: ConfigRepositoryLike;
     userPreferenceStore?: UserPreferenceRepositoryLike;
     glossaryRepository?: GlossaryRepositoryLike;
     usageTracker?: UsageLike;
     translator?: Translator;
-    metrics?: AppMetricsCollector;
+    metrics: AppMetricsCollector;
     runtimeLimiter?: TranslationRuntimeLimiter;
     logger?: StructuredLogger;
     accessMode?: AccessMode;
@@ -197,10 +195,9 @@ export function createTranslationService({
     cache,
     cooldown,
     log,
-    stats,
     configStore = configRepository,
-    userPreferenceStore = userPreferenceRepository,
-    glossaryRepository = guildGlossaryRepository,
+    userPreferenceStore = store,
+    glossaryRepository = store,
     usageTracker = usage,
     translator = translate,
     metrics,
@@ -336,7 +333,7 @@ export function createTranslationService({
             const prompt = resolveSystemPrompt(targetLanguage, runtimeConfig.translationPrompt);
             const glossaryEntries =
                 enableGuildGlossary && request.guildId
-                    ? glossaryRepository.listEntries(request.guildId)
+                    ? glossaryRepository.listGuildGlossary(request.guildId)
                     : [];
             const selectedGlossaryEntries = selectGlossaryEntriesForTarget(
                 glossaryEntries,
@@ -388,7 +385,6 @@ export function createTranslationService({
                     }
 
                     cooldown.set(request.userId);
-                    stats.totalTranslations++;
 
                     const result = await inFlight.promise;
                     translated = result.text;
@@ -445,10 +441,36 @@ export function createTranslationService({
 
                 if (!joinedInFlight) {
                     cooldown.set(request.userId);
-                    stats.totalTranslations++;
                 }
 
                 if (!translated) {
+                    const translateAndRecord = async (): Promise<string> => {
+                        profileMetrics?.recordTranslationApiCall();
+                        const result = await translator(
+                            originalText,
+                            targetLanguage,
+                            createTranslatorOptions(
+                                {
+                                    requestId,
+                                    guildId: request.guildId ?? null,
+                                    userId: getRuntimeLimiterUserId(scope),
+                                    command: request.command,
+                                },
+                                profileMetrics,
+                                selectedGlossaryEntries,
+                                runtimeConfig,
+                            ),
+                        );
+                        cache.set(cacheKey, result.text);
+                        inputTokens = result.inputTokens;
+                        outputTokens = result.outputTokens;
+                        provider = result.provider;
+                        fallback = result.fallback;
+                        usageTracker.record(result.inputTokens, result.outputTokens, usageScope);
+                        resolveLeaderInFlight?.(result);
+                        return result.text;
+                    };
+
                     if (reservation) {
                         translated = await reservation.run(async (meta) => {
                             if (meta.queued) {
@@ -474,62 +496,10 @@ export function createTranslationService({
                                 return queuedCached;
                             }
 
-                            stats.apiCalls++;
-                            profileMetrics?.recordTranslationApiCall();
-                            const result = await translator(
-                                originalText,
-                                targetLanguage,
-                                createTranslatorOptions(
-                                    {
-                                        requestId,
-                                        guildId: request.guildId ?? null,
-                                        userId: getRuntimeLimiterUserId(scope),
-                                        command: request.command,
-                                    },
-                                    profileMetrics,
-                                    selectedGlossaryEntries,
-                                    runtimeConfig,
-                                ),
-                            );
-                            cache.set(cacheKey, result.text);
-                            inputTokens = result.inputTokens;
-                            outputTokens = result.outputTokens;
-                            provider = result.provider;
-                            fallback = result.fallback;
-                            usageTracker.record(
-                                result.inputTokens,
-                                result.outputTokens,
-                                usageScope,
-                            );
-                            resolveLeaderInFlight?.(result);
-                            return result.text;
+                            return translateAndRecord();
                         });
                     } else {
-                        stats.apiCalls++;
-                        profileMetrics?.recordTranslationApiCall();
-                        const result = await translator(
-                            originalText,
-                            targetLanguage,
-                            createTranslatorOptions(
-                                {
-                                    requestId,
-                                    guildId: request.guildId ?? null,
-                                    userId: getRuntimeLimiterUserId(scope),
-                                    command: request.command,
-                                },
-                                profileMetrics,
-                                selectedGlossaryEntries,
-                                runtimeConfig,
-                            ),
-                        );
-                        translated = result.text;
-                        inputTokens = result.inputTokens;
-                        outputTokens = result.outputTokens;
-                        provider = result.provider;
-                        fallback = result.fallback;
-                        cache.set(cacheKey, translated);
-                        usageTracker.record(result.inputTokens, result.outputTokens, usageScope);
-                        resolveLeaderInFlight?.(result);
+                        translated = await translateAndRecord();
                     }
                 }
 

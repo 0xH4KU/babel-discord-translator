@@ -1,6 +1,6 @@
 import { BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE } from '../../../src/apps/app-profile.js';
 import { getCommandsForProfile } from '../../../src/apps/commands.js';
-import { getDashboardCapabilities } from '../../../src/modules/dashboard/capabilities.js';
+import { buildDashboardCapabilitiesResponse } from '../../../src/modules/dashboard/capabilities.js';
 import { validateConfigUpdate } from '../../../src/modules/dashboard/config-validation.js';
 import {
     parseGlossaryImport,
@@ -9,7 +9,7 @@ import {
 } from '../../../src/modules/dashboard/glossary-input.js';
 import { normalizeStoreData } from '../../../src/persistence/store-data-normalizer.js';
 import { DEFAULT_STORE_DATA } from '../../../src/persistence/store-defaults.js';
-import { getVersionMetadataWithUpdate } from '../../../src/shared/version.js';
+import { getVersionMetadata } from '../../../src/shared/version.js';
 import type { AppProfile } from '../../../src/apps/app-profile.js';
 import type { StoreData } from '../../../src/shared/types.js';
 import type { D1PreparedStatement, WorkerEnv } from './index.js';
@@ -669,15 +669,6 @@ async function budgetLists(env: WorkerEnv, profile: AppProfile, config: StoreDat
                 exceeded: budget > 0 && totalCost >= budget,
             };
         }),
-    };
-}
-
-function profileJson(profile: AppProfile) {
-    return {
-        id: profile.id,
-        productName: profile.productName,
-        commandName: profile.commandName,
-        accessMode: profile.accessMode,
     };
 }
 
@@ -1356,19 +1347,7 @@ export async function handleDashboardRequest(
     const config = await getRuntimeConfig(route.env);
 
     if (route.path === '/capabilities' && method === 'GET') {
-        return json({
-            profile: profileJson(route.profile),
-            profiles: route.profiles.map(profileJson),
-            capabilities:
-                route.profiles.length > 1
-                    ? {
-                          guildAccess: true,
-                          userAccess: true,
-                          guildGlossary: true,
-                          pendingUserInstallOwners: true,
-                      }
-                    : getDashboardCapabilities(route.profile),
-        });
+        return json(buildDashboardCapabilitiesResponse(route.profile, route.profiles));
     }
     if (route.path === '/setup-status' && method === 'GET') {
         return json({ complete: config.setupComplete });
@@ -1377,10 +1356,7 @@ export async function handleDashboardRequest(
         return setupDoctor(runtimeEnv, route.profile, config);
     }
     if (route.path === '/version' && method === 'GET') {
-        return json(await getVersionMetadataWithUpdate());
-    }
-    if (route.path === '/version/refresh' && method === 'POST') {
-        return json(await getVersionMetadataWithUpdate({ forceRefresh: true }));
+        return json(getVersionMetadata());
     }
     if (route.path === '/sessions' && method === 'GET') {
         const { results } = await route.env.DB.prepare(

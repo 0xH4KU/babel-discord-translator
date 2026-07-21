@@ -5,7 +5,7 @@ import { localeToLang } from './lang.js';
 export type LangSource = 'option' | 'setlang' | 'locale' | 'auto';
 
 export interface UserPreferenceRepositoryLike {
-    getLanguage(guildId: string, userId: string): string | null;
+    getUserLanguage(guildId: string, userId: string): string | null;
 }
 
 export interface TargetLanguageDecision {
@@ -35,7 +35,7 @@ export function resolveTargetLanguage(
     const preferenceGuildId = resolvePreferenceGuildId(request, options);
     const userPreference =
         preferenceGuildId !== null
-            ? preferenceStore.getLanguage(preferenceGuildId, request.userId)
+            ? preferenceStore.getUserLanguage(preferenceGuildId, request.userId)
             : null;
     const localeLanguage = localeToLang(request.locale);
 

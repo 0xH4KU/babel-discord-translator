@@ -72,7 +72,7 @@ describe('build-dashboard-demo', () => {
             '/guild-glossary/100000000000000001/import',
         );
         expect(readFileSync(join(demoDir, 'guild', 'demo', 'demo-api.js'), 'utf-8')).toContain(
-            "if (method !== 'GET' && route !== '/version/refresh')",
+            "if (method !== 'GET')",
         );
         const guildReadonly = readFileSync(
             join(demoDir, 'guild', 'demo', 'demo-readonly.js'),

@@ -5,8 +5,6 @@ const mockData: Record<string, unknown> = vi.hoisted(() => ({}));
 
 vi.mock('../src/persistence/store.js', () => ({
     store: {
-        get: vi.fn((key: string) => mockData[key]),
-        getAll: vi.fn(() => ({ ...mockData })),
         getConfigValues: vi.fn((keys: readonly string[]) =>
             Object.fromEntries(
                 keys.map((key) => {
@@ -15,8 +13,13 @@ vi.mock('../src/persistence/store.js', () => ({
                 }),
             ),
         ),
-        set: vi.fn((key: string, val: unknown) => {
-            mockData[key] = val;
+        getDailyUsage: vi.fn(() => mockData.tokenUsage),
+        saveDailyUsage: vi.fn((usage: unknown) => {
+            mockData.tokenUsage = usage;
+        }),
+        getUsageHistory: vi.fn(() => mockData.usageHistory ?? []),
+        saveUsageHistory: vi.fn((history: unknown) => {
+            mockData.usageHistory = history;
         }),
         getGuildBudget: vi.fn((guildId: string) => {
             const budgets = mockData.guildBudgets as Record<string, unknown>;
@@ -32,6 +35,7 @@ vi.mock('../src/persistence/store.js', () => ({
             delete budgets[guildId];
             return true;
         }),
+        listGuildBudgets: vi.fn(() => mockData.guildBudgets ?? {}),
         getUserBudget: vi.fn((userId: string) => {
             const budgets = mockData.userBudgets as Record<string, unknown>;
             return budgets[userId] ?? null;
@@ -46,6 +50,7 @@ vi.mock('../src/persistence/store.js', () => ({
             delete budgets[userId];
             return true;
         }),
+        listUserBudgets: vi.fn(() => mockData.userBudgets ?? {}),
         getGuildDailyUsage: vi.fn((guildId: string) => {
             const usage = mockData.guildTokenUsage as Record<string, unknown>;
             return usage[guildId] ?? null;
@@ -54,6 +59,7 @@ vi.mock('../src/persistence/store.js', () => ({
             const allUsage = mockData.guildTokenUsage as Record<string, unknown>;
             allUsage[guildId] = usage;
         }),
+        getAllGuildDailyUsage: vi.fn(() => mockData.guildTokenUsage ?? {}),
         getGuildUsageHistory: vi.fn((guildId: string) => {
             const history = mockData.guildUsageHistory as Record<string, unknown>;
             return history[guildId] ?? [];
@@ -62,6 +68,7 @@ vi.mock('../src/persistence/store.js', () => ({
             const allHistory = mockData.guildUsageHistory as Record<string, unknown>;
             allHistory[guildId] = history;
         }),
+        getAllGuildUsageHistory: vi.fn(() => mockData.guildUsageHistory ?? {}),
         getUserDailyUsage: vi.fn((userId: string) => {
             const usage = mockData.userTokenUsage as Record<string, unknown>;
             return usage[userId] ?? null;
@@ -70,6 +77,7 @@ vi.mock('../src/persistence/store.js', () => ({
             const allUsage = mockData.userTokenUsage as Record<string, unknown>;
             allUsage[userId] = usage;
         }),
+        getAllUserDailyUsage: vi.fn(() => mockData.userTokenUsage ?? {}),
         getUserUsageHistory: vi.fn((userId: string) => {
             const history = mockData.userUsageHistory as Record<string, unknown>;
             return history[userId] ?? [];
@@ -78,6 +86,7 @@ vi.mock('../src/persistence/store.js', () => ({
             const allHistory = mockData.userUsageHistory as Record<string, unknown>;
             allHistory[userId] = history;
         }),
+        getAllUserUsageHistory: vi.fn(() => mockData.userUsageHistory ?? {}),
     },
 }));
 
@@ -86,9 +95,8 @@ import { usage, _test as usageTest } from '../src/modules/usage/usage.js';
 
 describe('UsageTracker', () => {
     const mockedStore = store as unknown as {
-        get: ReturnType<typeof vi.fn>;
-        getAll: ReturnType<typeof vi.fn>;
         getConfigValues: ReturnType<typeof vi.fn>;
+        getDailyUsage: ReturnType<typeof vi.fn>;
     };
 
     beforeEach(() => {
@@ -122,12 +130,11 @@ describe('UsageTracker', () => {
         mockData.userTokenUsage = {};
         mockData.userUsageHistory = {};
 
-        mockedStore.getAll.mockClear();
         mockedStore.getConfigValues.mockClear();
     });
 
     it('should retry date rollover after a failed ensureToday pass', () => {
-        mockedStore.get.mockImplementationOnce(() => {
+        mockedStore.getDailyUsage.mockImplementationOnce(() => {
             throw new Error('temporary sqlite failure');
         });
         mockData.tokenUsage = {
@@ -237,7 +244,7 @@ describe('UsageTracker', () => {
         expect(stats).toHaveProperty('budgetExceeded');
     });
 
-    it('should read runtime config once for stats without falling back to getAll', () => {
+    it('should read runtime config once for stats', () => {
         mockData.dailyBudgetUsd = 5.0;
         mockData.inputPricePerMillion = 1.0;
         mockData.outputPricePerMillion = 2.0;
@@ -246,7 +253,6 @@ describe('UsageTracker', () => {
         usage.getStats();
 
         expect(mockedStore.getConfigValues).toHaveBeenCalledOnce();
-        expect(mockedStore.getAll).not.toHaveBeenCalled();
     });
 
     it('should archive previous day when date changes', () => {
@@ -423,7 +429,7 @@ describe('UsageTracker', () => {
             ).toBe(true);
         });
 
-        it('should read runtime config once per budget check without falling back to getAll', () => {
+        it('should read runtime config once per budget check', () => {
             mockData.dailyBudgetUsd = 1.0;
             mockData.inputPricePerMillion = 1.0;
             mockData.outputPricePerMillion = 0;
@@ -432,7 +438,6 @@ describe('UsageTracker', () => {
             usage.isBudgetExceeded({ guildId: 'guild-456' });
 
             expect(mockedStore.getConfigValues).toHaveBeenCalledOnce();
-            expect(mockedStore.getAll).not.toHaveBeenCalled();
         });
 
         it('should allow guild with separate budget even if global is exceeded', () => {

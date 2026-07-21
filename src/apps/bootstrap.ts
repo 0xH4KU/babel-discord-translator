@@ -19,7 +19,6 @@ import { appLogger } from '../shared/structured-logger.js';
 import { TranslationRuntimeLimiter } from '../modules/translation/translation-runtime-limiter.js';
 import { createWebhookService } from '../modules/translation/webhook-service.js';
 import { PendingUserInstallOwnerRepository } from '../modules/dashboard/pending-user-install-owner-repository.js';
-import type { BotStats } from '../shared/types.js';
 import type { AppProfile } from './app-profile.js';
 import type { TranslationService } from '../modules/translation/translation-service.js';
 import type express from 'express';
@@ -31,7 +30,6 @@ interface SharedBabelRuntime {
     config: ReturnType<typeof loadConfig>;
     cache: TranslationCache;
     log: TranslationLog;
-    stats: BotStats;
     metrics: AppMetrics;
     runtimeLimiter: TranslationRuntimeLimiter;
 }
@@ -86,7 +84,6 @@ function createSharedRuntime(): SharedBabelRuntime {
         config,
         cache: new TranslationCache(runtimeConfig.cacheMaxSize),
         log: new TranslationLog(),
-        stats: { totalTranslations: 0, apiCalls: 0 },
         metrics: new AppMetrics(),
         runtimeLimiter: new TranslationRuntimeLimiter({
             maxConcurrent: runtimeConfig.translationMaxConcurrent,
@@ -131,7 +128,6 @@ function createProfileRuntime(
         cache: shared.cache,
         cooldown,
         log: shared.log,
-        stats: shared.stats,
         appProfileId: profile.id,
         metrics: shared.metrics,
         runtimeLimiter: shared.runtimeLimiter,
@@ -250,7 +246,6 @@ export async function startBabelApps(profiles: AppProfile[]): Promise<void> {
             log: shared.log,
             client: primaryRuntime.client,
             clients: clientsByProfile,
-            getStats: () => shared.stats,
             metrics: shared.metrics,
             runtimeLimiter: shared.runtimeLimiter,
             profile: primaryRuntime.profile,

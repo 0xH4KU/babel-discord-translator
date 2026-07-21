@@ -34,7 +34,7 @@ For Guild:
 ```bash
 npm run build:guild
 npm run register:guild
-npm run start -w @babel-discord-translator/guild
+npm run start:guild
 ```
 
 For Pocket:
@@ -42,10 +42,10 @@ For Pocket:
 ```bash
 npm run build:pocket
 npm run register:pocket
-npm run start -w @babel-discord-translator/pocket
+npm run start:pocket
 ```
 
-Root commands also support `BABEL_APP=guild`, `BABEL_APP=pocket`, or `BABEL_APP=combined` for Docker, PM2, Railway, and simple VPS deployments. Combined mode starts one Node.js process, two Discord clients, one dashboard, and one SQLite database. In combined mode, the combined dashboard root `/` shows a product chooser; `/guild` opens the Babel Guild dashboard; `/pocket` opens the Babel Pocket dashboard. The explicit workspace commands remain the clean management entrypoints for single-product local work and command registration.
+Root commands also support `BABEL_APP=guild`, `BABEL_APP=pocket`, or `BABEL_APP=combined` for Docker, PM2, Railway, and simple VPS deployments. Combined mode starts one Node.js process, two Discord clients, one dashboard, and one SQLite database. In combined mode, the combined dashboard root `/` shows a product chooser; `/guild` opens the Babel Guild dashboard; `/pocket` opens the Babel Pocket dashboard. The profile-specific scripts are aliases over the same root build and entrypoint.
 
 ## Discord Setup
 

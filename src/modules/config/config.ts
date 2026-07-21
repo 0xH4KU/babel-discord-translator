@@ -2,9 +2,14 @@
  * Application configuration loaded from environment variables.
  * Validates required variables at startup to fail fast.
  */
-import 'dotenv/config';
 import { isCombinedAppProfileValue, type AppProfileId } from '../../apps/app-profile.js';
 import { appLogger, type StructuredLogger } from '../../shared/structured-logger.js';
+
+try {
+    process.loadEnvFile();
+} catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+}
 
 const DEFAULT_DASHBOARD_PORT = 3000;
 const DEFAULT_DASHBOARD_PASSWORD = 'admin';
@@ -159,12 +164,6 @@ export function getConfig(): AppConfig {
     }
     return loadedConfig;
 }
-
-export const config: AppConfig = new Proxy({} as AppConfig, {
-    get(_target, prop: keyof AppConfig) {
-        return getConfig()[prop];
-    },
-});
 
 export const _test = {
     resetLoadedConfig(): void {

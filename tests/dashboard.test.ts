@@ -3,8 +3,6 @@ import http from 'http';
 import { AppMetrics } from '../src/shared/app-metrics.js';
 
 // --- Mock dependencies ---
-vi.mock('dotenv/config', () => ({}));
-
 vi.mock('../src/modules/config/config.js', () => ({
     getConfig: vi.fn(() => ({
         discordToken: 'test-token',
@@ -72,7 +70,6 @@ vi.mock('../src/persistence/store.js', () => {
     let glossaryId = 1;
     return {
         store: {
-            get: vi.fn((key: string) => data[key]),
             getUserLanguage: vi.fn((guildId: string, userId: string) => {
                 const prefs = data.userLanguagePreferenceEntries as Array<{
                     guildId: string;
@@ -114,11 +111,6 @@ vi.mock('../src/persistence/store.js', () => {
                 prefs.splice(index, 1);
                 return true;
             }),
-            set: vi.fn((key: string, val: unknown) => {
-                data[key] = val;
-            }),
-            update: vi.fn((obj: Record<string, unknown>) => Object.assign(data, obj)),
-            getAll: vi.fn(() => ({ ...data })),
             getConfigValues: vi.fn((keys: readonly string[]) =>
                 Object.fromEntries(
                     keys.map((key) => {
@@ -126,6 +118,9 @@ vi.mock('../src/persistence/store.js', () => {
                         return [key, Array.isArray(value) ? [...value] : value];
                     }),
                 ),
+            ),
+            updateConfigValues: vi.fn((updates: Record<string, unknown>) =>
+                Object.assign(data, updates),
             ),
             getGuildBudget: vi.fn((guildId: string) => {
                 const budgets = data.guildBudgets as Record<string, unknown>;
@@ -139,6 +134,20 @@ vi.mock('../src/persistence/store.js', () => {
                 const budgets = data.guildBudgets as Record<string, unknown>;
                 if (!(guildId in budgets)) return false;
                 delete budgets[guildId];
+                return true;
+            }),
+            getUserBudget: vi.fn((userId: string) => {
+                const budgets = data.userBudgets as Record<string, unknown>;
+                return budgets[userId] ?? null;
+            }),
+            setUserBudget: vi.fn((userId: string, dailyBudgetUsd: number) => {
+                const budgets = data.userBudgets as Record<string, unknown>;
+                budgets[userId] = { dailyBudgetUsd };
+            }),
+            clearUserBudget: vi.fn((userId: string) => {
+                const budgets = data.userBudgets as Record<string, unknown>;
+                if (!(userId in budgets)) return false;
+                delete budgets[userId];
                 return true;
             }),
             listGuildGlossary: vi.fn((guildId: string) => glossary[guildId] ?? []),
@@ -187,6 +196,11 @@ vi.mock('../src/persistence/store.js', () => {
                 glossary[guildId] = entries.filter((entry) => entry.id !== entryId);
                 return glossary[guildId].length < before;
             }),
+            listGuildBudgets: vi.fn(() => ({ ...(data.guildBudgets as object) })),
+            listUserBudgets: vi.fn(() => ({ ...(data.userBudgets as object) })),
+            listUserLanguagePreferences: vi.fn(() => [
+                ...(data.userLanguagePreferenceEntries as unknown[]),
+            ]),
             isSetupComplete: vi.fn(() => data.setupComplete),
         },
     };
@@ -381,6 +395,18 @@ function createMinimalClient(): Client {
     } as unknown as Client;
 }
 
+type BudgetMap = Record<string, { dailyBudgetUsd: number }>;
+
+function replaceBudgets(
+    current: BudgetMap,
+    next: BudgetMap,
+    clear: (id: string) => unknown,
+    set: (id: string, dailyBudgetUsd: number) => unknown,
+): void {
+    for (const id of Object.keys(current)) clear(id);
+    for (const [id, budget] of Object.entries(next)) set(id, budget.dailyBudgetUsd);
+}
+
 describe('dashboard mode parsing', () => {
     it('defaults to full dashboard mode', () => {
         expect(resolveDashboardMode(undefined)).toBe('full');
@@ -410,7 +436,6 @@ describe('Dashboard API', () => {
     let sessionCookie: string;
     let csrfToken: string;
     let healthCheck: ReturnType<typeof vi.fn>;
-    let versionCheck: ReturnType<typeof vi.fn>;
     let runtimeLimiter: TranslationRuntimeLimiter;
     let log: TranslationLog;
     let profileDb: DatabaseSync;
@@ -429,7 +454,6 @@ describe('Dashboard API', () => {
             cooldown: new CooldownManager(5),
             log,
             client: createMinimalClient(),
-            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
             metrics,
             runtimeLimiter,
             profile,
@@ -477,15 +501,6 @@ describe('Dashboard API', () => {
             maxUserOutstanding: 1,
         });
         healthCheck = vi.fn().mockResolvedValue({ healthy: true, latencyMs: 24 });
-        versionCheck = vi.fn().mockResolvedValue({
-            version: '0.2.0',
-            repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator',
-            update: {
-                status: 'current',
-                latestVersion: '0.2.0',
-                latestUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases/tag/v0.2.0',
-            },
-        });
         const cooldown = new CooldownManager(5);
         log = new TranslationLog(100);
         profileDb = createSqliteDatabase(':memory:');
@@ -558,11 +573,9 @@ describe('Dashboard API', () => {
             cooldown,
             log,
             client: mockClient,
-            getStats: () => ({ totalTranslations: 42, apiCalls: 30 }),
             metrics,
             runtimeLimiter,
             healthCheck,
-            versionCheck,
             sessionRepository: new InMemorySessionRepository(),
             userProfileRepository,
             pendingUserInstallOwnerRepository,
@@ -781,7 +794,7 @@ describe('Dashboard API', () => {
         expect(res.status).toBe(200);
         expect(usageMock.getGuildStatsForGuilds).toHaveBeenCalledOnce();
         expect((res.body!.bot as Record<string, unknown>).name).toBe('Babel#1234');
-        expect((res.body!.translations as Record<string, unknown>).total).toBe(42);
+        expect((res.body!.translations as Record<string, unknown>).total).toBe(1);
         expect((res.body!.metrics as Record<string, unknown>).translationFailuresTotal).toBe(1);
         expect((res.body!.translations as Record<string, unknown>).webhookRecreated).toBe(1);
         expect(
@@ -954,7 +967,7 @@ describe('Dashboard API', () => {
 
     it('should show custom guild budget usage separately from the global budget pool', async () => {
         const { store } = await import('../src/persistence/store.js');
-        const previousGuildBudgets = store.get('guildBudgets');
+        const previousGuildBudgets = store.listGuildBudgets();
 
         usageMock.getStats.mockReturnValueOnce({
             date: '2025-03-01',
@@ -984,7 +997,12 @@ describe('Dashboard API', () => {
         });
 
         try {
-            store.update({ guildBudgets: { 'guild-1': { dailyBudgetUsd: 2 } } });
+            replaceBudgets(
+                store.listGuildBudgets(),
+                { 'guild-1': { dailyBudgetUsd: 2 } },
+                (id) => store.clearGuildBudget(id),
+                (id, budget) => store.setGuildBudget(id, budget),
+            );
 
             const res = await request(server, 'GET', '/api/stats', {
                 cookie: sessionCookie,
@@ -1010,21 +1028,27 @@ describe('Dashboard API', () => {
                 exceeded: false,
             });
         } finally {
-            store.update({ guildBudgets: previousGuildBudgets });
+            replaceBudgets(
+                store.listGuildBudgets(),
+                previousGuildBudgets,
+                (id) => store.clearGuildBudget(id),
+                (id, budget) => store.setGuildBudget(id, budget),
+            );
         }
     });
 
     it('should include allowed and pending user-install owners in user budget access data', async () => {
         const { store } = await import('../src/persistence/store.js');
-        const previousAllowedUserIds = store.get('allowedUserIds');
-        const previousDefaultUserBudget = store.get('defaultUserDailyBudgetUsd');
-        const previousUserBudgets = store.get('userBudgets');
+        const previousConfig = store.getConfigValues([
+            'allowedUserIds',
+            'defaultUserDailyBudgetUsd',
+        ]);
+        const previousUserBudgets = store.listUserBudgets();
         const pocketApp = createDashboardApp({
             cache,
             cooldown: new CooldownManager(5),
             log,
             client: createMinimalClient(),
-            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
             metrics,
             runtimeLimiter,
             profile: BABEL_POCKET_PROFILE,
@@ -1035,11 +1059,16 @@ describe('Dashboard API', () => {
         const pocketServer = startDashboardServer(pocketApp, 0);
 
         try {
-            store.update({
+            store.updateConfigValues({
                 allowedUserIds: ['user-1'],
                 defaultUserDailyBudgetUsd: 0.5,
-                userBudgets: { 'user-1': { dailyBudgetUsd: 1.25 } },
             });
+            replaceBudgets(
+                store.listUserBudgets(),
+                { 'user-1': { dailyBudgetUsd: 1.25 } },
+                (id) => store.clearUserBudget(id),
+                (id, budget) => store.setUserBudget(id, budget),
+            );
 
             const login = await request(pocketServer, 'POST', '/api/login', {
                 body: { password: 'test-pass-123' },
@@ -1074,11 +1103,13 @@ describe('Dashboard API', () => {
                 },
             });
         } finally {
-            store.update({
-                allowedUserIds: previousAllowedUserIds,
-                defaultUserDailyBudgetUsd: previousDefaultUserBudget,
-                userBudgets: previousUserBudgets,
-            });
+            store.updateConfigValues(previousConfig);
+            replaceBudgets(
+                store.listUserBudgets(),
+                previousUserBudgets,
+                (id) => store.clearUserBudget(id),
+                (id, budget) => store.setUserBudget(id, budget),
+            );
             stopDashboardApp(pocketApp);
             pocketServer.close();
         }
@@ -1086,15 +1117,16 @@ describe('Dashboard API', () => {
 
     it('should include user budget overview data in Babel Pocket stats', async () => {
         const { store } = await import('../src/persistence/store.js');
-        const previousAllowedUserIds = store.get('allowedUserIds');
-        const previousDefaultUserBudget = store.get('defaultUserDailyBudgetUsd');
-        const previousUserBudgets = store.get('userBudgets');
+        const previousConfig = store.getConfigValues([
+            'allowedUserIds',
+            'defaultUserDailyBudgetUsd',
+        ]);
+        const previousUserBudgets = store.listUserBudgets();
         const pocketApp = createDashboardApp({
             cache,
             cooldown: new CooldownManager(5),
             log,
             client: createMinimalClient(),
-            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
             metrics,
             runtimeLimiter,
             profile: BABEL_POCKET_PROFILE,
@@ -1105,11 +1137,16 @@ describe('Dashboard API', () => {
         const pocketServer = startDashboardServer(pocketApp, 0);
 
         try {
-            store.update({
+            store.updateConfigValues({
                 allowedUserIds: ['user-1', 'user-2'],
                 defaultUserDailyBudgetUsd: 0.5,
-                userBudgets: { 'user-1': { dailyBudgetUsd: 1.25 } },
             });
+            replaceBudgets(
+                store.listUserBudgets(),
+                { 'user-1': { dailyBudgetUsd: 1.25 } },
+                (id) => store.clearUserBudget(id),
+                (id, budget) => store.setUserBudget(id, budget),
+            );
             usageMock.getUserStats.mockClear();
 
             const login = await request(pocketServer, 'POST', '/api/login', {
@@ -1155,11 +1192,13 @@ describe('Dashboard API', () => {
             expect(usageMock.getUserStats).toHaveBeenCalledWith('user-2');
             expect(usageMock.getUserStats).toHaveBeenCalledWith('pending-owner');
         } finally {
-            store.update({
-                allowedUserIds: previousAllowedUserIds,
-                defaultUserDailyBudgetUsd: previousDefaultUserBudget,
-                userBudgets: previousUserBudgets,
-            });
+            store.updateConfigValues(previousConfig);
+            replaceBudgets(
+                store.listUserBudgets(),
+                previousUserBudgets,
+                (id) => store.clearUserBudget(id),
+                (id, budget) => store.setUserBudget(id, budget),
+            );
             stopDashboardApp(pocketApp);
             pocketServer.close();
         }
@@ -1167,9 +1206,11 @@ describe('Dashboard API', () => {
 
     it('should resolve combined user budget profiles with the Pocket Discord client', async () => {
         const { store } = await import('../src/persistence/store.js');
-        const previousAllowedUserIds = store.get('allowedUserIds');
-        const previousDefaultUserBudget = store.get('defaultUserDailyBudgetUsd');
-        const previousUserBudgets = store.get('userBudgets');
+        const previousConfig = store.getConfigValues([
+            'allowedUserIds',
+            'defaultUserDailyBudgetUsd',
+        ]);
+        const previousUserBudgets = store.listUserBudgets();
         const emptyProfileDb = createSqliteDatabase(':memory:');
         const emptyProfileRepository = new DiscordUserProfileRepository({ db: emptyProfileDb });
         const guildFetch = vi.fn(async () => {
@@ -1198,7 +1239,6 @@ describe('Dashboard API', () => {
                 } as unknown as Client,
                 'babel-pocket': pocketClient,
             },
-            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
             metrics,
             runtimeLimiter,
             profile: BABEL_GUILD_PROFILE,
@@ -1210,11 +1250,16 @@ describe('Dashboard API', () => {
         const combinedServer = startDashboardServer(combinedApp, 0);
 
         try {
-            store.update({
+            store.updateConfigValues({
                 allowedUserIds: [],
                 defaultUserDailyBudgetUsd: 0.5,
-                userBudgets: {},
             });
+            replaceBudgets(
+                store.listUserBudgets(),
+                {},
+                (id) => store.clearUserBudget(id),
+                (id, budget) => store.setUserBudget(id, budget),
+            );
 
             const login = await request(combinedServer, 'POST', '/api/login', {
                 body: { password: 'test-pass-123' },
@@ -1234,11 +1279,13 @@ describe('Dashboard API', () => {
                 }),
             });
         } finally {
-            store.update({
-                allowedUserIds: previousAllowedUserIds,
-                defaultUserDailyBudgetUsd: previousDefaultUserBudget,
-                userBudgets: previousUserBudgets,
-            });
+            store.updateConfigValues(previousConfig);
+            replaceBudgets(
+                store.listUserBudgets(),
+                previousUserBudgets,
+                (id) => store.clearUserBudget(id),
+                (id, budget) => store.setUserBudget(id, budget),
+            );
             stopDashboardApp(combinedApp);
             combinedServer.close();
             emptyProfileDb.close();
@@ -1258,63 +1305,16 @@ describe('Dashboard API', () => {
         expect(healthCheck).toHaveBeenCalledTimes(1);
     });
 
-    it('should expose release version metadata to authenticated users', async () => {
+    it('should expose package version metadata to authenticated users', async () => {
         const res = await request(server, 'GET', '/api/version', {
             cookie: sessionCookie,
         });
 
         expect(res.status).toBe(200);
         expect(res.body).toEqual({
-            version: '0.2.0',
-            repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator',
-            update: {
-                status: 'current',
-                latestVersion: '0.2.0',
-                latestUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases/tag/v0.2.0',
-            },
+            version: '0.2.2',
+            repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases',
         });
-        expect(versionCheck).toHaveBeenCalled();
-    });
-
-    it('should force-refresh release metadata for authenticated admins with CSRF', async () => {
-        versionCheck.mockClear();
-        versionCheck.mockResolvedValueOnce({
-            version: '0.2.0',
-            repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator',
-            update: {
-                status: 'outdated',
-                latestVersion: '0.2.0',
-                latestUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases/tag/v0.2.0',
-            },
-        });
-
-        const res = await request(server, 'POST', '/api/version/refresh', {
-            cookie: sessionCookie,
-            csrf: csrfToken,
-        });
-
-        expect(res.status).toBe(200);
-        expect(res.body).toEqual({
-            version: '0.2.0',
-            repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator',
-            update: {
-                status: 'outdated',
-                latestVersion: '0.2.0',
-                latestUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases/tag/v0.2.0',
-            },
-        });
-        expect(versionCheck).toHaveBeenCalledWith({ forceRefresh: true });
-    });
-
-    it('should reject release metadata refresh without CSRF', async () => {
-        versionCheck.mockClear();
-
-        const res = await request(server, 'POST', '/api/version/refresh', {
-            cookie: sessionCookie,
-        });
-
-        expect(res.status).toBe(403);
-        expect(versionCheck).not.toHaveBeenCalled();
     });
 
     it('should expose Prometheus metrics without dashboard authentication by default in local test mode', async () => {
@@ -1352,7 +1352,7 @@ describe('Dashboard API', () => {
             expect(res.status).toBe(200);
             expect(res.headers['content-type']).toContain('text/plain');
             expect(res.text).toContain(
-                'babel_app_version_info{version="0.2.2",repository_url="https://github.com/0xH4KU/babel-discord-translator"} 1',
+                'babel_app_version_info{version="0.2.2",repository_url="https://github.com/0xH4KU/babel-discord-translator/releases"} 1',
             );
             expect(res.text).toContain('babel_translations_total');
             expect(res.text).toContain('babel_translation_failures_total');
@@ -1473,9 +1473,9 @@ describe('Dashboard API', () => {
         expect(providers.openai.failureTotal).toEqual(expect.any(Number));
 
         const { store } = await import('../src/persistence/store.js');
-        const previousGcpProject = store.get('gcpProject');
+        const previousGcpProject = store.getConfigValues(['gcpProject']).gcpProject;
         try {
-            store.update({ gcpProject: '' });
+            store.updateConfigValues({ gcpProject: '' });
             const missingProjectRes = await request(server, 'GET', '/api/stats', {
                 cookie: sessionCookie,
             });
@@ -1489,7 +1489,7 @@ describe('Dashboard API', () => {
             >;
             expect(missingProjectProviders.vertex.configured).toBe(false);
         } finally {
-            store.update({ gcpProject: previousGcpProject });
+            store.updateConfigValues({ gcpProject: previousGcpProject });
         }
 
         const runtimePressure = operations.runtimePressure as Record<string, unknown>;
@@ -1637,10 +1637,8 @@ describe('Dashboard API', () => {
         });
         expect(res.status).toBe(200);
 
-        // store.update should have been called without the protected fields
-        const lastCall = (store.update as ReturnType<typeof vi.fn>).mock.calls[
-            (store.update as ReturnType<typeof vi.fn>).mock.calls.length - 1
-        ][0];
+        const updateConfigValues = store.updateConfigValues as ReturnType<typeof vi.fn>;
+        const lastCall = updateConfigValues.mock.calls[updateConfigValues.mock.calls.length - 1][0];
         expect(lastCall).not.toHaveProperty('tokenUsage');
         expect(lastCall).not.toHaveProperty('usageHistory');
         expect(lastCall).not.toHaveProperty('userLanguagePrefs');
@@ -1759,7 +1757,6 @@ describe('Dashboard API', () => {
             cooldown: new CooldownManager(5),
             log,
             client: createMinimalClient(),
-            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
             metrics,
             runtimeLimiter,
             profile: BABEL_GUILD_PROFILE,
@@ -2117,7 +2114,6 @@ describe('Dashboard API', () => {
             cooldown: new CooldownManager(5),
             log,
             client: createMinimalClient(),
-            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
             metrics,
             runtimeLimiter,
             profile: BABEL_POCKET_PROFILE,
@@ -2874,7 +2870,6 @@ describe('Dashboard API', () => {
         });
 
         const dashboard = startCombinedDashboard({
-            getStats: () => ({ totalTranslations: 99, apiCalls: 88 }),
             metrics: scopedMetrics,
         });
 
@@ -2919,8 +2914,8 @@ describe('Dashboard API', () => {
             expect(guildProviders.openai.failureTotal).toBe(0);
             expect(pocketProviders.vertex.successTotal).toBe(0);
             expect(pocketProviders.openai.failureTotal).toBe(1);
-            expect(rootTranslations.total).toBe(99);
-            expect(rootTranslations.apiCalls).toBe(88);
+            expect(rootTranslations.total).toBe(1);
+            expect(rootTranslations.apiCalls).toBe(1);
             expect(guildTranslations.total).toBe(1);
             expect(guildTranslations.apiCalls).toBe(1);
             expect(guildTranslations.failures).toBe(0);

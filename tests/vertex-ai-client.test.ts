@@ -26,8 +26,6 @@ vi.mock('../src/persistence/store.js', () => {
 
     return {
         store: {
-            get: vi.fn((key: string) => data[key]),
-            getAll: vi.fn(() => ({ ...data })),
             getConfigValues: vi.fn((keys: readonly string[]) =>
                 Object.fromEntries(
                     keys.map((key) => {

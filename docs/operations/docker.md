@@ -21,7 +21,7 @@ For Guild:
 ```bash
 npm run build:guild
 npm run register:guild
-npm run start -w @babel-discord-translator/guild
+npm run start:guild
 ```
 
 For Pocket:
@@ -29,7 +29,7 @@ For Pocket:
 ```bash
 npm run build:pocket
 npm run register:pocket
-npm run start -w @babel-discord-translator/pocket
+npm run start:pocket
 ```
 
 Set `BABEL_APP=pocket` in `.env` or Compose to run Babel Pocket from the same image. Set `BABEL_APP=combined` when you want one container with both Discord clients, one dashboard, and one SQLite database. In combined mode, the combined dashboard root `/` shows a product chooser; `/guild` opens the Babel Guild dashboard; `/pocket` opens the Babel Pocket dashboard.
