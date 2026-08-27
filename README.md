@@ -41,7 +41,6 @@ Right-click any message → **Apps** → **Babel** or **Babel Pocket** → get a
 
 [Live Dashboard Demo](https://0xh4ku.github.io/babel-discord-translator/demo/) ·
 [Deployment Guide](docs/operations/deployment.md) ·
-[Cloudflare Worker](apps/babel-worker/README.md) ·
 [Railway](docs/operations/railway.md) ·
 [Docker Ops](docs/operations/docker.md) ·
 [Changelog](CHANGELOG.md)
@@ -139,7 +138,7 @@ Sponsorship is optional and does not unlock private features. Supporting mainten
 
 ### Infrastructure
 
-- **Portable Persistence** — Node deployments use SQLite; Cloudflare Workers use D1 for config, usage, preferences, budgets, sessions, cache, and runtime controls
+- **Portable Persistence** — SQLite stores config, usage, preferences, budgets, and sessions in one file that can be backed up or moved between hosts
 - **Governed Message Catalogs** — Discord and dashboard error messages centralized into separate message catalogs
 - **Graceful Shutdown** — Clean `SIGTERM`/`SIGINT` handling with ordered teardown for Docker & PM2
 
@@ -197,7 +196,7 @@ docker compose up -d --build
 Open `http://localhost:3000` → Login → Complete the setup wizard.
 On first boot, Babel creates `data/babel.sqlite` and auto-imports `data/config.json` if a legacy JSON store exists.
 
-For Cloudflare Workers, Railway, Docker, VPS, PM2, and static dashboard demo notes, see the [deployment guide](docs/operations/deployment.md). The [Worker guide](apps/babel-worker/README.md) covers D1 and HTTP interactions; the [Railway guide](docs/operations/railway.md) and [Docker operations guide](docs/operations/docker.md) cover Node/SQLite deployments.
+For Railway, Docker, VPS, PM2, and static dashboard demo notes, see the [deployment guide](docs/operations/deployment.md). The [Railway guide](docs/operations/railway.md) and [Docker operations guide](docs/operations/docker.md) cover hosted and self-managed Node/SQLite deployments.
 
 ---
 
@@ -343,7 +342,6 @@ Babel stores runtime data through native `node:sqlite`. Before upgrading Node on
 | Layer           | Path                       | Responsibility                                                                    |
 | --------------- | -------------------------- | --------------------------------------------------------------------------------- |
 | **Profiles**    | `src/apps/`                | Guild/Pocket profiles, bootstrap, and command definitions                         |
-| **Worker**      | `apps/babel-worker/`       | Cloudflare Worker entrypoint, D1 migrations, and deployment config                |
 | **Entry**       | `src/index.ts`             | Node entrypoint selected by `BABEL_APP` or a CLI profile argument                 |
 | **Commands**    | `src/commands/`            | Discord interaction handlers (`babel`, `translate`, `setlang`, `mylang`, `help`)  |
 | **Translation** | `src/modules/translation/` | Cache, cooldowns, runtime limiter, language detection, webhook delivery           |
@@ -371,9 +369,7 @@ Babel stores runtime data through native `node:sqlite`. Before upgrading Node on
 npm run dev             # Run root app in watch mode, selected by BABEL_APP
 npm run dev:guild       # Run Babel Guild in watch mode
 npm run dev:pocket      # Run Babel Pocket in watch mode
-npm run dev:worker      # Run the Cloudflare Worker locally with persistent D1 state
 npm run typecheck       # Type check (no emit)
-npm run typecheck:worker # Type check the Worker runtime
 npm test                # Run tests
 npm run test:coverage   # Run tests with v8 coverage
 npm run test:watch      # Run tests in watch mode
@@ -390,37 +386,15 @@ npm run start:guild     # Run Babel Guild production artifact
 npm run start:pocket    # Run Babel Pocket production artifact
 npm run db:migrate      # Import legacy JSON → SQLite
 npm run db:export:json  # Export SQLite → JSON
-npm run db:export:d1    # Export SQLite data as D1-compatible SQL
-npm run deploy:worker   # Deploy the configured Cloudflare Worker
 ```
 
 ### Test Coverage
 
-The test suite exercises both the Node/SQLite and Worker/D1 runtimes. Run `npm test` for the executable suite and `npm run test:coverage` for coverage.
+The test suite exercises the Node/SQLite runtime. Run `npm test` for the executable suite and `npm run test:coverage` for coverage.
 
 ---
 
 ## Production Deployment
-
-### Cloudflare Workers
-
-The `apps/babel-worker` workspace runs both products with Discord HTTP interactions, static assets, and D1-backed dashboard/config/runtime state. The checked-in production config uses `BABEL_APP=combined`, Worker name `babel-discord-translator`, and custom domain [babel.lum.bio](https://babel.lum.bio).
-
-```bash
-npm install
-npm run typecheck:worker
-npm run db:migrate:remote -w @babel-discord-translator/worker
-npm run deploy:worker
-```
-
-Keep runtime/provider/allowlist/budget settings in the dashboard. Cloudflare only needs `BABEL_APP` as a plain variable plus the Dashboard password and profile-specific Discord app credentials as secrets. Set the Discord applications' Interactions Endpoint URLs to:
-
-```text
-https://babel.lum.bio/guild/interactions
-https://babel.lum.bio/pocket/interactions
-```
-
-Forks should replace the Worker name, D1 database ID, and custom domain in `apps/babel-worker/wrangler.jsonc`. See the [Cloudflare Worker guide](apps/babel-worker/README.md) for first-time D1 creation, secrets, validation, and Railway-to-D1 migration.
 
 ### Railway
 
@@ -484,7 +458,6 @@ Set `BABEL_METRICS_TOKEN` before exposing `/metrics` outside a private network. 
 ### Operations Guides
 
 - [Deployment guide](docs/operations/deployment.md)
-- [Cloudflare Worker guide](apps/babel-worker/README.md)
 - [Alerts runbook](docs/operations/alerts-runbook.md)
 - [SQLite backup and restore](docs/operations/sqlite-backup-restore.md)
 

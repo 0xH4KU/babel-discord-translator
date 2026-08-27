@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Removed the Cloudflare Worker/D1 runtime and deployment tooling; Babel now ships one Node.js Gateway and SQLite runtime for Railway, Docker, VPS, and PM2 deployments.
+
 ## 0.2.2 - 2026-07-12
 
 - Added a Cloudflare Workers runtime with signed Discord HTTP interactions, combined Guild/Pocket routing, static dashboard assets, and D1-backed config, sessions, usage, cache, cooldowns, logs, metrics, and runtime admission controls.
