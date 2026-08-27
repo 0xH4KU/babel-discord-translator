@@ -222,7 +222,6 @@ const usageMock = vi.hoisted(() => ({
     getGuildStatsForGuilds: vi.fn(() => ({})),
     getHistory: vi.fn(() => []),
     getGuildHistory: vi.fn(() => []),
-    getUserHistory: vi.fn(() => []),
     getGuildHistoryForGuilds: vi.fn(() => []),
     getAllUserHistory: vi.fn(() => []),
     getUsageExportRows: vi.fn(() => []),
@@ -2828,7 +2827,6 @@ describe('Dashboard API', () => {
         ];
         usageMock.getHistory.mockReturnValue(globalHistory);
         usageMock.getGuildHistory.mockReturnValue(guildHistory);
-        usageMock.getUserHistory.mockReturnValue(pocketHistory);
         usageMock.getGuildHistoryForGuilds.mockReturnValue(guildHistory);
         usageMock.getAllUserHistory.mockReturnValue(pocketHistory);
 
@@ -2907,7 +2905,6 @@ describe('Dashboard API', () => {
         } finally {
             usageMock.getHistory.mockReturnValue([]);
             usageMock.getGuildHistory.mockReturnValue([]);
-            usageMock.getUserHistory.mockReturnValue([]);
             usageMock.getGuildHistoryForGuilds.mockReturnValue([]);
             usageMock.getAllUserHistory.mockReturnValue([]);
             dashboard.close();

@@ -120,11 +120,6 @@ describe('WebhookService', () => {
         expect(channel1.fetchWebhooks).toHaveBeenCalledTimes(1);
         expect(channel2.fetchWebhooks).toHaveBeenCalledTimes(2);
         expect(channel3.fetchWebhooks).toHaveBeenCalledTimes(1);
-        expect(service.snapshot()).toEqual({
-            size: 2,
-            maxSize: 2,
-            evictions: 2,
-        });
     });
 
     it('should share one webhook lookup across concurrent sends', async () => {

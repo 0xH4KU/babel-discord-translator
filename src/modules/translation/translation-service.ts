@@ -27,11 +27,7 @@ import {
     getDiscordTranslationCommandMessages,
 } from '../../shared/messages/discord-messages.js';
 import { decideTranslationAccess } from './access-policy.js';
-import {
-    createTranslationScope,
-    getBillingUsageUserId,
-    getRuntimeLimiterUserId,
-} from './translation-scope.js';
+import { createTranslationScope, getEffectiveUserId } from './translation-scope.js';
 import {
     resolveTargetLanguage,
     type LangSource,
@@ -253,7 +249,7 @@ export function createTranslationService({
 
             const usageScope = {
                 guildId: accessMode === 'guild' ? (request.guildId ?? null) : null,
-                userId: accessMode === 'user-install' ? getBillingUsageUserId(scope) : null,
+                userId: accessMode === 'user-install' ? getEffectiveUserId(scope) : null,
             };
 
             const cooldownState = cooldown.check(request.userId);
@@ -362,7 +358,7 @@ export function createTranslationService({
                 if (!cached && runtimeLimiter) {
                     const admission = runtimeLimiter.acquire({
                         guildId: request.guildId ?? null,
-                        userId: getRuntimeLimiterUserId(scope),
+                        userId: getEffectiveUserId(scope),
                     });
 
                     if (!admission.accepted) {
@@ -430,7 +426,7 @@ export function createTranslationService({
                                 {
                                     requestId,
                                     guildId: request.guildId ?? null,
-                                    userId: getRuntimeLimiterUserId(scope),
+                                    userId: getEffectiveUserId(scope),
                                     command: request.command,
                                 },
                                 profileMetrics,

@@ -4,7 +4,7 @@ import {
     type ChatInputCommandInteraction,
     type GuildMember,
 } from 'discord.js';
-import { sanitizeError } from './shared.js';
+import { sanitizeError } from '../shared/errors.js';
 import { buildTranslationMessages } from '../shared/discord-message-format.js';
 import { discordMessages } from '../shared/messages/discord-messages.js';
 import { appLogger, createRequestId } from '../shared/structured-logger.js';

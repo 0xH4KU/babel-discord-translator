@@ -181,52 +181,6 @@ describe('UsageTracker', () => {
         expect(data.requests).toBe(2);
     });
 
-    it('should calculate cost correctly', () => {
-        mockData.inputPricePerMillion = 1.0; // $1/M input tokens
-        mockData.outputPricePerMillion = 2.0; // $2/M output tokens
-
-        usage.record(1_000_000, 500_000);
-
-        const cost = usage.getCost();
-        expect(cost.inputCost).toBe(1.0);
-        expect(cost.outputCost).toBe(1.0);
-        expect(cost.totalCost).toBe(2.0);
-    });
-
-    it('should return zero cost when prices are zero', () => {
-        usage.record(1000, 500);
-
-        const cost = usage.getCost();
-        expect(cost.totalCost).toBe(0);
-    });
-
-    it('should report budget not exceeded when budget is 0 (unlimited)', () => {
-        mockData.dailyBudgetUsd = 0;
-        usage.record(1_000_000, 1_000_000);
-
-        expect(usage.isBudgetExceeded()).toBe(false);
-    });
-
-    it('should report budget exceeded when cost >= budget', () => {
-        mockData.dailyBudgetUsd = 1.0;
-        mockData.inputPricePerMillion = 1.0;
-        mockData.outputPricePerMillion = 0;
-
-        usage.record(1_000_000, 0); // $1 cost = $1 budget
-
-        expect(usage.isBudgetExceeded()).toBe(true);
-    });
-
-    it('should report budget not exceeded when under budget', () => {
-        mockData.dailyBudgetUsd = 10.0;
-        mockData.inputPricePerMillion = 1.0;
-        mockData.outputPricePerMillion = 0;
-
-        usage.record(1_000_000, 0); // $1 cost < $10 budget
-
-        expect(usage.isBudgetExceeded()).toBe(false);
-    });
-
     it('should reserve pending global cost and release it without recording usage', () => {
         mockData.dailyBudgetUsd = 1.0;
         mockData.inputPricePerMillion = 1.0;
@@ -464,125 +418,6 @@ describe('UsageTracker', () => {
             const global = mockData.tokenUsage as { inputTokens: number; requests: number };
             expect(global.inputTokens).toBe(350);
             expect(global.requests).toBe(3);
-        });
-
-        it('should use guild budget when set', () => {
-            mockData.guildBudgets = { 'guild-123': { dailyBudgetUsd: 1.0 } };
-            mockData.inputPricePerMillion = 1.0;
-            mockData.outputPricePerMillion = 0;
-
-            usage.record(1_000_000, 0, { guildId: 'guild-123' }); // $1 cost = $1 guild budget
-
-            expect(usage.isBudgetExceeded({ guildId: 'guild-123' })).toBe(true);
-        });
-
-        it('should fallback to global budget when guild has no budget', () => {
-            mockData.dailyBudgetUsd = 1.0;
-            mockData.guildBudgets = {}; // No guild-specific budget
-            mockData.inputPricePerMillion = 1.0;
-            mockData.outputPricePerMillion = 0;
-
-            usage.record(1_000_000, 0, { guildId: 'guild-456' }); // $1 cost = $1 global budget
-
-            expect(usage.isBudgetExceeded({ guildId: 'guild-456' })).toBe(true);
-        });
-
-        it('should enforce a shared global budget for guilds without a custom budget', () => {
-            mockData.dailyBudgetUsd = 1.0;
-            mockData.guildBudgets = {};
-            mockData.inputPricePerMillion = 1.0;
-            mockData.outputPricePerMillion = 0;
-
-            usage.record(600_000, 0, { guildId: 'guild-A' });
-            usage.record(400_000, 0, { guildId: 'guild-B' });
-
-            expect(usage.isBudgetExceeded({ guildId: 'guild-A' })).toBe(true);
-            expect(usage.isBudgetExceeded({ guildId: 'guild-B' })).toBe(true);
-        });
-
-        it('should keep custom guild usage out of the shared global budget pool', () => {
-            mockData.dailyBudgetUsd = 0.5;
-            mockData.guildBudgets = { 'guild-custom': { dailyBudgetUsd: 2.0 } };
-            mockData.inputPricePerMillion = 1.0;
-            mockData.outputPricePerMillion = 0;
-
-            usage.record(600_000, 0, { guildId: 'guild-custom' });
-
-            expect(usage.isBudgetExceeded({ guildId: 'guild-global' })).toBe(false);
-            expect(
-                usage.wouldExceedBudget({
-                    estimatedInputTokens: 400_000,
-                    estimatedOutputTokens: 0,
-                    guildId: 'guild-global',
-                }),
-            ).toBe(false);
-        });
-
-        it('should block estimated requests against the shared global budget pool', () => {
-            mockData.dailyBudgetUsd = 1.0;
-            mockData.guildBudgets = {};
-            mockData.inputPricePerMillion = 1.0;
-            mockData.outputPricePerMillion = 0;
-
-            usage.record(600_000, 0, { guildId: 'guild-A' });
-
-            expect(
-                usage.wouldExceedBudget({
-                    estimatedInputTokens: 400_000,
-                    estimatedOutputTokens: 0,
-                    guildId: 'guild-B',
-                }),
-            ).toBe(true);
-        });
-
-        it('should read runtime config once per budget check', () => {
-            mockData.dailyBudgetUsd = 1.0;
-            mockData.inputPricePerMillion = 1.0;
-            mockData.outputPricePerMillion = 0;
-
-            usage.record(1_000_000, 0, { guildId: 'guild-456' });
-            usage.isBudgetExceeded({ guildId: 'guild-456' });
-
-            expect(mockedStore.getConfigValues).toHaveBeenCalledOnce();
-        });
-
-        it('should allow guild with separate budget even if global is exceeded', () => {
-            mockData.dailyBudgetUsd = 0.5; // global $0.50
-            mockData.guildBudgets = { 'guild-rich': { dailyBudgetUsd: 5.0 } }; // guild $5
-            mockData.inputPricePerMillion = 1.0;
-            mockData.outputPricePerMillion = 0;
-
-            usage.record(1_000_000, 0, { guildId: 'guild-rich' }); // $1 cost < $5 guild budget
-
-            expect(usage.isBudgetExceeded({ guildId: 'guild-rich' })).toBe(false);
-        });
-
-        it('should estimate custom guild budgets independently from the global budget pool', () => {
-            mockData.dailyBudgetUsd = 0.5;
-            mockData.guildBudgets = { 'guild-custom': { dailyBudgetUsd: 2.0 } };
-            mockData.inputPricePerMillion = 1.0;
-            mockData.outputPricePerMillion = 0;
-
-            usage.record(600_000, 0, { guildId: 'guild-global' });
-
-            expect(
-                usage.wouldExceedBudget({
-                    estimatedInputTokens: 1_000_000,
-                    estimatedOutputTokens: 0,
-                    guildId: 'guild-custom',
-                }),
-            ).toBe(false);
-        });
-
-        it('should report guild budget not exceeded when guild budget is 0 (unlimited)', () => {
-            mockData.dailyBudgetUsd = 1.0; // global has limit
-            mockData.guildBudgets = { 'guild-free': { dailyBudgetUsd: 0 } }; // guild unlimited
-            mockData.inputPricePerMillion = 1.0;
-            mockData.outputPricePerMillion = 0;
-
-            usage.record(10_000_000, 0, { guildId: 'guild-free' }); // $10 cost
-
-            expect(usage.isBudgetExceeded({ guildId: 'guild-free' })).toBe(false);
         });
 
         it('should return correct guild stats', () => {
@@ -844,22 +679,6 @@ describe('UsageTracker', () => {
             const guildUsage = mockData.guildTokenUsage as Record<string, unknown>;
             expect(Object.keys(guildUsage).length).toBe(0);
         });
-
-        it('should block estimated requests that would exceed a guild budget', () => {
-            mockData.guildBudgets = { 'guild-estimate': { dailyBudgetUsd: 1.0 } };
-            mockData.inputPricePerMillion = 1.0;
-            mockData.outputPricePerMillion = 1.0;
-
-            usage.record(900_000, 0, { guildId: 'guild-estimate' });
-
-            expect(
-                usage.wouldExceedBudget({
-                    estimatedInputTokens: 50_000,
-                    estimatedOutputTokens: 100_000,
-                    guildId: 'guild-estimate',
-                }),
-            ).toBe(true);
-        });
     });
 
     describe('Per-User Budget', () => {
@@ -876,38 +695,6 @@ describe('UsageTracker', () => {
             >;
             expect(userUsage['user-123'].inputTokens).toBe(100);
             expect(userUsage['user-123'].requests).toBe(1);
-        });
-
-        it('should use user budget before default user budget', () => {
-            mockData.defaultUserDailyBudgetUsd = 10.0;
-            mockData.userBudgets = { 'user-123': { dailyBudgetUsd: 1.0 } };
-            mockData.inputPricePerMillion = 1.0;
-            mockData.outputPricePerMillion = 0;
-
-            usage.record(1_000_000, 0, { userId: 'user-123' });
-
-            expect(usage.isBudgetExceeded({ userId: 'user-123' })).toBe(true);
-        });
-
-        it('should use default user budget when no custom user budget exists', () => {
-            mockData.defaultUserDailyBudgetUsd = 1.0;
-            mockData.inputPricePerMillion = 1.0;
-            mockData.outputPricePerMillion = 0;
-
-            usage.record(1_000_000, 0, { userId: 'user-default' });
-
-            expect(usage.isBudgetExceeded({ userId: 'user-default' })).toBe(true);
-        });
-
-        it('should enforce the global budget as a user-install safety cap', () => {
-            mockData.dailyBudgetUsd = 1.0;
-            mockData.defaultUserDailyBudgetUsd = 10.0;
-            mockData.inputPricePerMillion = 1.0;
-            mockData.outputPricePerMillion = 0;
-
-            usage.record(1_000_000, 0, { userId: 'user-capped' });
-
-            expect(usage.isBudgetExceeded({ userId: 'user-capped' })).toBe(true);
         });
 
         it('should return user stats with user budget', () => {
@@ -947,26 +734,6 @@ describe('UsageTracker', () => {
             >;
             expect(userUsage['user-A'].date).toBe(today);
             expect(userUsage['user-A'].inputTokens).toBe(0);
-        });
-
-        it('should return user history with costs', () => {
-            mockData.inputPricePerMillion = 1.0;
-            mockData.outputPricePerMillion = 2.0;
-            mockData.userUsageHistory = {
-                'user-Y': [
-                    {
-                        date: '2025-01-01',
-                        inputTokens: 1_000_000,
-                        outputTokens: 500_000,
-                        requests: 5,
-                    },
-                ],
-            };
-
-            const history = usage.getUserHistory('user-Y');
-            expect(history).toHaveLength(1);
-            expect(history[0].cost).toBe(2.0);
-            expect(history[0].totalTokens).toBe(1_500_000);
         });
 
         it('should aggregate history across all users by date', () => {
@@ -1017,39 +784,6 @@ describe('UsageTracker', () => {
                     cost: 1.5,
                 },
             ]);
-        });
-
-        it('should block estimated requests that would exceed a user budget', () => {
-            mockData.userBudgets = { 'user-estimate': { dailyBudgetUsd: 1.0 } };
-            mockData.inputPricePerMillion = 1.0;
-            mockData.outputPricePerMillion = 1.0;
-
-            usage.record(900_000, 0, { userId: 'user-estimate' });
-
-            expect(
-                usage.wouldExceedBudget({
-                    estimatedInputTokens: 50_000,
-                    estimatedOutputTokens: 100_000,
-                    userId: 'user-estimate',
-                }),
-            ).toBe(true);
-        });
-
-        it('should block estimated user requests that would exceed the global safety cap', () => {
-            mockData.dailyBudgetUsd = 1.0;
-            mockData.defaultUserDailyBudgetUsd = 10.0;
-            mockData.inputPricePerMillion = 1.0;
-            mockData.outputPricePerMillion = 0;
-
-            usage.record(600_000, 0, { userId: 'user-estimate-global' });
-
-            expect(
-                usage.wouldExceedBudget({
-                    estimatedInputTokens: 400_000,
-                    estimatedOutputTokens: 0,
-                    userId: 'user-estimate-global',
-                }),
-            ).toBe(true);
         });
     });
 });

@@ -47,12 +47,6 @@ export interface TranslationWebhookSendRequest<TWebhook extends WebhookLike = We
     userId: string;
 }
 
-export interface WebhookCacheSnapshot {
-    size: number;
-    maxSize: number;
-    evictions: number;
-}
-
 export type WebhookErrorKind = 'stale_webhook' | 'permission_denied' | 'unknown';
 
 export interface ClassifiedWebhookError {
@@ -64,7 +58,6 @@ export interface ClassifiedWebhookError {
 
 export interface TranslationWebhookService {
     sendTranslation(request: TranslationWebhookSendRequest): Promise<void>;
-    snapshot(): WebhookCacheSnapshot;
 }
 
 export interface WebhookServiceDeps {
@@ -111,7 +104,6 @@ export function createWebhookService({
 }: WebhookServiceDeps = {}): TranslationWebhookService {
     const cache = new Map<string, WebhookLike>();
     const inFlight = new Map<string, Promise<WebhookLike>>();
-    let evictions = 0;
 
     const deleteCachedWebhook = (channelId: string): void => {
         cache.delete(channelId);
@@ -135,7 +127,6 @@ export function createWebhookService({
             const oldestChannelId = cache.keys().next().value;
             if (oldestChannelId !== undefined) {
                 cache.delete(oldestChannelId);
-                evictions += 1;
             }
         }
 
@@ -254,13 +245,6 @@ export function createWebhookService({
                 });
                 throw error;
             }
-        },
-        snapshot(): WebhookCacheSnapshot {
-            return {
-                size: cache.size,
-                maxSize: maxCacheSize,
-                evictions,
-            };
         },
     };
 }

@@ -125,69 +125,22 @@ class UsageTracker {
         }
     }
 
-    /** Calculate today's cost in USD (global). */
-    getCost(runtimeConfig = configRepository.getRuntimeConfig()): UsageCost {
-        this.ensureToday();
-        return currentCost(store.getDailyUsage(), runtimeConfig);
-    }
-
     /** Calculate today's cost for a specific user. */
-    getUserCost(userId: string, runtimeConfig = configRepository.getRuntimeConfig()): UsageCost {
+    private getUserCost(
+        userId: string,
+        runtimeConfig = configRepository.getRuntimeConfig(),
+    ): UsageCost {
         this.ensureToday();
         return currentCost(store.getUserDailyUsage(userId), runtimeConfig);
     }
 
     /** Calculate today's cost for a specific guild. */
-    getGuildCost(guildId: string, runtimeConfig = configRepository.getRuntimeConfig()): UsageCost {
+    private getGuildCost(
+        guildId: string,
+        runtimeConfig = configRepository.getRuntimeConfig(),
+    ): UsageCost {
         this.ensureToday();
         return currentCost(store.getGuildDailyUsage(guildId), runtimeConfig);
-    }
-
-    /**
-     * Check if daily budget is exceeded.
-     * If guildId is provided, checks guild-specific budget first,
-     * then falls back to the global budget.
-     */
-    isBudgetExceeded(scope: UsageScope = {}): boolean {
-        const runtimeConfig = configRepository.getRuntimeConfig();
-        const { budget, cost } = this.getBudgetScope(scope, runtimeConfig);
-
-        if (this.isCostOverBudget(cost, budget)) {
-            return true;
-        }
-
-        return !!scope.userId && this.isGlobalSafetyBudgetExceeded(runtimeConfig);
-    }
-
-    wouldExceedBudget({
-        estimatedInputTokens,
-        estimatedOutputTokens,
-        guildId,
-        userId,
-    }: {
-        estimatedInputTokens: number;
-        estimatedOutputTokens: number;
-        guildId?: string | null;
-        userId?: string | null;
-    }): boolean {
-        const runtimeConfig = configRepository.getRuntimeConfig();
-        const { budget, cost } = this.getBudgetScope({ guildId, userId }, runtimeConfig);
-
-        const estimatedCost =
-            (estimatedInputTokens / 1_000_000) * (runtimeConfig.inputPricePerMillion || 0) +
-            (estimatedOutputTokens / 1_000_000) * (runtimeConfig.outputPricePerMillion || 0);
-
-        if (this.wouldCostExceedBudget(cost, budget, estimatedCost)) {
-            return true;
-        }
-
-        if (!userId) {
-            return false;
-        }
-
-        const globalBudget = runtimeConfig.dailyBudgetUsd || 0;
-        const globalCost = this.getSharedGlobalBudgetCost(runtimeConfig);
-        return this.wouldCostExceedBudget(globalCost, globalBudget, estimatedCost);
     }
 
     tryReserveBudget({
@@ -285,32 +238,6 @@ class UsageTracker {
         ];
     }
 
-    private getBudgetScope(
-        scope: UsageScope,
-        runtimeConfig: RuntimeConfig,
-    ): { budget: number; cost: UsageCost } {
-        const decision = resolveBudgetScope(scope, runtimeConfig);
-
-        if (decision.kind === 'user' && decision.userId) {
-            return {
-                budget: decision.budget,
-                cost: this.getUserCost(decision.userId, runtimeConfig),
-            };
-        }
-
-        if (decision.kind === 'guild' && decision.guildId) {
-            return {
-                budget: decision.budget,
-                cost: this.getGuildCost(decision.guildId, runtimeConfig),
-            };
-        }
-
-        return {
-            budget: decision.budget,
-            cost: this.getSharedGlobalBudgetCost(runtimeConfig),
-        };
-    }
-
     /** Get stats for dashboard display (global). */
     getStats(): UsageStats {
         const runtimeConfig = configRepository.getRuntimeConfig();
@@ -395,15 +322,6 @@ class UsageTracker {
         return aggregateHistoryByDate(history);
     }
 
-    /** Get usage history for a specific user (last 30 days). */
-    getUserHistory(userId: string): UsageHistoryDay[] {
-        this.ensureToday();
-        const history = store.getUserUsageHistory(userId);
-        const runtimeConfig = configRepository.getRuntimeConfig();
-
-        return withHistoryCost(history, runtimeConfig);
-    }
-
     /** Get aggregated usage history for all user-install users (last 30 days). */
     getAllUserHistory(): UsageHistoryDay[] {
         this.ensureToday();
@@ -462,29 +380,6 @@ class UsageTracker {
             runtimeConfig.inputPricePerMillion || 0,
             runtimeConfig.outputPricePerMillion || 0,
         );
-    }
-
-    private isGlobalSafetyBudgetExceeded(runtimeConfig: RuntimeConfig): boolean {
-        return this.isCostOverBudget(
-            this.getSharedGlobalBudgetCost(runtimeConfig),
-            runtimeConfig.dailyBudgetUsd || 0,
-        );
-    }
-
-    private isCostOverBudget(cost: UsageCost, budget: number): boolean {
-        if (budget <= 0) {
-            return false;
-        }
-
-        return cost.totalCost >= budget;
-    }
-
-    private wouldCostExceedBudget(cost: UsageCost, budget: number, estimatedCost: number): boolean {
-        if (budget <= 0) {
-            return false;
-        }
-
-        return cost.totalCost + estimatedCost >= budget;
     }
 }
 

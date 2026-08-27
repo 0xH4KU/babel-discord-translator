@@ -12,10 +12,6 @@ export function createTranslationScope(input: {
     };
 }
 
-export function getBillingUsageUserId(scope: TranslationScope): string | null {
-    return scope.billingUserId ?? scope.actorUserId;
-}
-
-export function getRuntimeLimiterUserId(scope: TranslationScope): string {
+export function getEffectiveUserId(scope: TranslationScope): string {
     return scope.billingUserId ?? scope.actorUserId;
 }
