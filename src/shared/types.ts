@@ -20,6 +20,11 @@ import type { AppProfile } from '../apps/app-profile.js';
 
 export type TranslationProviderMode = 'vertex' | 'openai' | 'vertex+openai' | 'openai+vertex';
 
+export interface TranslationPrompt {
+    system: string;
+    user: string;
+}
+
 // --- Store ---
 
 export interface GuildBudgetConfig {

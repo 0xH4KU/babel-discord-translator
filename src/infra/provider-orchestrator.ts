@@ -1,7 +1,11 @@
 import type { StructuredLogFields } from '../shared/structured-logger.js';
 import { appLogger } from '../shared/structured-logger.js';
 import type { AppMetricsCollector } from '../shared/app-metrics.js';
-import type { TranslationProviderMode, TranslationResult } from '../shared/types.js';
+import type {
+    TranslationPrompt,
+    TranslationProviderMode,
+    TranslationResult,
+} from '../shared/types.js';
 import type { RuntimeConfig } from '../modules/config/config-repository.js';
 
 export interface TranslateOptions {
@@ -15,7 +19,7 @@ export interface TranslationProvider {
     name: string;
     /** Translate a prompt. */
     translate(
-        prompt: string,
+        prompt: TranslationPrompt,
         maxOutputTokens: number,
         options?: TranslateOptions,
     ): Promise<TranslationResult>;
@@ -132,7 +136,7 @@ export function createProviderOrchestrator(
 
     return {
         async translate(
-            prompt: string,
+            prompt: TranslationPrompt,
             maxOutputTokens: number,
             options?: TranslateOptions,
         ): Promise<ProviderOrchestratorResult> {

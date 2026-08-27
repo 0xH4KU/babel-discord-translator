@@ -8,7 +8,11 @@ import {
     fetchProviderWithRetry,
 } from './provider-http.js';
 import type { TranslationProvider, TranslateOptions } from './provider-orchestrator.js';
-import type { OpenAIChatResponse, TranslationResult } from '../shared/types.js';
+import type {
+    OpenAIChatResponse,
+    TranslationPrompt,
+    TranslationResult,
+} from '../shared/types.js';
 
 const MAX_RETRIES = DEFAULT_PROVIDER_MAX_RETRIES;
 const REQUEST_TIMEOUT_MS = DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS;
@@ -50,7 +54,7 @@ async function buildOpenAiError(response: Response): Promise<Error> {
 }
 
 async function requestChatCompletion(
-    prompt: string,
+    prompt: string | TranslationPrompt,
     {
         maxOutputTokens,
         temperature = 0.1,
@@ -108,7 +112,13 @@ async function requestChatCompletion(
                 },
                 body: JSON.stringify({
                     model: config.model,
-                    messages: [{ role: 'user', content: prompt }],
+                    messages:
+                        typeof prompt === 'string'
+                            ? [{ role: 'user', content: prompt }]
+                            : [
+                                  { role: 'system', content: prompt.system },
+                                  { role: 'user', content: prompt.user },
+                              ],
                     max_tokens: maxOutputTokens,
                     temperature,
                 }),
@@ -157,7 +167,7 @@ async function requestChatCompletion(
 }
 
 export async function generateTranslationContent(
-    prompt: string,
+    prompt: TranslationPrompt,
     maxOutputTokens: number,
     options?: {
         logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'>;
@@ -215,7 +225,7 @@ export function createOpenAiProvider(): TranslationProvider {
     return {
         name: 'openai',
         async translate(
-            prompt: string,
+            prompt: TranslationPrompt,
             maxOutputTokens: number,
             options?: TranslateOptions,
         ): Promise<TranslationResult> {

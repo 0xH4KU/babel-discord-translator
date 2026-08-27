@@ -43,6 +43,8 @@ vi.mock('../src/persistence/store.js', () => {
 
 import { store } from '../src/persistence/store.js';
 
+const translationPrompt = (user: string) => ({ system: 'Translate accurately.', user });
+
 function geminiResponse(text: string, inputTokens = 10, outputTokens = 5) {
     return {
         ok: true,
@@ -80,7 +82,7 @@ describe('vertex-ai-client', () => {
     it('should generate translation content via the shared Vertex AI client', async () => {
         globalThis.fetch = vi.fn().mockResolvedValue(geminiResponse('你好', 15, 8));
 
-        const result = await generateTranslationContent('Translate me', 512);
+        const result = await generateTranslationContent(translationPrompt('Translate me'), 512);
 
         expect(result).toEqual({
             text: '你好',
@@ -90,6 +92,12 @@ describe('vertex-ai-client', () => {
 
         const request = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1];
         const body = JSON.parse(request.body);
+        expect(body.systemInstruction).toEqual({
+            parts: [{ text: 'Translate accurately.' }],
+        });
+        expect(body.contents).toEqual([
+            { role: 'user', parts: [{ text: 'Translate me' }] },
+        ]);
         expect(body.generationConfig.maxOutputTokens).toBe(512);
         expect(request.signal).toBeInstanceOf(AbortSignal);
     });
@@ -138,7 +146,7 @@ describe('vertex-ai-client', () => {
         });
 
         vi.useFakeTimers();
-        const promise = generateTranslationContent('Translate me', 512);
+        const promise = generateTranslationContent(translationPrompt('Translate me'), 512);
         const caught = promise.catch((error: Error) => error);
         await vi.runAllTimersAsync();
         vi.useRealTimers();
