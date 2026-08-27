@@ -1,3 +1,4 @@
+import { PermissionFlagsBits } from 'discord.js';
 import { describe, expect, it, vi } from 'vitest';
 import { handleTranslate } from '../src/commands/translate.js';
 
@@ -26,7 +27,7 @@ function createInteraction() {
             has: vi.fn(() => true),
         },
         locale: 'en-US',
-        channel: { id: 'channel-1' },
+        channel: { id: 'channel-1', isThread: vi.fn(() => false) },
         reply: vi.fn(),
         deferReply: vi.fn(),
         editReply: vi.fn(),
@@ -115,6 +116,45 @@ describe('handleTranslate', () => {
         });
     });
 
+    it('should send public thread translations through the parent webhook', async () => {
+        const webhookService = {
+            sendTranslation: vi.fn().mockResolvedValue(undefined),
+        };
+        const translationService = {
+            process: vi.fn().mockResolvedValue({
+                status: 'success',
+                deferred: true,
+                translatedText: 'Hola mundo',
+                originalText: 'Hello world',
+                cached: false,
+                targetLanguage: 'es',
+                langSource: 'option',
+                provider: 'openai',
+                inputTokens: 8,
+                outputTokens: 4,
+            }),
+        };
+        const interaction = createInteraction();
+        const parent = { id: 'parent-channel' };
+        interaction.channel = {
+            id: 'thread-1',
+            isThread: vi.fn(() => true),
+            parent,
+        } as never;
+
+        await handleTranslate(interaction as never, {
+            translationService: translationService as never,
+            webhookService: webhookService as never,
+        });
+
+        expect(interaction.memberPermissions.has).toHaveBeenCalledWith(
+            PermissionFlagsBits.SendMessagesInThreads,
+        );
+        expect(webhookService.sendTranslation).toHaveBeenCalledWith(
+            expect.objectContaining({ channel: parent, threadId: 'thread-1' }),
+        );
+    });
+
     it('should reject public translations before calling the provider without send permission', async () => {
         const webhookService = {
             sendTranslation: vi.fn().mockResolvedValue(undefined),
@@ -133,7 +173,8 @@ describe('handleTranslate', () => {
         expect(translationService.process).not.toHaveBeenCalled();
         expect(webhookService.sendTranslation).not.toHaveBeenCalled();
         expect(interaction.reply).toHaveBeenCalledWith({
-            content: 'You need permission to send messages in this channel for a public translation.',
+            content:
+                'You need permission to send messages in this channel for a public translation.',
             flags: expect.anything(),
         });
     });

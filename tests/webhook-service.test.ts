@@ -126,6 +126,50 @@ describe('WebhookService', () => {
             evictions: 2,
         });
     });
+
+    it('should share one webhook lookup across concurrent sends', async () => {
+        const webhook = createWebhook();
+        const channel = createChannel('channel-1');
+        (channel.createWebhook as ReturnType<typeof vi.fn>).mockResolvedValue(webhook);
+        const service = createWebhookService();
+
+        await Promise.all([
+            service.sendTranslation({
+                channel,
+                content: 'one',
+                username: 'Tester',
+                userId: 'user-1',
+            }),
+            service.sendTranslation({
+                channel,
+                content: 'two',
+                username: 'Tester',
+                userId: 'user-2',
+            }),
+        ]);
+
+        expect(channel.fetchWebhooks).toHaveBeenCalledTimes(1);
+        expect(channel.createWebhook).toHaveBeenCalledTimes(1);
+        expect(webhook.send).toHaveBeenCalledTimes(2);
+    });
+
+    it('should forward a thread id to Discord webhook sends', async () => {
+        const webhook = createWebhook();
+        const channel = createChannel('parent-channel', [webhook]);
+        const service = createWebhookService();
+
+        await service.sendTranslation({
+            channel,
+            threadId: 'thread-1',
+            content: 'thread translation',
+            username: 'Tester',
+            userId: 'user-1',
+        });
+
+        expect(webhook.send).toHaveBeenCalledWith(
+            expect.objectContaining({ threadId: 'thread-1' }),
+        );
+    });
 });
 
 describe('classifyWebhookError', () => {
