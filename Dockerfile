@@ -26,7 +26,7 @@ USER babel
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget -qO- "http://localhost:${PORT:-3000}/livez" || exit 1
+    CMD wget -qO- "http://127.0.0.1:${PORT:-3000}/livez" || exit 1
 
 # Run node directly: `npm start` would keep a resident npm process (~40MB RSS)
 # in the container for the whole lifetime, roughly doubling billed memory on

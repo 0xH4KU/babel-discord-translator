@@ -19,7 +19,7 @@ services:
     volumes:
       - babel_data:/app/data
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- \"http://localhost:$${DASHBOARD_PORT:-3000}/livez\""]
+      test: ["CMD-SHELL", "wget -qO- \"http://127.0.0.1:$${DASHBOARD_PORT:-3000}/livez\""]
       interval: 30s
       timeout: 5s
       retries: 3
