@@ -130,7 +130,7 @@ Sponsorship is optional and does not unlock private features. Supporting mainten
 - **Modular Auth** — Session, cookie, password, and CSRF handling in dedicated auth modules
 - **Session Management** — View active dashboard sessions and revoke stale admin logins
 - **Config Runtime Effects** — Config changes apply immediate runtime updates and cache invalidation
-- **API Health Check** — Real-time Vertex AI probe status
+- **API Health Check** — Real-time health status for each configured provider
 - **Translation Test** — Test translations directly from the dashboard
 - **User Preferences** — View and manage per-user language settings
 - **Cost Tracking** — Real-time token usage with global, per-server, and per-user budget controls
@@ -145,7 +145,7 @@ Sponsorship is optional and does not unlock private features. Supporting mainten
 
 ## Quick Start
 
-**Prerequisites:** Node.js `22.13+`, npm, a Discord bot token, and a Vertex AI project.
+**Prerequisites:** Node.js `22.13+`, npm, a Discord bot token, and either a Vertex AI project or credentials for an OpenAI-compatible endpoint.
 
 ```bash
 git clone https://github.com/0xH4KU/babel-discord-translator.git
@@ -178,6 +178,17 @@ Or choose a specific product profile:
 npm run dev:guild
 npm run dev:pocket
 ```
+
+### Supported Translation Providers
+
+Babel ships two provider adapters. Either can run alone, or both can be configured in primary/fallback order from the dashboard.
+
+| Provider              | Required Settings                                  | Transport                                      |
+| --------------------- | -------------------------------------------------- | ---------------------------------------------- |
+| Vertex AI Gemini      | API key, GCP project, location, and Gemini model    | Native Vertex AI `generateContent` API         |
+| OpenAI-compatible API | API key, base URL, and model                        | `${baseUrl}/v1/chat/completions`                |
+
+The OpenAI-compatible adapter covers OpenAI, OpenRouter, and other services that expose the same chat-completions path and bearer-token authentication. A dedicated adapter is only needed when a provider uses a different request or authentication contract.
 
 For production:
 
@@ -239,7 +250,7 @@ After starting the bot, open `http://localhost:3000`:
 
 | Tab          | Settings                                                                    |
 | ------------ | --------------------------------------------------------------------------- |
-| **Setup**    | Vertex AI API key, GCP project, location, Gemini model                      |
+| **Setup**    | Provider mode, Vertex AI and/or OpenAI-compatible credentials and models    |
 | **Config**   | Cooldown, cache size, max input length, max output tokens, custom prompt    |
 | **Pricing**  | Per-million-token prices, global daily budget (0 = unlimited)               |
 | **Access**   | Guild whitelist, user allowlist, per-server and per-user budget overrides   |
@@ -324,7 +335,7 @@ Babel stores runtime data through native `node:sqlite`. Before upgrading Node on
 │          │                           │                       │
 │  ┌───────▼───────────────────────────▼─────────────────────┐ │
 │  │              Shared Application Layer                    │ │
-│  │  TranslationService → Cache → RuntimeLimiter → Vertex AI│ │
+│  │ TranslationService → Cache → RuntimeLimiter → Providers│ │
 │  │  CooldownManager    UsageTracker    WebhookService      │ │
 │  │  ConfigRepository   AppMetrics      StructuredLogger     │ │
 │  └───────────────────────────┬─────────────────────────────┘ │
@@ -480,7 +491,7 @@ User Request
 │  global: 25       │
 └──────┬────────────┘
        ▼
-┌─ Vertex AI Call ──┐  ← Retry/backoff runs inside acquired permit
+┌─ Provider Call ───┐  ← Retry/backoff runs inside acquired permit
 │  (with retry)     │    (prevents retry storms)
 └───────────────────┘
 ```
@@ -517,7 +528,8 @@ User Request
 | [discord.js](https://discord.js.org)                                           | v14     | Discord gateway client                      |
 | [Express](https://expressjs.com)                                               | v5      | Dashboard & API server                      |
 | [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) | v8      | Login throttling                            |
-| [Vertex AI Gemini](https://cloud.google.com/vertex-ai)                         | —       | Translation engine                          |
+| [Vertex AI Gemini](https://cloud.google.com/vertex-ai)                         | —       | Native translation provider                 |
+| OpenAI-compatible Chat Completions                                             | —       | Configurable translation provider           |
 | [Vitest](https://vitest.dev)                                                   | v4      | Test runner with v8 coverage                |
 | [ESLint](https://eslint.org) + [Prettier](https://prettier.io)                 | v9 / v3 | Code quality                                |
 

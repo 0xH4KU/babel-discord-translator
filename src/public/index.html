@@ -648,8 +648,8 @@
                 <div class="settings-section" id="section-openai">
                     <h3>OpenAI-Compatible API</h3>
                     <div class="desc-text">
-                        Works with OpenAI, OpenRouter, AI Studio (OpenAI format), and any
-                        compatible endpoint.
+                        Works with OpenAI, OpenRouter, and compatible endpoints that expose
+                        /v1/chat/completions.
                     </div>
                     <div class="settings-row">
                         <div class="input-group">
@@ -669,7 +669,7 @@
                                 id="cfg-openai-baseurl"
                                 placeholder="e.g. https://openrouter.ai/api"
                             />
-                            <div class="hint">The base URL without trailing /v1/chat/completions</div>
+                            <div class="hint">Babel appends /v1/chat/completions to this URL.</div>
                         </div>
                         <div class="input-group">
                             <label>Model</label>
