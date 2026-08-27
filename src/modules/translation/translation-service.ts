@@ -3,7 +3,6 @@ import type { CooldownManager } from './cooldown.js';
 import type { AccessMode, AppProfile } from '../../apps/app-profile.js';
 import { ProviderOrchestratorError } from '../../infra/provider-orchestrator.js';
 import type { TranslationLog } from '../../shared/log.js';
-import { isSameLanguage } from './lang.js';
 import {
     createProfileMetricsCollector,
     type AppMetricsCollector,
@@ -321,15 +320,6 @@ export function createTranslationService({
                 userPreferenceStore,
                 { accessMode },
             );
-            if (isSameLanguage(originalText, targetLanguage, request.locale)) {
-                requestLogger.warn('translation.request.blocked', {
-                    blockReason: 'same_language',
-                    targetLanguage,
-                    langSource,
-                });
-                return { status: 'blocked', message: messages.sameLanguage };
-            }
-
             const prompt = resolveSystemPrompt(targetLanguage, runtimeConfig.translationPrompt);
             const glossaryEntries =
                 enableGuildGlossary && request.guildId

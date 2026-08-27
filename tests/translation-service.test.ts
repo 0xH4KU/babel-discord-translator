@@ -1224,33 +1224,30 @@ describe('TranslationService', () => {
         });
     });
 
-    it('should block same-language translations before deferring', async () => {
+    it.each([
+        ['mixed Chinese and English', 'Hello 你好', 'zh-TW'],
+        ['simplified Chinese to traditional Chinese', '简体中文', 'zh-TW'],
+        ['Japanese to an explicit Japanese target', 'こんにちは', 'ja'],
+    ])('should send %s through the provider', async (_name, text, targetLanguage) => {
         const beforeTranslate = vi.fn(async () => undefined);
-        const { service } = createService({
-            storeOverrides: {
-                userLanguagePreferenceEntries: [
-                    { guildId: 'guild-1', userId: 'user1', language: 'ja' },
-                ],
-            },
-        });
+        const { service, translator } = createService();
 
         const result = await service.process({
-            command: 'babel',
-            commandLabel: 'Babel (context menu)',
+            command: 'translate',
+            commandLabel: '/translate',
             guildId: 'guild-1',
             guildName: 'Test Guild',
             userId: 'user1',
             userTag: 'user#0001',
-            locale: 'ja',
-            text: 'こんにちは',
+            locale: targetLanguage,
+            text,
+            targetLanguageOption: targetLanguage,
             beforeTranslate,
         });
 
-        expect(result).toEqual({
-            status: 'blocked',
-            message: 'This message is already in your language!',
-        });
-        expect(beforeTranslate).not.toHaveBeenCalled();
+        expect(result.status).toBe('success');
+        expect(translator).toHaveBeenCalledWith(text, targetLanguage, expect.any(Object));
+        expect(beforeTranslate).toHaveBeenCalledOnce();
     });
 });
 

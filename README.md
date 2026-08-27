@@ -99,7 +99,6 @@ Sponsorship is optional and does not unlock private features. Supporting mainten
 - **`/translate` Command** — Guild-only slash command with public webhook-based output
 - **Ephemeral Messages** — Context menu translations are private, only visible to you
 - **Multi-language Support** — Auto-detects your Discord locale, or use `/setlang` to choose
-- **Same-Language Detection** — Skips translation when text is already in the user's language
 - **Custom Prompt** — Fully customizable translation system prompt from the dashboard
 - **Server Glossary** — Guild-only term mappings injected into translation prompts, with cache invalidation when terms change
 

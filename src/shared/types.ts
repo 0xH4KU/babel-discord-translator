@@ -255,7 +255,3 @@ export interface UsageHistoryDay extends UsageHistoryEntry {
     totalTokens: number;
     cost: number;
 }
-
-// --- Script types ---
-
-export type ScriptFamily = 'zh' | 'ja' | 'ko' | 'ru' | 'ar' | 'th' | 'hi' | null;
