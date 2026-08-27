@@ -14,7 +14,7 @@ import type {
     TranslationRuntimeLimiter,
     TranslationRuntimeReservation,
 } from './translation-runtime-limiter.js';
-import { usage } from '../usage/usage.js';
+import { usage, type UsageBudgetReservation } from '../usage/usage.js';
 import { translate, resolveSystemPrompt } from './translate.js';
 import { sanitizeError } from '../../shared/errors.js';
 import {
@@ -58,18 +58,12 @@ interface GlossaryRepositoryLike {
 }
 
 interface UsageLike {
-    isBudgetExceeded(scope?: { guildId?: string | null; userId?: string | null }): boolean;
-    wouldExceedBudget?(estimate: {
+    tryReserveBudget(estimate: {
         estimatedInputTokens: number;
         estimatedOutputTokens: number;
         guildId?: string | null;
         userId?: string | null;
-    }): boolean;
-    record(
-        inputTokens: number,
-        outputTokens: number,
-        scope?: { guildId?: string | null; userId?: string | null },
-    ): void;
+    }): UsageBudgetReservation | null;
 }
 
 interface PendingUserInstallOwnerRepositoryLike {
@@ -262,14 +256,6 @@ export function createTranslationService({
                 userId: accessMode === 'user-install' ? getBillingUsageUserId(scope) : null,
             };
 
-            if (usageTracker.isBudgetExceeded(usageScope)) {
-                profileMetrics?.recordBudgetExceeded();
-                requestLogger.warn('translation.request.blocked', {
-                    blockReason: 'budget_exceeded',
-                });
-                return { status: 'blocked', message: messages.budgetExceeded };
-            }
-
             const cooldownState = cooldown.check(request.userId);
             if (!cooldownState.allowed) {
                 requestLogger.warn('translation.request.blocked', {
@@ -301,20 +287,6 @@ export function createTranslationService({
                 };
             }
 
-            if (
-                usageTracker.wouldExceedBudget?.({
-                    estimatedInputTokens: Math.ceil(originalText.length / 4),
-                    estimatedOutputTokens: runtimeConfig.maxOutputTokens || 1000,
-                    ...usageScope,
-                })
-            ) {
-                profileMetrics?.recordBudgetExceeded();
-                requestLogger.warn('translation.request.blocked', {
-                    blockReason: 'budget_estimate_exceeded',
-                });
-                return { status: 'blocked', message: messages.budgetExceeded };
-            }
-
             const { targetLanguage, langSource } = resolveTargetLanguage(
                 request,
                 userPreferenceStore,
@@ -342,6 +314,7 @@ export function createTranslationService({
 
             let deferred = false;
             let reservation: TranslationRuntimeReservation | null = null;
+            let budgetReservation: UsageBudgetReservation | null = null;
             let leaderInFlight: InFlightTranslation | null = null;
             let resolveLeaderInFlight:
                 | ((value: TranslationResult | PromiseLike<TranslationResult>) => void)
@@ -386,15 +359,6 @@ export function createTranslationService({
                     joinedInFlight = true;
                 }
 
-                if (!cached && !joinedInFlight) {
-                    const inFlightTranslation = createInFlightTranslation();
-                    leaderInFlight = inFlightTranslation.entry;
-                    resolveLeaderInFlight = inFlightTranslation.resolve;
-                    rejectLeaderInFlight = inFlightTranslation.reject;
-                    inFlightTranslations.set(cacheKey, leaderInFlight);
-                    void leaderInFlight.promise.catch(() => undefined);
-                }
-
                 if (!cached && runtimeLimiter) {
                     const admission = runtimeLimiter.acquire({
                         guildId: request.guildId ?? null,
@@ -421,6 +385,29 @@ export function createTranslationService({
                             runtime: runtimeLimiter.snapshot(),
                         },
                     );
+                }
+
+                if (!cached && !joinedInFlight) {
+                    budgetReservation = usageTracker.tryReserveBudget({
+                        estimatedInputTokens: Math.ceil(originalText.length / 4),
+                        estimatedOutputTokens: runtimeConfig.maxOutputTokens || 1000,
+                        ...usageScope,
+                    });
+                    if (!budgetReservation) {
+                        reservation?.cancel();
+                        profileMetrics?.recordBudgetExceeded();
+                        requestLogger.warn('translation.request.blocked', {
+                            blockReason: 'budget_exceeded',
+                        });
+                        return { status: 'blocked', message: messages.budgetExceeded };
+                    }
+
+                    const inFlightTranslation = createInFlightTranslation();
+                    leaderInFlight = inFlightTranslation.entry;
+                    resolveLeaderInFlight = inFlightTranslation.resolve;
+                    rejectLeaderInFlight = inFlightTranslation.reject;
+                    inFlightTranslations.set(cacheKey, leaderInFlight);
+                    void leaderInFlight.promise.catch(() => undefined);
                 }
 
                 if (!joinedInFlight && request.beforeTranslate) {
@@ -456,7 +443,8 @@ export function createTranslationService({
                         outputTokens = result.outputTokens;
                         provider = result.provider;
                         fallback = result.fallback;
-                        usageTracker.record(result.inputTokens, result.outputTokens, usageScope);
+                        budgetReservation?.settle(result.inputTokens, result.outputTokens);
+                        budgetReservation = null;
                         resolveLeaderInFlight?.(result);
                         return result.text;
                     };
@@ -472,6 +460,8 @@ export function createTranslationService({
 
                             const queuedCached = cache.get(cacheKey);
                             if (queuedCached) {
+                                budgetReservation?.release();
+                                budgetReservation = null;
                                 requestLogger.info('translation.cache.hit_after_queue', {
                                     targetLanguage,
                                     langSource,
@@ -528,6 +518,7 @@ export function createTranslationService({
             } catch (error) {
                 rejectLeaderInFlight?.(error);
                 reservation?.cancel();
+                budgetReservation?.release();
                 const caughtError = error instanceof Error ? error : new Error(String(error));
                 const message = caughtError.message;
                 const sanitizedMessage = sanitizeError(message);

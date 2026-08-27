@@ -92,6 +92,7 @@ vi.mock('../src/persistence/store.js', () => ({
 
 import { store } from '../src/persistence/store.js';
 import { usage, _test as usageTest } from '../src/modules/usage/usage.js';
+import type { TokenUsage } from '../src/shared/types.js';
 
 describe('UsageTracker', () => {
     const mockedStore = store as unknown as {
@@ -224,6 +225,111 @@ describe('UsageTracker', () => {
         usage.record(1_000_000, 0); // $1 cost < $10 budget
 
         expect(usage.isBudgetExceeded()).toBe(false);
+    });
+
+    it('should reserve pending global cost and release it without recording usage', () => {
+        mockData.dailyBudgetUsd = 1.0;
+        mockData.inputPricePerMillion = 1.0;
+
+        const first = usage.tryReserveBudget({
+            estimatedInputTokens: 600_000,
+            estimatedOutputTokens: 0,
+        });
+        const blocked = usage.tryReserveBudget({
+            estimatedInputTokens: 400_000,
+            estimatedOutputTokens: 0,
+        });
+
+        expect(first).not.toBeNull();
+        expect(blocked).toBeNull();
+
+        first!.release();
+        expect(
+            usage.tryReserveBudget({
+                estimatedInputTokens: 900_000,
+                estimatedOutputTokens: 0,
+            }),
+        ).not.toBeNull();
+        expect((mockData.tokenUsage as TokenUsage).requests).toBe(0);
+    });
+
+    it('should settle a reservation with actual token usage', () => {
+        mockData.dailyBudgetUsd = 1.0;
+        mockData.inputPricePerMillion = 1.0;
+
+        const reservation = usage.tryReserveBudget({
+            estimatedInputTokens: 600_000,
+            estimatedOutputTokens: 0,
+        });
+        reservation!.settle(200_000, 0);
+
+        expect((mockData.tokenUsage as TokenUsage)).toMatchObject({
+            inputTokens: 200_000,
+            outputTokens: 0,
+            requests: 1,
+        });
+        expect(
+            usage.tryReserveBudget({
+                estimatedInputTokens: 700_000,
+                estimatedOutputTokens: 0,
+            }),
+        ).not.toBeNull();
+    });
+
+    it('should enforce both user and shared global pending budgets', () => {
+        mockData.dailyBudgetUsd = 1.0;
+        mockData.defaultUserDailyBudgetUsd = 0.8;
+        mockData.inputPricePerMillion = 1.0;
+
+        expect(
+            usage.tryReserveBudget({
+                estimatedInputTokens: 600_000,
+                estimatedOutputTokens: 0,
+                userId: 'user-a',
+            }),
+        ).not.toBeNull();
+        expect(
+            usage.tryReserveBudget({
+                estimatedInputTokens: 200_000,
+                estimatedOutputTokens: 0,
+                userId: 'user-a',
+            }),
+        ).toBeNull();
+        expect(
+            usage.tryReserveBudget({
+                estimatedInputTokens: 400_000,
+                estimatedOutputTokens: 0,
+                userId: 'user-b',
+            }),
+        ).toBeNull();
+    });
+
+    it('should keep custom guild reservations outside the shared global pool', () => {
+        mockData.dailyBudgetUsd = 0.5;
+        mockData.guildBudgets = { 'guild-custom': { dailyBudgetUsd: 1.0 } };
+        mockData.inputPricePerMillion = 1.0;
+
+        expect(
+            usage.tryReserveBudget({
+                estimatedInputTokens: 600_000,
+                estimatedOutputTokens: 0,
+                guildId: 'guild-custom',
+            }),
+        ).not.toBeNull();
+        expect(
+            usage.tryReserveBudget({
+                estimatedInputTokens: 400_000,
+                estimatedOutputTokens: 0,
+                guildId: 'guild-shared',
+            }),
+        ).not.toBeNull();
+        expect(
+            usage.tryReserveBudget({
+                estimatedInputTokens: 400_000,
+                estimatedOutputTokens: 0,
+                guildId: 'guild-custom',
+            }),
+        ).toBeNull();
     });
 
     it('should return complete stats for dashboard', () => {

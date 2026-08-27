@@ -126,10 +126,17 @@ function createUserPreferenceStoreMock(overrides: Partial<StoreData> = {}) {
 }
 
 function createUsageMock() {
+    const record = vi.fn();
     return {
-        isBudgetExceeded: vi.fn(() => false),
-        wouldExceedBudget: vi.fn(() => false),
-        record: vi.fn(),
+        record,
+        tryReserveBudget: vi.fn(
+            ({ guildId, userId }: { guildId?: string | null; userId?: string | null }) => ({
+                settle: vi.fn((inputTokens: number, outputTokens: number) =>
+                    record(inputTokens, outputTokens, { guildId, userId }),
+                ),
+                release: vi.fn(),
+            }),
+        ),
     };
 }
 
@@ -437,7 +444,7 @@ describe('TranslationService', () => {
                 outputTokens: 10,
             }),
         );
-        const { service, metrics } = createService({ translator });
+        const { service, metrics, usageTracker } = createService({ translator });
 
         const first = await service.process({
             command: 'translate',
@@ -450,6 +457,8 @@ describe('TranslationService', () => {
             text: 'Hello world',
             targetLanguageOption: 'ko',
         });
+        usageTracker.tryReserveBudget.mockClear();
+        usageTracker.tryReserveBudget.mockReturnValue(null);
         const second = await service.process({
             command: 'translate',
             commandLabel: '/translate',
@@ -466,6 +475,7 @@ describe('TranslationService', () => {
         expect(second.status).toBe('success');
         expect(second.status === 'success' ? second.cached : false).toBe(true);
         expect(translator).toHaveBeenCalledTimes(1);
+        expect(usageTracker.tryReserveBudget).not.toHaveBeenCalled();
         expect(metrics.snapshot()).toMatchObject({
             translationsTotal: 2,
             translationApiCallsTotal: 1,
@@ -516,6 +526,7 @@ describe('TranslationService', () => {
         expect(firstResult.status).toBe('success');
         expect(secondResult.status).toBe('success');
         expect(secondResult.status === 'success' ? secondResult.cached : false).toBe(true);
+        expect(usageTracker.tryReserveBudget).toHaveBeenCalledTimes(1);
         expect(usageTracker.record).toHaveBeenCalledTimes(1);
         expect(metrics.snapshot()).toMatchObject({
             translationsTotal: 2,
@@ -915,7 +926,7 @@ describe('TranslationService', () => {
 
     it('should block requests when the guild budget is exceeded', async () => {
         const usageTracker = createUsageMock();
-        usageTracker.isBudgetExceeded.mockReturnValue(true);
+        usageTracker.tryReserveBudget.mockReturnValue(null);
         const translator = vi.fn();
         const { service, metrics } = createService({ usageTracker, translator });
 
@@ -936,6 +947,30 @@ describe('TranslationService', () => {
         });
         expect(translator).not.toHaveBeenCalled();
         expect(metrics.snapshot().budgetExceededTotal).toBe(1);
+    });
+
+    it('should release reserved budget when the provider fails', async () => {
+        const usageTracker = createUsageMock();
+        const translator = vi.fn(async () => {
+            throw new Error('provider unavailable');
+        });
+        const { service } = createService({ usageTracker, translator });
+
+        const result = await service.process({
+            command: 'translate',
+            commandLabel: '/translate',
+            guildId: 'guild-1',
+            guildName: 'Test Guild',
+            userId: 'user1',
+            userTag: 'user#0001',
+            locale: 'en-US',
+            text: 'Hello world',
+        });
+
+        const reservation = usageTracker.tryReserveBudget.mock.results[0]?.value;
+        expect(result.status).toBe('error');
+        expect(reservation?.release).toHaveBeenCalledOnce();
+        expect(usageTracker.record).not.toHaveBeenCalled();
     });
 
     it('should allow whitelisted user-install owners without a guild id', async () => {

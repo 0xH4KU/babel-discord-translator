@@ -28,8 +28,25 @@ export interface UsageExportRow {
     costUsd: number;
 }
 
+export interface UsageBudgetEstimate extends UsageScope {
+    estimatedInputTokens: number;
+    estimatedOutputTokens: number;
+}
+
+export interface UsageBudgetReservation {
+    settle(inputTokens: number, outputTokens: number): void;
+    release(): void;
+}
+
+interface BudgetAdmission {
+    key: string;
+    budget: number;
+    cost: UsageCost;
+}
+
 class UsageTracker {
     private lastEnsuredDate: string | null = null;
+    private readonly pendingCosts = new Map<string, number>();
 
     constructor() {
         this.ensureToday();
@@ -70,6 +87,7 @@ class UsageTracker {
             );
         }
 
+        this.pendingCosts.clear();
         this.lastEnsuredDate = todayValue;
     }
 
@@ -170,6 +188,101 @@ class UsageTracker {
         const globalBudget = runtimeConfig.dailyBudgetUsd || 0;
         const globalCost = this.getSharedGlobalBudgetCost(runtimeConfig);
         return this.wouldCostExceedBudget(globalCost, globalBudget, estimatedCost);
+    }
+
+    tryReserveBudget({
+        estimatedInputTokens,
+        estimatedOutputTokens,
+        guildId,
+        userId,
+    }: UsageBudgetEstimate): UsageBudgetReservation | null {
+        this.ensureToday();
+        const runtimeConfig = configRepository.getRuntimeConfig();
+        const scope = { guildId, userId };
+        const estimatedCost = calculateCost(
+            { inputTokens: estimatedInputTokens, outputTokens: estimatedOutputTokens },
+            runtimeConfig,
+        );
+        const reservationDate = today();
+        const admissions = this.getBudgetAdmissions(scope, runtimeConfig).map((admission) => ({
+            ...admission,
+            key: `${reservationDate}:${admission.key}`,
+        }));
+
+        if (
+            admissions.some(
+                ({ key, budget, cost }) =>
+                    budget > 0 &&
+                    cost.totalCost + (this.pendingCosts.get(key) ?? 0) + estimatedCost >= budget,
+            )
+        ) {
+            return null;
+        }
+
+        for (const { key } of admissions) {
+            this.pendingCosts.set(key, (this.pendingCosts.get(key) ?? 0) + estimatedCost);
+        }
+
+        let active = true;
+        const release = (): void => {
+            if (!active) return;
+            active = false;
+
+            for (const { key } of admissions) {
+                const remaining = (this.pendingCosts.get(key) ?? 0) - estimatedCost;
+                if (remaining > 0) this.pendingCosts.set(key, remaining);
+                else this.pendingCosts.delete(key);
+            }
+        };
+
+        return {
+            settle: (inputTokens, outputTokens) => {
+                if (!active) return;
+                release();
+                this.record(inputTokens, outputTokens, scope);
+            },
+            release,
+        };
+    }
+
+    private getBudgetAdmissions(
+        scope: UsageScope,
+        runtimeConfig: RuntimeConfig,
+    ): BudgetAdmission[] {
+        const decision = resolveBudgetScope(scope, runtimeConfig);
+
+        if (decision.kind === 'user' && decision.userId) {
+            return [
+                {
+                    key: `user:${decision.userId}`,
+                    budget: decision.budget,
+                    cost: this.getUserCost(decision.userId, runtimeConfig),
+                },
+                {
+                    key: 'global',
+                    budget: runtimeConfig.dailyBudgetUsd || 0,
+                    cost: this.getSharedGlobalBudgetCost(runtimeConfig),
+                },
+            ];
+        }
+
+        if (decision.kind === 'guild' && decision.guildId) {
+            return [
+                {
+                    key: `guild:${decision.guildId}`,
+                    budget: decision.budget,
+                    cost: this.getGuildCost(decision.guildId, runtimeConfig),
+                },
+            ];
+        }
+
+        return [
+            {
+                key: 'global',
+                budget: decision.budget,
+                cost: this.getSharedGlobalBudgetCost(runtimeConfig),
+            },
+        ];
     }
 
     private getBudgetScope(
@@ -494,6 +607,11 @@ export const usage = new UsageTracker();
 export const _test = {
     /** Clear the same-day rollover memo so the next ensureToday() runs a full pass. */
     resetRolloverMemo(): void {
-        (usage as unknown as { lastEnsuredDate: string | null }).lastEnsuredDate = null;
+        const tracker = usage as unknown as {
+            lastEnsuredDate: string | null;
+            pendingCosts: Map<string, number>;
+        };
+        tracker.lastEnsuredDate = null;
+        tracker.pendingCosts.clear();
     },
 };
