@@ -13,13 +13,32 @@ export interface TranslationMessageOptions {
     includeOriginalPreview?: boolean;
 }
 
+function safeSliceEnd(text: string, limit: number): number {
+    const end = Math.min(limit, text.length);
+    return end < text.length && (text.codePointAt(end - 1) ?? 0) > 0xffff ? end - 1 : end;
+}
+
 function quoteOriginalPreview(originalText: string): string {
     const preview =
         originalText.length > MAX_ORIGINAL_PREVIEW_LENGTH
-            ? `${originalText.slice(0, MAX_ORIGINAL_PREVIEW_LENGTH)}...`
+            ? `${originalText.slice(0, safeSliceEnd(originalText, MAX_ORIGINAL_PREVIEW_LENGTH))}...`
             : originalText;
 
     return `> ${preview.replace(/\n/g, '\n> ')}`;
+}
+
+function findChunkEnd(text: string, limit: number): number {
+    const hardEnd = safeSliceEnd(text, limit);
+    if (hardEnd === text.length) return hardEnd;
+
+    const newline = text.lastIndexOf('\n', hardEnd - 1);
+    if (newline > 0) return newline + 1;
+
+    for (let index = hardEnd - 1; index > 0; index--) {
+        if (text[index]?.trim() === '') return index + 1;
+    }
+
+    return hardEnd;
 }
 
 function chunkText(text: string, firstLimit: number, continuationLimit: number): string[] {
@@ -28,9 +47,10 @@ function chunkText(text: string, firstLimit: number, continuationLimit: number):
     let limit = firstLimit;
 
     while (remaining.length > 0) {
-        const chunk = remaining.slice(0, limit);
+        const end = findChunkEnd(remaining, limit);
+        const chunk = remaining.slice(0, end);
         chunks.push(chunk);
-        remaining = remaining.slice(limit);
+        remaining = remaining.slice(end);
         limit = continuationLimit;
     }
 
