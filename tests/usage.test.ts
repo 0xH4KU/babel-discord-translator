@@ -263,7 +263,7 @@ describe('UsageTracker', () => {
         });
         reservation!.settle(200_000, 0);
 
-        expect((mockData.tokenUsage as TokenUsage)).toMatchObject({
+        expect(mockData.tokenUsage as TokenUsage).toMatchObject({
             inputTokens: 200_000,
             outputTokens: 0,
             requests: 1,
@@ -710,15 +710,28 @@ describe('UsageTracker', () => {
             ]);
         });
 
-        it('should export global, guild, and user history rows', () => {
+        it('should export global, guild, and user history including current usage', () => {
+            const today = new Date().toISOString().slice(0, 10);
             mockData.inputPricePerMillion = 1.0;
             mockData.outputPricePerMillion = 2.0;
+            mockData.tokenUsage = {
+                date: today,
+                inputTokens: 100,
+                outputTokens: 50,
+                requests: 1,
+            };
             mockData.usageHistory = [
                 {
                     date: '2025-01-01',
                     inputTokens: 1_000_000,
                     outputTokens: 0,
                     requests: 2,
+                },
+                {
+                    date: today,
+                    inputTokens: 999,
+                    outputTokens: 999,
+                    requests: 999,
                 },
             ];
             mockData.guildUsageHistory = {
@@ -731,6 +744,14 @@ describe('UsageTracker', () => {
                     },
                 ],
             };
+            mockData.guildTokenUsage = {
+                'guild-current': {
+                    date: today,
+                    inputTokens: 200,
+                    outputTokens: 100,
+                    requests: 2,
+                },
+            };
             mockData.userUsageHistory = {
                 'user-1': [
                     {
@@ -740,6 +761,14 @@ describe('UsageTracker', () => {
                         requests: 1,
                     },
                 ],
+            };
+            mockData.userTokenUsage = {
+                'user-current': {
+                    date: today,
+                    inputTokens: 300,
+                    outputTokens: 200,
+                    requests: 3,
+                },
             };
 
             expect(usage.getUsageExportRows()).toEqual([
@@ -752,6 +781,26 @@ describe('UsageTracker', () => {
                     outputTokens: 0,
                     totalTokens: 1_000_000,
                     costUsd: 1,
+                },
+                {
+                    scope: 'global',
+                    id: '',
+                    date: today,
+                    requests: 1,
+                    inputTokens: 100,
+                    outputTokens: 50,
+                    totalTokens: 150,
+                    costUsd: 0.0002,
+                },
+                {
+                    scope: 'guild',
+                    id: 'guild-current',
+                    date: today,
+                    requests: 2,
+                    inputTokens: 200,
+                    outputTokens: 100,
+                    totalTokens: 300,
+                    costUsd: 0.0004,
                 },
                 {
                     scope: 'guild',
@@ -772,6 +821,16 @@ describe('UsageTracker', () => {
                     outputTokens: 500_000,
                     totalTokens: 1_000_000,
                     costUsd: 1.5,
+                },
+                {
+                    scope: 'user',
+                    id: 'user-current',
+                    date: today,
+                    requests: 3,
+                    inputTokens: 300,
+                    outputTokens: 200,
+                    totalTokens: 500,
+                    costUsd: 0.0007,
                 },
             ]);
         });

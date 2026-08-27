@@ -415,14 +415,19 @@ class UsageTracker {
     getUsageExportRows(): UsageExportRow[] {
         this.ensureToday();
         const runtimeConfig = configRepository.getRuntimeConfig();
+        const guildHistory = store.getAllGuildUsageHistory();
+        const guildDailyUsage = store.getAllGuildDailyUsage();
+        const userHistory = store.getAllUserUsageHistory();
+        const userDailyUsage = store.getAllUserDailyUsage();
         const rows = [
-            ...toUsageExportRows('global', '', store.getUsageHistory(), runtimeConfig),
-            ...Object.entries(store.getAllGuildUsageHistory()).flatMap(([guildId, history]) =>
-                toUsageExportRows('guild', guildId, history, runtimeConfig),
+            ...toUsageExportRows(
+                'global',
+                '',
+                withCurrentUsage(store.getUsageHistory(), store.getDailyUsage()),
+                runtimeConfig,
             ),
-            ...Object.entries(store.getAllUserUsageHistory()).flatMap(([userId, history]) =>
-                toUsageExportRows('user', userId, history, runtimeConfig),
-            ),
+            ...toScopedUsageExportRows('guild', guildHistory, guildDailyUsage, runtimeConfig),
+            ...toScopedUsageExportRows('user', userHistory, userDailyUsage, runtimeConfig),
         ];
 
         return rows.sort(compareUsageExportRows);
@@ -591,6 +596,33 @@ function toUsageExportRows(
         totalTokens: day.inputTokens + day.outputTokens,
         costUsd: calculateCost(day, runtimeConfig),
     }));
+}
+
+function withCurrentUsage(
+    history: UsageHistoryEntry[],
+    current: TokenUsage | null,
+): UsageHistoryEntry[] {
+    if (!current || current.requests + current.inputTokens + current.outputTokens === 0) {
+        return history;
+    }
+
+    return [...history.filter((entry) => entry.date !== current.date), toHistoryEntry(current)];
+}
+
+function toScopedUsageExportRows(
+    scope: Exclude<UsageExportScope, 'global'>,
+    histories: Record<string, UsageHistoryEntry[]>,
+    currentUsage: Record<string, TokenUsage>,
+    runtimeConfig: RuntimeConfig,
+): UsageExportRow[] {
+    return [...new Set([...Object.keys(histories), ...Object.keys(currentUsage)])].flatMap((id) =>
+        toUsageExportRows(
+            scope,
+            id,
+            withCurrentUsage(histories[id] ?? [], currentUsage[id] ?? null),
+            runtimeConfig,
+        ),
+    );
 }
 
 function compareUsageExportRows(a: UsageExportRow, b: UsageExportRow): number {
