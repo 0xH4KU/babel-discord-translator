@@ -111,7 +111,7 @@ Sponsorship is optional and does not unlock private features. Supporting mainten
 
 ### Security
 
-- **scrypt Password Hashing** — Dashboard password secured with `crypto.scryptSync` + random salt (timing-safe comparison)
+- **scrypt Password Hashing** — Dashboard password verified with asynchronous `crypto.scrypt` + random salt (timing-safe comparison)
 - **CSRF Protection** — All dashboard mutation endpoints require a CSRF token
 - **Login Rate Limiting** — Brute-force protection (5 attempts / 15 min per IP)
 - **Error Sanitization** — API keys and URLs stripped from user-facing error messages
@@ -494,7 +494,7 @@ User Request
 
 | Layer                   | Mechanism                                                                                         |
 | ----------------------- | ------------------------------------------------------------------------------------------------- |
-| **Password Storage**    | `crypto.scryptSync` with random 16-byte salt, 64-byte key                                         |
+| **Password Storage**    | Async `crypto.scrypt` verification with random 16-byte salt and a 64-byte key                      |
 | **Password Comparison** | Timing-safe via `crypto.timingSafeEqual`                                                          |
 | **Session Tokens**      | `crypto.randomBytes(32)`, HttpOnly + SameSite=Strict cookies                                      |
 | **CSRF**                | Per-session CSRF token required on all mutation endpoints                                         |

@@ -297,7 +297,17 @@ function request(
     server: http.Server,
     method: string,
     path: string,
-    { body, cookie, csrf }: { body?: Record<string, unknown>; cookie?: string; csrf?: string } = {},
+    {
+        body,
+        cookie,
+        csrf,
+        headers,
+    }: {
+        body?: Record<string, unknown>;
+        cookie?: string;
+        csrf?: string;
+        headers?: Record<string, string>;
+    } = {},
 ): Promise<TestResponse> {
     return new Promise((resolve, reject) => {
         const addr = server.address() as { port: number };
@@ -306,7 +316,7 @@ function request(
             port: addr.port,
             path,
             method,
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...headers },
         };
         if (cookie) (options.headers as Record<string, string>)['Cookie'] = cookie;
         if (csrf) (options.headers as Record<string, string>)['x-csrf-token'] = csrf;
@@ -763,8 +773,15 @@ describe('Dashboard API', () => {
         expect(appListen).toHaveBeenCalledWith(3000, '0.0.0.0', expect.any(Function));
     });
 
-    it('should trust the first reverse proxy for Railway forwarded headers', () => {
-        expect(app.get('trust proxy')).toBe(1);
+    it('should not trust spoofed forwarded client addresses by default', async () => {
+        app.get('/test/client-ip', (req, res) => res.json({ ip: req.ip }));
+
+        const response = await request(server, 'GET', '/test/client-ip', {
+            headers: { 'X-Forwarded-For': '203.0.113.10' },
+        });
+
+        expect(app.get('trust proxy')).toBe(false);
+        expect(response.body!.ip).not.toBe('203.0.113.10');
     });
 
     it('should report degraded health when Vertex AI readiness fails', async () => {

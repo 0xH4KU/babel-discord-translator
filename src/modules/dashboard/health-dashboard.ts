@@ -38,7 +38,6 @@ export function createHealthDashboardApp({
     host,
 }: HealthDashboardDeps): express.Express {
     const app = express();
-    app.set('trust proxy', 1);
 
     app.get('/livez', (_req: Request, res: Response) => {
         const health = getLivenessStatus();

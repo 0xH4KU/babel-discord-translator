@@ -45,9 +45,9 @@ describe('createDashboardAuth', () => {
         vi.useRealTimers();
     });
 
-    it('should login, authenticate, and logout using the session repository', () => {
+    it('should login, authenticate, and logout using the session repository', async () => {
         const auth = createDashboardAuth({ password: 'secret-pass' });
-        const login = auth.login('secret-pass', createRequest());
+        const login = await auth.login('secret-pass', createRequest());
 
         expect(login.ok).toBe(true);
         if (!login.ok) {
@@ -64,7 +64,7 @@ describe('createDashboardAuth', () => {
         auth.dispose();
     });
 
-    it('should reject unauthenticated requests and allow authenticated ones through requireAuth', () => {
+    it('should reject unauthenticated requests and allow authenticated ones through requireAuth', async () => {
         const auth = createDashboardAuth({ password: 'secret-pass' });
         const unauthenticatedRes = createResponse();
         const authenticatedRes = createResponse();
@@ -73,7 +73,7 @@ describe('createDashboardAuth', () => {
         auth.requireAuth(createRequest(), unauthenticatedRes, next);
         expect(unauthenticatedRes.status).toHaveBeenCalledWith(401);
 
-        const login = auth.login('secret-pass', createRequest());
+        const login = await auth.login('secret-pass', createRequest());
         if (!login.ok) {
             return;
         }
@@ -85,10 +85,10 @@ describe('createDashboardAuth', () => {
         auth.dispose();
     });
 
-    it('should validate CSRF tokens independently of the dashboard routes', () => {
+    it('should validate CSRF tokens independently of the dashboard routes', async () => {
         const auth = createDashboardAuth({ password: 'secret-pass' });
         const next = vi.fn() as unknown as NextFunction;
-        const login = auth.login('secret-pass', createRequest());
+        const login = await auth.login('secret-pass', createRequest());
         if (!login.ok) {
             return;
         }
@@ -117,7 +117,7 @@ describe('createDashboardAuth', () => {
             cleanupIntervalMs: 10,
         });
 
-        const login = auth.login('secret-pass', createRequest());
+        const login = await auth.login('secret-pass', createRequest());
         expect(login.ok).toBe(true);
         expect(Array.from(repository.entries())).toHaveLength(1);
 

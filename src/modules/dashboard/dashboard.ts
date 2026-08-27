@@ -157,7 +157,6 @@ export function createDashboardApp({
     translationServices,
 }: DashboardDeps): express.Express {
     const app = express();
-    app.set('trust proxy', 1);
 
     const guildClient = clients?.['babel-guild'] ?? client;
     const userInstallClient = clients?.['babel-pocket'] ?? client;
@@ -251,8 +250,8 @@ export function createDashboardApp({
 
     for (const { prefix, scope } of apiScopes) app.use(prefix, setScope(scope), api);
 
-    api.post('/login', loginLimiter, (req: Request, res: Response) => {
-        const result = auth.login(req.body.password, req);
+    api.post('/login', loginLimiter, async (req: Request, res: Response) => {
+        const result = await auth.login(req.body.password, req);
         if (!result.ok) {
             res.status(401).json({ error: dashboardMessages.auth.wrongPassword });
             return;
