@@ -160,6 +160,8 @@ describe('fetchWithRetry', () => {
 
     afterEach(() => {
         globalThis.fetch = originalFetch;
+        vi.useRealTimers();
+        vi.restoreAllMocks();
     });
 
     it('should return immediately on success', async () => {
@@ -203,6 +205,7 @@ describe('fetchWithRetry', () => {
         } as Response;
         const success = { ok: true, status: 200 } as Response;
         globalThis.fetch = vi.fn().mockResolvedValueOnce(fail).mockResolvedValueOnce(success);
+        vi.spyOn(Math, 'random').mockReturnValue(0);
 
         vi.useFakeTimers();
         const promise = fetchWithRetry('https://example.com', {}, 1);
@@ -210,7 +213,6 @@ describe('fetchWithRetry', () => {
         expect(globalThis.fetch).toHaveBeenCalledTimes(1);
         await vi.advanceTimersByTimeAsync(1);
         const result = await promise;
-        vi.useRealTimers();
 
         expect(result).toBe(success);
         expect(globalThis.fetch).toHaveBeenCalledTimes(2);
