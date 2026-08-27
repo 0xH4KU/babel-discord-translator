@@ -462,4 +462,186 @@ describe('dashboard static assets', () => {
         expect(nodes['history-chart'].innerHTML).not.toContain('onmouseover="alert(1)');
         expect(nodes['history-table-container'].innerHTML).not.toContain('<script>');
     });
+
+    it('submits all runtime settings with numeric values', async () => {
+        const settingsJs = readFileSync('src/public/js/settings.js', 'utf-8');
+        const fields: Record<string, { value: string }> = {
+            'cfg-apikey': { value: '' },
+            'cfg-project': { value: 'project-1' },
+            'cfg-location': { value: 'global' },
+            'cfg-model': { value: 'gemini-model' },
+            'cfg-cooldown': { value: '7' },
+            'cfg-cache': { value: '3000' },
+            'cfg-max-input': { value: '4096' },
+            'cfg-max-output': { value: '2048' },
+            'cfg-max-concurrent': { value: '6' },
+            'cfg-max-global-queue': { value: '40' },
+            'cfg-max-guild-queue': { value: '8' },
+            'cfg-max-user-outstanding': { value: '2' },
+            'cfg-max-queue-wait': { value: '45000' },
+            'cfg-input-price': { value: '0.25' },
+            'cfg-output-price': { value: '1.5' },
+            'cfg-budget': { value: '3.75' },
+            'cfg-prompt': { value: 'Translate precisely.' },
+            'cfg-provider': { value: 'openai' },
+            'cfg-openai-apikey': { value: '' },
+            'cfg-openai-baseurl': { value: 'https://api.example.test/v1' },
+            'cfg-openai-model': { value: 'model-1' },
+        };
+        const requests: Array<{ path: string; options: { method?: string; body?: string } }> = [];
+        const context = {
+            document: {
+                getElementById(id: string) {
+                    return fields[id];
+                },
+            },
+            async api(path: string, options: { method?: string; body?: string } = {}) {
+                requests.push({ path, options });
+                return { ok: true };
+            },
+            showToast() {},
+            hasDashboardCapability() {
+                return false;
+            },
+        };
+
+        vm.createContext(context);
+        vm.runInContext(settingsJs, context);
+        vm.runInContext('loadSettings = () => {};', context);
+        await vm.runInContext('saveSettings();', context);
+
+        expect(requests).toHaveLength(1);
+        expect(requests[0]).toMatchObject({ path: '/config', options: { method: 'POST' } });
+        const payload = JSON.parse(requests[0].options.body!);
+        expect(payload).toMatchObject({
+            translationMaxConcurrent: 6,
+            translationMaxGlobalQueue: 40,
+            translationMaxGuildQueue: 8,
+            translationMaxUserOutstanding: 2,
+            translationMaxQueueWaitMs: 45000,
+            maxInputLength: 4096,
+            maxOutputTokens: 2048,
+        });
+        expect(
+            Object.values(payload)
+                .filter((value) => typeof value === 'number')
+                .every((value) => Number.isFinite(value)),
+        ).toBe(true);
+    });
+
+    it('returns to login when an authenticated API request expires', async () => {
+        const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
+        const activeViews = new Set<string>(['dashboard-view']);
+        const views = ['login-view', 'dashboard-view'].map((id) => ({
+            id,
+            classList: {
+                add(name: string) {
+                    if (name === 'active') activeViews.add(id);
+                },
+                remove(name: string) {
+                    if (name === 'active') activeViews.delete(id);
+                },
+            },
+        }));
+        const requests: Array<{ url: string; options: { headers: Record<string, string> } }> = [];
+        const context = {
+            document: {
+                addEventListener() {},
+                querySelectorAll() {
+                    return views;
+                },
+                getElementById(id: string) {
+                    return views.find((view) => view.id === id);
+                },
+            },
+            window: { location: { pathname: '/pocket' } },
+            async fetch(url: string, options: { headers: Record<string, string> }) {
+                requests.push({ url, options });
+                return { status: 401 };
+            },
+            setTimeout() {},
+        };
+
+        vm.createContext(context);
+        vm.runInContext(utilsJs, context);
+        vm.runInContext("setCsrfToken('csrf-1');", context);
+
+        await expect(vm.runInContext("api('/config');", context)).rejects.toThrow(
+            'Session expired',
+        );
+        expect(activeViews).toEqual(new Set(['login-view']));
+        expect(requests[0].url).toBe('/pocket/api/config');
+        expect(requests[0].options.headers['x-csrf-token']).toBe('csrf-1');
+    });
+
+    it('submits glossary imports and renders the server result', async () => {
+        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const nodes = {
+            'glossary-import-text': { value: '  source,target\nraid,團本  ' },
+            'glossary-import-result': { hidden: true, innerHTML: '' },
+        };
+        const requests: Array<{ path: string; options: { method?: string; body?: string } }> = [];
+        const toasts: string[] = [];
+        const context = {
+            reloadCount: 0,
+            document: {
+                getElementById(id: string) {
+                    return nodes[id as keyof typeof nodes] || null;
+                },
+                querySelector(selector: string) {
+                    return selector === 'input[name="glossary-import-mode"]:checked'
+                        ? { value: 'overwrite' }
+                        : null;
+                },
+                querySelectorAll() {
+                    return [];
+                },
+            },
+            hasDashboardCapability(name: string) {
+                return name === 'guildGlossary';
+            },
+            async api(path: string, options: { method?: string; body?: string } = {}) {
+                requests.push({ path, options });
+                return {
+                    ok: true,
+                    json: async () => ({
+                        created: 2,
+                        updated: 0,
+                        skipped: 0,
+                        failed: 1,
+                        errors: [{ line: 3, error: 'Invalid row' }],
+                    }),
+                };
+            },
+            showToast(message: string) {
+                toasts.push(message);
+            },
+            escapeHtml(value: unknown) {
+                return String(value);
+            },
+        };
+
+        vm.createContext(context);
+        vm.runInContext(accessJs, context);
+        vm.runInContext(
+            "glossaryGuildId = 'guild-1'; loadGlossaryEntries = async () => { reloadCount += 1; };",
+            context,
+        );
+        await vm.runInContext('importGlossaryEntries();', context);
+
+        expect(requests).toHaveLength(1);
+        expect(requests[0]).toMatchObject({
+            path: '/guild-glossary/guild-1/import',
+            options: { method: 'POST' },
+        });
+        expect(JSON.parse(requests[0].options.body!)).toEqual({
+            text: 'source,target\nraid,團本',
+            duplicateMode: 'overwrite',
+        });
+        expect(context.reloadCount).toBe(1);
+        expect(nodes['glossary-import-result'].hidden).toBe(false);
+        expect(nodes['glossary-import-result'].innerHTML).toContain('Created 2');
+        expect(nodes['glossary-import-result'].innerHTML).toContain('Failed 1');
+        expect(toasts).toEqual(['Glossary import complete with errors']);
+    });
 });
