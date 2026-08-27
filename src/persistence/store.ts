@@ -209,12 +209,7 @@ export class ConfigStore {
     }
 
     clearGuildBudget(guildId: string): boolean {
-        if (!this.getGuildBudget(guildId)) {
-            return false;
-        }
-
-        this.stmt('DELETE FROM guild_budgets WHERE guild_id = ?').run(guildId);
-        return true;
+        return this.stmt('DELETE FROM guild_budgets WHERE guild_id = ?').run(guildId).changes > 0;
     }
 
     getUserBudget(userId: string): UserBudgetConfig | null {
@@ -240,12 +235,7 @@ export class ConfigStore {
     }
 
     clearUserBudget(userId: string): boolean {
-        if (!this.getUserBudget(userId)) {
-            return false;
-        }
-
-        this.stmt('DELETE FROM user_budgets WHERE user_id = ?').run(userId);
-        return true;
+        return this.stmt('DELETE FROM user_budgets WHERE user_id = ?').run(userId).changes > 0;
     }
 
     getUserLanguage(guildId: string, userId: string): string | null {
@@ -333,7 +323,7 @@ export class ConfigStore {
             return this.getGuildGlossaryEntry(guildId, input.id)!;
         }
 
-        const result = this.stmt(
+        const row = this.stmt(
             `
             INSERT INTO guild_glossary (
                 guild_id,
@@ -345,10 +335,17 @@ export class ConfigStore {
                 updated_at
             )
             VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT DO UPDATE SET
+                source_text = excluded.source_text,
+                target_language = excluded.target_language,
+                target_text = excluded.target_text,
+                notes = excluded.notes,
+                updated_at = excluded.updated_at
+            RETURNING id
         `,
-        ).run(guildId, sourceText, targetLanguage, targetText, notes, now, now);
+        ).get(guildId, sourceText, targetLanguage, targetText, notes, now, now) as { id: number };
 
-        return this.getGuildGlossaryEntry(guildId, Number(result.lastInsertRowid))!;
+        return this.getGuildGlossaryEntry(guildId, row.id)!;
     }
 
     upsertGuildGlossaryEntries(

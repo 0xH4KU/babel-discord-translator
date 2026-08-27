@@ -218,15 +218,23 @@ describe('ConfigStore', () => {
             targetText: 'レイド',
             notes: 'Game term',
         });
+        const replacedFirst = store.upsertGuildGlossaryEntry('guild-1', {
+            sourceText: 'openai',
+            targetLanguage: 'AUTO',
+            targetText: 'Open AI',
+            notes: 'Updated brand name',
+        });
+
+        expect(replacedFirst.id).toBe(first.id);
 
         expect(store.listGuildGlossary('guild-1')).toEqual([
             {
                 id: first.id,
                 guildId: 'guild-1',
-                sourceText: 'OpenAI',
-                targetLanguage: 'auto',
-                targetText: 'OpenAI',
-                notes: 'Preserve brand name',
+                sourceText: 'openai',
+                targetLanguage: 'AUTO',
+                targetText: 'Open AI',
+                notes: 'Updated brand name',
                 createdAt: expect.any(String),
                 updatedAt: expect.any(String),
             },
@@ -262,12 +270,12 @@ describe('ConfigStore', () => {
 
         expect(updated.id).toBe(second.id);
         expect(store.listGuildGlossary('guild-1').map((entry) => entry.targetLanguage)).toEqual([
-            'auto',
+            'AUTO',
             'ja',
             'zh-TW',
         ]);
         expect(store.listGuildGlossary('guild-1').map((entry) => entry.targetText)).toEqual([
-            'OpenAI',
+            'Open AI',
             'レイド',
             '團本',
         ]);
