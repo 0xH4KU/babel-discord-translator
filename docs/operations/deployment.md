@@ -94,7 +94,7 @@ After deployment:
 2. Open the Railway public URL.
 3. Log in with `DASHBOARD_PASSWORD`.
 4. Complete the setup wizard and configure the provider.
-5. Register Discord commands from a local checkout or Railway shell with the matching `npm run register:guild` or `npm run register:pocket` command.
+5. Register commands with `npm run register:guild` or `npm run register:pocket` locally; use the matching `register:built:*` command in a Docker or Railway shell.
 6. Check `/livez`, `/readyz`, and the dashboard Operations panel.
 
 For the one-click template checklist, persistent volume notes, and affiliate disclosure wording, see [Railway deployment](railway.md).

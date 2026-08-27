@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -20,5 +20,20 @@ describe('deployment builds', () => {
         } finally {
             rmSync(tempRoot, { force: true, recursive: true });
         }
+    });
+
+    it('uses compiled maintenance commands and forwards container shutdown signals', () => {
+        const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as {
+            scripts: Record<string, string>;
+        };
+        const dockerfile = readFileSync('Dockerfile', 'utf8');
+        const installer = readFileSync('scripts/vps-install.sh', 'utf8');
+
+        expect(packageJson.scripts['register:built']).toBe('node dist/scripts/register.js');
+        expect(packageJson.scripts['db:migrate:built']).toContain('dist/scripts/');
+        expect(dockerfile).toContain('"exec node --max-old-space-size=');
+        expect(installer).toContain('register:built:guild');
+        expect(installer).toContain('register:built:pocket');
+        expect(installer).toContain('"combined"');
     });
 });

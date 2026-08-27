@@ -158,18 +158,18 @@ Register commands from a local checkout:
 DISCORD_APP_ID=your_app_id DISCORD_BOT_TOKEN=your_token npm run register
 ```
 
-Or run the same command in a Railway shell with `DISCORD_APP_ID` and `DISCORD_BOT_TOKEN` set. This registers the default Babel Guild command set unless `BABEL_APP=pocket` is set. Use `npm run register:guild` or `npm run register:pocket` when you want the command surface to be explicit.
+In a Railway Docker shell, use the compiled `npm run register:built:guild` or `npm run register:built:pocket` command because production images omit development dependencies.
 
 For combined mode with separate Discord applications:
 
 ```bash
 BABEL_GUILD_DISCORD_APP_ID=your_guild_app_id \
 BABEL_GUILD_DISCORD_BOT_TOKEN=your_guild_token \
-npm run register:guild
+npm run register:built:guild
 
 BABEL_POCKET_DISCORD_APP_ID=your_pocket_app_id \
 BABEL_POCKET_DISCORD_BOT_TOKEN=your_pocket_token \
-npm run register:pocket
+npm run register:built:pocket
 ```
 
 ## Template Publishing Checklist

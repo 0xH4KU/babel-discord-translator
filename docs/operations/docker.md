@@ -77,13 +77,13 @@ After the container is healthy, register the matching Discord commands. The scri
 For Babel Guild:
 
 ```bash
-docker compose exec babel npm run register:guild
+docker compose exec babel npm run register:built:guild
 ```
 
 For Babel Pocket:
 
 ```bash
-docker compose exec babel npm run register:pocket
+docker compose exec babel npm run register:built:pocket
 ```
 
 Check the deployment:
