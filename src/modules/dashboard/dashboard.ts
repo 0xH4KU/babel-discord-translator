@@ -332,6 +332,7 @@ export function createDashboardApp({
                     profiles: scope.profiles,
                     client: scope.client,
                     configStore: configRepository,
+                    budgetStore: store,
                     healthCheck,
                     openAiHealthCheck,
                     requireProfileSpecificRegistrationEnv: isCombinedDashboard,

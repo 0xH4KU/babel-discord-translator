@@ -49,6 +49,8 @@ function configStore(overrides: Partial<StoreData> = {}) {
         getDashboardConfig: () => cfg,
         getRuntimeConfig: () => cfg,
         isSetupComplete: () => cfg.setupComplete,
+        listGuildBudgets: () => cfg.guildBudgets,
+        listUserBudgets: () => cfg.userBudgets,
     };
 }
 
@@ -86,7 +88,7 @@ function response(body: unknown, status = 200): Response {
 }
 
 function registeredCommandsFetch(profile = BABEL_GUILD_PROFILE) {
-    return vi.fn(async () =>
+    return vi.fn(async (_input: unknown, _init?: RequestInit) =>
         response(
             getCommandsForProfile(profile).map((command, index) => ({
                 id: String(index),
@@ -135,6 +137,7 @@ describe('runSetupDoctor', () => {
     });
 
     it('returns display titles for every check row', async () => {
+        const fetchFn = registeredCommandsFetch();
         const report = await runSetupDoctor({
             profile: BABEL_GUILD_PROFILE,
             profiles: [BABEL_GUILD_PROFILE],
@@ -143,12 +146,13 @@ describe('runSetupDoctor', () => {
             healthCheck: vi.fn(async () => ({ healthy: true, latencyMs: 12 })),
             openAiHealthCheck: vi.fn(async () => ({ healthy: true, latencyMs: 10 })),
             env: { DISCORD_APP_ID: 'app-1', DISCORD_TOKEN: 'token' },
-            fetchFn: registeredCommandsFetch(),
+            fetchFn,
             sqliteProbe: vi.fn(),
         });
 
         expect(report.checks.every((check) => typeof check.title === 'string')).toBe(true);
         expect(report.checks.map((check) => check.title)).toContain('Discord');
+        expect(fetchFn.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
     });
 
     it('fails the report when an expected command is missing', async () => {
@@ -257,6 +261,33 @@ describe('runSetupDoctor', () => {
         );
     });
 
+    it('checks persisted guild and user budget tables', async () => {
+        const report = await runSetupDoctor({
+            profile: BABEL_POCKET_PROFILE,
+            profiles: [BABEL_POCKET_PROFILE],
+            client: client(),
+            configStore: configStore(),
+            budgetStore: {
+                listGuildBudgets: () => ({ 'guild-bad': { dailyBudgetUsd: -1 } }),
+                listUserBudgets: () => ({ 'user-ok': { dailyBudgetUsd: 1 } }),
+            },
+            healthCheck: vi.fn(async () => ({ healthy: true, latencyMs: 12 })),
+            openAiHealthCheck: vi.fn(async () => ({ healthy: true, latencyMs: 10 })),
+            env: {},
+            fetchFn: vi.fn(),
+            sqliteProbe: vi.fn(),
+        });
+
+        expect(report.ok).toBe(false);
+        expect(report.checks).toContainEqual(
+            expect.objectContaining({
+                id: 'budget',
+                status: 'fail',
+                detail: expect.stringContaining('guild guild-bad daily budget'),
+            }),
+        );
+    });
+
     it('fails provider checks when readiness configuration fails', async () => {
         const report = await runSetupDoctor({
             profile: BABEL_GUILD_PROFILE,
@@ -326,7 +357,7 @@ describe('runSetupDoctor', () => {
         expect(channelHas).toHaveBeenCalledWith(PermissionFlagsBits.ManageWebhooks);
     });
 
-    it('checks only the first cached webhook channel with inspectable permissions', async () => {
+    it('checks every cached webhook channel with inspectable permissions', async () => {
         const allowedHas = vi.fn(() => true);
         const blockedHas = vi.fn(() => false);
         const allowedPermissionsFor = vi.fn(() => ({ has: allowedHas }));
@@ -341,8 +372,14 @@ describe('runSetupDoctor', () => {
                     channels: {
                         cache: {
                             values: function* () {
-                                yield { name: 'allowed-channel', permissionsFor: allowedPermissionsFor };
-                                yield { name: 'blocked-channel', permissionsFor: blockedPermissionsFor };
+                                yield {
+                                    name: 'allowed-channel',
+                                    permissionsFor: allowedPermissionsFor,
+                                };
+                                yield {
+                                    name: 'blocked-channel',
+                                    permissionsFor: blockedPermissionsFor,
+                                };
                             },
                         },
                     },
@@ -359,11 +396,11 @@ describe('runSetupDoctor', () => {
         expect(report.checks).toContainEqual(
             expect.objectContaining({
                 id: 'webhook',
-                status: 'pass',
-                detail: expect.stringContaining('allowed-channel'),
+                status: 'fail',
+                detail: expect.stringContaining('blocked-channel'),
             }),
         );
         expect(allowedPermissionsFor).toHaveBeenCalledWith('bot-1');
-        expect(blockedPermissionsFor).not.toHaveBeenCalled();
+        expect(blockedPermissionsFor).toHaveBeenCalledWith('bot-1');
     });
 });

@@ -1,10 +1,11 @@
 import { PermissionFlagsBits, type Client, type Guild } from 'discord.js';
 import type { AppProfile } from '../../apps/app-profile.js';
 import { getCommandsForProfile } from '../../apps/commands.js';
-import { resolveRegistrationEnv } from '../../apps/register.js';
+import { DISCORD_API_TIMEOUT_MS, resolveRegistrationEnv } from '../../apps/register.js';
 import { checkOpenAiHealth, type OpenAiHealthStatus } from '../../infra/openai-client.js';
 import { checkVertexAiHealth, type VertexAiHealthStatus } from '../../infra/vertex-ai-client.js';
 import { getSqliteDatabase, inTransaction } from '../../persistence/sqlite-database.js';
+import { store, type ConfigStore } from '../../persistence/store.js';
 import { configRepository, type ConfigRepository } from '../config/config-repository.js';
 import { getReadinessStatus } from '../../shared/health.js';
 import type { StoreData } from '../../shared/types.js';
@@ -30,13 +31,17 @@ export interface SetupDoctorReport {
 type SetupDoctorConfigStore = Pick<
     ConfigRepository,
     'getDashboardConfig' | 'getRuntimeConfig' | 'isSetupComplete'
->;
+> &
+    Partial<SetupDoctorBudgetStore>;
+
+type SetupDoctorBudgetStore = Pick<ConfigStore, 'listGuildBudgets' | 'listUserBudgets'>;
 
 export interface SetupDoctorDeps {
     profile: AppProfile;
     profiles?: AppProfile[];
     client: Client;
     configStore?: SetupDoctorConfigStore;
+    budgetStore?: SetupDoctorBudgetStore;
     healthCheck?: () => Promise<VertexAiHealthStatus>;
     openAiHealthCheck?: () => Promise<OpenAiHealthStatus>;
     env?: NodeJS.ProcessEnv;
@@ -134,6 +139,7 @@ async function commandsCheck({
             `https://discord.com/api/v10/applications/${appId}/commands`,
             {
                 headers: { Authorization: `Bot ${botToken}` },
+                signal: AbortSignal.timeout(DISCORD_API_TIMEOUT_MS),
             },
         );
 
@@ -282,7 +288,10 @@ async function sqliteCheck(
     }
 }
 
-function budgetCheck(configStore: SetupDoctorConfigStore): SetupDoctorCheckDraft {
+function budgetCheck(
+    configStore: SetupDoctorConfigStore,
+    budgetStore: SetupDoctorBudgetStore,
+): SetupDoctorCheckDraft {
     try {
         const config = configStore.getDashboardConfig();
         const values = [
@@ -290,8 +299,8 @@ function budgetCheck(configStore: SetupDoctorConfigStore): SetupDoctorCheckDraft
             ['output price', config.outputPricePerMillion],
             ['daily budget', config.dailyBudgetUsd],
             ['default user daily budget', config.defaultUserDailyBudgetUsd],
-            ...budgetEntries('guild', config.guildBudgets),
-            ...budgetEntries('user', config.userBudgets),
+            ...budgetEntries('guild', budgetStore.listGuildBudgets()),
+            ...budgetEntries('user', budgetStore.listUserBudgets()),
         ] as const;
         const invalid = values.filter(([, value]) => !Number.isFinite(value) || value < 0);
 
@@ -376,19 +385,20 @@ function webhookCheck(profile: AppProfile, client: Client): SetupDoctorCheckDraf
             };
         }
 
-        if (!result.allowed) {
+        if (result.denied.length > 0) {
+            const examples = result.denied.slice(0, 5).join(', ');
             return {
                 id: 'webhook',
                 status: 'fail',
-                detail: `Missing Manage Webhooks permission in: ${result.channel}`,
-                action: 'Grant the bot Manage Webhooks permission in this channel.',
+                detail: `Missing Manage Webhooks permission in ${result.denied.length} of ${result.checked} inspected channels: ${examples}${result.denied.length > 5 ? ', ...' : ''}`,
+                action: 'Grant the bot Manage Webhooks permission in every translated channel.',
             };
         }
 
         return {
             id: 'webhook',
             status: 'pass',
-            detail: `Manage Webhooks permission is available in ${result.channel}`,
+            detail: `Manage Webhooks permission is available in all ${result.checked} inspected channels`,
         };
     } catch (error) {
         return {
@@ -403,7 +413,10 @@ function webhookCheck(profile: AppProfile, client: Client): SetupDoctorCheckDraf
 function inspectWebhookChannelPermissions(
     guilds: Guild[],
     userId: string,
-): { allowed: boolean; channel: string } | null {
+): { checked: number; denied: string[] } | null {
+    let checked = 0;
+    const denied: string[] = [];
+
     for (const guild of guilds) {
         for (const channel of guild.channels.cache.values()) {
             const permissions = channel.permissionsFor(userId);
@@ -411,14 +424,14 @@ function inspectWebhookChannelPermissions(
                 continue;
             }
 
-            return {
-                allowed: permissions.has(PermissionFlagsBits.ManageWebhooks),
-                channel: `${guild.name} / ${channel.name}`,
-            };
+            checked++;
+            if (!permissions.has(PermissionFlagsBits.ManageWebhooks)) {
+                denied.push(`${guild.name} / ${channel.name}`);
+            }
         }
     }
 
-    return null;
+    return checked > 0 ? { checked, denied } : null;
 }
 
 export async function runSetupDoctor({
@@ -426,6 +439,7 @@ export async function runSetupDoctor({
     profiles = [profile],
     client,
     configStore = configRepository,
+    budgetStore,
     healthCheck = checkVertexAiHealth,
     openAiHealthCheck = checkOpenAiHealth,
     env = process.env,
@@ -433,6 +447,10 @@ export async function runSetupDoctor({
     sqliteProbe = runSqliteWriteProbe,
     requireProfileSpecificRegistrationEnv,
 }: SetupDoctorDeps): Promise<SetupDoctorReport> {
+    const resolvedBudgetStore = budgetStore ?? {
+        listGuildBudgets: () => configStore.listGuildBudgets?.() ?? store.listGuildBudgets(),
+        listUserBudgets: () => configStore.listUserBudgets?.() ?? store.listUserBudgets(),
+    };
     const checks: SetupDoctorCheckDraft[] = [
         discordCheck(client),
         await commandsCheck({
@@ -444,7 +462,7 @@ export async function runSetupDoctor({
         }),
         ...(await providerChecks(configStore, healthCheck, openAiHealthCheck)),
         await sqliteCheck(sqliteProbe),
-        budgetCheck(configStore),
+        budgetCheck(configStore, resolvedBudgetStore),
         webhookCheck(profile, client),
     ];
 
