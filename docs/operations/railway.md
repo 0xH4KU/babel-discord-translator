@@ -13,6 +13,7 @@ The repository is Railway-ready:
 - Babel binds the dashboard to `DASHBOARD_HOST`, which defaults to `0.0.0.0`.
 - The Docker image stores SQLite data under `/app/data` when `BABEL_DB_PATH=/app/data/babel.sqlite`.
 - The app profile is selected at runtime with `BABEL_APP`, so the same Railway service can run Babel Guild, Babel Pocket, or both products in one Node.js process.
+- The Railway service must remain at one replica; Babel does not support horizontal scaling or Railway autoscaling.
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/babel-discord-tran-1?referralCode=euhy-o&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
@@ -56,6 +57,8 @@ npm run start:pocket
 ```
 
 Railway Docker deployments can use the same image for either app. Set `BABEL_APP=guild` for Babel Guild, `BABEL_APP=pocket` for Babel Pocket, or `BABEL_APP=combined` to run both in one service.
+
+Keep Railway replica count at `1`. Cooldowns, translation queues, caches, metrics, and Discord event handling are process-local; attaching the same SQLite volume to multiple replicas does not coordinate them and can cause duplicate responses or inaccurate limits.
 
 ## Required Variables
 

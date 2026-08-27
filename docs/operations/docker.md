@@ -4,6 +4,8 @@ This guide is for operators who want to run Babel Guild or Babel Pocket as a sel
 
 The image runs Node.js `22.13+` and stores runtime state with native `node:sqlite`. Back up the `/app/data` volume before changing Node image tags, rebuild the image, then run `npm run smoke:dashboard` after upgrading Node.
 
+Keep the service at one container replica per Discord application. Multiple containers can receive the same Discord events while keeping separate in-memory limits and caches, and a shared SQLite volume does not make those operations distributed-safe. Docker Compose should therefore run one `babel` service instance.
+
 ## Choose The Product Profile
 
 Select the app profile before you build the image or register Discord commands.

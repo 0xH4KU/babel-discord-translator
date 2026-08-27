@@ -412,6 +412,8 @@ The test suite exercises the Node/SQLite runtime. Run `npm test` for the executa
 
 Babel is Railway-ready for a one-click self-host template: `railway.json` configures the `/livez` healthcheck, Railway's `PORT` is respected automatically, and `/app/data` can be mounted as a volume for SQLite. One Railway template can deploy either Babel Guild or Babel Pocket by exposing `BABEL_APP` as a service variable; keep `guild` as the default for existing users and set `pocket` for user-install deployments. Set `BABEL_APP=combined` to run both products in one service; the combined dashboard root `/` shows a product chooser, `/guild` opens the Babel Guild dashboard, and `/pocket` opens the Babel Pocket dashboard.
 
+Run one replica per Discord application. Babel's Discord event handling, runtime limits, queues, caches, and metrics are process-local, so horizontal scaling is not currently supported even when replicas share SQLite storage.
+
 Use these template variables:
 
 | Variable             | Value                                                                      |

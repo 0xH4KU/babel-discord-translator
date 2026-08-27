@@ -17,6 +17,8 @@ Babel does not require privileged Discord intents.
 
 Babel stores runtime data with native `node:sqlite`. Before upgrading Node.js, back up `data/babel.sqlite`, rebuild, and run `npm run smoke:dashboard` after upgrading Node. Treat the database and its backups as sensitive because provider credentials are stored with the dashboard configuration.
 
+Run exactly one Babel process or replica for each Discord application. Horizontal scaling is not supported: Discord event handling, cooldowns, queues, caches, and metrics are coordinated in memory, and sharing one SQLite file does not provide distributed request coordination. Use `BABEL_APP=combined` to run Guild and Pocket together in one process; do not run multiple replicas of that process.
+
 ## Choose The Product Profile
 
 Select the app profile before you register Discord commands or start the process.
