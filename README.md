@@ -297,7 +297,7 @@ If `DASHBOARD_PASSWORD` is omitted, Babel warns in local development and test en
 
 Set `BABEL_APP=combined` to run both Babel Guild and Babel Pocket in one process. In combined mode, the combined dashboard root `/` shows a product chooser; `/guild` opens the Babel Guild dashboard; `/pocket` opens the Babel Pocket dashboard.
 
-### Migration & Rollback
+### Migration & Legacy Export
 
 Babel auto-imports `data/config.json` into SQLite on first startup. Manual scripts:
 
@@ -305,11 +305,13 @@ Babel auto-imports `data/config.json` into SQLite on first startup. Manual scrip
 # Import legacy JSON → SQLite
 npm run db:migrate
 
-# Export SQLite → JSON for rollback
+# Export the legacy-compatible JSON subset for inspection
 npm run db:export:json
 ```
 
 Use `npm run db:migrate -- --force` to overwrite an existing SQLite file.
+
+The JSON export is not a complete backup and excludes SQLite-only data. Use SQLite's `.backup` command for rollback and disaster recovery; see [SQLite backup and restore](docs/operations/sqlite-backup-restore.md).
 
 Babel stores runtime data through native `node:sqlite`. Before upgrading Node on a self-hosted install, back up `data/babel.sqlite`, run `npm run build`, and run `npm run smoke:dashboard` after upgrading Node.
 
@@ -395,7 +397,7 @@ npm start               # Run production root app, selected by BABEL_APP
 npm run start:guild     # Run Babel Guild production artifact
 npm run start:pocket    # Run Babel Pocket production artifact
 npm run db:migrate      # Import legacy JSON → SQLite
-npm run db:export:json  # Export SQLite → JSON
+npm run db:export:json  # Export the legacy-compatible JSON subset
 ```
 
 ### Test Coverage
