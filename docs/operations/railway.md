@@ -132,7 +132,7 @@ Check the public health endpoint:
 curl -fsS https://YOUR_RAILWAY_DOMAIN/livez
 ```
 
-`/readyz` may return `503` until setup is complete and the configured provider passes its readiness check.
+`/readyz` may return `503` until setup is complete, Discord is connected, and an enabled provider is fully configured. Run Setup Doctor for an active provider request check.
 
 ## Updates and Autodeploys
 

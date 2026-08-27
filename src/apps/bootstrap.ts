@@ -203,7 +203,6 @@ export async function startBabelApps(profiles: AppProfile[]): Promise<void> {
 
     let dashboardApp: express.Express | null = null;
     let dashboardServer: http.Server | null = null;
-    const readyProfileIds = new Set<string>();
     const clientsByProfile = Object.fromEntries(
         runtimes.map((runtime) => [runtime.profile.id, runtime.client]),
     );
@@ -214,8 +213,9 @@ export async function startBabelApps(profiles: AppProfile[]): Promise<void> {
         runtimes.map((runtime) => [runtime.profile.id, runtime.translationService]),
     );
 
-    const startDashboardIfReady = () => {
-        if (dashboardApp || dashboardServer || readyProfileIds.size !== runtimes.length) {
+    const discordReady = () => runtimes.every((runtime) => runtime.client.isReady());
+    const startDashboard = () => {
+        if (dashboardApp || dashboardServer) {
             return;
         }
 
@@ -229,6 +229,7 @@ export async function startBabelApps(profiles: AppProfile[]): Promise<void> {
                 cache: shared.cache,
                 metrics: shared.metrics,
                 runtimeLimiter: shared.runtimeLimiter,
+                discordReady,
                 host: shared.config.dashboardHost,
             });
             dashboardServer = startDashboardServer(
@@ -246,6 +247,7 @@ export async function startBabelApps(profiles: AppProfile[]): Promise<void> {
             log: shared.log,
             client: primaryRuntime.client,
             clients: clientsByProfile,
+            discordReady,
             metrics: shared.metrics,
             runtimeLimiter: shared.runtimeLimiter,
             profile: primaryRuntime.profile,
@@ -269,10 +271,10 @@ export async function startBabelApps(profiles: AppProfile[]): Promise<void> {
                     botTag: c.user.tag,
                     botUserId: c.user.id,
                 });
-            readyProfileIds.add(runtime.profile.id);
-            startDashboardIfReady();
         });
     }
+
+    startDashboard();
 
     const cooldownIntervals = runtimes.map((runtime) => {
         return setInterval(() => runtime.cooldown.cleanup(), 60_000);

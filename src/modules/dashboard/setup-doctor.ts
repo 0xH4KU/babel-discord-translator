@@ -219,7 +219,7 @@ async function providerChecks(
             configStore,
             healthCheck,
             openAiHealthCheck,
-            cacheTtlMs: 0,
+            probeProviders: true,
         });
         if (readiness.checks.configuration.status === 'fail') {
             const { detail, error } = readiness.checks.configuration;
@@ -261,7 +261,9 @@ async function providerChecks(
     }
 }
 
-async function sqliteCheck(sqliteProbe: () => void | Promise<void>): Promise<SetupDoctorCheckDraft> {
+async function sqliteCheck(
+    sqliteProbe: () => void | Promise<void>,
+): Promise<SetupDoctorCheckDraft> {
     try {
         await sqliteProbe();
         return {

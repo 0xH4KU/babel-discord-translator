@@ -266,7 +266,6 @@ import { TranslationCache } from '../src/modules/translation/cache.js';
 import { CooldownManager } from '../src/modules/translation/cooldown.js';
 import { TranslationLog } from '../src/shared/log.js';
 import { TranslationRuntimeLimiter } from '../src/modules/translation/translation-runtime-limiter.js';
-import { _test as healthTest } from '../src/shared/health.js';
 import { translate as translateMock } from '../src/modules/translation/translate.js';
 import { createSqliteDatabase } from '../src/persistence/sqlite-database.js';
 import { DiscordUserProfileRepository } from '../src/modules/dashboard/discord-user-profile-repository.js';
@@ -585,6 +584,7 @@ describe('Dashboard API', () => {
             client: mockClient,
             metrics,
             runtimeLimiter,
+            discordReady: () => true,
             healthCheck,
             sessionRepository: new InMemorySessionRepository(),
             userProfileRepository,
@@ -597,7 +597,6 @@ describe('Dashboard API', () => {
     });
 
     beforeEach(() => {
-        healthTest.resetReadinessCache();
         healthCheck?.mockClear();
         healthCheck?.mockResolvedValue({ healthy: true, latencyMs: 24 });
     });
@@ -696,6 +695,20 @@ describe('Dashboard API', () => {
         expect(health.body!.live).toBe(true);
         expect(health.body!.ready).toBe(true);
         expect(health.body!.strategy).toBeDefined();
+        expect(healthCheck).not.toHaveBeenCalled();
+    });
+
+    it('should not expose local database errors from public health endpoints', async () => {
+        const { store } = await import('../src/persistence/store.js');
+        const getConfigValues = store.getConfigValues as ReturnType<typeof vi.fn>;
+        getConfigValues.mockImplementationOnce(() => {
+            throw new Error('/srv/private/babel.sqlite is unreadable');
+        });
+
+        const live = await request(server, 'GET', '/livez');
+
+        expect(live.status).toBe(503);
+        expect(JSON.stringify(live.body)).not.toContain('/srv/private/babel.sqlite');
     });
 
     it('should expose health-only dashboard endpoints without full dashboard API routes', async () => {
@@ -703,8 +716,7 @@ describe('Dashboard API', () => {
             cache,
             metrics,
             runtimeLimiter,
-            healthCheck,
-            healthProbeCacheTtlMs: 0,
+            discordReady: () => true,
         });
         const healthOnlyServer = startDashboardServer(healthOnlyApp, 0);
 
@@ -738,8 +750,6 @@ describe('Dashboard API', () => {
     it('should expose health-only metrics and health with optional runtime deps omitted', async () => {
         const fallbackApp = createHealthDashboardApp({
             cache,
-            healthCheck,
-            healthProbeCacheTtlMs: 0,
         });
         const fallbackServer = startDashboardServer(fallbackApp, 0);
 
@@ -784,19 +794,29 @@ describe('Dashboard API', () => {
         expect(response.body!.ip).not.toBe('203.0.113.10');
     });
 
-    it('should report degraded health when Vertex AI readiness fails', async () => {
-        healthCheck.mockResolvedValue({ healthy: false, error: 'upstream unavailable' });
+    it('should report degraded health while Discord is disconnected', async () => {
+        const disconnectedApp = createHealthDashboardApp({
+            cache,
+            discordReady: () => false,
+        });
+        const disconnectedServer = startDashboardServer(disconnectedApp, 0);
 
-        const ready = await request(server, 'GET', '/readyz');
-        expect(ready.status).toBe(503);
-        expect(ready.body!.ready).toBe(false);
+        try {
+            const ready = await request(disconnectedServer, 'GET', '/readyz');
+            expect(ready.status).toBe(503);
+            expect(ready.body!.ready).toBe(false);
 
-        const health = await request(server, 'GET', '/healthz');
-        expect(health.status).toBe(200);
-        expect(health.body!.status).toBe('degraded');
-        expect(
-            (health.body!.checks as Record<string, Record<string, unknown>>).vertexAi.error,
-        ).toBe('upstream unavailable');
+            const health = await request(disconnectedServer, 'GET', '/healthz');
+            expect(health.status).toBe(200);
+            expect(health.body!.status).toBe('degraded');
+            expect(
+                (health.body!.checks as Record<string, Record<string, unknown>>).discord,
+            ).toMatchObject({ status: 'fail', detail: 'Discord client is not connected' });
+            expect(healthCheck).not.toHaveBeenCalled();
+        } finally {
+            disconnectedServer.close();
+            stopDashboardApp(disconnectedApp);
+        }
     });
 
     it('should return stats for authenticated user', async () => {
@@ -1309,17 +1329,15 @@ describe('Dashboard API', () => {
         }
     });
 
-    it('should cache readiness probes within the configured health TTL', async () => {
-        healthTest.resetReadinessCache();
+    it('should not call generation probes from public readiness endpoints', async () => {
         healthCheck.mockClear();
-        healthCheck.mockResolvedValue({ healthy: true, latencyMs: 21 });
 
         const first = await request(server, 'GET', '/readyz');
         const second = await request(server, 'GET', '/readyz');
 
         expect(first.status).toBe(200);
         expect(second.status).toBe(200);
-        expect(healthCheck).toHaveBeenCalledTimes(1);
+        expect(healthCheck).not.toHaveBeenCalled();
     });
 
     it('should expose package version metadata to authenticated users', async () => {
@@ -1395,8 +1413,6 @@ describe('Dashboard API', () => {
             cache,
             metrics,
             runtimeLimiter,
-            healthCheck,
-            healthProbeCacheTtlMs: 0,
             metricsToken: 'metrics-secret',
         });
         const protectedServer = startDashboardServer(protectedApp, 0);
@@ -1437,8 +1453,6 @@ describe('Dashboard API', () => {
             cache,
             metrics,
             runtimeLimiter,
-            healthCheck,
-            healthProbeCacheTtlMs: 0,
             host: '0.0.0.0',
         };
         const protectedApp = createHealthDashboardApp(healthDeps);
@@ -1545,15 +1559,14 @@ describe('Dashboard API', () => {
     });
 
     it('should expose readiness details on the authenticated health endpoint', async () => {
-        healthCheck.mockResolvedValue({ healthy: true, latencyMs: 12 });
-
         const res = await request(server, 'GET', '/api/health', {
             cookie: sessionCookie,
         });
         expect(res.status).toBe(200);
         expect(res.body!.healthy).toBe(true);
-        expect((res.body!.vertexAi as Record<string, unknown>).latencyMs).toBe(12);
+        expect((res.body!.vertexAi as Record<string, unknown>).status).toBe('pass');
         expect((res.body!.checks as Record<string, unknown>).configuration).toBeDefined();
+        expect(healthCheck).not.toHaveBeenCalled();
     });
 
     // --- Config masking ---

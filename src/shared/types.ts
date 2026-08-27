@@ -223,9 +223,9 @@ export interface DashboardDeps {
     client: Client;
     metrics?: AppMetricsCollector;
     runtimeLimiter?: TranslationRuntimeLimiter;
-    healthProbeCacheTtlMs?: number;
     healthCheck?: () => Promise<VertexAiHealthStatus>;
     openAiHealthCheck?: () => Promise<OpenAiHealthStatus>;
+    discordReady?: () => boolean;
     sessionRepository?: SessionRepository;
     userProfileRepository?: DiscordUserProfileRepository;
     profile?: AppProfile;

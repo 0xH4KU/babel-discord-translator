@@ -1,8 +1,16 @@
 import { configRepository, type ConfigRepository } from '../modules/config/config-repository.js';
 import type { AppMetricsSnapshot } from './app-metrics.js';
 import { createEmptyAppMetricsSnapshot } from './app-metrics.js';
-import { checkVertexAiHealth, type VertexAiHealthStatus } from '../infra/vertex-ai-client.js';
-import { checkOpenAiHealth, type OpenAiHealthStatus } from '../infra/openai-client.js';
+import {
+    checkVertexAiHealth,
+    isVertexAiConfigured,
+    type VertexAiHealthStatus,
+} from '../infra/vertex-ai-client.js';
+import {
+    checkOpenAiHealth,
+    isOpenAiConfigured,
+    type OpenAiHealthStatus,
+} from '../infra/openai-client.js';
 import type { TranslationProviderMode } from './types.js';
 
 type HealthCheckLevel = 'pass' | 'fail' | 'skip';
@@ -30,6 +38,7 @@ export interface ReadinessStatus {
     timestamp: string;
     checks: {
         configuration: HealthCheckResult;
+        discord: HealthCheckResult;
         vertexAi: HealthCheckResult;
         openAi: HealthCheckResult;
     };
@@ -49,6 +58,7 @@ export interface HealthStatus {
         process: HealthCheckResult;
         configStore: HealthCheckResult;
         configuration: HealthCheckResult;
+        discord: HealthCheckResult;
         vertexAi: HealthCheckResult;
         openAi: HealthCheckResult;
     };
@@ -62,27 +72,13 @@ interface HealthDeps {
     configStore?: Pick<ConfigRepository, 'getRuntimeConfig' | 'isSetupComplete'>;
     healthCheck?: () => Promise<VertexAiHealthStatus>;
     openAiHealthCheck?: () => Promise<OpenAiHealthStatus>;
-    cacheTtlMs?: number;
-}
-
-interface CachedReadiness {
-    expiresAt: number;
-    status: ReadinessStatus;
-}
-
-let readinessCache: CachedReadiness | null = null;
-
-function resetReadinessCache(): void {
-    readinessCache = null;
+    probeProviders?: boolean;
+    discordReady?: () => boolean;
 }
 
 function now(): string {
     return new Date().toISOString();
 }
-
-export const _test = {
-    resetReadinessCache,
-};
 
 function createVertexCheck(result: VertexAiHealthStatus): HealthCheckResult {
     if (result.healthy) {
@@ -125,7 +121,27 @@ function providerModeUsesOpenAi(mode: TranslationProviderMode): boolean {
 }
 
 function providerModeSkipMessage(providerName: string): string {
-    return `${providerName} probe skipped — not enabled in current provider mode`;
+    return `${providerName} check skipped — not enabled in current provider mode`;
+}
+
+function createProviderConfigCheck(providerName: string, configured: boolean): HealthCheckResult {
+    return configured
+        ? { status: 'pass', detail: `${providerName} configuration is present` }
+        : { status: 'fail', detail: `${providerName} configuration is incomplete` };
+}
+
+function createDiscordCheck(discordReady?: () => boolean): HealthCheckResult {
+    if (!discordReady) {
+        return { status: 'skip', detail: 'Discord readiness check is unavailable' };
+    }
+
+    try {
+        return discordReady()
+            ? { status: 'pass', detail: 'Discord client is connected' }
+            : { status: 'fail', detail: 'Discord client is not connected' };
+    } catch {
+        return { status: 'fail', detail: 'Discord readiness check failed' };
+    }
 }
 
 export function getLivenessStatus({
@@ -152,7 +168,7 @@ export function getLivenessStatus({
                 },
             },
         };
-    } catch (error) {
+    } catch {
         return {
             live: false,
             status: 'fail',
@@ -162,7 +178,6 @@ export function getLivenessStatus({
                 configStore: {
                     status: 'fail',
                     detail: 'Runtime config repository is unavailable',
-                    error: (error as Error).message,
                 },
             },
         };
@@ -173,14 +188,10 @@ export async function getReadinessStatus({
     configStore = configRepository,
     healthCheck = checkVertexAiHealth,
     openAiHealthCheck = checkOpenAiHealth,
-    cacheTtlMs = 5_000,
+    probeProviders = false,
+    discordReady,
 }: HealthDeps = {}): Promise<ReadinessStatus> {
     const timestamp = now();
-    const cacheKeyApplies = cacheTtlMs > 0;
-
-    if (cacheKeyApplies && readinessCache && readinessCache.expiresAt > Date.now()) {
-        return readinessCache.status;
-    }
 
     try {
         if (!configStore.isSetupComplete()) {
@@ -193,19 +204,20 @@ export async function getReadinessStatus({
                         status: 'fail',
                         detail: 'Dashboard setup is incomplete',
                     },
+                    discord: {
+                        status: 'skip',
+                        detail: 'Discord readiness check skipped until setup completes',
+                    },
                     vertexAi: {
                         status: 'skip',
-                        detail: 'Vertex AI readiness probe skipped until setup completes',
+                        detail: 'Vertex AI check skipped until setup completes',
                     },
                     openAi: {
                         status: 'skip',
-                        detail: 'OpenAI readiness probe skipped until setup completes',
+                        detail: 'OpenAI check skipped until setup completes',
                     },
                 },
             };
-            if (cacheKeyApplies) {
-                readinessCache = { status, expiresAt: Date.now() + cacheTtlMs };
-            }
             return status;
         }
 
@@ -214,24 +226,32 @@ export async function getReadinessStatus({
         const useVertex = providerModeUsesVertex(mode);
         const useOpenAi = providerModeUsesOpenAi(mode);
 
-        const [vertexResult, openAiResult] = await Promise.all([
-            useVertex ? healthCheck() : null,
-            useOpenAi ? openAiHealthCheck() : null,
-        ]);
+        const [vertexResult, openAiResult] = probeProviders
+            ? await Promise.all([
+                  useVertex ? healthCheck() : null,
+                  useOpenAi ? openAiHealthCheck() : null,
+              ])
+            : [null, null];
+        const vertexConfigured = useVertex && isVertexAiConfigured(runtimeConfig);
+        const openAiConfigured = useOpenAi && isOpenAiConfigured(runtimeConfig);
 
-        const vertexCheck: HealthCheckResult = vertexResult
-            ? createVertexCheck(vertexResult)
-            : { status: 'skip', detail: providerModeSkipMessage('Vertex AI') };
-        const openAiCheck: HealthCheckResult = openAiResult
-            ? createOpenAiCheck(openAiResult)
-            : { status: 'skip', detail: providerModeSkipMessage('OpenAI') };
+        const vertexCheck: HealthCheckResult = !useVertex
+            ? { status: 'skip', detail: providerModeSkipMessage('Vertex AI') }
+            : vertexResult
+              ? createVertexCheck(vertexResult)
+              : createProviderConfigCheck('Vertex AI', vertexConfigured);
+        const openAiCheck: HealthCheckResult = !useOpenAi
+            ? { status: 'skip', detail: providerModeSkipMessage('OpenAI') }
+            : openAiResult
+              ? createOpenAiCheck(openAiResult)
+              : createProviderConfigCheck('OpenAI', openAiConfigured);
+        const discordCheck = createDiscordCheck(discordReady);
 
-        // Ready if at least one enabled provider is healthy
-        const enabledProviderHealthy =
-            (vertexResult?.healthy ?? false) || (openAiResult?.healthy ?? false);
-        // If neither provider is enabled at all (shouldn't happen), not ready
+        const enabledProviderHealthy = probeProviders
+            ? (vertexResult?.healthy ?? false) || (openAiResult?.healthy ?? false)
+            : vertexConfigured || openAiConfigured;
         const anyEnabled = useVertex || useOpenAi;
-        const ready = anyEnabled && enabledProviderHealthy;
+        const ready = anyEnabled && enabledProviderHealthy && discordCheck.status !== 'fail';
 
         const status: ReadinessStatus = {
             ready,
@@ -242,13 +262,11 @@ export async function getReadinessStatus({
                     status: 'pass',
                     detail: 'Runtime configuration is complete',
                 },
+                discord: discordCheck,
                 vertexAi: vertexCheck,
                 openAi: openAiCheck,
             },
         };
-        if (cacheKeyApplies) {
-            readinessCache = { status, expiresAt: Date.now() + cacheTtlMs };
-        }
         return status;
     } catch (error) {
         const status: ReadinessStatus = {
@@ -259,40 +277,34 @@ export async function getReadinessStatus({
                 configuration: {
                     status: 'fail',
                     detail: 'Readiness evaluation failed',
-                    error: (error as Error).message,
+                    error: probeProviders ? (error as Error).message : undefined,
+                },
+                discord: {
+                    status: 'skip',
+                    detail: 'Discord readiness check skipped because evaluation failed',
                 },
                 vertexAi: {
                     status: 'skip',
-                    detail: 'Vertex AI readiness probe skipped because readiness evaluation failed',
+                    detail: 'Vertex AI check skipped because readiness evaluation failed',
                 },
                 openAi: {
                     status: 'skip',
-                    detail: 'OpenAI readiness probe skipped because readiness evaluation failed',
+                    detail: 'OpenAI check skipped because readiness evaluation failed',
                 },
             },
         };
-        if (cacheKeyApplies) {
-            readinessCache = { status, expiresAt: Date.now() + cacheTtlMs };
-        }
         return status;
     }
 }
 
 export async function getHealthStatus(
-    {
-        configStore = configRepository,
-        healthCheck = checkVertexAiHealth,
-        openAiHealthCheck = checkOpenAiHealth,
-        cacheTtlMs = 5_000,
-    }: HealthDeps = {},
+    { configStore = configRepository, discordReady }: HealthDeps = {},
     metrics: AppMetricsSnapshot = createEmptyAppMetricsSnapshot(),
 ): Promise<HealthStatus> {
     const liveness = getLivenessStatus({ configStore });
     const readiness = await getReadinessStatus({
         configStore,
-        healthCheck,
-        openAiHealthCheck,
-        cacheTtlMs,
+        discordReady,
     });
 
     return {
@@ -304,7 +316,7 @@ export async function getHealthStatus(
             liveness:
                 'Only local process and in-process dependencies affect liveness to avoid restart loops on external outages.',
             readiness:
-                'Readiness requires completed setup and at least one healthy translation provider before translation traffic is considered ready.',
+                'Readiness requires completed setup, a connected Discord client, and at least one configured translation provider.',
             healthz:
                 'Health combines liveness and readiness so degraded means the app is alive but not ready for translation work.',
         },
@@ -312,6 +324,7 @@ export async function getHealthStatus(
             process: liveness.checks.process,
             configStore: liveness.checks.configStore,
             configuration: readiness.checks.configuration,
+            discord: readiness.checks.discord,
             vertexAi: readiness.checks.vertexAi,
             openAi: readiness.checks.openAi,
         },

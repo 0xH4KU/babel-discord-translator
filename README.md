@@ -459,7 +459,7 @@ The Dockerfile uses a **multi-stage build** with Node.js `22-alpine`:
 | Endpoint       | Purpose                                                                                        | Use As                       |
 | -------------- | ---------------------------------------------------------------------------------------------- | ---------------------------- |
 | `GET /livez`   | Runtime liveness                                                                               | Platform **liveness** probe  |
-| `GET /readyz`  | Database, Discord, provider, access, and public-output readiness                               | Platform **readiness** probe |
+| `GET /readyz`  | Local database/config, Discord connection, and provider configuration readiness                | Platform **readiness** probe |
 | `GET /healthz` | Combined readiness status                                                                      | Operator **monitoring**      |
 | `GET /metrics` | Prometheus text metrics with version, translation, provider, queue, cache, and budget counters | Alerting and dashboards      |
 

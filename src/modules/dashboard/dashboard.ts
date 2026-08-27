@@ -145,18 +145,24 @@ export function createDashboardApp({
     runtimeLimiter,
     healthCheck = checkVertexAiHealth,
     openAiHealthCheck = checkOpenAiHealth,
+    discordReady,
     sessionRepository,
     userProfileRepository = new DiscordUserProfileRepository(),
     profile = BABEL_GUILD_PROFILE,
     profiles = [profile],
     pendingUserInstallOwnerRepository = new PendingUserInstallOwnerRepository(),
-    healthProbeCacheTtlMs = 5_000,
     metricsToken,
     host,
     translationService,
     translationServices,
 }: DashboardDeps): express.Express {
     const app = express();
+    const isDiscordReady =
+        discordReady ??
+        (() => {
+            const activeClients = clients ? Object.values(clients) : [client];
+            return activeClients.every((candidate) => candidate?.isReady());
+        });
 
     const guildClient = clients?.['babel-guild'] ?? client;
     const userInstallClient = clients?.['babel-pocket'] ?? client;
@@ -276,20 +282,13 @@ export function createDashboardApp({
     });
 
     app.get('/readyz', async (_req: Request, res: Response) => {
-        const health = await getReadinessStatus({
-            healthCheck,
-            openAiHealthCheck,
-            cacheTtlMs: healthProbeCacheTtlMs,
-        });
+        const health = await getReadinessStatus({ discordReady: isDiscordReady });
         res.status(health.ready ? 200 : 503).json(health);
     });
 
     app.get('/healthz', async (_req: Request, res: Response) => {
         const metricsSnapshot = metrics.snapshot();
-        const health = await getHealthStatus(
-            { healthCheck, openAiHealthCheck, cacheTtlMs: healthProbeCacheTtlMs },
-            metricsSnapshot,
-        );
+        const health = await getHealthStatus({ discordReady: isDiscordReady }, metricsSnapshot);
         res.status(health.live ? 200 : 503).json(health);
     });
 
@@ -1086,11 +1085,7 @@ export function createDashboardApp({
     );
 
     api.get('/health', auth.requireAuth, async (_req: Request, res: Response) => {
-        const readiness = await getReadinessStatus({
-            healthCheck,
-            openAiHealthCheck,
-            cacheTtlMs: healthProbeCacheTtlMs,
-        });
+        const readiness = await getReadinessStatus({ discordReady: isDiscordReady });
         res.status(readiness.ready ? 200 : 503).json({
             healthy: readiness.ready,
             readiness: readiness.status,
