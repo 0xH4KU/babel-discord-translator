@@ -1346,7 +1346,7 @@ describe('Dashboard API', () => {
 
         expect(res.status).toBe(200);
         expect(res.body).toEqual({
-            version: '0.2.2',
+            version: '0.2.3',
             repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases',
         });
     });
@@ -1386,7 +1386,7 @@ describe('Dashboard API', () => {
             expect(res.status).toBe(200);
             expect(res.headers['content-type']).toContain('text/plain');
             expect(res.text).toContain(
-                'babel_app_version_info{version="0.2.2",repository_url="https://github.com/0xH4KU/babel-discord-translator/releases"} 1',
+                'babel_app_version_info{version="0.2.3",repository_url="https://github.com/0xH4KU/babel-discord-translator/releases"} 1',
             );
             expect(res.text).toContain('babel_translations_total');
             expect(res.text).toContain('babel_translation_failures_total');
