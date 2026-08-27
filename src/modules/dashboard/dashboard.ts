@@ -35,6 +35,7 @@ import { PendingUserInstallOwnerRepository } from './pending-user-install-owner-
 import { validateConfigUpdate } from './config-validation.js';
 import { runSetupDoctor } from './setup-doctor.js';
 import {
+    MAX_GLOSSARY_IMPORT_BYTES,
     parseGlossaryImport,
     sanitizeGlossaryImportRequest,
     sanitizeGlossaryInput,
@@ -50,7 +51,7 @@ import { createEmptyRuntimeSnapshot, renderPrometheusMetrics } from './prometheu
 import { applySecurityHeaders } from './security-headers.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import type { DashboardDeps } from '../../shared/types.js';
+import type { DashboardDeps, GuildGlossaryInput } from '../../shared/types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BYTES_PER_MB = 1024 * 1024;
@@ -225,7 +226,7 @@ export function createDashboardApp({
     };
 
     app.use(applySecurityHeaders);
-    app.use(express.json());
+    app.use(express.json({ limit: MAX_GLOSSARY_IMPORT_BYTES * 2 }));
     app.use(express.static(join(__dirname, '../../public')));
 
     const loginLimiter = rateLimit({
@@ -802,17 +803,19 @@ export function createDashboardApp({
             }
 
             const parsed = parseGlossaryImport(importRequest.value.text);
-            const existingByKey = new Map(
+            const existingIdsByKey = new Map(
                 store
                     .listGuildGlossary(guildId)
                     .map(
                         (entry) =>
                             [
                                 normalizeGlossaryKey(entry.sourceText, entry.targetLanguage),
-                                entry,
+                                entry.id,
                             ] as const,
                     ),
             );
+            const pendingIndexesByKey = new Map<string, number>();
+            const upserts: GuildGlossaryInput[] = [];
             let created = 0;
             let updated = 0;
             let skipped = 0;
@@ -822,34 +825,33 @@ export function createDashboardApp({
                     row.input.sourceText,
                     row.input.targetLanguage,
                 );
-                const existing = existingByKey.get(normalizedKey);
+                const existingId = existingIdsByKey.get(normalizedKey);
+                const pendingIndex = pendingIndexesByKey.get(normalizedKey);
+                const duplicate = existingId !== undefined || pendingIndex !== undefined;
 
-                if (existing && importRequest.value.duplicateMode === 'skip') {
+                if (duplicate && importRequest.value.duplicateMode === 'skip') {
                     skipped++;
                     continue;
                 }
 
-                if (existing) {
-                    const entry = store.upsertGuildGlossaryEntry(guildId, {
-                        id: existing.id,
-                        ...row.input,
-                    });
-                    existingByKey.delete(normalizedKey);
-                    existingByKey.set(
-                        normalizeGlossaryKey(entry.sourceText, entry.targetLanguage),
-                        entry,
-                    );
+                const input =
+                    existingId === undefined ? row.input : { id: existingId, ...row.input };
+                if (pendingIndex === undefined) {
+                    pendingIndexesByKey.set(normalizedKey, upserts.length);
+                    upserts.push(input);
+                } else {
+                    upserts[pendingIndex] = input;
+                }
+
+                if (duplicate) {
                     updated++;
                     continue;
                 }
 
-                const entry = store.upsertGuildGlossaryEntry(guildId, row.input);
-                existingByKey.set(
-                    normalizeGlossaryKey(entry.sourceText, entry.targetLanguage),
-                    entry,
-                );
                 created++;
             }
+
+            store.upsertGuildGlossaryEntries(guildId, upserts);
 
             const failed = parsed.errors?.length ?? 0;
             const changed = created + updated > 0;

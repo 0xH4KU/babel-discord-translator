@@ -1,7 +1,7 @@
 const MAX_GLOSSARY_TEXT_LENGTH = 120;
 const MAX_GLOSSARY_NOTES_LENGTH = 200;
 const MAX_GLOSSARY_LANGUAGE_LENGTH = 20;
-const MAX_GLOSSARY_IMPORT_BYTES = 128 * 1024;
+export const MAX_GLOSSARY_IMPORT_BYTES = 128 * 1024;
 const MAX_GLOSSARY_IMPORT_ROWS = 500;
 
 export type GlossaryImportDuplicateMode = 'skip' | 'overwrite';

@@ -68,6 +68,41 @@ vi.mock('../src/persistence/store.js', () => {
         }>
     > = {};
     let glossaryId = 1;
+    type GlossaryInput = {
+        id?: number;
+        sourceText: string;
+        targetLanguage?: string;
+        targetText: string;
+        notes?: string;
+    };
+    const upsertGlossaryEntry = (guildId: string, input: GlossaryInput) => {
+        const now = '2026-06-01T00:00:00.000Z';
+        glossary[guildId] ??= [];
+
+        if (input.id !== undefined) {
+            const existing = glossary[guildId].find((entry) => entry.id === input.id);
+            if (!existing) throw new Error('Glossary entry not found');
+            existing.sourceText = input.sourceText.trim();
+            existing.targetLanguage = input.targetLanguage?.trim() || 'auto';
+            existing.targetText = input.targetText.trim();
+            existing.notes = input.notes?.trim() ?? '';
+            existing.updatedAt = now;
+            return { ...existing };
+        }
+
+        const entry = {
+            id: glossaryId++,
+            guildId,
+            sourceText: input.sourceText.trim(),
+            targetLanguage: input.targetLanguage?.trim() || 'auto',
+            targetText: input.targetText.trim(),
+            notes: input.notes?.trim() ?? '',
+            createdAt: now,
+            updatedAt: now,
+        };
+        glossary[guildId].push(entry);
+        return { ...entry };
+    };
     return {
         store: {
             getUserLanguage: vi.fn((guildId: string, userId: string) => {
@@ -151,44 +186,9 @@ vi.mock('../src/persistence/store.js', () => {
                 return true;
             }),
             listGuildGlossary: vi.fn((guildId: string) => glossary[guildId] ?? []),
-            upsertGuildGlossaryEntry: vi.fn(
-                (
-                    guildId: string,
-                    input: {
-                        id?: number;
-                        sourceText: string;
-                        targetLanguage?: string;
-                        targetText: string;
-                        notes?: string;
-                    },
-                ) => {
-                    const now = '2026-06-01T00:00:00.000Z';
-                    glossary[guildId] ??= [];
-
-                    if (input.id !== undefined) {
-                        const existing = glossary[guildId].find((entry) => entry.id === input.id);
-                        if (!existing) throw new Error('Glossary entry not found');
-                        existing.sourceText = input.sourceText.trim();
-                        existing.targetLanguage = input.targetLanguage?.trim() || 'auto';
-                        existing.targetText = input.targetText.trim();
-                        existing.notes = input.notes?.trim() ?? '';
-                        existing.updatedAt = now;
-                        return { ...existing };
-                    }
-
-                    const entry = {
-                        id: glossaryId++,
-                        guildId,
-                        sourceText: input.sourceText.trim(),
-                        targetLanguage: input.targetLanguage?.trim() || 'auto',
-                        targetText: input.targetText.trim(),
-                        notes: input.notes?.trim() ?? '',
-                        createdAt: now,
-                        updatedAt: now,
-                    };
-                    glossary[guildId].push(entry);
-                    return { ...entry };
-                },
+            upsertGuildGlossaryEntry: vi.fn(upsertGlossaryEntry),
+            upsertGuildGlossaryEntries: vi.fn((guildId: string, inputs: readonly GlossaryInput[]) =>
+                inputs.map((input) => upsertGlossaryEntry(guildId, input)),
             ),
             deleteGuildGlossaryEntry: vi.fn((guildId: string, entryId: number) => {
                 const entries = glossary[guildId] ?? [];
@@ -2350,6 +2350,7 @@ describe('Dashboard API', () => {
                     'source,targetLanguage,target,notes',
                     'openai,auto,Open AI,Changed note',
                     'RAID,ja,レイド,JP term',
+                    'raid,JA,レイド二,Updated JP term',
                     'raid,zh-TW,團本二,Changed TW',
                 ].join('\n'),
             },
@@ -2359,7 +2360,7 @@ describe('Dashboard API', () => {
         expect(overwrite.body).toMatchObject({
             ok: true,
             created: 1,
-            updated: 2,
+            updated: 3,
             skipped: 0,
             failed: 0,
             cacheCleared: true,
@@ -2384,10 +2385,10 @@ describe('Dashboard API', () => {
                     notes: 'Japanese brand',
                 }),
                 expect.objectContaining({
-                    sourceText: 'RAID',
-                    targetLanguage: 'ja',
-                    targetText: 'レイド',
-                    notes: 'JP term',
+                    sourceText: 'raid',
+                    targetLanguage: 'JA',
+                    targetText: 'レイド二',
+                    notes: 'Updated JP term',
                 }),
                 expect.objectContaining({
                     sourceText: 'raid',
@@ -2446,6 +2447,24 @@ describe('Dashboard API', () => {
         expect(res.body).toEqual({
             error: 'Glossary import duplicate mode must be skip or overwrite',
         });
+    });
+
+    it('should accept glossary imports larger than the default JSON parser limit', async () => {
+        const text = Array.from(
+            { length: 500 },
+            (_, index) => `term-${index},ja,target-${index},${'x'.repeat(190)}`,
+        ).join('\n');
+        expect(Buffer.byteLength(text)).toBeGreaterThan(100 * 1024);
+        expect(Buffer.byteLength(text)).toBeLessThanOrEqual(128 * 1024);
+
+        const res = await request(server, 'POST', '/api/guild-glossary/guild-large/import', {
+            cookie: sessionCookie,
+            csrf: csrfToken,
+            body: { duplicateMode: 'skip', text },
+        });
+
+        expect(res.status).toBe(200);
+        expect(res.body).toMatchObject({ created: 500, failed: 0 });
     });
 
     it('should not expose guild glossary routes for Babel Pocket', async () => {

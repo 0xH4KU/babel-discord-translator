@@ -279,6 +279,21 @@ describe('ConfigStore', () => {
         store.close();
     });
 
+    it('should roll back a glossary batch when any entry fails', async () => {
+        const { ConfigStore } = await importStoreModule();
+        const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+
+        expect(() =>
+            store.upsertGuildGlossaryEntries('guild-1', [
+                { sourceText: 'raid', targetText: '團本' },
+                { id: 999, sourceText: 'party', targetText: '隊伍' },
+            ]),
+        ).toThrow('Glossary entry not found');
+        expect(store.listGuildGlossary('guild-1')).toEqual([]);
+
+        store.close();
+    });
+
     it('should support direct guild usage operations', async () => {
         const { ConfigStore } = await importStoreModule();
         const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });

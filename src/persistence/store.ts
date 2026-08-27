@@ -351,6 +351,15 @@ export class ConfigStore {
         return this.getGuildGlossaryEntry(guildId, Number(result.lastInsertRowid))!;
     }
 
+    upsertGuildGlossaryEntries(
+        guildId: string,
+        inputs: readonly GuildGlossaryInput[],
+    ): GuildGlossaryEntry[] {
+        return inTransaction(this.db, () =>
+            inputs.map((input) => this.upsertGuildGlossaryEntry(guildId, input)),
+        );
+    }
+
     deleteGuildGlossaryEntry(guildId: string, entryId: number): boolean {
         const result = this.stmt('DELETE FROM guild_glossary WHERE guild_id = ? AND id = ?').run(
             guildId,
