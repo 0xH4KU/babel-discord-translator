@@ -38,6 +38,14 @@ const ALLOWED_CONFIG_KEYS = new Set<string>([
     ...OTHER_CONFIG_KEYS,
 ]);
 
+function toFiniteNumber(value: unknown): number {
+    if ((typeof value !== 'number' && typeof value !== 'string') || !String(value).trim()) {
+        return NaN;
+    }
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : NaN;
+}
+
 function sanitizeStringArrayField(
     value: unknown,
     key: 'allowedGuildIds' | 'allowedUserIds',
@@ -76,8 +84,8 @@ function sanitizeNonNegativeNumberField(
         return { valid: true };
     }
 
-    const v = parseFloat(String(sanitized[key]));
-    if (isNaN(v) || v < 0) {
+    const v = toFiniteNumber(sanitized[key]);
+    if (Number.isNaN(v) || v < 0) {
         return {
             valid: false,
             error,
@@ -97,6 +105,26 @@ export function validateConfigUpdate(updates: Record<string, unknown>): {
     for (const [key, value] of Object.entries(updates)) {
         if (ALLOWED_CONFIG_KEYS.has(key)) {
             sanitized[key] = value;
+        }
+    }
+
+    for (const key of STRING_CONFIG_KEYS) {
+        if (sanitized[key] !== undefined && typeof sanitized[key] !== 'string') {
+            return {
+                valid: false,
+                error: `${key} must be a string`,
+                sanitized: sanitized as Partial<StoreData>,
+            };
+        }
+    }
+
+    for (const key of BOOLEAN_CONFIG_KEYS) {
+        if (sanitized[key] !== undefined && typeof sanitized[key] !== 'boolean') {
+            return {
+                valid: false,
+                error: `${key} must be a boolean`,
+                sanitized: sanitized as Partial<StoreData>,
+            };
         }
     }
 
@@ -123,8 +151,8 @@ export function validateConfigUpdate(updates: Record<string, unknown>): {
     }
 
     if (sanitized.cooldownSeconds !== undefined) {
-        const v = parseInt(String(sanitized.cooldownSeconds));
-        if (isNaN(v) || v < 1 || v > 300) {
+        const v = toFiniteNumber(sanitized.cooldownSeconds);
+        if (!Number.isInteger(v) || v < 1 || v > 300) {
             return {
                 valid: false,
                 error: dashboardMessages.validation.cooldownSeconds,
@@ -134,8 +162,8 @@ export function validateConfigUpdate(updates: Record<string, unknown>): {
         sanitized.cooldownSeconds = v;
     }
     if (sanitized.cacheMaxSize !== undefined) {
-        const v = parseInt(String(sanitized.cacheMaxSize));
-        if (isNaN(v) || v < 10 || v > MAX_CACHE_SIZE) {
+        const v = toFiniteNumber(sanitized.cacheMaxSize);
+        if (!Number.isInteger(v) || v < 10 || v > MAX_CACHE_SIZE) {
             return {
                 valid: false,
                 error: dashboardMessages.validation.cacheMaxSize,
@@ -145,8 +173,8 @@ export function validateConfigUpdate(updates: Record<string, unknown>): {
         sanitized.cacheMaxSize = v;
     }
     if (sanitized.maxInputLength !== undefined) {
-        const v = parseInt(String(sanitized.maxInputLength));
-        if (isNaN(v) || v < 100 || v > 10000) {
+        const v = toFiniteNumber(sanitized.maxInputLength);
+        if (!Number.isInteger(v) || v < 100 || v > 10000) {
             return {
                 valid: false,
                 error: dashboardMessages.validation.maxInputLength,
@@ -156,8 +184,8 @@ export function validateConfigUpdate(updates: Record<string, unknown>): {
         sanitized.maxInputLength = v;
     }
     if (sanitized.maxOutputTokens !== undefined) {
-        const v = parseInt(String(sanitized.maxOutputTokens));
-        if (isNaN(v) || v < 100 || v > 8192) {
+        const v = toFiniteNumber(sanitized.maxOutputTokens);
+        if (!Number.isInteger(v) || v < 100 || v > 8192) {
             return {
                 valid: false,
                 error: dashboardMessages.validation.maxOutputTokens,
@@ -186,8 +214,8 @@ export function validateConfigUpdate(updates: Record<string, unknown>): {
         'translationMaxQueueWaitMs',
     ] as const) {
         if (sanitized[key] !== undefined) {
-            const v = parseInt(String(sanitized[key]));
-            if (isNaN(v) || v < 1) {
+            const v = toFiniteNumber(sanitized[key]);
+            if (!Number.isInteger(v) || v < 1) {
                 return {
                     valid: false,
                     error: `${key} must be a positive integer`,
@@ -212,7 +240,10 @@ export function validateConfigUpdate(updates: Record<string, unknown>): {
 
     if (sanitized.translationProvider !== undefined) {
         const valid = ['vertex', 'openai', 'vertex+openai', 'openai+vertex'];
-        if (!valid.includes(String(sanitized.translationProvider))) {
+        if (
+            typeof sanitized.translationProvider !== 'string' ||
+            !valid.includes(sanitized.translationProvider)
+        ) {
             return {
                 valid: false,
                 error: dashboardMessages.validation.translationProvider,

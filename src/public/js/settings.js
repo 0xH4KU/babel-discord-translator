@@ -73,6 +73,11 @@ async function loadSettings() {
     document.getElementById('cfg-cache').value = currentConfig.cacheMaxSize || 2000;
     document.getElementById('cfg-max-input').value = currentConfig.maxInputLength || 2000;
     document.getElementById('cfg-max-output').value = currentConfig.maxOutputTokens || 1000;
+    document.getElementById('cfg-max-concurrent').value = currentConfig.translationMaxConcurrent || 4;
+    document.getElementById('cfg-max-global-queue').value = currentConfig.translationMaxGlobalQueue || 25;
+    document.getElementById('cfg-max-guild-queue').value = currentConfig.translationMaxGuildQueue || 5;
+    document.getElementById('cfg-max-user-outstanding').value = currentConfig.translationMaxUserOutstanding || 1;
+    document.getElementById('cfg-max-queue-wait').value = currentConfig.translationMaxQueueWaitMs || 30000;
     document.getElementById('cfg-input-price').value = currentConfig.inputPricePerMillion || 0;
     document.getElementById('cfg-output-price').value = currentConfig.outputPricePerMillion || 0;
     document.getElementById('cfg-budget').value = currentConfig.dailyBudgetUsd || 0;
@@ -103,6 +108,11 @@ async function saveSettings() {
   updates.cacheMaxSize = parseInt(document.getElementById('cfg-cache').value) || 2000;
   updates.maxInputLength = parseInt(document.getElementById('cfg-max-input').value) || 2000;
   updates.maxOutputTokens = parseInt(document.getElementById('cfg-max-output').value) || 1000;
+  updates.translationMaxConcurrent = parseInt(document.getElementById('cfg-max-concurrent').value) || 4;
+  updates.translationMaxGlobalQueue = parseInt(document.getElementById('cfg-max-global-queue').value) || 25;
+  updates.translationMaxGuildQueue = parseInt(document.getElementById('cfg-max-guild-queue').value) || 5;
+  updates.translationMaxUserOutstanding = parseInt(document.getElementById('cfg-max-user-outstanding').value) || 1;
+  updates.translationMaxQueueWaitMs = parseInt(document.getElementById('cfg-max-queue-wait').value) || 30000;
   updates.inputPricePerMillion = parseFloat(document.getElementById('cfg-input-price').value) || 0;
   updates.outputPricePerMillion = parseFloat(document.getElementById('cfg-output-price').value) || 0;
   updates.dailyBudgetUsd = parseFloat(document.getElementById('cfg-budget').value) || 0;

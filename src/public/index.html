@@ -743,6 +743,34 @@
                 </div>
 
                 <div class="settings-section">
+                    <h3>Runtime Limits</h3>
+                    <div class="settings-row">
+                        <div class="input-group">
+                            <label>Concurrent Translations</label>
+                            <input type="number" id="cfg-max-concurrent" min="1" />
+                        </div>
+                        <div class="input-group">
+                            <label>Global Queue</label>
+                            <input type="number" id="cfg-max-global-queue" min="1" />
+                        </div>
+                        <div class="input-group">
+                            <label>Per-Server Queue</label>
+                            <input type="number" id="cfg-max-guild-queue" min="1" />
+                        </div>
+                    </div>
+                    <div class="settings-row">
+                        <div class="input-group">
+                            <label>Per-User Outstanding Requests</label>
+                            <input type="number" id="cfg-max-user-outstanding" min="1" />
+                        </div>
+                        <div class="input-group">
+                            <label>Queue Wait Timeout (ms)</label>
+                            <input type="number" id="cfg-max-queue-wait" min="1" step="1000" />
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-section">
                     <h3>Translation Prompt</h3>
                     <div class="desc-text">
                         Customize the system prompt used for translations. Leave empty to use the

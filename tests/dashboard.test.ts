@@ -1703,6 +1703,24 @@ describe('Dashboard API', () => {
         );
     });
 
+    it('should not apply runtime effects when config persistence fails', async () => {
+        const { store } = await import('../src/persistence/store.js');
+        const updateConfigValues = store.updateConfigValues as ReturnType<typeof vi.fn>;
+        const before = runtimeLimiter.snapshot().limits;
+        updateConfigValues.mockImplementationOnce(() => {
+            throw new Error('sqlite write failed');
+        });
+
+        const res = await request(server, 'POST', '/api/config', {
+            cookie: sessionCookie,
+            csrf: csrfToken,
+            body: { translationMaxConcurrent: before.maxConcurrent + 1 },
+        });
+
+        expect(res.status).toBe(500);
+        expect(runtimeLimiter.snapshot().limits).toEqual(before);
+    });
+
     // --- Translate test endpoint ---
 
     it('should reject translate test with empty text', async () => {

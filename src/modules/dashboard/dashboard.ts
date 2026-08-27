@@ -555,6 +555,8 @@ export function createDashboardApp({
         }
 
         const currentConfig = configRepository.getDashboardConfig();
+        configRepository.updateConfig(sanitized);
+
         const effects = applyConfigUpdateEffects(currentConfig, sanitized, {
             cache,
             cooldown,
@@ -562,8 +564,6 @@ export function createDashboardApp({
             runtimeLimiter,
             resetProviderState: resetTranslationProviderState,
         });
-
-        configRepository.updateConfig(sanitized);
 
         res.json({
             ok: true,

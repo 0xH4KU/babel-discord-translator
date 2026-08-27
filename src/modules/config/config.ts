@@ -13,6 +13,7 @@ try {
 
 const DEFAULT_DASHBOARD_PORT = 3000;
 const DEFAULT_DASHBOARD_PASSWORD = 'admin';
+const INSECURE_DASHBOARD_PASSWORDS = new Set([DEFAULT_DASHBOARD_PASSWORD, 'change_me']);
 
 let loadedConfig: AppConfig | null = null;
 
@@ -121,7 +122,7 @@ export function validateEnv(
     const dashboardHost = env.DASHBOARD_HOST || '0.0.0.0';
 
     const password = env.DASHBOARD_PASSWORD || DEFAULT_DASHBOARD_PASSWORD;
-    if (password === DEFAULT_DASHBOARD_PASSWORD) {
+    if (INSECURE_DASHBOARD_PASSWORDS.has(password)) {
         if (resolvedNodeEnv === 'production') {
             configLogger.error('config.validation.failed', {
                 field: 'DASHBOARD_PASSWORD',
