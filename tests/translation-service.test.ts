@@ -1259,6 +1259,30 @@ describe('TranslationService', () => {
         });
     });
 
+    it('should count one cache miss for an immediately admitted translation', async () => {
+        const runtimeLimiter = new TranslationRuntimeLimiter({
+            maxConcurrent: 1,
+            maxGlobalQueue: 1,
+            maxGuildQueue: 1,
+            maxUserOutstanding: 1,
+        });
+        const { service, cache } = createService({ runtimeLimiter });
+
+        const result = await service.process({
+            command: 'translate',
+            commandLabel: '/translate',
+            guildId: 'guild-1',
+            guildName: 'Test Guild',
+            userId: 'user1',
+            userTag: 'user#0001',
+            text: 'Hello world',
+            targetLanguageOption: 'es',
+        });
+
+        expect(result.status).toBe('success');
+        expect(cache.stats().misses).toBe(1);
+    });
+
     it.each([
         ['mixed Chinese and English', 'Hello 你好', 'zh-TW'],
         ['simplified Chinese to traditional Chinese', '简体中文', 'zh-TW'],

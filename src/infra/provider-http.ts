@@ -3,6 +3,8 @@ import { ProviderHttpError, classifyStatusCode, parseRetryAfterMs } from './prov
 
 export const DEFAULT_PROVIDER_MAX_RETRIES = 3;
 export const DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS = 10_000;
+export const MAX_PROVIDER_RETRY_DELAY_MS = 10_000;
+const RETRY_JITTER_MS = 250;
 
 type ProviderId = 'vertex' | 'openai';
 
@@ -20,6 +22,21 @@ export function classifyProviderFailure(value: number | Error): string {
     if (value.name === 'TimeoutError') return 'timeout';
     if (value.message.toLowerCase().includes('not configured')) return 'configuration';
     return 'network_error';
+}
+
+export function estimateTokenCount(text: string): number {
+    return Math.max(1, Math.ceil(text.length / 4));
+}
+
+export function normalizeProviderTokenCount(value: unknown, fallback: number): number {
+    return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+        ? value
+        : fallback;
+}
+
+function retryDelay(baseMs: number): number {
+    const jitter = Math.floor(Math.random() * RETRY_JITTER_MS);
+    return Math.min(MAX_PROVIDER_RETRY_DELAY_MS, Math.max(0, baseMs) + jitter);
 }
 
 export async function fetchProviderWithRetry(
@@ -45,15 +62,16 @@ export async function fetchProviderWithRetry(
 
             if (
                 response.ok ||
-                ![429, 500, 502, 503].includes(response.status) ||
+                ![429, 500, 502, 503, 504].includes(response.status) ||
                 attempt === retries
             ) {
                 return response;
             }
 
-            const delay =
+            const delay = retryDelay(
                 parseRetryAfterMs(response.headers?.get('retry-after') ?? null) ??
-                Math.pow(2, attempt) * 500;
+                    Math.pow(2, attempt) * 500,
+            );
             logger.warn(`${component}.retry_scheduled`, {
                 operation: logPrefix,
                 attempt: attempt + 1,
@@ -62,11 +80,16 @@ export async function fetchProviderWithRetry(
                 retryAfterMs: delay,
                 errorType: classifyProviderFailure(response.status),
             });
+            try {
+                await response.body?.cancel();
+            } catch {
+                // The retry still proceeds when an implementation cannot cancel its body.
+            }
             await new Promise((resolve) => setTimeout(resolve, delay));
         } catch (error) {
             if (attempt === retries) throw error;
 
-            const delay = Math.pow(2, attempt) * 500;
+            const delay = retryDelay(Math.pow(2, attempt) * 500);
             const reason = (error as Error).name === 'TimeoutError' ? 'timeout' : 'network error';
             logger.warn(`${component}.retry_scheduled`, {
                 operation: logPrefix,

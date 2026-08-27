@@ -148,8 +148,8 @@ export interface VertexAIResponse {
         };
     }>;
     usageMetadata?: {
-        promptTokenCount?: number;
-        candidatesTokenCount?: number;
+        promptTokenCount?: unknown;
+        candidatesTokenCount?: unknown;
     };
 }
 
@@ -160,8 +160,8 @@ export interface OpenAIChatResponse {
         };
     }>;
     usage?: {
-        prompt_tokens?: number;
-        completion_tokens?: number;
+        prompt_tokens?: unknown;
+        completion_tokens?: unknown;
     };
 }
 

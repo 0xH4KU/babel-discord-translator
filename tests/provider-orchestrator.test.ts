@@ -30,6 +30,7 @@ describe('ProviderOrchestrator diagnostics', () => {
         await orchestrator.translate(TRANSLATION_PROMPT, 100);
 
         expect(metrics.snapshot().providers.vertex.successTotal).toBe(1);
+        expect(metrics.snapshot().providers.vertex.lastLatencyMs).toBeTypeOf('number');
         expect(metrics.snapshot().providerFallbackTotal).toBe(0);
     });
 
@@ -119,11 +120,19 @@ describe('ProviderOrchestrator diagnostics', () => {
             },
         );
 
-        await orchestrator.translate(TRANSLATION_PROMPT, 100);
-        await orchestrator.translate(TRANSLATION_PROMPT, 100);
+        const first = await orchestrator.translate(TRANSLATION_PROMPT, 100);
+        const second = await orchestrator.translate(TRANSLATION_PROMPT, 100);
 
+        expect(first.fallback).toBe(true);
+        expect(second.fallback).toBe(true);
         expect(vertex.translate).toHaveBeenCalledTimes(1);
         expect(openai.translate).toHaveBeenCalledTimes(2);
         expect(metrics.snapshot().providers.vertex.failureTotal).toBe(1);
+        expect(metrics.snapshot().providerFallbackTotal).toBe(2);
+        expect(metrics.snapshot().lastProviderFallback).toMatchObject({
+            from: 'vertex',
+            to: 'openai',
+            errorType: 'circuit_open',
+        });
     });
 });

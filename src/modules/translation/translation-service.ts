@@ -458,7 +458,7 @@ export function createTranslationService({
                                 });
                             }
 
-                            const queuedCached = cache.get(cacheKey);
+                            const queuedCached = meta.queued ? cache.get(cacheKey) : null;
                             if (queuedCached) {
                                 budgetReservation?.release();
                                 budgetReservation = null;

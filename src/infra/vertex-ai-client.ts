@@ -6,14 +6,12 @@ import {
     classifyProviderFailure,
     DEFAULT_PROVIDER_MAX_RETRIES,
     DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
+    estimateTokenCount,
     fetchProviderWithRetry,
+    normalizeProviderTokenCount,
     type ProviderFetchOptions,
 } from './provider-http.js';
-import type {
-    TranslationPrompt,
-    TranslationResult,
-    VertexAIResponse,
-} from '../shared/types.js';
+import type { TranslationPrompt, TranslationResult, VertexAIResponse } from '../shared/types.js';
 
 export { ProviderHttpError } from './provider-errors.js';
 
@@ -221,8 +219,14 @@ export async function generateTranslationContent(
     const meta = data.usageMetadata || {};
     return {
         text: result,
-        inputTokens: meta.promptTokenCount || 0,
-        outputTokens: meta.candidatesTokenCount || 0,
+        inputTokens: normalizeProviderTokenCount(
+            meta.promptTokenCount,
+            estimateTokenCount(`${prompt.system}\n${prompt.user}`),
+        ),
+        outputTokens: normalizeProviderTokenCount(
+            meta.candidatesTokenCount,
+            estimateTokenCount(result),
+        ),
     };
 }
 

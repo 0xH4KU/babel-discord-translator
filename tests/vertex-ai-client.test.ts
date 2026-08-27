@@ -95,11 +95,24 @@ describe('vertex-ai-client', () => {
         expect(body.systemInstruction).toEqual({
             parts: [{ text: 'Translate accurately.' }],
         });
-        expect(body.contents).toEqual([
-            { role: 'user', parts: [{ text: 'Translate me' }] },
-        ]);
+        expect(body.contents).toEqual([{ role: 'user', parts: [{ text: 'Translate me' }] }]);
         expect(body.generationConfig.maxOutputTokens).toBe(512);
         expect(request.signal).toBeInstanceOf(AbortSignal);
+    });
+
+    it('should estimate token counts when usage metadata is missing or malformed', async () => {
+        globalThis.fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => ({
+                candidates: [{ content: { parts: [{ text: '你好' }] } }],
+                usageMetadata: { promptTokenCount: 'unknown', candidatesTokenCount: -1 },
+            }),
+        });
+
+        const result = await generateTranslationContent(translationPrompt('hi'), 64);
+
+        expect(result).toEqual({ text: '你好', inputTokens: 6, outputTokens: 1 });
     });
 
     it('should return healthy status for a successful health check', async () => {
