@@ -1,10 +1,14 @@
-import { MessageFlags, type ChatInputCommandInteraction } from 'discord.js';
+import {
+    MessageFlags,
+    PermissionFlagsBits,
+    type ChatInputCommandInteraction,
+    type GuildMember,
+} from 'discord.js';
 import { sanitizeError } from './shared.js';
 import { buildTranslationMessages } from '../shared/discord-message-format.js';
 import { discordMessages } from '../shared/messages/discord-messages.js';
 import { appLogger, createRequestId } from '../shared/structured-logger.js';
 import type { TranslateCommandDeps } from '../shared/types.js';
-import type { GuildMember } from 'discord.js';
 
 type TranslateVisibility = 'public' | 'private';
 
@@ -38,6 +42,19 @@ export async function handleTranslate(
         userId: interaction.user.id,
         command: 'translate',
     });
+
+    if (
+        visibility === 'public' &&
+        !interaction.memberPermissions?.has(PermissionFlagsBits.SendMessages)
+    ) {
+        logger.warn('translate.public.blocked', { blockReason: 'missing_send_messages' });
+        await interaction.reply({
+            content: discordMessages.publicTranslationForbidden(),
+            flags: MessageFlags.Ephemeral,
+        });
+        return;
+    }
+
     const result = await translationService.process({
         command: 'translate',
         commandLabel: '/translate',

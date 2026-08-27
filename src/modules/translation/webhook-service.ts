@@ -12,7 +12,12 @@ export interface WebhookOwnerLike {
 export interface WebhookLike {
     name?: string;
     owner?: WebhookOwnerLike | null;
-    send(payload: { content: string; username: string; avatarURL?: string }): Promise<unknown>;
+    send(payload: {
+        content: string;
+        username: string;
+        avatarURL?: string;
+        allowedMentions: { parse: [] };
+    }): Promise<unknown>;
 }
 
 export interface WebhookCollectionLike<TWebhook extends WebhookLike = WebhookLike> {
@@ -177,6 +182,12 @@ export function createWebhookService({
                 userId,
                 channelId: channel.id,
             });
+            const payload = {
+                content,
+                username,
+                avatarURL,
+                allowedMentions: { parse: [] as [] },
+            };
 
             requestLogger.info('translate.webhook.send.started');
 
@@ -184,7 +195,7 @@ export function createWebhookService({
                 let webhook = await getOrCreateWebhook(channel);
 
                 try {
-                    await webhook.send({ content, username, avatarURL });
+                    await webhook.send(payload);
                     requestLogger.info('translate.webhook.send.completed', {
                         recoveredFromStaleWebhook: false,
                     });
@@ -202,7 +213,7 @@ export function createWebhookService({
                     metrics?.recordWebhookRecreate();
 
                     webhook = await getOrCreateWebhook(channel, true);
-                    await webhook.send({ content, username, avatarURL });
+                    await webhook.send(payload);
                     requestLogger.info('translate.webhook.send.completed', {
                         recoveredFromStaleWebhook: true,
                     });

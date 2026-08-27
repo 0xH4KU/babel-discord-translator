@@ -22,6 +22,9 @@ function createInteraction() {
         member: {
             displayName: 'Guild Tester',
         },
+        memberPermissions: {
+            has: vi.fn(() => true),
+        },
         locale: 'en-US',
         channel: { id: 'channel-1' },
         reply: vi.fn(),
@@ -92,6 +95,7 @@ describe('handleTranslate', () => {
             }),
         };
         const interaction = createInteraction();
+        interaction.memberPermissions.has.mockReturnValue(false);
         interaction.options.getString = vi.fn((name: string) => {
             if (name === 'text') return 'Hello world';
             if (name === 'to') return 'es';
@@ -108,6 +112,29 @@ describe('handleTranslate', () => {
         expect(interaction.deleteReply).not.toHaveBeenCalled();
         expect(interaction.editReply).toHaveBeenCalledWith({
             content: 'Hola mundo',
+        });
+    });
+
+    it('should reject public translations before calling the provider without send permission', async () => {
+        const webhookService = {
+            sendTranslation: vi.fn().mockResolvedValue(undefined),
+        };
+        const translationService = {
+            process: vi.fn(),
+        };
+        const interaction = createInteraction();
+        interaction.memberPermissions.has.mockReturnValue(false);
+
+        await handleTranslate(interaction as never, {
+            translationService: translationService as never,
+            webhookService: webhookService as never,
+        });
+
+        expect(translationService.process).not.toHaveBeenCalled();
+        expect(webhookService.sendTranslation).not.toHaveBeenCalled();
+        expect(interaction.reply).toHaveBeenCalledWith({
+            content: 'You need permission to send messages in this channel for a public translation.',
+            flags: expect.anything(),
         });
     });
 });

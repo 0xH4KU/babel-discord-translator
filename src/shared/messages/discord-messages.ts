@@ -67,6 +67,9 @@ export const discordMessages = {
     unauthorizedUser(): string {
         return 'This user is not authorized.';
     },
+    publicTranslationForbidden(): string {
+        return 'You need permission to send messages in this channel for a public translation.';
+    },
     cooldownRemaining(seconds: number): string {
         return `Please wait ${seconds}s`;
     },

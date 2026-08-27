@@ -61,10 +61,17 @@ describe('WebhookService', () => {
         });
 
         expect(staleWebhook.send).toHaveBeenCalledTimes(1);
+        expect(staleWebhook.send).toHaveBeenCalledWith({
+            content: 'Hola mundo',
+            username: 'Tester',
+            avatarURL: undefined,
+            allowedMentions: { parse: [] },
+        });
         expect(refreshedWebhook.send).toHaveBeenCalledWith({
             content: 'Hola mundo',
             username: 'Tester',
             avatarURL: undefined,
+            allowedMentions: { parse: [] },
         });
         expect(channel.createWebhook).toHaveBeenCalledWith({
             name: 'Babel',
