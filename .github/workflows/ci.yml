@@ -30,9 +30,6 @@ jobs:
       - name: Type Check
         run: npm run typecheck
 
-      - name: Type Check Worker
-        run: npm run typecheck:worker
-
       - name: Lint
         run: npm run lint
 
@@ -44,12 +41,6 @@ jobs:
 
       - name: Build
         run: npm run build
-
-      - name: Validate Worker Bundle
-        run: npx wrangler deploy --dry-run --config apps/babel-worker/wrangler.jsonc
-
-      - name: Smoke Worker Runtime
-        run: npm run smoke:worker
 
       - name: Smoke Built Artifact
         run: |

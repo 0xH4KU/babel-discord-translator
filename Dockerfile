@@ -2,9 +2,7 @@
 FROM node:22-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json tsconfig.json tsconfig.base.json ./
-COPY apps/babel-worker/package.json ./apps/babel-worker/package.json
 RUN npm ci
-COPY apps/ ./apps/
 COPY src/ ./src/
 COPY scripts/ ./scripts/
 RUN npm run build
@@ -17,7 +15,6 @@ RUN apk add --no-cache sqlite
 RUN addgroup -S babel && adduser -S babel -G babel
 
 COPY --from=build /app/dist ./dist
-COPY --from=build /app/apps ./apps
 COPY package.json package-lock.json ./
 COPY tsconfig.base.json ./tsconfig.base.json
 RUN npm ci --omit=dev && npm cache clean --force
