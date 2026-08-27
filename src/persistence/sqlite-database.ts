@@ -235,6 +235,35 @@ const MIGRATIONS: Migration[] = [
             `);
         },
     },
+    {
+        id: 8,
+        name: 'remove_unused_schema_and_enforce_glossary_keys',
+        up(db) {
+            db.exec(`
+                DELETE FROM guild_glossary
+                WHERE id NOT IN (
+                    SELECT MAX(id)
+                    FROM guild_glossary
+                    GROUP BY
+                        guild_id,
+                        source_text COLLATE NOCASE,
+                        target_language COLLATE NOCASE
+                );
+
+                DROP TABLE IF EXISTS cache_metadata;
+                DROP INDEX IF EXISTS idx_guild_usage_history_lookup;
+                DROP INDEX IF EXISTS idx_user_usage_history_lookup;
+                DROP INDEX IF EXISTS idx_guild_glossary_lookup;
+
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_guild_glossary_unique_key
+                    ON guild_glossary (
+                        guild_id,
+                        source_text COLLATE NOCASE,
+                        target_language COLLATE NOCASE
+                    );
+            `);
+        },
+    },
 ];
 
 let sharedDatabase: DatabaseSync | null = null;

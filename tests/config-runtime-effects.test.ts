@@ -87,6 +87,13 @@ describe('applyConfigUpdateEffects', () => {
     it('should treat input length and daily budget as read-on-demand settings', () => {
         const cache = new TranslationCache(100);
         const cooldown = new CooldownManager(5);
+        const runtimeLimiter = new TranslationRuntimeLimiter({
+            maxConcurrent: 4,
+            maxGlobalQueue: 25,
+            maxGuildQueue: 5,
+            maxUserOutstanding: 1,
+            maxQueueWaitMs: 30000,
+        });
         const clearSpy = vi.spyOn(cache, 'clear');
 
         const result = applyConfigUpdateEffects(
@@ -95,11 +102,12 @@ describe('applyConfigUpdateEffects', () => {
                 maxInputLength: 4000,
                 dailyBudgetUsd: 12.5,
             },
-            { cache, cooldown },
+            { cache, cooldown, runtimeLimiter },
         );
 
         expect(result.cacheCleared).toBe(false);
         expect(clearSpy).not.toHaveBeenCalled();
+        expect(runtimeLimiter.snapshot().limits.maxConcurrent).toBe(4);
         expect(result.immediateEffects).toEqual([
             'No in-memory sync required; request validation reads the persisted value on each call.',
             'No in-memory sync required; budget checks read the persisted value on each call.',

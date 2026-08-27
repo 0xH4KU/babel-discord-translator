@@ -5,6 +5,8 @@ import {
 } from '../src/infra/provider-orchestrator.js';
 import { AppMetrics } from '../src/shared/app-metrics.js';
 
+const TRANSLATION_PROMPT = { system: 'Translate accurately.', user: 'prompt' };
+
 function provider(name: string, behavior: 'ok' | 'fail'): TranslationProvider {
     return {
         name,
@@ -25,9 +27,10 @@ describe('ProviderOrchestrator diagnostics', () => {
             { metrics },
         );
 
-        await orchestrator.translate('prompt', 100);
+        await orchestrator.translate(TRANSLATION_PROMPT, 100);
 
         expect(metrics.snapshot().providers.vertex.successTotal).toBe(1);
+        expect(metrics.snapshot().providers.vertex.lastLatencyMs).toBeTypeOf('number');
         expect(metrics.snapshot().providerFallbackTotal).toBe(0);
     });
 
@@ -42,7 +45,7 @@ describe('ProviderOrchestrator diagnostics', () => {
             { metrics },
         );
 
-        const result = await orchestrator.translate('prompt', 100);
+        const result = await orchestrator.translate(TRANSLATION_PROMPT, 100);
 
         expect(result.provider).toBe('openai');
         expect(result.fallback).toBe(true);
@@ -63,7 +66,9 @@ describe('ProviderOrchestrator diagnostics', () => {
             { metrics },
         );
 
-        await expect(orchestrator.translate('prompt', 100)).rejects.toThrow('openai failed');
+        await expect(orchestrator.translate(TRANSLATION_PROMPT, 100)).rejects.toThrow(
+            'openai failed',
+        );
 
         expect(metrics.snapshot().providers.vertex.failureTotal).toBe(1);
         expect(metrics.snapshot().providers.openai.failureTotal).toBe(1);
@@ -81,7 +86,7 @@ describe('ProviderOrchestrator diagnostics', () => {
 
         let thrown: unknown;
         try {
-            await orchestrator.translate('prompt', 100);
+            await orchestrator.translate(TRANSLATION_PROMPT, 100);
         } catch (error) {
             thrown = error;
         }
@@ -115,11 +120,19 @@ describe('ProviderOrchestrator diagnostics', () => {
             },
         );
 
-        await orchestrator.translate('prompt', 100);
-        await orchestrator.translate('prompt', 100);
+        const first = await orchestrator.translate(TRANSLATION_PROMPT, 100);
+        const second = await orchestrator.translate(TRANSLATION_PROMPT, 100);
 
+        expect(first.fallback).toBe(true);
+        expect(second.fallback).toBe(true);
         expect(vertex.translate).toHaveBeenCalledTimes(1);
         expect(openai.translate).toHaveBeenCalledTimes(2);
         expect(metrics.snapshot().providers.vertex.failureTotal).toBe(1);
+        expect(metrics.snapshot().providerFallbackTotal).toBe(2);
+        expect(metrics.snapshot().lastProviderFallback).toMatchObject({
+            from: 'vertex',
+            to: 'openai',
+            errorType: 'circuit_open',
+        });
     });
 });

@@ -117,43 +117,16 @@ function renderVersionMetadata(data) {
 
   link.textContent = data.version ? 'v' + data.version : 'version';
   if (data.repositoryUrl) link.href = data.repositoryUrl;
-  link.classList.remove('update-available', 'update-current');
-  link.title = '';
-
-  if (data.update?.status === 'outdated') {
-    link.classList.add('update-available');
-    link.textContent = `v${data.version} → v${data.update.latestVersion}`;
-    link.title = `Update available: v${data.update.latestVersion}`;
-    if (data.update.latestUrl) link.href = data.update.latestUrl;
-  } else if (data.update?.status === 'current') {
-    link.classList.add('update-current');
-    link.title = `Babel is up to date: v${data.version}`;
-  } else if (data.update?.status === 'unknown') {
-    link.title = 'Could not check the latest Babel release';
-  }
 }
 
-async function loadVersionMetadata(options = {}) {
+async function loadVersionMetadata() {
   try {
-    const res = await api(options.forceRefresh ? '/version/refresh' : '/version', {
-      method: options.forceRefresh ? 'POST' : 'GET',
-    });
+    const res = await api('/version');
     if (!res.ok) return;
 
     renderVersionMetadata(await res.json());
   } catch {
     // Version metadata is helpful, but it should never block dashboard boot.
-  }
-}
-
-async function refreshVersionMetadata() {
-  const button = document.getElementById('version-refresh');
-  if (button) button.disabled = true;
-
-  try {
-    await loadVersionMetadata({ forceRefresh: true });
-  } finally {
-    if (button) button.disabled = false;
   }
 }
 

@@ -163,4 +163,31 @@ describe('validateConfigUpdate', () => {
             sanitized: { translationPrompt: 'Translate {text}' },
         });
     });
+
+    it('should reject malformed scalar values instead of coercing them', () => {
+        expect(validateConfigUpdate({ translationPrompt: { text: 'translate' } })).toMatchObject({
+            valid: false,
+            error: 'translationPrompt must be a string',
+        });
+        expect(validateConfigUpdate({ setupComplete: 'true' })).toMatchObject({
+            valid: false,
+            error: 'setupComplete must be a boolean',
+        });
+        expect(validateConfigUpdate({ dailyBudgetUsd: '1oops' })).toMatchObject({
+            valid: false,
+            error: dashboardMessages.validation.dailyBudgetUsd,
+        });
+        expect(validateConfigUpdate({ translationMaxConcurrent: '3.5' })).toMatchObject({
+            valid: false,
+            error: 'translationMaxConcurrent must be a positive integer',
+        });
+        expect(validateConfigUpdate({ translationMaxConcurrent: [3] })).toMatchObject({
+            valid: false,
+            error: 'translationMaxConcurrent must be a positive integer',
+        });
+        expect(validateConfigUpdate({ translationProvider: ['vertex'] })).toMatchObject({
+            valid: false,
+            error: dashboardMessages.validation.translationProvider,
+        });
+    });
 });

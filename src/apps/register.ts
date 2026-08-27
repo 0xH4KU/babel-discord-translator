@@ -9,6 +9,8 @@ interface RegisterCommandsOptions extends RegistrationEnvOptions {
     env?: NodeJS.ProcessEnv;
 }
 
+export const DISCORD_API_TIMEOUT_MS = 10_000;
+
 type ProfileRegistrar = (profile: AppProfile, options?: RegisterCommandsOptions) => Promise<void>;
 
 function profileEnvPrefix(profile: AppProfile): 'BABEL_GUILD' | 'BABEL_POCKET' {
@@ -90,6 +92,7 @@ export async function registerCommandsForProfile(
             Authorization: `Bot ${botToken}`,
         },
         body: JSON.stringify(getCommandsForProfile(profile)),
+        signal: AbortSignal.timeout(DISCORD_API_TIMEOUT_MS),
     });
 
     if (response.ok) {

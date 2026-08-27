@@ -32,7 +32,7 @@ export interface DashboardAuth {
     login(
         password: string | undefined,
         req: Request,
-    ): { ok: true; csrfToken: string; cookie: string } | { ok: false };
+    ): Promise<{ ok: true; csrfToken: string; cookie: string } | { ok: false }>;
     check(req: Request): { authenticated: boolean; csrfToken?: string };
     logout(req: Request): { cookie: string };
     getSessionState(req: Request): SessionState | null;
@@ -55,10 +55,19 @@ export function hashPassword(password: string, salt?: Buffer): { hash: string; s
     };
 }
 
-export function verifyPassword(password: string, storedHash: string, storedSalt: string): boolean {
+export async function verifyPassword(
+    password: string,
+    storedHash: string,
+    storedSalt: string,
+): Promise<boolean> {
     const salt = Buffer.from(storedSalt, 'hex');
-    const { hash: candidateHash } = hashPassword(password, salt);
-    return safeCompare(candidateHash, storedHash);
+    const derived = await new Promise<Buffer>((resolve, reject) => {
+        crypto.scrypt(password, salt, SCRYPT_KEYLEN, (error, key) => {
+            if (error) reject(error);
+            else resolve(key);
+        });
+    });
+    return safeCompare(derived.toString('hex'), storedHash);
 }
 
 export function safeCompare(a: string, b: string): boolean {
@@ -138,10 +147,10 @@ export function createDashboardAuth({
     };
 
     return {
-        login(passwordCandidate: string | undefined, req: Request) {
+        async login(passwordCandidate: string | undefined, req: Request) {
             if (
                 !passwordCandidate ||
-                !verifyPassword(passwordCandidate, passwordHash, passwordSalt)
+                !(await verifyPassword(passwordCandidate, passwordHash, passwordSalt))
             ) {
                 return { ok: false };
             }

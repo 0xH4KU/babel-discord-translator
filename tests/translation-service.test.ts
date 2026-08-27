@@ -7,7 +7,7 @@ import { TranslationLog } from '../src/shared/log.js';
 import { createTranslationService, _test } from '../src/modules/translation/translation-service.js';
 import { TranslationRuntimeLimiter } from '../src/modules/translation/translation-runtime-limiter.js';
 import type { AccessMode } from '../src/apps/app-profile.js';
-import type { BotStats, StoreData, TranslationResult } from '../src/shared/types.js';
+import type { StoreData, TranslationResult } from '../src/shared/types.js';
 
 function createStructuredLoggerMock(base: Record<string, unknown> = {}) {
     const entries: Array<Record<string, unknown>> = [];
@@ -115,7 +115,7 @@ function createStoreMock(overrides: Partial<StoreData> = {}) {
 function createUserPreferenceStoreMock(overrides: Partial<StoreData> = {}) {
     const configStore = createStoreMock(overrides);
     return {
-        getLanguage(guildId: string, userId: string): string | null {
+        getUserLanguage(guildId: string, userId: string): string | null {
             return (
                 (configStore.data.userLanguagePreferenceEntries ?? []).find(
                     (entry) => entry.guildId === guildId && entry.userId === userId,
@@ -126,10 +126,17 @@ function createUserPreferenceStoreMock(overrides: Partial<StoreData> = {}) {
 }
 
 function createUsageMock() {
+    const record = vi.fn();
     return {
-        isBudgetExceeded: vi.fn(() => false),
-        wouldExceedBudget: vi.fn(() => false),
-        record: vi.fn(),
+        record,
+        tryReserveBudget: vi.fn(
+            ({ guildId, userId }: { guildId?: string | null; userId?: string | null }) => ({
+                settle: vi.fn((inputTokens: number, outputTokens: number) =>
+                    record(inputTokens, outputTokens, { guildId, userId }),
+                ),
+                release: vi.fn(),
+            }),
+        ),
     };
 }
 
@@ -149,7 +156,7 @@ function createGlossaryRepositoryMock(
     > = {},
 ) {
     return {
-        listEntries: vi.fn((guildId: string) => entries[guildId] ?? []),
+        listGuildGlossary: vi.fn((guildId: string) => entries[guildId] ?? []),
     };
 }
 
@@ -185,7 +192,6 @@ function createService({
     const cache = new TranslationCache(100);
     const cooldown = new CooldownManager(0);
     const log = new TranslationLog(100);
-    const stats: BotStats = { totalTranslations: 0, apiCalls: 0 };
     const metrics = new AppMetrics();
     const configStore = createStoreMock(storeOverrides);
     const userPreferenceStore = createUserPreferenceStoreMock(storeOverrides);
@@ -194,7 +200,6 @@ function createService({
         cache,
         cooldown,
         log,
-        stats,
         configStore,
         userPreferenceStore,
         usageTracker,
@@ -214,7 +219,6 @@ function createService({
         cache,
         cooldown,
         log,
-        stats,
         configStore,
         userPreferenceStore,
         usageTracker,
@@ -228,14 +232,13 @@ function createService({
 describe('TranslationService', () => {
     it('should translate successfully and record usage through the shared service', async () => {
         const beforeTranslate = vi.fn(async () => undefined);
-        const { service, usageTracker, translator, log, stats, metrics, loggerState } =
-            createService({
-                storeOverrides: {
-                    userLanguagePreferenceEntries: [
-                        { guildId: 'guild-1', userId: 'user1', language: 'ja' },
-                    ],
-                },
-            });
+        const { service, usageTracker, translator, log, metrics, loggerState } = createService({
+            storeOverrides: {
+                userLanguagePreferenceEntries: [
+                    { guildId: 'guild-1', userId: 'user1', language: 'ja' },
+                ],
+            },
+        });
 
         const result = await service.process({
             command: 'babel',
@@ -283,8 +286,6 @@ describe('TranslationService', () => {
             userId: null,
         });
         expect(log.size).toBe(1);
-        expect(stats.totalTranslations).toBe(1);
-        expect(stats.apiCalls).toBe(1);
         expect(metrics.snapshot()).toMatchObject({
             translationsTotal: 1,
             translationApiCallsTotal: 1,
@@ -443,7 +444,7 @@ describe('TranslationService', () => {
                 outputTokens: 10,
             }),
         );
-        const { service, metrics } = createService({ translator });
+        const { service, metrics, usageTracker } = createService({ translator });
 
         const first = await service.process({
             command: 'translate',
@@ -456,6 +457,8 @@ describe('TranslationService', () => {
             text: 'Hello world',
             targetLanguageOption: 'ko',
         });
+        usageTracker.tryReserveBudget.mockClear();
+        usageTracker.tryReserveBudget.mockReturnValue(null);
         const second = await service.process({
             command: 'translate',
             commandLabel: '/translate',
@@ -472,6 +475,7 @@ describe('TranslationService', () => {
         expect(second.status).toBe('success');
         expect(second.status === 'success' ? second.cached : false).toBe(true);
         expect(translator).toHaveBeenCalledTimes(1);
+        expect(usageTracker.tryReserveBudget).not.toHaveBeenCalled();
         expect(metrics.snapshot()).toMatchObject({
             translationsTotal: 2,
             translationApiCallsTotal: 1,
@@ -522,6 +526,7 @@ describe('TranslationService', () => {
         expect(firstResult.status).toBe('success');
         expect(secondResult.status).toBe('success');
         expect(secondResult.status === 'success' ? secondResult.cached : false).toBe(true);
+        expect(usageTracker.tryReserveBudget).toHaveBeenCalledTimes(1);
         expect(usageTracker.record).toHaveBeenCalledTimes(1);
         expect(metrics.snapshot()).toMatchObject({
             translationsTotal: 2,
@@ -793,7 +798,7 @@ describe('TranslationService', () => {
             targetLanguageOption: 'zh-TW',
         });
 
-        glossaryRepository.listEntries.mockReturnValueOnce([
+        glossaryRepository.listGuildGlossary.mockReturnValueOnce([
             {
                 id: 1,
                 guildId: 'guild-1',
@@ -915,13 +920,13 @@ describe('TranslationService', () => {
         });
 
         expect(result.status).toBe('success');
-        expect(glossaryRepository.listEntries).not.toHaveBeenCalled();
+        expect(glossaryRepository.listGuildGlossary).not.toHaveBeenCalled();
         expect(translator.mock.calls[0]?.[2]).not.toHaveProperty('glossaryEntries');
     });
 
     it('should block requests when the guild budget is exceeded', async () => {
         const usageTracker = createUsageMock();
-        usageTracker.isBudgetExceeded.mockReturnValue(true);
+        usageTracker.tryReserveBudget.mockReturnValue(null);
         const translator = vi.fn();
         const { service, metrics } = createService({ usageTracker, translator });
 
@@ -942,6 +947,30 @@ describe('TranslationService', () => {
         });
         expect(translator).not.toHaveBeenCalled();
         expect(metrics.snapshot().budgetExceededTotal).toBe(1);
+    });
+
+    it('should release reserved budget when the provider fails', async () => {
+        const usageTracker = createUsageMock();
+        const translator = vi.fn(async () => {
+            throw new Error('provider unavailable');
+        });
+        const { service } = createService({ usageTracker, translator });
+
+        const result = await service.process({
+            command: 'translate',
+            commandLabel: '/translate',
+            guildId: 'guild-1',
+            guildName: 'Test Guild',
+            userId: 'user1',
+            userTag: 'user#0001',
+            locale: 'en-US',
+            text: 'Hello world',
+        });
+
+        const reservation = usageTracker.tryReserveBudget.mock.results[0]?.value;
+        expect(result.status).toBe('error');
+        expect(reservation?.release).toHaveBeenCalledOnce();
+        expect(usageTracker.record).not.toHaveBeenCalled();
     });
 
     it('should allow whitelisted user-install owners without a guild id', async () => {
@@ -1230,33 +1259,54 @@ describe('TranslationService', () => {
         });
     });
 
-    it('should block same-language translations before deferring', async () => {
-        const beforeTranslate = vi.fn(async () => undefined);
-        const { service } = createService({
-            storeOverrides: {
-                userLanguagePreferenceEntries: [
-                    { guildId: 'guild-1', userId: 'user1', language: 'ja' },
-                ],
-            },
+    it('should count one cache miss for an immediately admitted translation', async () => {
+        const runtimeLimiter = new TranslationRuntimeLimiter({
+            maxConcurrent: 1,
+            maxGlobalQueue: 1,
+            maxGuildQueue: 1,
+            maxUserOutstanding: 1,
         });
+        const { service, cache } = createService({ runtimeLimiter });
 
         const result = await service.process({
-            command: 'babel',
-            commandLabel: 'Babel (context menu)',
+            command: 'translate',
+            commandLabel: '/translate',
             guildId: 'guild-1',
             guildName: 'Test Guild',
             userId: 'user1',
             userTag: 'user#0001',
-            locale: 'ja',
-            text: 'こんにちは',
+            text: 'Hello world',
+            targetLanguageOption: 'es',
+        });
+
+        expect(result.status).toBe('success');
+        expect(cache.stats().misses).toBe(1);
+    });
+
+    it.each([
+        ['mixed Chinese and English', 'Hello 你好', 'zh-TW'],
+        ['simplified Chinese to traditional Chinese', '简体中文', 'zh-TW'],
+        ['Japanese to an explicit Japanese target', 'こんにちは', 'ja'],
+    ])('should send %s through the provider', async (_name, text, targetLanguage) => {
+        const beforeTranslate = vi.fn(async () => undefined);
+        const { service, translator } = createService();
+
+        const result = await service.process({
+            command: 'translate',
+            commandLabel: '/translate',
+            guildId: 'guild-1',
+            guildName: 'Test Guild',
+            userId: 'user1',
+            userTag: 'user#0001',
+            locale: targetLanguage,
+            text,
+            targetLanguageOption: targetLanguage,
             beforeTranslate,
         });
 
-        expect(result).toEqual({
-            status: 'blocked',
-            message: 'This message is already in your language!',
-        });
-        expect(beforeTranslate).not.toHaveBeenCalled();
+        expect(result.status).toBe('success');
+        expect(translator).toHaveBeenCalledWith(text, targetLanguage, expect.any(Object));
+        expect(beforeTranslate).toHaveBeenCalledOnce();
     });
 });
 

@@ -6,10 +6,12 @@ import {
     classifyProviderFailure,
     DEFAULT_PROVIDER_MAX_RETRIES,
     DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
+    estimateTokenCount,
     fetchProviderWithRetry,
+    normalizeProviderTokenCount,
     type ProviderFetchOptions,
 } from './provider-http.js';
-import type { TranslationResult, VertexAIResponse } from '../shared/types.js';
+import type { TranslationPrompt, TranslationResult, VertexAIResponse } from '../shared/types.js';
 
 export { ProviderHttpError } from './provider-errors.js';
 
@@ -79,7 +81,7 @@ async function buildVertexAiError(response: Response): Promise<Error> {
 }
 
 async function requestGenerateContent(
-    prompt: string,
+    prompt: string | TranslationPrompt,
     {
         maxOutputTokens,
         temperature = 0.1,
@@ -136,7 +138,15 @@ async function requestGenerateContent(
                     'x-goog-api-key': config.apiKey,
                 },
                 body: JSON.stringify({
-                    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                    ...(typeof prompt === 'string'
+                        ? {}
+                        : { systemInstruction: { parts: [{ text: prompt.system }] } }),
+                    contents: [
+                        {
+                            role: 'user',
+                            parts: [{ text: typeof prompt === 'string' ? prompt : prompt.user }],
+                        },
+                    ],
                     generationConfig: {
                         maxOutputTokens,
                         temperature,
@@ -187,7 +197,7 @@ async function requestGenerateContent(
 }
 
 export async function generateTranslationContent(
-    prompt: string,
+    prompt: TranslationPrompt,
     maxOutputTokens: number,
     options?: {
         logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'>;
@@ -209,8 +219,14 @@ export async function generateTranslationContent(
     const meta = data.usageMetadata || {};
     return {
         text: result,
-        inputTokens: meta.promptTokenCount || 0,
-        outputTokens: meta.candidatesTokenCount || 0,
+        inputTokens: normalizeProviderTokenCount(
+            meta.promptTokenCount,
+            estimateTokenCount(`${prompt.system}\n${prompt.user}`),
+        ),
+        outputTokens: normalizeProviderTokenCount(
+            meta.candidatesTokenCount,
+            estimateTokenCount(result),
+        ),
     };
 }
 
@@ -245,7 +261,7 @@ export function createVertexAiProvider(): TranslationProvider {
     return {
         name: 'vertex',
         async translate(
-            prompt: string,
+            prompt: TranslationPrompt,
             maxOutputTokens: number,
             options?: TranslateOptions,
         ): Promise<TranslationResult> {

@@ -83,10 +83,4 @@ export class DiscordUserProfileRepository {
                 profile.lastSeenAt,
             );
     }
-
-    upsertProfiles(profiles: DiscordUserProfile[]): void {
-        for (const profile of profiles) {
-            this.upsertProfile(profile);
-        }
-    }
 }

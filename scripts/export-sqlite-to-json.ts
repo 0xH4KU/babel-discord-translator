@@ -15,8 +15,11 @@ const store = new ConfigStore({
 });
 
 try {
-    writeLegacyStoreData(store.getAll(), legacyConfigPath);
-    console.log(`[Export] Wrote ${legacyConfigPath} from ${dbPath}`);
+    writeLegacyStoreData(store.exportSnapshot(), legacyConfigPath);
+    console.log(`[Export] Wrote legacy-compatible data to ${legacyConfigPath} from ${dbPath}`);
+    console.warn(
+        '[Export] This is not a full backup. Use SQLite .backup to preserve glossary, sessions, and other SQLite-only data.',
+    );
 } finally {
     store.close();
 }

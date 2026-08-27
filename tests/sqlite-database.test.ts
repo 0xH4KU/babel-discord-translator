@@ -91,7 +91,7 @@ describe('createSqliteDatabase', () => {
         }
     });
 
-    it('should create multilingual guild glossary columns and lookup index', async () => {
+    it('should create multilingual guild glossary columns and required indexes', async () => {
         const { createSqliteDatabase } = await import('../src/persistence/sqlite-database.js');
         const db = createSqliteDatabase(':memory:');
 
@@ -119,6 +119,24 @@ describe('createSqliteDatabase', () => {
                 .get() as { name: string } | undefined;
 
             expect(index?.name).toBe('idx_guild_glossary_language_lookup');
+
+            const schemaNames = db
+                .prepare(
+                    `
+                    SELECT name
+                    FROM sqlite_master
+                    WHERE name IN (
+                        'cache_metadata',
+                        'idx_guild_usage_history_lookup',
+                        'idx_user_usage_history_lookup',
+                        'idx_guild_glossary_lookup',
+                        'idx_guild_glossary_unique_key'
+                    )
+                    ORDER BY name ASC
+                `,
+                )
+                .all() as Array<{ name: string }>;
+            expect(schemaNames.map((row) => row.name)).toEqual(['idx_guild_glossary_unique_key']);
         } finally {
             db.close();
         }
@@ -303,7 +321,50 @@ describe('createSqliteDatabase', () => {
             const migrationIds = db
                 .prepare('SELECT id FROM schema_migrations ORDER BY id ASC')
                 .all() as Array<{ id: number }>;
-            expect(migrationIds.map((row) => row.id)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+            expect(migrationIds.map((row) => row.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+        } finally {
+            db.close();
+        }
+    });
+
+    it('should deduplicate legacy glossary keys before adding the unique index', async () => {
+        const { createSqliteDatabase, runMigrations } =
+            await import('../src/persistence/sqlite-database.js');
+        const db = createSqliteDatabase(':memory:');
+
+        try {
+            db.exec(`
+                DROP INDEX idx_guild_glossary_unique_key;
+                DELETE FROM schema_migrations WHERE id = 8;
+
+                INSERT INTO guild_glossary (
+                    guild_id,
+                    source_text,
+                    target_language,
+                    target_text,
+                    notes,
+                    created_at,
+                    updated_at
+                )
+                VALUES
+                    ('guild-1', 'OpenAI', 'auto', 'old', '', '2026-01-01', '2026-01-01'),
+                    ('guild-1', 'openai', 'AUTO', 'new', '', '2026-01-02', '2026-01-02');
+            `);
+
+            runMigrations(db);
+
+            const rows = db
+                .prepare(
+                    `
+                    SELECT source_text as sourceText, target_language as targetLanguage, target_text as targetText
+                    FROM guild_glossary
+                    WHERE guild_id = 'guild-1'
+                `,
+                )
+                .all();
+            expect(rows).toEqual([
+                { sourceText: 'openai', targetLanguage: 'AUTO', targetText: 'new' },
+            ]);
         } finally {
             db.close();
         }

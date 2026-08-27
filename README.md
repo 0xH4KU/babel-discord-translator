@@ -32,7 +32,7 @@ Right-click any message → **Apps** → **Babel** or **Babel Pocket** → get a
 [![Node.js](https://img.shields.io/badge/Node.js-22.13%2B-green.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue.svg)](https://www.typescriptlang.org/)
 [![discord.js](https://img.shields.io/badge/discord.js-v14-blue.svg)](https://discord.js.org)
-[![Version](https://img.shields.io/badge/version-0.2.2-brightgreen.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-0.2.3-brightgreen.svg)](package.json)
 [![CI](https://github.com/0xH4KU/babel-discord-translator/actions/workflows/ci.yml/badge.svg)](https://github.com/0xH4KU/babel-discord-translator/actions)
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/babel-discord-tran-1?referralCode=euhy-o&utm_medium=integration&utm_source=template&utm_campaign=generic)
@@ -41,7 +41,6 @@ Right-click any message → **Apps** → **Babel** or **Babel Pocket** → get a
 
 [Live Dashboard Demo](https://0xh4ku.github.io/babel-discord-translator/demo/) ·
 [Deployment Guide](docs/operations/deployment.md) ·
-[Cloudflare Worker](apps/babel-worker/README.md) ·
 [Railway](docs/operations/railway.md) ·
 [Docker Ops](docs/operations/docker.md) ·
 [Changelog](CHANGELOG.md)
@@ -100,7 +99,6 @@ Sponsorship is optional and does not unlock private features. Supporting mainten
 - **`/translate` Command** — Guild-only slash command with public webhook-based output
 - **Ephemeral Messages** — Context menu translations are private, only visible to you
 - **Multi-language Support** — Auto-detects your Discord locale, or use `/setlang` to choose
-- **Same-Language Detection** — Skips translation when text is already in the user's language
 - **Custom Prompt** — Fully customizable translation system prompt from the dashboard
 - **Server Glossary** — Guild-only term mappings injected into translation prompts, with cache invalidation when terms change
 
@@ -113,7 +111,7 @@ Sponsorship is optional and does not unlock private features. Supporting mainten
 
 ### Security
 
-- **scrypt Password Hashing** — Dashboard password secured with `crypto.scryptSync` + random salt (timing-safe comparison)
+- **scrypt Password Hashing** — Dashboard password verified with asynchronous `crypto.scrypt` + random salt (timing-safe comparison)
 - **CSRF Protection** — All dashboard mutation endpoints require a CSRF token
 - **Login Rate Limiting** — Brute-force protection (5 attempts / 15 min per IP)
 - **Error Sanitization** — API keys and URLs stripped from user-facing error messages
@@ -132,24 +130,22 @@ Sponsorship is optional and does not unlock private features. Supporting mainten
 - **Modular Auth** — Session, cookie, password, and CSRF handling in dedicated auth modules
 - **Session Management** — View active dashboard sessions and revoke stale admin logins
 - **Config Runtime Effects** — Config changes apply immediate runtime updates and cache invalidation
-- **API Health Check** — Real-time Vertex AI probe status
+- **API Health Check** — Real-time health status for each configured provider
 - **Translation Test** — Test translations directly from the dashboard
 - **User Preferences** — View and manage per-user language settings
 - **Cost Tracking** — Real-time token usage with global, per-server, and per-user budget controls
 
 ### Infrastructure
 
-- **Portable Persistence** — Node deployments use SQLite; Cloudflare Workers use D1 for config, usage, preferences, budgets, sessions, cache, and runtime controls
-- **Repository Pattern** — Commands, services, and dashboard routes talk to focused repositories instead of reaching into the store directly
+- **Portable Persistence** — SQLite stores config, usage, preferences, budgets, and sessions in one file that can be backed up or moved between hosts
 - **Governed Message Catalogs** — Discord and dashboard error messages centralized into separate message catalogs
 - **Graceful Shutdown** — Clean `SIGTERM`/`SIGINT` handling with ordered teardown for Docker & PM2
-- **Pre-commit Hooks** — `husky` + `lint-staged` ensure lint and format on every commit
 
 ---
 
 ## Quick Start
 
-**Prerequisites:** Node.js `22.13+`, npm, a Discord bot token, and a Vertex AI project.
+**Prerequisites:** Node.js `22.13+`, npm, a Discord bot token, and either a Vertex AI project or credentials for an OpenAI-compatible endpoint.
 
 ```bash
 git clone https://github.com/0xH4KU/babel-discord-translator.git
@@ -176,12 +172,23 @@ Run in development:
 npm run dev
 ```
 
-Or choose a specific workspace app:
+Or choose a specific product profile:
 
 ```bash
 npm run dev:guild
 npm run dev:pocket
 ```
+
+### Supported Translation Providers
+
+Babel ships two provider adapters. Either can run alone, or both can be configured in primary/fallback order from the dashboard.
+
+| Provider              | Required Settings                                  | Transport                                      |
+| --------------------- | -------------------------------------------------- | ---------------------------------------------- |
+| Vertex AI Gemini      | API key, GCP project, location, and Gemini model    | Native Vertex AI `generateContent` API         |
+| OpenAI-compatible API | API key, base URL, and model                        | `${baseUrl}/v1/chat/completions`                |
+
+The OpenAI-compatible adapter covers OpenAI, OpenRouter, and other services that expose the same chat-completions path and bearer-token authentication. A dedicated adapter is only needed when a provider uses a different request or authentication contract.
 
 For production:
 
@@ -199,7 +206,7 @@ docker compose up -d --build
 Open `http://localhost:3000` → Login → Complete the setup wizard.
 On first boot, Babel creates `data/babel.sqlite` and auto-imports `data/config.json` if a legacy JSON store exists.
 
-For Cloudflare Workers, Railway, Docker, VPS, PM2, and static dashboard demo notes, see the [deployment guide](docs/operations/deployment.md). The [Worker guide](apps/babel-worker/README.md) covers D1 and HTTP interactions; the [Railway guide](docs/operations/railway.md) and [Docker operations guide](docs/operations/docker.md) cover Node/SQLite deployments.
+For Railway, Docker, VPS, PM2, and static dashboard demo notes, see the [deployment guide](docs/operations/deployment.md). The [Railway guide](docs/operations/railway.md) and [Docker operations guide](docs/operations/docker.md) cover hosted and self-managed Node/SQLite deployments.
 
 ---
 
@@ -243,7 +250,7 @@ After starting the bot, open `http://localhost:3000`:
 
 | Tab          | Settings                                                                    |
 | ------------ | --------------------------------------------------------------------------- |
-| **Setup**    | Vertex AI API key, GCP project, location, Gemini model                      |
+| **Setup**    | Provider mode, Vertex AI and/or OpenAI-compatible credentials and models    |
 | **Config**   | Cooldown, cache size, max input length, max output tokens, custom prompt    |
 | **Pricing**  | Per-million-token prices, global daily budget (0 = unlimited)               |
 | **Access**   | Guild whitelist, user allowlist, per-server and per-user budget overrides   |
@@ -290,7 +297,7 @@ If `DASHBOARD_PASSWORD` is omitted, Babel warns in local development and test en
 
 Set `BABEL_APP=combined` to run both Babel Guild and Babel Pocket in one process. In combined mode, the combined dashboard root `/` shows a product chooser; `/guild` opens the Babel Guild dashboard; `/pocket` opens the Babel Pocket dashboard.
 
-### Migration & Rollback
+### Migration & Legacy Export
 
 Babel auto-imports `data/config.json` into SQLite on first startup. Manual scripts:
 
@@ -298,11 +305,13 @@ Babel auto-imports `data/config.json` into SQLite on first startup. Manual scrip
 # Import legacy JSON → SQLite
 npm run db:migrate
 
-# Export SQLite → JSON for rollback
+# Export the legacy-compatible JSON subset for inspection
 npm run db:export:json
 ```
 
 Use `npm run db:migrate -- --force` to overwrite an existing SQLite file.
+
+The JSON export is not a complete backup and excludes SQLite-only data. Use SQLite's `.backup` command for rollback and disaster recovery; see [SQLite backup and restore](docs/operations/sqlite-backup-restore.md).
 
 Babel stores runtime data through native `node:sqlite`. Before upgrading Node on a self-hosted install, back up `data/babel.sqlite`, run `npm run build`, and run `npm run smoke:dashboard` after upgrading Node.
 
@@ -328,7 +337,7 @@ Babel stores runtime data through native `node:sqlite`. Before upgrading Node on
 │          │                           │                       │
 │  ┌───────▼───────────────────────────▼─────────────────────┐ │
 │  │              Shared Application Layer                    │ │
-│  │  TranslationService → Cache → RuntimeLimiter → Vertex AI│ │
+│  │ TranslationService → Cache → RuntimeLimiter → Providers│ │
 │  │  CooldownManager    UsageTracker    WebhookService      │ │
 │  │  ConfigRepository   AppMetrics      StructuredLogger     │ │
 │  └───────────────────────────┬─────────────────────────────┘ │
@@ -342,19 +351,18 @@ Babel stores runtime data through native `node:sqlite`. Before upgrading Node on
 
 ### Module Layout
 
-| Layer            | Path                                      | Responsibility                                                                    |
-| ---------------- | ----------------------------------------- | --------------------------------------------------------------------------------- |
-| **Apps**         | `apps/babel-guild/`, `apps/babel-pocket/` | Product entrypoints for Babel Guild and Babel Pocket                              |
-| **Entry**        | `src/index.ts`                            | Backward-compatible root entrypoint selected by `BABEL_APP`                       |
-| **Commands**     | `src/commands/`                           | Discord interaction handlers (`babel`, `translate`, `setlang`, `mylang`, `help`)  |
-| **Translation**  | `src/modules/translation/`                | Cache, cooldowns, runtime limiter, language detection, webhook delivery           |
-| **Config**       | `src/modules/config/`                     | Environment validation, runtime config repository, config change effects          |
-| **Usage**        | `src/modules/usage/`                      | Token accounting, global/guild/user budgets, usage history                        |
-| **Dashboard**    | `src/modules/dashboard/`                  | Express app, auth/session flow, capability-gated admin API surface                |
-| **Shared**       | `src/shared/`                             | Structured logger, health model, graceful shutdown, app metrics, message catalogs |
-| **Infra**        | `src/infra/`                              | Vertex AI transport with retry, timeout, and health probes                        |
-| **Persistence**  | `src/persistence/`                        | SQLite connection, migrations, legacy JSON import/export                          |
-| **Repositories** | `src/repositories/`                       | Data normalization helpers for store data                                         |
+| Layer           | Path                       | Responsibility                                                                    |
+| --------------- | -------------------------- | --------------------------------------------------------------------------------- |
+| **Profiles**    | `src/apps/`                | Guild/Pocket profiles, bootstrap, and command definitions                         |
+| **Entry**       | `src/index.ts`             | Node entrypoint selected by `BABEL_APP` or a CLI profile argument                 |
+| **Commands**    | `src/commands/`            | Discord interaction handlers (`babel`, `translate`, `setlang`, `mylang`, `help`)  |
+| **Translation** | `src/modules/translation/` | Cache, cooldowns, runtime limiter, language detection, webhook delivery           |
+| **Config**      | `src/modules/config/`      | Environment validation, runtime config access, config change effects              |
+| **Usage**       | `src/modules/usage/`       | Token accounting, global/guild/user budgets, usage history                        |
+| **Dashboard**   | `src/modules/dashboard/`   | Express app, auth/session flow, capability-gated admin API surface                |
+| **Shared**      | `src/shared/`              | Structured logger, health model, graceful shutdown, app metrics, message catalogs |
+| **Infra**       | `src/infra/`               | Translation provider transports, retry, timeout, and health probes                |
+| **Persistence** | `src/persistence/`         | SQLite store, migrations, normalization, and legacy JSON import/export            |
 
 ### Persistence Model
 
@@ -367,76 +375,13 @@ Babel stores runtime data through native `node:sqlite`. Before upgrading Node on
 
 ---
 
-## Project Structure
-
-```
-apps/
-├── babel-guild/           # Babel Guild product entrypoint and command registration
-└── babel-pocket/          # Babel Pocket product entrypoint and command registration
-src/
-├── index.ts                # Entry point: Discord + dashboard + error handlers
-├── apps/                   # App profiles, shared bootstrap, command definitions
-├── commands/               # Discord command handlers
-├── modules/
-│   ├── config/
-│   │   ├── config.ts               # Explicit env loading/validation with startup logging
-│   │   ├── config-repository.ts    # Batch-read runtime config over persistence
-│   │   └── config-runtime-effects.ts # Immediate in-memory reactions to config edits
-│   ├── dashboard/
-│   │   ├── dashboard.ts            # Express app factory + async handler wrapper
-│   │   └── auth/
-│   │       ├── dashboard-auth.ts   # scrypt password hashing, cookie, session, CSRF
-│   │       ├── in-memory-session-repository.ts
-│   │       ├── sqlite-session-repository.ts
-│   │       └── session-repository.ts
-│   ├── translation/
-│   │   ├── cache.ts                # LRU translation cache with versioned keys
-│   │   ├── cooldown.ts             # Per-user cooldown manager
-│   │   ├── lang.ts                 # Locale/script detection helpers
-│   │   ├── translate.ts            # Prompt assembly + translation entrypoint
-│   │   ├── translation-runtime-limiter.ts # Global/guild/user backpressure
-│   │   ├── translation-service.ts  # Translation application workflow
-│   │   ├── webhook-service.ts      # /translate webhook lifecycle + recovery
-│   │   └── user-preference-repository.ts
-│   └── usage/
-│       ├── usage.ts                # Token cost, budget, and history tracker
-│       ├── budget-scope.ts         # Global/guild/user budget selection
-│       ├── guild-budget-repository.ts
-│       ├── user-budget-repository.ts
-│       └── usage-repository.ts
-├── shared/
-│   ├── app-metrics.ts       # In-memory counters and derived rates
-│   ├── health.ts            # Liveness/readiness/composite health model
-│   ├── log.ts               # Ring buffer audit log with O(1) error counter
-│   ├── messages/            # Discord and dashboard message catalogs
-│   ├── shutdown.ts          # Graceful shutdown orchestration
-│   └── structured-logger.ts # JSON logging with auto secret redaction
-├── infra/
-│   └── vertex-ai-client.ts     # Vertex AI transport, retry, timeout, health
-├── persistence/
-│   ├── legacy-json-store.ts    # Legacy config.json import/export
-│   ├── sqlite-database.ts      # SQLite connection + schema migrations
-│   └── store-defaults.ts       # Default StoreData values
-├── repositories/
-│   └── store-data-normalizer.ts # Normalization helpers for store data
-├── store.ts                # SQLite-backed store facade
-├── types.ts                # Shared TypeScript type definitions
-├── locales/
-│   └── help.json           # Help text in 16 languages
-└── public/                 # Dashboard frontend assets
-```
-
----
-
 ## Development
 
 ```bash
 npm run dev             # Run root app in watch mode, selected by BABEL_APP
 npm run dev:guild       # Run Babel Guild in watch mode
 npm run dev:pocket      # Run Babel Pocket in watch mode
-npm run dev:worker      # Run the Cloudflare Worker locally with persistent D1 state
 npm run typecheck       # Type check (no emit)
-npm run typecheck:worker # Type check the Worker runtime
 npm test                # Run tests
 npm run test:coverage   # Run tests with v8 coverage
 npm run test:watch      # Run tests in watch mode
@@ -452,97 +397,22 @@ npm start               # Run production root app, selected by BABEL_APP
 npm run start:guild     # Run Babel Guild production artifact
 npm run start:pocket    # Run Babel Pocket production artifact
 npm run db:migrate      # Import legacy JSON → SQLite
-npm run db:export:json  # Export SQLite → JSON
-npm run db:export:d1    # Export SQLite data as D1-compatible SQL
-npm run deploy:worker   # Deploy the configured Cloudflare Worker
-npm run benchmark:runtime-config -- 20000  # Compare config-only reads vs full store snapshots
+npm run db:export:json  # Export the legacy-compatible JSON subset
 ```
-
-### Pre-commit Hooks
-
-This project uses **husky** + **lint-staged** to automatically run ESLint and Prettier on staged `.ts` files before every commit.
-
-Hooks are installed automatically on normal local Git checkouts. The `prepare` step intentionally skips Husky installation in CI, in Docker/runtime images without Git metadata, or when you set `HUSKY=0`.
 
 ### Test Coverage
 
-The test suite covers both the Node/SQLite and Worker/D1 runtimes. Run `npm test` for the current total; selected suites are summarized below:
-
-| Suite                                           | Tests | Covers                                                                                                                                      |
-| ----------------------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `cache.test.ts`                                 | 10    | LRU eviction, hit/miss stats, versioned cache keys                                                                                          |
-| `babel-command.test.ts`                         | 2     | Context menu command handling and Pocket billing owner resolution                                                                           |
-| `config.test.ts`                                | 6     | Env validation, structured startup logging, development warning, production password refusal                                                |
-| `config-repository.test.ts`                     | 2     | Runtime config reads stay off the full store snapshot path                                                                                  |
-| `config-runtime-effects.test.ts`                | 5     | Unified config side effects, cache invalidation, immediate runtime sync                                                                     |
-| `cooldown.test.ts`                              | 6     | Rate limiting, cleanup, per-user isolation                                                                                                  |
-| `app-metrics.test.ts`                           | 5     | Counter aggregation, provider fallback metrics, and derived success/failure/cache/api rates                                                 |
-| `log.test.ts`                                   | 15    | Ring buffer, addError, type filtering, O(1) error counter                                                                                   |
-| `lang.test.ts`                                  | 29    | Script detection (CJK/Cyrillic/Arabic/Thai/Hindi), locale mapping, same-language check                                                      |
-| `dashboard-auth.test.ts`                        | 4     | scrypt auth flow, CSRF enforcement, session expiry cleanup                                                                                  |
-| `prepare-husky.test.ts`                         | 5     | Husky prepare skip logic for CI, missing git metadata, Windows/local execution                                                              |
-| `build-demo.test.ts`                            | 1     | Static Guild/Pocket dashboard demo mirroring and fixture injection                                                                          |
-| `sqlite-session-repository.test.ts`             | 2     | Persistent session storage, enumeration, delete/clear                                                                                       |
-| `dashboard.test.ts`                             | 42    | Auth flow, session revoke, metrics, health endpoints, stats, config protection, version refresh, async error handling, app capability gates |
-| `deployment-config.test.ts`                     | 16    | Node/Worker deployment scripts, domains, bindings, Docker workspace context, and documented runtime defaults                                |
-| `worker.test.ts`                                | 11    | Signed Discord interactions, HTTP routing, D1 dashboard APIs, translation cache, cooldowns, and runtime leases                              |
-| `d1-export.test.ts`                             | 1     | SQLite-to-D1 config, preference, and glossary import compatibility                                                                          |
-| `discord-user-profile-repository.test.ts`       | 2     | Discord user profile persistence                                                                                                            |
-| `discord-message-format.test.ts`                | 3     | Discord-safe chunking and metadata rendering                                                                                                |
-| `message-extraction.test.ts`                    | 3     | Context menu extraction from content, embeds, attachments, and referenced context                                                           |
-| `provider-orchestrator.test.ts`                 | 5     | Provider fallback ordering, structured errors, and circuit breaker behavior                                                                 |
-| `translation-runtime-limiter.test.ts`           | 4     | FIFO queueing, per-user outstanding cap, queue wait timeout, per-guild/global queue shedding                                                |
-| `register.test.ts`                              | 3     | Guild/Pocket command registration surfaces and app profile selection                                                                        |
-| `pending-user-install-owner-repository.test.ts` | 1     | Pending Pocket owner persistence                                                                                                            |
-| `translation-service.test.ts`                   | 15    | Shared workflow, cache hits, runtime shedding, budget/error handling, runtime config access pattern, Guild/Pocket authorization             |
-| `translate-command.test.ts`                     | 2     | `/translate` public/private delivery behavior                                                                                               |
-| `translate.test.ts`                             | 24    | Retry logic, prompt building, API errors, URL routing, provider metadata                                                                    |
-| `usage.test.ts`                                 | 40    | Cost calculation, budget estimate guard, global/guild/user budget enforcement, day rollover, runtime config access pattern                  |
-| `webhook-service.test.ts`                       | 4     | Stale webhook recovery, error classification, LRU webhook cache eviction                                                                    |
-| `vertex-ai-client.test.ts`                      | 6     | Shared transport, timeout wiring, structured provider errors, health checks, endpoint resolution                                            |
-| `version.test.ts`                               | 5     | Release metadata, synced app versions, GitHub latest-release checks, cache refresh, and update status fallback                              |
-| `sqlite-database.test.ts`                       | 5     | SQLite connection, migrations, and pragma setup                                                                                             |
-| `store.test.ts`                                 | 13    | SQLite persistence, legacy JSON import, defaults, copy safety, config-only reads, direct guild/user row operations                          |
-| `structured-logger.test.ts`                     | 2     | JSON shape, inherited request context, secret redaction                                                                                     |
-| `shutdown.test.ts`                              | 3     | Shutdown order, timeout forcing, signal deduplication                                                                                       |
-
-### Runtime Config Benchmark
-
-If you want to sanity-check the runtime-config hot path after refactors, run:
-
-```bash
-npm run benchmark:runtime-config -- 20000
-```
-
-This compares `configRepository.getRuntimeConfig()` against `store.getAll()` over the same number of iterations and prints total time, ops/sec, and relative speedup.
+The test suite exercises the Node/SQLite runtime. Run `npm test` for the executable suite and `npm run test:coverage` for coverage.
 
 ---
 
 ## Production Deployment
 
-### Cloudflare Workers
-
-The `apps/babel-worker` workspace runs both products with Discord HTTP interactions, static assets, and D1-backed dashboard/config/runtime state. The checked-in production config uses `BABEL_APP=combined`, Worker name `babel-discord-translator`, and custom domain [babel.lum.bio](https://babel.lum.bio).
-
-```bash
-npm install
-npm run typecheck:worker
-npm run db:migrate:remote -w @babel-discord-translator/worker
-npm run deploy:worker
-```
-
-Keep runtime/provider/allowlist/budget settings in the dashboard. Cloudflare only needs `BABEL_APP` as a plain variable plus the Dashboard password and profile-specific Discord app credentials as secrets. Set the Discord applications' Interactions Endpoint URLs to:
-
-```text
-https://babel.lum.bio/guild/interactions
-https://babel.lum.bio/pocket/interactions
-```
-
-Forks should replace the Worker name, D1 database ID, and custom domain in `apps/babel-worker/wrangler.jsonc`. See the [Cloudflare Worker guide](apps/babel-worker/README.md) for first-time D1 creation, secrets, validation, and Railway-to-D1 migration.
-
 ### Railway
 
 Babel is Railway-ready for a one-click self-host template: `railway.json` configures the `/livez` healthcheck, Railway's `PORT` is respected automatically, and `/app/data` can be mounted as a volume for SQLite. One Railway template can deploy either Babel Guild or Babel Pocket by exposing `BABEL_APP` as a service variable; keep `guild` as the default for existing users and set `pocket` for user-install deployments. Set `BABEL_APP=combined` to run both products in one service; the combined dashboard root `/` shows a product chooser, `/guild` opens the Babel Guild dashboard, and `/pocket` opens the Babel Pocket dashboard.
+
+Run one replica per Discord application. Babel's Discord event handling, runtime limits, queues, caches, and metrics are process-local, so horizontal scaling is not currently supported even when replicas share SQLite storage.
 
 Use these template variables:
 
@@ -593,7 +463,7 @@ The Dockerfile uses a **multi-stage build** with Node.js `22-alpine`:
 | Endpoint       | Purpose                                                                                        | Use As                       |
 | -------------- | ---------------------------------------------------------------------------------------------- | ---------------------------- |
 | `GET /livez`   | Runtime liveness                                                                               | Platform **liveness** probe  |
-| `GET /readyz`  | Database, Discord, provider, access, and public-output readiness                               | Platform **readiness** probe |
+| `GET /readyz`  | Local database/config, Discord connection, and provider configuration readiness                | Platform **readiness** probe |
 | `GET /healthz` | Combined readiness status                                                                      | Operator **monitoring**      |
 | `GET /metrics` | Prometheus text metrics with version, translation, provider, queue, cache, and budget counters | Alerting and dashboards      |
 
@@ -602,7 +472,6 @@ Set `BABEL_METRICS_TOKEN` before exposing `/metrics` outside a private network. 
 ### Operations Guides
 
 - [Deployment guide](docs/operations/deployment.md)
-- [Cloudflare Worker guide](apps/babel-worker/README.md)
 - [Alerts runbook](docs/operations/alerts-runbook.md)
 - [SQLite backup and restore](docs/operations/sqlite-backup-restore.md)
 
@@ -626,7 +495,7 @@ User Request
 │  global: 25       │
 └──────┬────────────┘
        ▼
-┌─ Vertex AI Call ──┐  ← Retry/backoff runs inside acquired permit
+┌─ Provider Call ───┐  ← Retry/backoff runs inside acquired permit
 │  (with retry)     │    (prevents retry storms)
 └───────────────────┘
 ```
@@ -640,7 +509,7 @@ User Request
 
 | Layer                   | Mechanism                                                                                         |
 | ----------------------- | ------------------------------------------------------------------------------------------------- |
-| **Password Storage**    | `crypto.scryptSync` with random 16-byte salt, 64-byte key                                         |
+| **Password Storage**    | Async `crypto.scrypt` verification with random 16-byte salt and a 64-byte key                      |
 | **Password Comparison** | Timing-safe via `crypto.timingSafeEqual`                                                          |
 | **Session Tokens**      | `crypto.randomBytes(32)`, HttpOnly + SameSite=Strict cookies                                      |
 | **CSRF**                | Per-session CSRF token required on all mutation endpoints                                         |
@@ -656,17 +525,17 @@ User Request
 
 ## Tech Stack
 
-| Technology                                                                                             | Version  | Role                                        |
-| ------------------------------------------------------------------------------------------------------ | -------- | ------------------------------------------- |
-| [TypeScript](https://www.typescriptlang.org)                                                           | 6.0      | Strict mode with `noUncheckedIndexedAccess` |
-| [Node.js](https://nodejs.org)                                                                          | 22.13+   | Runtime with native `node:sqlite`           |
-| [discord.js](https://discord.js.org)                                                                   | v14      | Discord gateway client                      |
-| [Express](https://expressjs.com)                                                                       | v4       | Dashboard & API server                      |
-| [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit)                         | v8       | Login throttling                            |
-| [Vertex AI Gemini](https://cloud.google.com/vertex-ai)                                                 | —        | Translation engine                          |
-| [Vitest](https://vitest.dev)                                                                           | v4       | 249 tests, 30 test files, v8 coverage       |
-| [ESLint](https://eslint.org) + [Prettier](https://prettier.io)                                         | v9 / v3  | Code quality                                |
-| [husky](https://typicode.github.io/husky/) + [lint-staged](https://github.com/lint-staged/lint-staged) | v9 / v16 | Pre-commit hooks                            |
+| Technology                                                                     | Version | Role                                        |
+| ------------------------------------------------------------------------------ | ------- | ------------------------------------------- |
+| [TypeScript](https://www.typescriptlang.org)                                   | 6.0     | Strict mode with `noUncheckedIndexedAccess` |
+| [Node.js](https://nodejs.org)                                                  | 22.13+  | Runtime with native `node:sqlite`           |
+| [discord.js](https://discord.js.org)                                           | v14     | Discord gateway client                      |
+| [Express](https://expressjs.com)                                               | v5      | Dashboard & API server                      |
+| [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) | v8      | Login throttling                            |
+| [Vertex AI Gemini](https://cloud.google.com/vertex-ai)                         | —       | Native translation provider                 |
+| OpenAI-compatible Chat Completions                                             | —       | Configurable translation provider           |
+| [Vitest](https://vitest.dev)                                                   | v4      | Test runner with v8 coverage                |
+| [ESLint](https://eslint.org) + [Prettier](https://prettier.io)                 | v9 / v3 | Code quality                                |
 
 ---
 

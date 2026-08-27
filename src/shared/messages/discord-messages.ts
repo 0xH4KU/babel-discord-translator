@@ -3,7 +3,6 @@ type TranslationCommand = 'babel' | 'translate';
 interface TranslationCommandMessages {
     setupIncomplete: string;
     emptyText: string;
-    sameLanguage: string;
     budgetExceeded: string;
     userBusy: string;
     guildBusy: string;
@@ -34,7 +33,6 @@ const TRANSLATION_COMMAND_MESSAGES: Record<TranslationCommand, TranslationComman
     babel: {
         setupIncomplete: 'Bot not configured yet. Please complete setup in the dashboard.',
         emptyText: 'No text content',
-        sameLanguage: 'This message is already in your language!',
         budgetExceeded: 'Daily budget exceeded, try again tomorrow!',
         userBusy: 'You already have a translation in progress. Please wait a moment.',
         guildBusy:
@@ -44,7 +42,6 @@ const TRANSLATION_COMMAND_MESSAGES: Record<TranslationCommand, TranslationComman
     translate: {
         setupIncomplete: 'Bot not configured yet.',
         emptyText: 'Text is required',
-        sameLanguage: 'This text is already in your target language!',
         budgetExceeded: 'Daily budget exceeded',
         userBusy: 'You already have a translation in progress. Please wait a moment.',
         guildBusy:
@@ -69,6 +66,9 @@ export const discordMessages = {
     },
     unauthorizedUser(): string {
         return 'This user is not authorized.';
+    },
+    publicTranslationForbidden(): string {
+        return 'You need permission to send messages in this channel for a public translation.';
     },
     cooldownRemaining(seconds: number): string {
         return `Please wait ${seconds}s`;

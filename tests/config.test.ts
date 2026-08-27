@@ -196,4 +196,16 @@ describe('config validation', () => {
             hint: 'Set DASHBOARD_PASSWORD to a strong random value before starting the app',
         });
     });
+
+    it('should reject the documented placeholder dashboard password in production', async () => {
+        const logger = createLoggerMock();
+        const { validateEnv } = await import('../src/modules/config/config.js');
+
+        expect(() =>
+            validateEnv(
+                { DISCORD_TOKEN: 'test-token', DASHBOARD_PASSWORD: 'change_me' },
+                { logger, nodeEnv: 'production' },
+            ),
+        ).toThrow('Refusing to use the default DASHBOARD_PASSWORD in production');
+    });
 });

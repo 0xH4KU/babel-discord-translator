@@ -32,8 +32,7 @@ const USER_INSTALL_COMMAND_CONTEXT = {
     contexts: [CONTEXT_GUILD, CONTEXT_BOT_DM, CONTEXT_PRIVATE_CHANNEL],
 };
 
-const SETLANG_LANGUAGE_CHOICES = [
-    { name: 'Auto (use Discord locale)', value: 'auto' },
+const LANGUAGE_CHOICES = [
     { name: '繁體中文', value: 'zh-TW' },
     { name: '简体中文', value: 'zh-CN' },
     { name: 'English', value: 'en' },
@@ -51,24 +50,12 @@ const SETLANG_LANGUAGE_CHOICES = [
     { name: 'Bahasa Indonesia', value: 'id' },
 ];
 
-const TRANSLATE_LANGUAGE_CHOICES = [
-    { name: 'Auto', value: 'auto' },
-    { name: '繁體中文', value: 'zh-TW' },
-    { name: '简体中文', value: 'zh-CN' },
-    { name: 'English', value: 'en' },
-    { name: '日本語', value: 'ja' },
-    { name: '한국어', value: 'ko' },
-    { name: 'Español', value: 'es' },
-    { name: 'Français', value: 'fr' },
-    { name: 'Deutsch', value: 'de' },
-    { name: 'Português', value: 'pt' },
-    { name: 'Русский', value: 'ru' },
-    { name: 'Italiano', value: 'it' },
-    { name: 'Tiếng Việt', value: 'vi' },
-    { name: 'ไทย', value: 'th' },
-    { name: 'العربية', value: 'ar' },
-    { name: 'Bahasa Indonesia', value: 'id' },
+const SETLANG_LANGUAGE_CHOICES = [
+    { name: 'Auto (use Discord locale)', value: 'auto' },
+    ...LANGUAGE_CHOICES,
 ];
+
+const TRANSLATE_LANGUAGE_CHOICES = [{ name: 'Auto', value: 'auto' }, ...LANGUAGE_CHOICES];
 
 function withInstallContext(profile: AppProfile): Partial<DiscordCommand> {
     return profile.accessMode === 'user-install' ? USER_INSTALL_COMMAND_CONTEXT : {};

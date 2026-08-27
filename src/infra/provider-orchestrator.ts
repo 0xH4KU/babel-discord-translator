@@ -1,7 +1,11 @@
 import type { StructuredLogFields } from '../shared/structured-logger.js';
 import { appLogger } from '../shared/structured-logger.js';
 import type { AppMetricsCollector } from '../shared/app-metrics.js';
-import type { TranslationProviderMode, TranslationResult } from '../shared/types.js';
+import type {
+    TranslationPrompt,
+    TranslationProviderMode,
+    TranslationResult,
+} from '../shared/types.js';
 import type { RuntimeConfig } from '../modules/config/config-repository.js';
 
 export interface TranslateOptions {
@@ -15,7 +19,7 @@ export interface TranslationProvider {
     name: string;
     /** Translate a prompt. */
     translate(
-        prompt: string,
+        prompt: TranslationPrompt,
         maxOutputTokens: number,
         options?: TranslateOptions,
     ): Promise<TranslationResult>;
@@ -132,7 +136,7 @@ export function createProviderOrchestrator(
 
     return {
         async translate(
-            prompt: string,
+            prompt: TranslationPrompt,
             maxOutputTokens: number,
             options?: TranslateOptions,
         ): Promise<ProviderOrchestratorResult> {
@@ -158,27 +162,36 @@ export function createProviderOrchestrator(
 
             for (let i = 0; i < available.length; i++) {
                 const provider = available[i]!;
-                const isFallback = i > 0;
+                const configuredIndex = configured.indexOf(provider);
+                const isFallback = configuredIndex > 0;
 
                 try {
                     if (isFallback) {
+                        const fromProvider = configured[configuredIndex - 1]!;
+                        const fallbackError =
+                            lastError ?? new Error(`${fromProvider.name} circuit is open`);
                         metrics?.recordProviderFallback({
-                            from: available[i - 1]!.name,
+                            from: fromProvider.name,
                             to: provider.name,
-                            errorType: classifyProviderError(lastError),
-                            error: lastError?.message ?? 'Unknown provider failure',
+                            errorType: lastError
+                                ? classifyProviderError(lastError)
+                                : 'circuit_open',
+                            error: fallbackError.message,
                         });
                         logger.warn('provider_orchestrator.fallback', {
-                            from: available[i - 1]!.name,
+                            from: fromProvider.name,
                             to: provider.name,
-                            error: lastError?.message,
+                            error: fallbackError.message,
                             ...options?.logContext,
                         });
                     }
 
+                    const startedAt = Date.now();
                     const result = await provider.translate(prompt, maxOutputTokens, options);
                     recordBreakerSuccess(provider.name);
-                    metrics?.recordProviderSuccess(provider.name);
+                    metrics?.recordProviderSuccess(provider.name, {
+                        latencyMs: Date.now() - startedAt,
+                    });
                     return {
                         ...result,
                         provider: provider.name,

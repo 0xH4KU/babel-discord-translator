@@ -112,8 +112,8 @@ warn_about_placeholders() {
         has_placeholder=1
     fi
 
-    if [[ "${app_profile:-guild}" != "guild" && "${app_profile}" != "pocket" ]]; then
-        warn "BABEL_APP should be guild or pocket. Current value: ${app_profile}"
+    if [[ "${app_profile:-guild}" != "guild" && "${app_profile}" != "pocket" && "${app_profile}" != "combined" ]]; then
+        warn "BABEL_APP should be guild, pocket, or combined. Current value: ${app_profile}"
         has_placeholder=1
     fi
 
@@ -164,11 +164,18 @@ print_next_steps() {
     local profile="$2"
     local register_command
 
-    if [[ "${profile}" == "pocket" ]]; then
-        register_command="docker compose exec babel npm run register:pocket"
-    else
-        register_command="docker compose exec babel npm run register:guild"
-    fi
+    case "${profile}" in
+        pocket)
+            register_command="docker compose exec babel npm run register:built:pocket"
+            ;;
+        combined)
+            register_command="docker compose exec babel npm run register:built:guild
+  docker compose exec babel npm run register:built:pocket"
+            ;;
+        *)
+            register_command="docker compose exec babel npm run register:built:guild"
+            ;;
+    esac
 
     cat <<EOF
 

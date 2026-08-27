@@ -12,7 +12,13 @@ export interface WebhookOwnerLike {
 export interface WebhookLike {
     name?: string;
     owner?: WebhookOwnerLike | null;
-    send(payload: { content: string; username: string; avatarURL?: string }): Promise<unknown>;
+    send(payload: {
+        content: string;
+        username: string;
+        avatarURL?: string;
+        threadId?: string;
+        allowedMentions: { parse: [] };
+    }): Promise<unknown>;
 }
 
 export interface WebhookCollectionLike<TWebhook extends WebhookLike = WebhookLike> {
@@ -35,15 +41,10 @@ export interface TranslationWebhookSendRequest<TWebhook extends WebhookLike = We
     content: string;
     username: string;
     avatarURL?: string;
+    threadId?: string;
     requestId?: string;
     guildId?: string | null;
     userId: string;
-}
-
-export interface WebhookCacheSnapshot {
-    size: number;
-    maxSize: number;
-    evictions: number;
 }
 
 export type WebhookErrorKind = 'stale_webhook' | 'permission_denied' | 'unknown';
@@ -57,7 +58,6 @@ export interface ClassifiedWebhookError {
 
 export interface TranslationWebhookService {
     sendTranslation(request: TranslationWebhookSendRequest): Promise<void>;
-    snapshot(): WebhookCacheSnapshot;
 }
 
 export interface WebhookServiceDeps {
@@ -103,7 +103,7 @@ export function createWebhookService({
     logger = appLogger.child({ component: 'webhook_service' }),
 }: WebhookServiceDeps = {}): TranslationWebhookService {
     const cache = new Map<string, WebhookLike>();
-    let evictions = 0;
+    const inFlight = new Map<string, Promise<WebhookLike>>();
 
     const deleteCachedWebhook = (channelId: string): void => {
         cache.delete(channelId);
@@ -127,7 +127,6 @@ export function createWebhookService({
             const oldestChannelId = cache.keys().next().value;
             if (oldestChannelId !== undefined) {
                 cache.delete(oldestChannelId);
-                evictions += 1;
             }
         }
 
@@ -147,18 +146,38 @@ export function createWebhookService({
             return cached as TWebhook;
         }
 
-        const webhooks = await channel.fetchWebhooks();
-        let webhook = webhooks.find((candidate) => candidate.name === DEFAULT_WEBHOOK_NAME && candidate.owner?.id === channel.client.user?.id);
-
-        if (!webhook) {
-            webhook = await channel.createWebhook({
-                name: DEFAULT_WEBHOOK_NAME,
-                reason: DEFAULT_WEBHOOK_REASON,
-            });
+        const pending = inFlight.get(channel.id);
+        if (pending) {
+            return pending as Promise<TWebhook>;
         }
 
-        cacheWebhook(channel.id, webhook);
-        return webhook;
+        const lookup = (async (): Promise<TWebhook> => {
+            const webhooks = await channel.fetchWebhooks();
+            let webhook = webhooks.find(
+                (candidate) =>
+                    candidate.name === DEFAULT_WEBHOOK_NAME &&
+                    candidate.owner?.id === channel.client.user?.id,
+            );
+
+            if (!webhook) {
+                webhook = await channel.createWebhook({
+                    name: DEFAULT_WEBHOOK_NAME,
+                    reason: DEFAULT_WEBHOOK_REASON,
+                });
+            }
+
+            cacheWebhook(channel.id, webhook);
+            return webhook;
+        })();
+        inFlight.set(channel.id, lookup);
+
+        try {
+            return await lookup;
+        } finally {
+            if (inFlight.get(channel.id) === lookup) {
+                inFlight.delete(channel.id);
+            }
+        }
     };
 
     return {
@@ -167,6 +186,7 @@ export function createWebhookService({
             content,
             username,
             avatarURL,
+            threadId,
             requestId,
             guildId,
             userId,
@@ -177,6 +197,13 @@ export function createWebhookService({
                 userId,
                 channelId: channel.id,
             });
+            const payload = {
+                content,
+                username,
+                avatarURL,
+                ...(threadId ? { threadId } : {}),
+                allowedMentions: { parse: [] as [] },
+            };
 
             requestLogger.info('translate.webhook.send.started');
 
@@ -184,7 +211,7 @@ export function createWebhookService({
                 let webhook = await getOrCreateWebhook(channel);
 
                 try {
-                    await webhook.send({ content, username, avatarURL });
+                    await webhook.send(payload);
                     requestLogger.info('translate.webhook.send.completed', {
                         recoveredFromStaleWebhook: false,
                     });
@@ -202,7 +229,7 @@ export function createWebhookService({
                     metrics?.recordWebhookRecreate();
 
                     webhook = await getOrCreateWebhook(channel, true);
-                    await webhook.send({ content, username, avatarURL });
+                    await webhook.send(payload);
                     requestLogger.info('translate.webhook.send.completed', {
                         recoveredFromStaleWebhook: true,
                     });
@@ -218,13 +245,6 @@ export function createWebhookService({
                 });
                 throw error;
             }
-        },
-        snapshot(): WebhookCacheSnapshot {
-            return {
-                size: cache.size,
-                maxSize: maxCacheSize,
-                evictions,
-            };
         },
     };
 }

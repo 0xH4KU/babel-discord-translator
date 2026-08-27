@@ -129,42 +129,6 @@
   border-color: var(--accent);
 }
 
-.version-link.update-available {
-  color: var(--yellow);
-  border-color: rgba(245, 158, 11, 0.4);
-  background: rgba(245, 158, 11, 0.12);
-}
-
-.version-link.update-available:hover {
-  color: var(--yellow);
-  border-color: rgba(245, 158, 11, 0.65);
-}
-
-.version-refresh {
-  width: 2rem;
-  height: 2rem;
-  display: inline-grid;
-  place-items: center;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text-dim);
-  cursor: pointer;
-  font-size: 1rem;
-  line-height: 1;
-  transition: all 0.2s;
-}
-
-.version-refresh:hover:not(:disabled) {
-  color: var(--accent);
-  border-color: var(--accent);
-}
-
-.version-refresh:disabled {
-  cursor: wait;
-  opacity: 0.55;
-}
-
 /* --- Logout --- */
 .btn-logout {
   background: transparent;

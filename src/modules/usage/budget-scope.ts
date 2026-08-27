@@ -1,6 +1,5 @@
 import type { RuntimeConfig } from '../config/config-repository.js';
-import { guildBudgetRepository } from './guild-budget-repository.js';
-import { userBudgetRepository } from './user-budget-repository.js';
+import { store } from '../../persistence/store.js';
 import type { UsageScope } from './usage-scope.js';
 
 export type BudgetScopeKind = 'global' | 'guild' | 'user';
@@ -17,7 +16,7 @@ export function resolveBudgetScope(
     runtimeConfig: RuntimeConfig,
 ): BudgetScopeDecision {
     if (scope.userId) {
-        const userBudget = userBudgetRepository.getBudget(scope.userId);
+        const userBudget = store.getUserBudget(scope.userId);
 
         return {
             kind: 'user',
@@ -27,7 +26,7 @@ export function resolveBudgetScope(
     }
 
     if (scope.guildId) {
-        const guildBudget = guildBudgetRepository.getBudget(scope.guildId);
+        const guildBudget = store.getGuildBudget(scope.guildId);
         if (guildBudget) {
             return {
                 kind: 'guild',

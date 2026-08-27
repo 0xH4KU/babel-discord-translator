@@ -5,14 +5,16 @@ export default defineConfig({
         coverage: {
             provider: 'v8',
             include: ['src/**/*.ts'],
-            exclude: ['apps/**', 'src/index.ts', 'src/types.ts'],
+            exclude: ['src/types.ts'],
             reporter: ['text', 'text-summary', 'html'],
             reportsDirectory: './coverage',
             thresholds: {
-                statements: 85,
-                branches: 75,
-                functions: 88,
-                lines: 85,
+                'src/**/*.ts': {
+                    statements: 85,
+                    branches: 75,
+                    functions: 88,
+                    lines: 85,
+                },
             },
         },
     },

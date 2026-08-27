@@ -3,8 +3,6 @@ import http from 'http';
 import { AppMetrics } from '../src/shared/app-metrics.js';
 
 // --- Mock dependencies ---
-vi.mock('dotenv/config', () => ({}));
-
 vi.mock('../src/modules/config/config.js', () => ({
     getConfig: vi.fn(() => ({
         discordToken: 'test-token',
@@ -70,9 +68,43 @@ vi.mock('../src/persistence/store.js', () => {
         }>
     > = {};
     let glossaryId = 1;
+    type GlossaryInput = {
+        id?: number;
+        sourceText: string;
+        targetLanguage?: string;
+        targetText: string;
+        notes?: string;
+    };
+    const upsertGlossaryEntry = (guildId: string, input: GlossaryInput) => {
+        const now = '2026-06-01T00:00:00.000Z';
+        glossary[guildId] ??= [];
+
+        if (input.id !== undefined) {
+            const existing = glossary[guildId].find((entry) => entry.id === input.id);
+            if (!existing) throw new Error('Glossary entry not found');
+            existing.sourceText = input.sourceText.trim();
+            existing.targetLanguage = input.targetLanguage?.trim() || 'auto';
+            existing.targetText = input.targetText.trim();
+            existing.notes = input.notes?.trim() ?? '';
+            existing.updatedAt = now;
+            return { ...existing };
+        }
+
+        const entry = {
+            id: glossaryId++,
+            guildId,
+            sourceText: input.sourceText.trim(),
+            targetLanguage: input.targetLanguage?.trim() || 'auto',
+            targetText: input.targetText.trim(),
+            notes: input.notes?.trim() ?? '',
+            createdAt: now,
+            updatedAt: now,
+        };
+        glossary[guildId].push(entry);
+        return { ...entry };
+    };
     return {
         store: {
-            get: vi.fn((key: string) => data[key]),
             getUserLanguage: vi.fn((guildId: string, userId: string) => {
                 const prefs = data.userLanguagePreferenceEntries as Array<{
                     guildId: string;
@@ -114,11 +146,6 @@ vi.mock('../src/persistence/store.js', () => {
                 prefs.splice(index, 1);
                 return true;
             }),
-            set: vi.fn((key: string, val: unknown) => {
-                data[key] = val;
-            }),
-            update: vi.fn((obj: Record<string, unknown>) => Object.assign(data, obj)),
-            getAll: vi.fn(() => ({ ...data })),
             getConfigValues: vi.fn((keys: readonly string[]) =>
                 Object.fromEntries(
                     keys.map((key) => {
@@ -126,6 +153,9 @@ vi.mock('../src/persistence/store.js', () => {
                         return [key, Array.isArray(value) ? [...value] : value];
                     }),
                 ),
+            ),
+            updateConfigValues: vi.fn((updates: Record<string, unknown>) =>
+                Object.assign(data, updates),
             ),
             getGuildBudget: vi.fn((guildId: string) => {
                 const budgets = data.guildBudgets as Record<string, unknown>;
@@ -141,45 +171,24 @@ vi.mock('../src/persistence/store.js', () => {
                 delete budgets[guildId];
                 return true;
             }),
+            getUserBudget: vi.fn((userId: string) => {
+                const budgets = data.userBudgets as Record<string, unknown>;
+                return budgets[userId] ?? null;
+            }),
+            setUserBudget: vi.fn((userId: string, dailyBudgetUsd: number) => {
+                const budgets = data.userBudgets as Record<string, unknown>;
+                budgets[userId] = { dailyBudgetUsd };
+            }),
+            clearUserBudget: vi.fn((userId: string) => {
+                const budgets = data.userBudgets as Record<string, unknown>;
+                if (!(userId in budgets)) return false;
+                delete budgets[userId];
+                return true;
+            }),
             listGuildGlossary: vi.fn((guildId: string) => glossary[guildId] ?? []),
-            upsertGuildGlossaryEntry: vi.fn(
-                (
-                    guildId: string,
-                    input: {
-                        id?: number;
-                        sourceText: string;
-                        targetLanguage?: string;
-                        targetText: string;
-                        notes?: string;
-                    },
-                ) => {
-                    const now = '2026-06-01T00:00:00.000Z';
-                    glossary[guildId] ??= [];
-
-                    if (input.id !== undefined) {
-                        const existing = glossary[guildId].find((entry) => entry.id === input.id);
-                        if (!existing) throw new Error('Glossary entry not found');
-                        existing.sourceText = input.sourceText.trim();
-                        existing.targetLanguage = input.targetLanguage?.trim() || 'auto';
-                        existing.targetText = input.targetText.trim();
-                        existing.notes = input.notes?.trim() ?? '';
-                        existing.updatedAt = now;
-                        return { ...existing };
-                    }
-
-                    const entry = {
-                        id: glossaryId++,
-                        guildId,
-                        sourceText: input.sourceText.trim(),
-                        targetLanguage: input.targetLanguage?.trim() || 'auto',
-                        targetText: input.targetText.trim(),
-                        notes: input.notes?.trim() ?? '',
-                        createdAt: now,
-                        updatedAt: now,
-                    };
-                    glossary[guildId].push(entry);
-                    return { ...entry };
-                },
+            upsertGuildGlossaryEntry: vi.fn(upsertGlossaryEntry),
+            upsertGuildGlossaryEntries: vi.fn((guildId: string, inputs: readonly GlossaryInput[]) =>
+                inputs.map((input) => upsertGlossaryEntry(guildId, input)),
             ),
             deleteGuildGlossaryEntry: vi.fn((guildId: string, entryId: number) => {
                 const entries = glossary[guildId] ?? [];
@@ -187,6 +196,11 @@ vi.mock('../src/persistence/store.js', () => {
                 glossary[guildId] = entries.filter((entry) => entry.id !== entryId);
                 return glossary[guildId].length < before;
             }),
+            listGuildBudgets: vi.fn(() => ({ ...(data.guildBudgets as object) })),
+            listUserBudgets: vi.fn(() => ({ ...(data.userBudgets as object) })),
+            listUserLanguagePreferences: vi.fn(() => [
+                ...(data.userLanguagePreferenceEntries as unknown[]),
+            ]),
             isSetupComplete: vi.fn(() => data.setupComplete),
         },
     };
@@ -208,7 +222,6 @@ const usageMock = vi.hoisted(() => ({
     getGuildStatsForGuilds: vi.fn(() => ({})),
     getHistory: vi.fn(() => []),
     getGuildHistory: vi.fn(() => []),
-    getUserHistory: vi.fn(() => []),
     getGuildHistoryForGuilds: vi.fn(() => []),
     getAllUserHistory: vi.fn(() => []),
     getUsageExportRows: vi.fn(() => []),
@@ -252,7 +265,6 @@ import { TranslationCache } from '../src/modules/translation/cache.js';
 import { CooldownManager } from '../src/modules/translation/cooldown.js';
 import { TranslationLog } from '../src/shared/log.js';
 import { TranslationRuntimeLimiter } from '../src/modules/translation/translation-runtime-limiter.js';
-import { _test as healthTest } from '../src/shared/health.js';
 import { translate as translateMock } from '../src/modules/translation/translate.js';
 import { createSqliteDatabase } from '../src/persistence/sqlite-database.js';
 import { DiscordUserProfileRepository } from '../src/modules/dashboard/discord-user-profile-repository.js';
@@ -283,7 +295,17 @@ function request(
     server: http.Server,
     method: string,
     path: string,
-    { body, cookie, csrf }: { body?: Record<string, unknown>; cookie?: string; csrf?: string } = {},
+    {
+        body,
+        cookie,
+        csrf,
+        headers,
+    }: {
+        body?: Record<string, unknown>;
+        cookie?: string;
+        csrf?: string;
+        headers?: Record<string, string>;
+    } = {},
 ): Promise<TestResponse> {
     return new Promise((resolve, reject) => {
         const addr = server.address() as { port: number };
@@ -292,7 +314,7 @@ function request(
             port: addr.port,
             path,
             method,
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...headers },
         };
         if (cookie) (options.headers as Record<string, string>)['Cookie'] = cookie;
         if (csrf) (options.headers as Record<string, string>)['x-csrf-token'] = csrf;
@@ -381,6 +403,18 @@ function createMinimalClient(): Client {
     } as unknown as Client;
 }
 
+type BudgetMap = Record<string, { dailyBudgetUsd: number }>;
+
+function replaceBudgets(
+    current: BudgetMap,
+    next: BudgetMap,
+    clear: (id: string) => unknown,
+    set: (id: string, dailyBudgetUsd: number) => unknown,
+): void {
+    for (const id of Object.keys(current)) clear(id);
+    for (const [id, budget] of Object.entries(next)) set(id, budget.dailyBudgetUsd);
+}
+
 describe('dashboard mode parsing', () => {
     it('defaults to full dashboard mode', () => {
         expect(resolveDashboardMode(undefined)).toBe('full');
@@ -410,7 +444,6 @@ describe('Dashboard API', () => {
     let sessionCookie: string;
     let csrfToken: string;
     let healthCheck: ReturnType<typeof vi.fn>;
-    let versionCheck: ReturnType<typeof vi.fn>;
     let runtimeLimiter: TranslationRuntimeLimiter;
     let log: TranslationLog;
     let profileDb: DatabaseSync;
@@ -429,7 +462,6 @@ describe('Dashboard API', () => {
             cooldown: new CooldownManager(5),
             log,
             client: createMinimalClient(),
-            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
             metrics,
             runtimeLimiter,
             profile,
@@ -477,15 +509,6 @@ describe('Dashboard API', () => {
             maxUserOutstanding: 1,
         });
         healthCheck = vi.fn().mockResolvedValue({ healthy: true, latencyMs: 24 });
-        versionCheck = vi.fn().mockResolvedValue({
-            version: '0.2.0',
-            repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator',
-            update: {
-                status: 'current',
-                latestVersion: '0.2.0',
-                latestUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases/tag/v0.2.0',
-            },
-        });
         const cooldown = new CooldownManager(5);
         log = new TranslationLog(100);
         profileDb = createSqliteDatabase(':memory:');
@@ -558,11 +581,10 @@ describe('Dashboard API', () => {
             cooldown,
             log,
             client: mockClient,
-            getStats: () => ({ totalTranslations: 42, apiCalls: 30 }),
             metrics,
             runtimeLimiter,
+            discordReady: () => true,
             healthCheck,
-            versionCheck,
             sessionRepository: new InMemorySessionRepository(),
             userProfileRepository,
             pendingUserInstallOwnerRepository,
@@ -574,7 +596,6 @@ describe('Dashboard API', () => {
     });
 
     beforeEach(() => {
-        healthTest.resetReadinessCache();
         healthCheck?.mockClear();
         healthCheck?.mockResolvedValue({ healthy: true, latencyMs: 24 });
     });
@@ -673,6 +694,20 @@ describe('Dashboard API', () => {
         expect(health.body!.live).toBe(true);
         expect(health.body!.ready).toBe(true);
         expect(health.body!.strategy).toBeDefined();
+        expect(healthCheck).not.toHaveBeenCalled();
+    });
+
+    it('should not expose local database errors from public health endpoints', async () => {
+        const { store } = await import('../src/persistence/store.js');
+        const getConfigValues = store.getConfigValues as ReturnType<typeof vi.fn>;
+        getConfigValues.mockImplementationOnce(() => {
+            throw new Error('/srv/private/babel.sqlite is unreadable');
+        });
+
+        const live = await request(server, 'GET', '/livez');
+
+        expect(live.status).toBe(503);
+        expect(JSON.stringify(live.body)).not.toContain('/srv/private/babel.sqlite');
     });
 
     it('should expose health-only dashboard endpoints without full dashboard API routes', async () => {
@@ -680,8 +715,7 @@ describe('Dashboard API', () => {
             cache,
             metrics,
             runtimeLimiter,
-            healthCheck,
-            healthProbeCacheTtlMs: 0,
+            discordReady: () => true,
         });
         const healthOnlyServer = startDashboardServer(healthOnlyApp, 0);
 
@@ -715,8 +749,6 @@ describe('Dashboard API', () => {
     it('should expose health-only metrics and health with optional runtime deps omitted', async () => {
         const fallbackApp = createHealthDashboardApp({
             cache,
-            healthCheck,
-            healthProbeCacheTtlMs: 0,
         });
         const fallbackServer = startDashboardServer(fallbackApp, 0);
 
@@ -750,23 +782,40 @@ describe('Dashboard API', () => {
         expect(appListen).toHaveBeenCalledWith(3000, '0.0.0.0', expect.any(Function));
     });
 
-    it('should trust the first reverse proxy for Railway forwarded headers', () => {
-        expect(app.get('trust proxy')).toBe(1);
+    it('should not trust spoofed forwarded client addresses by default', async () => {
+        app.get('/test/client-ip', (req, res) => res.json({ ip: req.ip }));
+
+        const response = await request(server, 'GET', '/test/client-ip', {
+            headers: { 'X-Forwarded-For': '203.0.113.10' },
+        });
+
+        expect(app.get('trust proxy')).toBe(false);
+        expect(response.body!.ip).not.toBe('203.0.113.10');
     });
 
-    it('should report degraded health when Vertex AI readiness fails', async () => {
-        healthCheck.mockResolvedValue({ healthy: false, error: 'upstream unavailable' });
+    it('should report degraded health while Discord is disconnected', async () => {
+        const disconnectedApp = createHealthDashboardApp({
+            cache,
+            discordReady: () => false,
+        });
+        const disconnectedServer = startDashboardServer(disconnectedApp, 0);
 
-        const ready = await request(server, 'GET', '/readyz');
-        expect(ready.status).toBe(503);
-        expect(ready.body!.ready).toBe(false);
+        try {
+            const ready = await request(disconnectedServer, 'GET', '/readyz');
+            expect(ready.status).toBe(503);
+            expect(ready.body!.ready).toBe(false);
 
-        const health = await request(server, 'GET', '/healthz');
-        expect(health.status).toBe(200);
-        expect(health.body!.status).toBe('degraded');
-        expect(
-            (health.body!.checks as Record<string, Record<string, unknown>>).vertexAi.error,
-        ).toBe('upstream unavailable');
+            const health = await request(disconnectedServer, 'GET', '/healthz');
+            expect(health.status).toBe(200);
+            expect(health.body!.status).toBe('degraded');
+            expect(
+                (health.body!.checks as Record<string, Record<string, unknown>>).discord,
+            ).toMatchObject({ status: 'fail', detail: 'Discord client is not connected' });
+            expect(healthCheck).not.toHaveBeenCalled();
+        } finally {
+            disconnectedServer.close();
+            stopDashboardApp(disconnectedApp);
+        }
     });
 
     it('should return stats for authenticated user', async () => {
@@ -781,7 +830,7 @@ describe('Dashboard API', () => {
         expect(res.status).toBe(200);
         expect(usageMock.getGuildStatsForGuilds).toHaveBeenCalledOnce();
         expect((res.body!.bot as Record<string, unknown>).name).toBe('Babel#1234');
-        expect((res.body!.translations as Record<string, unknown>).total).toBe(42);
+        expect((res.body!.translations as Record<string, unknown>).total).toBe(1);
         expect((res.body!.metrics as Record<string, unknown>).translationFailuresTotal).toBe(1);
         expect((res.body!.translations as Record<string, unknown>).webhookRecreated).toBe(1);
         expect(
@@ -954,7 +1003,7 @@ describe('Dashboard API', () => {
 
     it('should show custom guild budget usage separately from the global budget pool', async () => {
         const { store } = await import('../src/persistence/store.js');
-        const previousGuildBudgets = store.get('guildBudgets');
+        const previousGuildBudgets = store.listGuildBudgets();
 
         usageMock.getStats.mockReturnValueOnce({
             date: '2025-03-01',
@@ -984,7 +1033,12 @@ describe('Dashboard API', () => {
         });
 
         try {
-            store.update({ guildBudgets: { 'guild-1': { dailyBudgetUsd: 2 } } });
+            replaceBudgets(
+                store.listGuildBudgets(),
+                { 'guild-1': { dailyBudgetUsd: 2 } },
+                (id) => store.clearGuildBudget(id),
+                (id, budget) => store.setGuildBudget(id, budget),
+            );
 
             const res = await request(server, 'GET', '/api/stats', {
                 cookie: sessionCookie,
@@ -1010,21 +1064,27 @@ describe('Dashboard API', () => {
                 exceeded: false,
             });
         } finally {
-            store.update({ guildBudgets: previousGuildBudgets });
+            replaceBudgets(
+                store.listGuildBudgets(),
+                previousGuildBudgets,
+                (id) => store.clearGuildBudget(id),
+                (id, budget) => store.setGuildBudget(id, budget),
+            );
         }
     });
 
     it('should include allowed and pending user-install owners in user budget access data', async () => {
         const { store } = await import('../src/persistence/store.js');
-        const previousAllowedUserIds = store.get('allowedUserIds');
-        const previousDefaultUserBudget = store.get('defaultUserDailyBudgetUsd');
-        const previousUserBudgets = store.get('userBudgets');
+        const previousConfig = store.getConfigValues([
+            'allowedUserIds',
+            'defaultUserDailyBudgetUsd',
+        ]);
+        const previousUserBudgets = store.listUserBudgets();
         const pocketApp = createDashboardApp({
             cache,
             cooldown: new CooldownManager(5),
             log,
             client: createMinimalClient(),
-            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
             metrics,
             runtimeLimiter,
             profile: BABEL_POCKET_PROFILE,
@@ -1035,11 +1095,16 @@ describe('Dashboard API', () => {
         const pocketServer = startDashboardServer(pocketApp, 0);
 
         try {
-            store.update({
+            store.updateConfigValues({
                 allowedUserIds: ['user-1'],
                 defaultUserDailyBudgetUsd: 0.5,
-                userBudgets: { 'user-1': { dailyBudgetUsd: 1.25 } },
             });
+            replaceBudgets(
+                store.listUserBudgets(),
+                { 'user-1': { dailyBudgetUsd: 1.25 } },
+                (id) => store.clearUserBudget(id),
+                (id, budget) => store.setUserBudget(id, budget),
+            );
 
             const login = await request(pocketServer, 'POST', '/api/login', {
                 body: { password: 'test-pass-123' },
@@ -1074,11 +1139,13 @@ describe('Dashboard API', () => {
                 },
             });
         } finally {
-            store.update({
-                allowedUserIds: previousAllowedUserIds,
-                defaultUserDailyBudgetUsd: previousDefaultUserBudget,
-                userBudgets: previousUserBudgets,
-            });
+            store.updateConfigValues(previousConfig);
+            replaceBudgets(
+                store.listUserBudgets(),
+                previousUserBudgets,
+                (id) => store.clearUserBudget(id),
+                (id, budget) => store.setUserBudget(id, budget),
+            );
             stopDashboardApp(pocketApp);
             pocketServer.close();
         }
@@ -1086,15 +1153,16 @@ describe('Dashboard API', () => {
 
     it('should include user budget overview data in Babel Pocket stats', async () => {
         const { store } = await import('../src/persistence/store.js');
-        const previousAllowedUserIds = store.get('allowedUserIds');
-        const previousDefaultUserBudget = store.get('defaultUserDailyBudgetUsd');
-        const previousUserBudgets = store.get('userBudgets');
+        const previousConfig = store.getConfigValues([
+            'allowedUserIds',
+            'defaultUserDailyBudgetUsd',
+        ]);
+        const previousUserBudgets = store.listUserBudgets();
         const pocketApp = createDashboardApp({
             cache,
             cooldown: new CooldownManager(5),
             log,
             client: createMinimalClient(),
-            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
             metrics,
             runtimeLimiter,
             profile: BABEL_POCKET_PROFILE,
@@ -1105,11 +1173,16 @@ describe('Dashboard API', () => {
         const pocketServer = startDashboardServer(pocketApp, 0);
 
         try {
-            store.update({
+            store.updateConfigValues({
                 allowedUserIds: ['user-1', 'user-2'],
                 defaultUserDailyBudgetUsd: 0.5,
-                userBudgets: { 'user-1': { dailyBudgetUsd: 1.25 } },
             });
+            replaceBudgets(
+                store.listUserBudgets(),
+                { 'user-1': { dailyBudgetUsd: 1.25 } },
+                (id) => store.clearUserBudget(id),
+                (id, budget) => store.setUserBudget(id, budget),
+            );
             usageMock.getUserStats.mockClear();
 
             const login = await request(pocketServer, 'POST', '/api/login', {
@@ -1155,11 +1228,13 @@ describe('Dashboard API', () => {
             expect(usageMock.getUserStats).toHaveBeenCalledWith('user-2');
             expect(usageMock.getUserStats).toHaveBeenCalledWith('pending-owner');
         } finally {
-            store.update({
-                allowedUserIds: previousAllowedUserIds,
-                defaultUserDailyBudgetUsd: previousDefaultUserBudget,
-                userBudgets: previousUserBudgets,
-            });
+            store.updateConfigValues(previousConfig);
+            replaceBudgets(
+                store.listUserBudgets(),
+                previousUserBudgets,
+                (id) => store.clearUserBudget(id),
+                (id, budget) => store.setUserBudget(id, budget),
+            );
             stopDashboardApp(pocketApp);
             pocketServer.close();
         }
@@ -1167,9 +1242,11 @@ describe('Dashboard API', () => {
 
     it('should resolve combined user budget profiles with the Pocket Discord client', async () => {
         const { store } = await import('../src/persistence/store.js');
-        const previousAllowedUserIds = store.get('allowedUserIds');
-        const previousDefaultUserBudget = store.get('defaultUserDailyBudgetUsd');
-        const previousUserBudgets = store.get('userBudgets');
+        const previousConfig = store.getConfigValues([
+            'allowedUserIds',
+            'defaultUserDailyBudgetUsd',
+        ]);
+        const previousUserBudgets = store.listUserBudgets();
         const emptyProfileDb = createSqliteDatabase(':memory:');
         const emptyProfileRepository = new DiscordUserProfileRepository({ db: emptyProfileDb });
         const guildFetch = vi.fn(async () => {
@@ -1198,7 +1275,6 @@ describe('Dashboard API', () => {
                 } as unknown as Client,
                 'babel-pocket': pocketClient,
             },
-            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
             metrics,
             runtimeLimiter,
             profile: BABEL_GUILD_PROFILE,
@@ -1210,11 +1286,16 @@ describe('Dashboard API', () => {
         const combinedServer = startDashboardServer(combinedApp, 0);
 
         try {
-            store.update({
+            store.updateConfigValues({
                 allowedUserIds: [],
                 defaultUserDailyBudgetUsd: 0.5,
-                userBudgets: {},
             });
+            replaceBudgets(
+                store.listUserBudgets(),
+                {},
+                (id) => store.clearUserBudget(id),
+                (id, budget) => store.setUserBudget(id, budget),
+            );
 
             const login = await request(combinedServer, 'POST', '/api/login', {
                 body: { password: 'test-pass-123' },
@@ -1234,87 +1315,40 @@ describe('Dashboard API', () => {
                 }),
             });
         } finally {
-            store.update({
-                allowedUserIds: previousAllowedUserIds,
-                defaultUserDailyBudgetUsd: previousDefaultUserBudget,
-                userBudgets: previousUserBudgets,
-            });
+            store.updateConfigValues(previousConfig);
+            replaceBudgets(
+                store.listUserBudgets(),
+                previousUserBudgets,
+                (id) => store.clearUserBudget(id),
+                (id, budget) => store.setUserBudget(id, budget),
+            );
             stopDashboardApp(combinedApp);
             combinedServer.close();
             emptyProfileDb.close();
         }
     });
 
-    it('should cache readiness probes within the configured health TTL', async () => {
-        healthTest.resetReadinessCache();
+    it('should not call generation probes from public readiness endpoints', async () => {
         healthCheck.mockClear();
-        healthCheck.mockResolvedValue({ healthy: true, latencyMs: 21 });
 
         const first = await request(server, 'GET', '/readyz');
         const second = await request(server, 'GET', '/readyz');
 
         expect(first.status).toBe(200);
         expect(second.status).toBe(200);
-        expect(healthCheck).toHaveBeenCalledTimes(1);
+        expect(healthCheck).not.toHaveBeenCalled();
     });
 
-    it('should expose release version metadata to authenticated users', async () => {
+    it('should expose package version metadata to authenticated users', async () => {
         const res = await request(server, 'GET', '/api/version', {
             cookie: sessionCookie,
         });
 
         expect(res.status).toBe(200);
         expect(res.body).toEqual({
-            version: '0.2.0',
-            repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator',
-            update: {
-                status: 'current',
-                latestVersion: '0.2.0',
-                latestUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases/tag/v0.2.0',
-            },
+            version: '0.2.3',
+            repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases',
         });
-        expect(versionCheck).toHaveBeenCalled();
-    });
-
-    it('should force-refresh release metadata for authenticated admins with CSRF', async () => {
-        versionCheck.mockClear();
-        versionCheck.mockResolvedValueOnce({
-            version: '0.2.0',
-            repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator',
-            update: {
-                status: 'outdated',
-                latestVersion: '0.2.0',
-                latestUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases/tag/v0.2.0',
-            },
-        });
-
-        const res = await request(server, 'POST', '/api/version/refresh', {
-            cookie: sessionCookie,
-            csrf: csrfToken,
-        });
-
-        expect(res.status).toBe(200);
-        expect(res.body).toEqual({
-            version: '0.2.0',
-            repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator',
-            update: {
-                status: 'outdated',
-                latestVersion: '0.2.0',
-                latestUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases/tag/v0.2.0',
-            },
-        });
-        expect(versionCheck).toHaveBeenCalledWith({ forceRefresh: true });
-    });
-
-    it('should reject release metadata refresh without CSRF', async () => {
-        versionCheck.mockClear();
-
-        const res = await request(server, 'POST', '/api/version/refresh', {
-            cookie: sessionCookie,
-        });
-
-        expect(res.status).toBe(403);
-        expect(versionCheck).not.toHaveBeenCalled();
     });
 
     it('should expose Prometheus metrics without dashboard authentication by default in local test mode', async () => {
@@ -1352,7 +1386,7 @@ describe('Dashboard API', () => {
             expect(res.status).toBe(200);
             expect(res.headers['content-type']).toContain('text/plain');
             expect(res.text).toContain(
-                'babel_app_version_info{version="0.2.2",repository_url="https://github.com/0xH4KU/babel-discord-translator"} 1',
+                'babel_app_version_info{version="0.2.3",repository_url="https://github.com/0xH4KU/babel-discord-translator/releases"} 1',
             );
             expect(res.text).toContain('babel_translations_total');
             expect(res.text).toContain('babel_translation_failures_total');
@@ -1378,8 +1412,6 @@ describe('Dashboard API', () => {
             cache,
             metrics,
             runtimeLimiter,
-            healthCheck,
-            healthProbeCacheTtlMs: 0,
             metricsToken: 'metrics-secret',
         });
         const protectedServer = startDashboardServer(protectedApp, 0);
@@ -1420,8 +1452,6 @@ describe('Dashboard API', () => {
             cache,
             metrics,
             runtimeLimiter,
-            healthCheck,
-            healthProbeCacheTtlMs: 0,
             host: '0.0.0.0',
         };
         const protectedApp = createHealthDashboardApp(healthDeps);
@@ -1473,9 +1503,9 @@ describe('Dashboard API', () => {
         expect(providers.openai.failureTotal).toEqual(expect.any(Number));
 
         const { store } = await import('../src/persistence/store.js');
-        const previousGcpProject = store.get('gcpProject');
+        const previousGcpProject = store.getConfigValues(['gcpProject']).gcpProject;
         try {
-            store.update({ gcpProject: '' });
+            store.updateConfigValues({ gcpProject: '' });
             const missingProjectRes = await request(server, 'GET', '/api/stats', {
                 cookie: sessionCookie,
             });
@@ -1489,7 +1519,7 @@ describe('Dashboard API', () => {
             >;
             expect(missingProjectProviders.vertex.configured).toBe(false);
         } finally {
-            store.update({ gcpProject: previousGcpProject });
+            store.updateConfigValues({ gcpProject: previousGcpProject });
         }
 
         const runtimePressure = operations.runtimePressure as Record<string, unknown>;
@@ -1528,15 +1558,14 @@ describe('Dashboard API', () => {
     });
 
     it('should expose readiness details on the authenticated health endpoint', async () => {
-        healthCheck.mockResolvedValue({ healthy: true, latencyMs: 12 });
-
         const res = await request(server, 'GET', '/api/health', {
             cookie: sessionCookie,
         });
         expect(res.status).toBe(200);
         expect(res.body!.healthy).toBe(true);
-        expect((res.body!.vertexAi as Record<string, unknown>).latencyMs).toBe(12);
+        expect((res.body!.vertexAi as Record<string, unknown>).status).toBe('pass');
         expect((res.body!.checks as Record<string, unknown>).configuration).toBeDefined();
+        expect(healthCheck).not.toHaveBeenCalled();
     });
 
     // --- Config masking ---
@@ -1637,10 +1666,8 @@ describe('Dashboard API', () => {
         });
         expect(res.status).toBe(200);
 
-        // store.update should have been called without the protected fields
-        const lastCall = (store.update as ReturnType<typeof vi.fn>).mock.calls[
-            (store.update as ReturnType<typeof vi.fn>).mock.calls.length - 1
-        ][0];
+        const updateConfigValues = store.updateConfigValues as ReturnType<typeof vi.fn>;
+        const lastCall = updateConfigValues.mock.calls[updateConfigValues.mock.calls.length - 1][0];
         expect(lastCall).not.toHaveProperty('tokenUsage');
         expect(lastCall).not.toHaveProperty('usageHistory');
         expect(lastCall).not.toHaveProperty('userLanguagePrefs');
@@ -1686,6 +1713,24 @@ describe('Dashboard API', () => {
                 'translationMaxQueueWaitMs',
             ]),
         );
+    });
+
+    it('should not apply runtime effects when config persistence fails', async () => {
+        const { store } = await import('../src/persistence/store.js');
+        const updateConfigValues = store.updateConfigValues as ReturnType<typeof vi.fn>;
+        const before = runtimeLimiter.snapshot().limits;
+        updateConfigValues.mockImplementationOnce(() => {
+            throw new Error('sqlite write failed');
+        });
+
+        const res = await request(server, 'POST', '/api/config', {
+            cookie: sessionCookie,
+            csrf: csrfToken,
+            body: { translationMaxConcurrent: before.maxConcurrent + 1 },
+        });
+
+        expect(res.status).toBe(500);
+        expect(runtimeLimiter.snapshot().limits).toEqual(before);
     });
 
     // --- Translate test endpoint ---
@@ -1759,7 +1804,6 @@ describe('Dashboard API', () => {
             cooldown: new CooldownManager(5),
             log,
             client: createMinimalClient(),
-            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
             metrics,
             runtimeLimiter,
             profile: BABEL_GUILD_PROFILE,
@@ -2117,7 +2161,6 @@ describe('Dashboard API', () => {
             cooldown: new CooldownManager(5),
             log,
             client: createMinimalClient(),
-            getStats: () => ({ totalTranslations: 0, apiCalls: 0 }),
             metrics,
             runtimeLimiter,
             profile: BABEL_POCKET_PROFILE,
@@ -2306,6 +2349,7 @@ describe('Dashboard API', () => {
                     'source,targetLanguage,target,notes',
                     'openai,auto,Open AI,Changed note',
                     'RAID,ja,レイド,JP term',
+                    'raid,JA,レイド二,Updated JP term',
                     'raid,zh-TW,團本二,Changed TW',
                 ].join('\n'),
             },
@@ -2315,7 +2359,7 @@ describe('Dashboard API', () => {
         expect(overwrite.body).toMatchObject({
             ok: true,
             created: 1,
-            updated: 2,
+            updated: 3,
             skipped: 0,
             failed: 0,
             cacheCleared: true,
@@ -2340,10 +2384,10 @@ describe('Dashboard API', () => {
                     notes: 'Japanese brand',
                 }),
                 expect.objectContaining({
-                    sourceText: 'RAID',
-                    targetLanguage: 'ja',
-                    targetText: 'レイド',
-                    notes: 'JP term',
+                    sourceText: 'raid',
+                    targetLanguage: 'JA',
+                    targetText: 'レイド二',
+                    notes: 'Updated JP term',
                 }),
                 expect.objectContaining({
                     sourceText: 'raid',
@@ -2402,6 +2446,24 @@ describe('Dashboard API', () => {
         expect(res.body).toEqual({
             error: 'Glossary import duplicate mode must be skip or overwrite',
         });
+    });
+
+    it('should accept glossary imports larger than the default JSON parser limit', async () => {
+        const text = Array.from(
+            { length: 500 },
+            (_, index) => `term-${index},ja,target-${index},${'x'.repeat(190)}`,
+        ).join('\n');
+        expect(Buffer.byteLength(text)).toBeGreaterThan(100 * 1024);
+        expect(Buffer.byteLength(text)).toBeLessThanOrEqual(128 * 1024);
+
+        const res = await request(server, 'POST', '/api/guild-glossary/guild-large/import', {
+            cookie: sessionCookie,
+            csrf: csrfToken,
+            body: { duplicateMode: 'skip', text },
+        });
+
+        expect(res.status).toBe(200);
+        expect(res.body).toMatchObject({ created: 500, failed: 0 });
     });
 
     it('should not expose guild glossary routes for Babel Pocket', async () => {
@@ -2765,7 +2827,6 @@ describe('Dashboard API', () => {
         ];
         usageMock.getHistory.mockReturnValue(globalHistory);
         usageMock.getGuildHistory.mockReturnValue(guildHistory);
-        usageMock.getUserHistory.mockReturnValue(pocketHistory);
         usageMock.getGuildHistoryForGuilds.mockReturnValue(guildHistory);
         usageMock.getAllUserHistory.mockReturnValue(pocketHistory);
 
@@ -2844,7 +2905,6 @@ describe('Dashboard API', () => {
         } finally {
             usageMock.getHistory.mockReturnValue([]);
             usageMock.getGuildHistory.mockReturnValue([]);
-            usageMock.getUserHistory.mockReturnValue([]);
             usageMock.getGuildHistoryForGuilds.mockReturnValue([]);
             usageMock.getAllUserHistory.mockReturnValue([]);
             dashboard.close();
@@ -2874,7 +2934,6 @@ describe('Dashboard API', () => {
         });
 
         const dashboard = startCombinedDashboard({
-            getStats: () => ({ totalTranslations: 99, apiCalls: 88 }),
             metrics: scopedMetrics,
         });
 
@@ -2919,8 +2978,8 @@ describe('Dashboard API', () => {
             expect(guildProviders.openai.failureTotal).toBe(0);
             expect(pocketProviders.vertex.successTotal).toBe(0);
             expect(pocketProviders.openai.failureTotal).toBe(1);
-            expect(rootTranslations.total).toBe(99);
-            expect(rootTranslations.apiCalls).toBe(88);
+            expect(rootTranslations.total).toBe(1);
+            expect(rootTranslations.apiCalls).toBe(1);
             expect(guildTranslations.total).toBe(1);
             expect(guildTranslations.apiCalls).toBe(1);
             expect(guildTranslations.failures).toBe(0);

@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => {
             on: vi.fn(),
             login: vi.fn(async () => undefined),
             destroy: vi.fn(),
+            isReady: vi.fn(() => false),
         };
         clients.push(client);
         return client;
@@ -180,22 +181,22 @@ describe('startBabelApp', () => {
         );
     });
 
-    it('creates a combined dashboard once all selected Discord clients are ready', async () => {
+    it('starts a combined dashboard before Discord clients are ready', async () => {
         const { startBabelApps } = await import('../src/apps/bootstrap.js');
 
         await startBabelApps([BABEL_GUILD_PROFILE, BABEL_POCKET_PROFILE]);
+        expect(mocks.createDashboardApp).toHaveBeenCalledTimes(1);
+        expect(mocks.startDashboardServer).toHaveBeenCalledTimes(1);
+
         const readyCallbacks = mocks.clients.map((client) => client.once.mock.calls[0]![1]);
         readyCallbacks[0]!({
             user: { id: 'guild-bot', tag: 'Guild#0001' },
         });
-        expect(mocks.createDashboardApp).not.toHaveBeenCalled();
-
         readyCallbacks[1]!({
             user: { id: 'pocket-bot', tag: 'Pocket#0001' },
         });
 
         expect(mocks.createDashboardApp).toHaveBeenCalledTimes(1);
-        expect(mocks.startDashboardServer).toHaveBeenCalledTimes(1);
         expect(mocks.createDashboardApp).toHaveBeenCalledWith(
             expect.objectContaining({
                 profile: BABEL_GUILD_PROFILE,

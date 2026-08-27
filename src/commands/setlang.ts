@@ -2,7 +2,7 @@ import { MessageFlags, type ChatInputCommandInteraction } from 'discord.js';
 import { BABEL_GUILD_PROFILE, type AppProfile } from '../apps/app-profile.js';
 import { discordMessages, getDiscordLanguageName } from '../shared/messages/discord-messages.js';
 import { localeToLang } from '../modules/translation/lang.js';
-import { userPreferenceRepository } from '../modules/translation/user-preference-repository.js';
+import { store } from '../persistence/store.js';
 
 interface LanguagePreferenceCommandOptions {
     profile?: Pick<AppProfile, 'accessMode'>;
@@ -37,7 +37,7 @@ export async function handleSetlang(
     }
 
     if (lang === 'auto') {
-        userPreferenceRepository.clearLanguage(guildId, interaction.user.id);
+        store.deleteUserLanguage(guildId, interaction.user.id);
         await interaction.reply({
             content: discordMessages.languagePreferenceCleared(),
             flags: MessageFlags.Ephemeral,
@@ -45,7 +45,7 @@ export async function handleSetlang(
         return;
     }
 
-    userPreferenceRepository.setLanguage(guildId, interaction.user.id, lang);
+    store.setUserLanguage(guildId, interaction.user.id, lang);
     await interaction.reply({
         content: discordMessages.languageTargetSet(lang),
         flags: MessageFlags.Ephemeral,
@@ -59,8 +59,7 @@ export async function handleMylang(
 ): Promise<void> {
     const profile = options.profile ?? BABEL_GUILD_PROFILE;
     const guildId = resolvePreferenceGuildId(interaction, profile);
-    const userPref =
-        guildId !== null ? userPreferenceRepository.getLanguage(guildId, interaction.user.id) : null;
+    const userPref = guildId !== null ? store.getUserLanguage(guildId, interaction.user.id) : null;
     const localeLang = localeToLang(interaction.locale);
 
     let reply: string;

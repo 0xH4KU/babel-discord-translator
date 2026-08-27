@@ -70,16 +70,12 @@ const CONFIG_EFFECT_DESCRIPTIONS: Record<ManagedRuntimeConfigKey, string> = {
         'Clear translation cache and reset provider state so future requests use the updated OpenAI-compatible model.',
     translationProvider:
         'Clear translation cache and reset provider state so future requests use the new provider.',
-    translationMaxConcurrent:
-        'Update the runtime translation concurrency limit immediately.',
-    translationMaxGlobalQueue:
-        'Update the runtime global queue limit immediately.',
-    translationMaxGuildQueue:
-        'Update the runtime per-server queue limit immediately.',
+    translationMaxConcurrent: 'Update the runtime translation concurrency limit immediately.',
+    translationMaxGlobalQueue: 'Update the runtime global queue limit immediately.',
+    translationMaxGuildQueue: 'Update the runtime per-server queue limit immediately.',
     translationMaxUserOutstanding:
         'Update the runtime per-user outstanding request limit immediately.',
-    translationMaxQueueWaitMs:
-        'Update the runtime queue wait timeout immediately.',
+    translationMaxQueueWaitMs: 'Update the runtime queue wait timeout immediately.',
 };
 
 export function applyConfigUpdateEffects(
@@ -140,11 +136,14 @@ export function applyConfigUpdateEffects(
                 break;
             case 'maxInputLength':
             case 'dailyBudgetUsd':
+                break;
             case 'translationMaxConcurrent':
                 runtimeLimiter?.updateLimits({ maxConcurrent: updates.translationMaxConcurrent! });
                 break;
             case 'translationMaxGlobalQueue':
-                runtimeLimiter?.updateLimits({ maxGlobalQueue: updates.translationMaxGlobalQueue! });
+                runtimeLimiter?.updateLimits({
+                    maxGlobalQueue: updates.translationMaxGlobalQueue!,
+                });
                 break;
             case 'translationMaxGuildQueue':
                 runtimeLimiter?.updateLimits({ maxGuildQueue: updates.translationMaxGuildQueue! });
@@ -155,7 +154,9 @@ export function applyConfigUpdateEffects(
                 });
                 break;
             case 'translationMaxQueueWaitMs':
-                runtimeLimiter?.updateLimits({ maxQueueWaitMs: updates.translationMaxQueueWaitMs! });
+                runtimeLimiter?.updateLimits({
+                    maxQueueWaitMs: updates.translationMaxQueueWaitMs!,
+                });
                 break;
         }
     }

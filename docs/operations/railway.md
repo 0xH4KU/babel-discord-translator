@@ -13,6 +13,7 @@ The repository is Railway-ready:
 - Babel binds the dashboard to `DASHBOARD_HOST`, which defaults to `0.0.0.0`.
 - The Docker image stores SQLite data under `/app/data` when `BABEL_DB_PATH=/app/data/babel.sqlite`.
 - The app profile is selected at runtime with `BABEL_APP`, so the same Railway service can run Babel Guild, Babel Pocket, or both products in one Node.js process.
+- The Railway service must remain at one replica; Babel does not support horizontal scaling or Railway autoscaling.
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/babel-discord-tran-1?referralCode=euhy-o&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
@@ -44,7 +45,7 @@ For Guild:
 ```bash
 npm run build:guild
 npm run register:guild
-npm run start -w @babel-discord-translator/guild
+npm run start:guild
 ```
 
 For Pocket:
@@ -52,10 +53,12 @@ For Pocket:
 ```bash
 npm run build:pocket
 npm run register:pocket
-npm run start -w @babel-discord-translator/pocket
+npm run start:pocket
 ```
 
 Railway Docker deployments can use the same image for either app. Set `BABEL_APP=guild` for Babel Guild, `BABEL_APP=pocket` for Babel Pocket, or `BABEL_APP=combined` to run both in one service.
+
+Keep Railway replica count at `1`. Cooldowns, translation queues, caches, metrics, and Discord event handling are process-local; attaching the same SQLite volume to multiple replicas does not coordinate them and can cause duplicate responses or inaccurate limits.
 
 ## Required Variables
 
@@ -132,7 +135,7 @@ Check the public health endpoint:
 curl -fsS https://YOUR_RAILWAY_DOMAIN/livez
 ```
 
-`/readyz` may return `503` until setup is complete and the configured provider passes its readiness check.
+`/readyz` may return `503` until setup is complete, Discord is connected, and an enabled provider is fully configured. Run Setup Doctor for an active provider request check.
 
 ## Updates and Autodeploys
 
@@ -158,18 +161,18 @@ Register commands from a local checkout:
 DISCORD_APP_ID=your_app_id DISCORD_BOT_TOKEN=your_token npm run register
 ```
 
-Or run the same command in a Railway shell with `DISCORD_APP_ID` and `DISCORD_BOT_TOKEN` set. This registers the default Babel Guild command set unless `BABEL_APP=pocket` is set. Use `npm run register:guild` or `npm run register:pocket` when you want the command surface to be explicit.
+In a Railway Docker shell, use the compiled `npm run register:built:guild` or `npm run register:built:pocket` command because production images omit development dependencies.
 
 For combined mode with separate Discord applications:
 
 ```bash
 BABEL_GUILD_DISCORD_APP_ID=your_guild_app_id \
 BABEL_GUILD_DISCORD_BOT_TOKEN=your_guild_token \
-npm run register:guild
+npm run register:built:guild
 
 BABEL_POCKET_DISCORD_APP_ID=your_pocket_app_id \
 BABEL_POCKET_DISCORD_BOT_TOKEN=your_pocket_token \
-npm run register:pocket
+npm run register:built:pocket
 ```
 
 ## Template Publishing Checklist

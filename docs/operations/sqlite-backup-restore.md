@@ -65,11 +65,13 @@ If readiness fails because provider setup was restored to an older state, log in
 
 ## JSON Export Escape Hatch
 
-Babel can export the SQLite store to the legacy JSON shape for inspection or rollback workflows:
+Babel can export configuration, usage, budgets, and language preferences to the legacy JSON shape for inspection or compatibility workflows:
 
 ```bash
 npm run db:export:json
 ```
+
+This JSON export is not a backup. It excludes SQLite-only data such as glossary entries, dashboard sessions, and cached Discord profiles. Use the SQLite backup above for rollback and disaster recovery.
 
 To import an existing legacy JSON file into SQLite:
 

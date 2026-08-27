@@ -4,6 +4,8 @@ This guide is for operators who want to run Babel Guild or Babel Pocket as a sel
 
 The image runs Node.js `22.13+` and stores runtime state with native `node:sqlite`. Back up the `/app/data` volume before changing Node image tags, rebuild the image, then run `npm run smoke:dashboard` after upgrading Node.
 
+Keep the service at one container replica per Discord application. Multiple containers can receive the same Discord events while keeping separate in-memory limits and caches, and a shared SQLite volume does not make those operations distributed-safe. Docker Compose should therefore run one `babel` service instance.
+
 ## Choose The Product Profile
 
 Select the app profile before you build the image or register Discord commands.
@@ -21,7 +23,7 @@ For Guild:
 ```bash
 npm run build:guild
 npm run register:guild
-npm run start -w @babel-discord-translator/guild
+npm run start:guild
 ```
 
 For Pocket:
@@ -29,7 +31,7 @@ For Pocket:
 ```bash
 npm run build:pocket
 npm run register:pocket
-npm run start -w @babel-discord-translator/pocket
+npm run start:pocket
 ```
 
 Set `BABEL_APP=pocket` in `.env` or Compose to run Babel Pocket from the same image. Set `BABEL_APP=combined` when you want one container with both Discord clients, one dashboard, and one SQLite database. In combined mode, the combined dashboard root `/` shows a product chooser; `/guild` opens the Babel Guild dashboard; `/pocket` opens the Babel Pocket dashboard.
@@ -77,13 +79,13 @@ After the container is healthy, register the matching Discord commands. The scri
 For Babel Guild:
 
 ```bash
-docker compose exec babel npm run register:guild
+docker compose exec babel npm run register:built:guild
 ```
 
 For Babel Pocket:
 
 ```bash
-docker compose exec babel npm run register:pocket
+docker compose exec babel npm run register:built:pocket
 ```
 
 Check the deployment:

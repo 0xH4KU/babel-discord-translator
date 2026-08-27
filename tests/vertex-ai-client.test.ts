@@ -26,8 +26,6 @@ vi.mock('../src/persistence/store.js', () => {
 
     return {
         store: {
-            get: vi.fn((key: string) => data[key]),
-            getAll: vi.fn(() => ({ ...data })),
             getConfigValues: vi.fn((keys: readonly string[]) =>
                 Object.fromEntries(
                     keys.map((key) => {
@@ -44,6 +42,8 @@ vi.mock('../src/persistence/store.js', () => {
 });
 
 import { store } from '../src/persistence/store.js';
+
+const translationPrompt = (user: string) => ({ system: 'Translate accurately.', user });
 
 function geminiResponse(text: string, inputTokens = 10, outputTokens = 5) {
     return {
@@ -82,7 +82,7 @@ describe('vertex-ai-client', () => {
     it('should generate translation content via the shared Vertex AI client', async () => {
         globalThis.fetch = vi.fn().mockResolvedValue(geminiResponse('你好', 15, 8));
 
-        const result = await generateTranslationContent('Translate me', 512);
+        const result = await generateTranslationContent(translationPrompt('Translate me'), 512);
 
         expect(result).toEqual({
             text: '你好',
@@ -92,8 +92,27 @@ describe('vertex-ai-client', () => {
 
         const request = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1];
         const body = JSON.parse(request.body);
+        expect(body.systemInstruction).toEqual({
+            parts: [{ text: 'Translate accurately.' }],
+        });
+        expect(body.contents).toEqual([{ role: 'user', parts: [{ text: 'Translate me' }] }]);
         expect(body.generationConfig.maxOutputTokens).toBe(512);
         expect(request.signal).toBeInstanceOf(AbortSignal);
+    });
+
+    it('should estimate token counts when usage metadata is missing or malformed', async () => {
+        globalThis.fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => ({
+                candidates: [{ content: { parts: [{ text: '你好' }] } }],
+                usageMetadata: { promptTokenCount: 'unknown', candidatesTokenCount: -1 },
+            }),
+        });
+
+        const result = await generateTranslationContent(translationPrompt('hi'), 64);
+
+        expect(result).toEqual({ text: '你好', inputTokens: 6, outputTokens: 1 });
     });
 
     it('should return healthy status for a successful health check', async () => {
@@ -140,7 +159,7 @@ describe('vertex-ai-client', () => {
         });
 
         vi.useFakeTimers();
-        const promise = generateTranslationContent('Translate me', 512);
+        const promise = generateTranslationContent(translationPrompt('Translate me'), 512);
         const caught = promise.catch((error: Error) => error);
         await vi.runAllTimersAsync();
         vi.useRealTimers();

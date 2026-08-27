@@ -17,8 +17,6 @@ vi.mock('../src/persistence/store.js', () => {
 
     return {
         store: {
-            get: vi.fn((key: string) => data[key]),
-            getAll: vi.fn(() => ({ ...data })),
             getConfigValues: vi.fn((keys: readonly string[]) =>
                 Object.fromEntries(
                     keys.map((key) => {
@@ -36,7 +34,9 @@ vi.mock('../src/persistence/store.js', () => {
 
 import { store } from '../src/persistence/store.js';
 
-function chatResponse(content: string | null, usage?: Record<string, number>) {
+const translationPrompt = (user: string) => ({ system: 'Translate accurately.', user });
+
+function chatResponse(content: string | null, usage?: Record<string, unknown>) {
     return {
         ok: true,
         status: 200,
@@ -65,6 +65,7 @@ describe('openai-client', () => {
     afterEach(() => {
         globalThis.fetch = originalFetch;
         vi.useRealTimers();
+        vi.restoreAllMocks();
     });
 
     it('should generate translation content with the configured model and auth header', async () => {
@@ -72,7 +73,7 @@ describe('openai-client', () => {
             .fn()
             .mockResolvedValue(chatResponse(' 你好 ', { prompt_tokens: 12, completion_tokens: 6 }));
 
-        const result = await generateTranslationContent('Translate me', 512);
+        const result = await generateTranslationContent(translationPrompt('Translate me'), 512);
 
         expect(result).toEqual({ text: '你好', inputTokens: 12, outputTokens: 6 });
 
@@ -82,25 +83,39 @@ describe('openai-client', () => {
         const body = JSON.parse(request.body);
         expect(body).toMatchObject({
             model: 'gpt-test',
-            messages: [{ role: 'user', content: 'Translate me' }],
+            messages: [
+                { role: 'system', content: 'Translate accurately.' },
+                { role: 'user', content: 'Translate me' },
+            ],
             max_tokens: 512,
             temperature: 0.1,
         });
         expect(request.signal).toBeInstanceOf(AbortSignal);
     });
 
-    it('should default token counts to zero when usage is missing', async () => {
+    it('should estimate token counts when usage is missing or malformed', async () => {
         globalThis.fetch = vi.fn().mockResolvedValue(chatResponse('hola'));
 
-        const result = await generateTranslationContent('hi', 64);
+        const result = await generateTranslationContent(translationPrompt('hi'), 64);
 
-        expect(result).toEqual({ text: 'hola', inputTokens: 0, outputTokens: 0 });
+        expect(result).toEqual({ text: 'hola', inputTokens: 6, outputTokens: 1 });
+
+        globalThis.fetch = vi
+            .fn()
+            .mockResolvedValue(
+                chatResponse('hola', { prompt_tokens: -10, completion_tokens: 'many' }),
+            );
+        await expect(generateTranslationContent(translationPrompt('hi'), 64)).resolves.toEqual({
+            text: 'hola',
+            inputTokens: 6,
+            outputTokens: 1,
+        });
     });
 
     it('should reject empty completions', async () => {
         globalThis.fetch = vi.fn().mockResolvedValue(chatResponse(null));
 
-        await expect(generateTranslationContent('hi', 64)).rejects.toThrow(
+        await expect(generateTranslationContent(translationPrompt('hi'), 64)).rejects.toThrow(
             'Empty response from OpenAI',
         );
     });
@@ -108,7 +123,7 @@ describe('openai-client', () => {
     it('should throw a configuration error when the provider is not configured', async () => {
         mockStore._setMock('openaiApiKey', '');
 
-        await expect(generateTranslationContent('hi', 64)).rejects.toThrow(
+        await expect(generateTranslationContent(translationPrompt('hi'), 64)).rejects.toThrow(
             'OpenAI provider not configured',
         );
     });
@@ -128,12 +143,38 @@ describe('openai-client', () => {
             );
 
         vi.useFakeTimers();
-        const promise = generateTranslationContent('hi', 64);
+        const promise = generateTranslationContent(translationPrompt('hi'), 64);
         const result = promise.then((value) => value);
         await vi.runAllTimersAsync();
 
         await expect(result).resolves.toMatchObject({ text: 'done' });
         expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('should cap retry-after delays, retry 504 responses, and cancel response bodies', async () => {
+        const cancel = vi.fn(async () => undefined);
+        vi.spyOn(Math, 'random').mockReturnValue(0);
+        globalThis.fetch = vi
+            .fn()
+            .mockResolvedValueOnce({
+                ok: false,
+                status: 504,
+                headers: new Headers({ 'retry-after': '3600' }),
+                body: { cancel },
+            })
+            .mockResolvedValueOnce(
+                chatResponse('done', { prompt_tokens: 1, completion_tokens: 1 }),
+            );
+
+        vi.useFakeTimers();
+        const result = generateTranslationContent(translationPrompt('hi'), 64);
+        await vi.advanceTimersByTimeAsync(9_999);
+        expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+        await vi.advanceTimersByTimeAsync(1);
+
+        await expect(result).resolves.toMatchObject({ text: 'done' });
+        expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+        expect(cancel).toHaveBeenCalledOnce();
     });
 
     it('should throw a structured provider error for non-retryable failures', async () => {
@@ -145,12 +186,14 @@ describe('openai-client', () => {
             text: () => Promise.resolve('bad key'),
         });
 
-        await expect(generateTranslationContent('hi', 64)).rejects.toMatchObject({
-            name: 'ProviderHttpError',
-            provider: 'openai',
-            statusCode: 401,
-            message: expect.stringContaining('bad key'),
-        });
+        await expect(generateTranslationContent(translationPrompt('hi'), 64)).rejects.toMatchObject(
+            {
+                name: 'ProviderHttpError',
+                provider: 'openai',
+                statusCode: 401,
+                message: expect.stringContaining('bad key'),
+            },
+        );
         expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     });
 
@@ -159,7 +202,9 @@ describe('openai-client', () => {
         globalThis.fetch = vi.fn().mockRejectedValue(networkError);
 
         vi.useFakeTimers();
-        const caught = generateTranslationContent('hi', 64).catch((error: Error) => error);
+        const caught = generateTranslationContent(translationPrompt('hi'), 64).catch(
+            (error: Error) => error,
+        );
         await vi.runAllTimersAsync();
 
         await expect(caught).resolves.toBe(networkError);
@@ -218,7 +263,7 @@ describe('openai-client', () => {
 
         expect(provider.name).toBe('openai');
         expect(provider.isConfigured()).toBe(true);
-        await expect(provider.translate('hi', 32)).resolves.toEqual({
+        await expect(provider.translate(translationPrompt('hi'), 32)).resolves.toEqual({
             text: 'ok',
             inputTokens: 2,
             outputTokens: 3,

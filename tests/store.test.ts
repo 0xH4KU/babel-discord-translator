@@ -36,9 +36,13 @@ describe('ConfigStore', () => {
         const { ConfigStore } = await importStoreModule();
         const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
 
-        expect(store.get('cooldownSeconds')).toBe(5);
-        expect(store.get('cacheMaxSize')).toBe(2000);
-        expect(store.get('setupComplete')).toBe(false);
+        expect(store.getConfigValues(['cooldownSeconds', 'cacheMaxSize', 'setupComplete'])).toEqual(
+            {
+                cooldownSeconds: 5,
+                cacheMaxSize: 2000,
+                setupComplete: false,
+            },
+        );
 
         store.close();
     });
@@ -47,9 +51,9 @@ describe('ConfigStore', () => {
         const { ConfigStore } = await importStoreModule();
 
         const first = new ConfigStore({ dbPath, autoImportLegacyJson: false });
-        first.set('cooldownSeconds', 15);
-        first.set('userLanguagePrefs', { user1: 'ja' });
-        first.set('tokenUsage', {
+        first.updateConfigValues({ cooldownSeconds: 15 });
+        first.setUserLanguage('', 'user1', 'ja');
+        first.saveDailyUsage({
             date: '2026-03-27',
             inputTokens: 100,
             outputTokens: 50,
@@ -58,12 +62,11 @@ describe('ConfigStore', () => {
         first.close();
 
         const second = new ConfigStore({ dbPath, autoImportLegacyJson: false });
-        expect(second.get('cooldownSeconds')).toBe(15);
-        expect(second.get('userLanguagePrefs')).toEqual({ user1: 'ja' });
-        expect(second.get('userLanguagePreferenceEntries')).toEqual([
+        expect(second.getConfigValues(['cooldownSeconds']).cooldownSeconds).toBe(15);
+        expect(second.listUserLanguagePreferences()).toEqual([
             { guildId: '', userId: 'user1', language: 'ja' },
         ]);
-        expect(second.get('tokenUsage')).toEqual({
+        expect(second.getDailyUsage()).toEqual({
             date: '2026-03-27',
             inputTokens: 100,
             outputTokens: 50,
@@ -76,24 +79,30 @@ describe('ConfigStore', () => {
         const { ConfigStore } = await importStoreModule();
         const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
 
-        store.update({ cooldownSeconds: 20, cacheMaxSize: 500, setupComplete: true });
+        store.updateConfigValues({ cooldownSeconds: 20, cacheMaxSize: 500, setupComplete: true });
 
-        expect(store.get('cooldownSeconds')).toBe(20);
-        expect(store.get('cacheMaxSize')).toBe(500);
-        expect(store.get('setupComplete')).toBe(true);
+        expect(store.getConfigValues(['cooldownSeconds', 'cacheMaxSize', 'setupComplete'])).toEqual(
+            {
+                cooldownSeconds: 20,
+                cacheMaxSize: 500,
+                setupComplete: true,
+            },
+        );
         store.close();
     });
 
-    it('should return a copy from getAll()', async () => {
+    it('should return a defensive export snapshot', async () => {
         const { ConfigStore } = await importStoreModule();
         const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
 
-        const all = store.getAll();
+        const all = store.exportSnapshot();
         all.cooldownSeconds = 999;
         all.allowedGuildIds.push('guild-1');
 
-        expect(store.get('cooldownSeconds')).toBe(5);
-        expect(store.get('allowedGuildIds')).toEqual([]);
+        expect(store.getConfigValues(['cooldownSeconds', 'allowedGuildIds'])).toEqual({
+            cooldownSeconds: 5,
+            allowedGuildIds: [],
+        });
         store.close();
     });
 
@@ -101,7 +110,7 @@ describe('ConfigStore', () => {
         const { ConfigStore } = await importStoreModule();
         const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
 
-        const snapshot = store.getAll();
+        const snapshot = store.exportSnapshot();
 
         expect(snapshot.userBudgets).toEqual({});
         expect(snapshot.userTokenUsage).toEqual({});
@@ -113,11 +122,11 @@ describe('ConfigStore', () => {
         const { ConfigStore } = await importStoreModule();
         const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
 
-        store.update({
+        store.updateConfigValues({
             cooldownSeconds: 12,
             allowedGuildIds: ['guild-1'],
-            userLanguagePrefs: { user1: 'ja' },
         });
+        store.setUserLanguage('', 'user1', 'ja');
 
         const runtimeConfig = store.getConfigValues(['cooldownSeconds', 'allowedGuildIds']);
         runtimeConfig.allowedGuildIds.push('guild-2');
@@ -127,9 +136,11 @@ describe('ConfigStore', () => {
             allowedGuildIds: ['guild-1', 'guild-2'],
         });
         expect(Object.keys(runtimeConfig).sort()).toEqual(['allowedGuildIds', 'cooldownSeconds']);
-        expect(store.get('cooldownSeconds')).toBe(12);
-        expect(store.get('allowedGuildIds')).toEqual(['guild-1']);
-        expect(store.get('userLanguagePrefs')).toEqual({ user1: 'ja' });
+        expect(store.getConfigValues(['cooldownSeconds', 'allowedGuildIds'])).toEqual({
+            cooldownSeconds: 12,
+            allowedGuildIds: ['guild-1'],
+        });
+        expect(store.getUserLanguage('', 'user1')).toBe('ja');
         store.close();
     });
 
@@ -146,7 +157,7 @@ describe('ConfigStore', () => {
         expect(store.getUserLanguage('guild-1', 'user-1')).toBe('ja');
         expect(store.getUserLanguage('guild-2', 'user-1')).toBe('ko');
         expect(store.getUserLanguage('guild-3', 'user-1')).toBeNull();
-        expect(store.get('userLanguagePreferenceEntries')).toEqual([
+        expect(store.listUserLanguagePreferences()).toEqual([
             { guildId: 'guild-1', userId: 'user-1', language: 'ja' },
             { guildId: 'guild-1', userId: 'user-2', language: 'zh-TW' },
             { guildId: 'guild-2', userId: 'user-1', language: 'ko' },
@@ -165,7 +176,7 @@ describe('ConfigStore', () => {
 
         expect(store.isSetupComplete()).toBe(false);
 
-        store.set('setupComplete', true);
+        store.updateConfigValues({ setupComplete: true });
         expect(store.isSetupComplete()).toBe(true);
         store.close();
     });
@@ -178,7 +189,7 @@ describe('ConfigStore', () => {
 
         store.setGuildBudget('guild-1', 2.5);
         expect(store.getGuildBudget('guild-1')).toEqual({ dailyBudgetUsd: 2.5 });
-        expect(store.get('guildBudgets')).toEqual({ 'guild-1': { dailyBudgetUsd: 2.5 } });
+        expect(store.listGuildBudgets()).toEqual({ 'guild-1': { dailyBudgetUsd: 2.5 } });
 
         expect(store.clearGuildBudget('guild-1')).toBe(true);
         expect(store.getGuildBudget('guild-1')).toBeNull();
@@ -207,15 +218,23 @@ describe('ConfigStore', () => {
             targetText: 'レイド',
             notes: 'Game term',
         });
+        const replacedFirst = store.upsertGuildGlossaryEntry('guild-1', {
+            sourceText: 'openai',
+            targetLanguage: 'AUTO',
+            targetText: 'Open AI',
+            notes: 'Updated brand name',
+        });
+
+        expect(replacedFirst.id).toBe(first.id);
 
         expect(store.listGuildGlossary('guild-1')).toEqual([
             {
                 id: first.id,
                 guildId: 'guild-1',
-                sourceText: 'OpenAI',
-                targetLanguage: 'auto',
-                targetText: 'OpenAI',
-                notes: 'Preserve brand name',
+                sourceText: 'openai',
+                targetLanguage: 'AUTO',
+                targetText: 'Open AI',
+                notes: 'Updated brand name',
                 createdAt: expect.any(String),
                 updatedAt: expect.any(String),
             },
@@ -251,12 +270,12 @@ describe('ConfigStore', () => {
 
         expect(updated.id).toBe(second.id);
         expect(store.listGuildGlossary('guild-1').map((entry) => entry.targetLanguage)).toEqual([
-            'auto',
+            'AUTO',
             'ja',
             'zh-TW',
         ]);
         expect(store.listGuildGlossary('guild-1').map((entry) => entry.targetText)).toEqual([
-            'OpenAI',
+            'Open AI',
             'レイド',
             '團本',
         ]);
@@ -264,6 +283,21 @@ describe('ConfigStore', () => {
         expect(store.deleteGuildGlossaryEntry('guild-1', first.id)).toBe(true);
         expect(store.deleteGuildGlossaryEntry('guild-1', first.id)).toBe(false);
         expect(store.listGuildGlossary('guild-1')).toHaveLength(2);
+
+        store.close();
+    });
+
+    it('should roll back a glossary batch when any entry fails', async () => {
+        const { ConfigStore } = await importStoreModule();
+        const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+
+        expect(() =>
+            store.upsertGuildGlossaryEntries('guild-1', [
+                { sourceText: 'raid', targetText: '團本' },
+                { id: 999, sourceText: 'party', targetText: '隊伍' },
+            ]),
+        ).toThrow('Glossary entry not found');
+        expect(store.listGuildGlossary('guild-1')).toEqual([]);
 
         store.close();
     });
@@ -343,8 +377,8 @@ describe('ConfigStore', () => {
                 requests: 2,
             },
         ]);
-        expect(store.get('userBudgets')).toEqual({ 'user-1': { dailyBudgetUsd: 1.5 } });
-        expect(store.get('userTokenUsage')).toEqual({
+        expect(store.listUserBudgets()).toEqual({ 'user-1': { dailyBudgetUsd: 1.5 } });
+        expect(store.getAllUserDailyUsage()).toEqual({
             'user-1': {
                 date: '2026-03-27',
                 inputTokens: 100,
@@ -352,7 +386,7 @@ describe('ConfigStore', () => {
                 requests: 1,
             },
         });
-        expect(store.get('userUsageHistory')).toEqual({
+        expect(store.getAllUserUsageHistory()).toEqual({
             'user-1': [
                 {
                     date: '2026-03-26',
@@ -382,10 +416,11 @@ describe('ConfigStore', () => {
         const { ConfigStore } = await importStoreModule();
         const store = new ConfigStore({ dbPath, legacyConfigPath });
 
-        expect(store.get('cooldownSeconds')).toBe(10);
-        expect(store.get('setupComplete')).toBe(true);
-        expect(store.get('userLanguagePrefs')).toEqual({ user2: 'ko' });
-        expect(store.get('userLanguagePreferenceEntries')).toEqual([
+        expect(store.getConfigValues(['cooldownSeconds', 'setupComplete'])).toEqual({
+            cooldownSeconds: 10,
+            setupComplete: true,
+        });
+        expect(store.listUserLanguagePreferences()).toEqual([
             { guildId: '', userId: 'user2', language: 'ko' },
         ]);
         store.close();
@@ -401,7 +436,7 @@ describe('ConfigStore', () => {
         const { ConfigStore } = await importStoreModule();
         const store = new ConfigStore({ dbPath, legacyConfigPath, logger });
 
-        expect(store.get('cooldownSeconds')).toBe(5);
+        expect(store.getConfigValues(['cooldownSeconds']).cooldownSeconds).toBe(5);
         expect(logger.error).toHaveBeenCalledOnce();
         store.close();
     });

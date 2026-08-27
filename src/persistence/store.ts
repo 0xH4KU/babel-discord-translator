@@ -1,8 +1,4 @@
-/**
- * SQLite-backed configuration store.
- * Keeps the legacy get/set/update/getAll API so repository callers stay stable
- * while persistence moves away from the old JSON file.
- */
+/** SQLite-backed configuration and usage store. */
 import type { DatabaseSync, StatementSync } from 'node:sqlite';
 import {
     createSqliteDatabase,
@@ -12,17 +8,6 @@ import {
 } from './sqlite-database.js';
 import { readLegacyStoreData, resolveLegacyConfigPath } from './legacy-json-store.js';
 import { CONFIG_VALUE_KEYS, DEFAULT_STORE_DATA, type ConfigValueKey } from './store-defaults.js';
-import {
-    cloneGuildBudgets,
-    cloneGuildDailyUsage,
-    cloneGuildUsageHistory,
-    cloneTokenUsage,
-    cloneUsageHistory,
-    cloneUserBudgets,
-    cloneUserDailyUsage,
-    cloneUserLanguagePreferenceEntries,
-    cloneUserUsageHistory,
-} from './store-data-normalizer.js';
 import { appLogger, type StructuredLogger } from '../shared/structured-logger.js';
 import type {
     GuildBudgetConfig,
@@ -43,8 +28,6 @@ interface ConfigStoreOptions {
     logger?: StructuredLogger;
 }
 
-const CONFIG_KEYS = new Set<keyof StoreData>(CONFIG_VALUE_KEYS);
-
 function cloneConfigValue<K extends ConfigValueKey>(value: StoreData[K]): StoreData[K] {
     return Array.isArray(value) ? ([...value] as StoreData[K]) : value;
 }
@@ -60,7 +43,7 @@ export class ConfigStore {
 
     /**
      * In-memory cache of parsed app_config values. Kept consistent with the
-     * database via setValue() for writes on this connection and via
+     * database via config writes on this connection and via
      * PRAGMA data_version for writes from other connections/processes.
      */
     private readonly configCache = new Map<ConfigValueKey, StoreData[ConfigValueKey]>();
@@ -82,7 +65,7 @@ export class ConfigStore {
             try {
                 const legacyData = readLegacyStoreData(legacyConfigPath);
                 if (legacyData) {
-                    this.update(legacyData);
+                    this.importSnapshot(legacyData);
                     this.logger.info('store.legacy_import.completed', {
                         legacyConfigPath,
                     });
@@ -117,53 +100,6 @@ export class ConfigStore {
             this.lastDataVersion = row.data_version;
             this.configCache.clear();
         }
-    }
-
-    get<K extends keyof StoreData>(key: K): StoreData[K] {
-        if (CONFIG_KEYS.has(key)) {
-            return this.getConfigValue(key as ConfigValueKey) as StoreData[K];
-        }
-
-        switch (key) {
-            case 'tokenUsage':
-                return this.getDailyUsage() as StoreData[K];
-            case 'usageHistory':
-                return this.getUsageHistory() as StoreData[K];
-            case 'userLanguagePrefs':
-                return this.getUserLanguagePrefs() as StoreData[K];
-            case 'userLanguagePreferenceEntries':
-                return this.listUserLanguagePreferences() as StoreData[K];
-            case 'guildBudgets':
-                return this.getAllGuildBudgets() as StoreData[K];
-            case 'guildTokenUsage':
-                return this.getGuildTokenUsage() as StoreData[K];
-            case 'guildUsageHistory':
-                return this.getAllGuildUsageHistory() as StoreData[K];
-            case 'userBudgets':
-                return this.getAllUserBudgets() as StoreData[K];
-            case 'userTokenUsage':
-                return this.getUserTokenUsage() as StoreData[K];
-            case 'userUsageHistory':
-                return this.getAllUserUsageHistory() as StoreData[K];
-            default:
-                return DEFAULT_STORE_DATA[key];
-        }
-    }
-
-    set<K extends keyof StoreData>(key: K, value: StoreData[K]): void {
-        inTransaction(this.db, () => {
-            this.setValue(key, value);
-        });
-    }
-
-    update(obj: Partial<StoreData>): void {
-        inTransaction(this.db, () => {
-            for (const [key, value] of Object.entries(obj) as Array<
-                [keyof StoreData, StoreData[keyof StoreData]]
-            >) {
-                this.setValue(key, value);
-            }
-        });
     }
 
     getConfigValues<K extends ConfigValueKey>(keys: readonly K[]): Pick<StoreData, K> {
@@ -204,22 +140,46 @@ export class ConfigStore {
         return result;
     }
 
-    getAll(): StoreData {
+    updateConfigValues(updates: Partial<Pick<StoreData, ConfigValueKey>>): void {
+        inTransaction(this.db, () => {
+            for (const [key, value] of Object.entries(updates) as Array<
+                [ConfigValueKey, StoreData[ConfigValueKey]]
+            >) {
+                this.setConfigValue(key, value);
+            }
+        });
+    }
+
+    exportSnapshot(): StoreData {
         return {
             ...this.getConfigValues(CONFIG_VALUE_KEYS),
-            tokenUsage: cloneTokenUsage(this.getDailyUsage()),
-            usageHistory: cloneUsageHistory(this.getUsageHistory()),
+            tokenUsage: this.getDailyUsage(),
+            usageHistory: this.getUsageHistory(),
             userLanguagePrefs: { ...this.getUserLanguagePrefs() },
-            userLanguagePreferenceEntries: cloneUserLanguagePreferenceEntries(
-                this.listUserLanguagePreferences(),
-            ),
-            guildBudgets: cloneGuildBudgets(this.getAllGuildBudgets()),
-            guildTokenUsage: cloneGuildDailyUsage(this.getGuildTokenUsage()),
-            guildUsageHistory: cloneGuildUsageHistory(this.getAllGuildUsageHistory()),
-            userBudgets: cloneUserBudgets(this.getAllUserBudgets()),
-            userTokenUsage: cloneUserDailyUsage(this.getUserTokenUsage()),
-            userUsageHistory: cloneUserUsageHistory(this.getAllUserUsageHistory()),
+            userLanguagePreferenceEntries: this.listUserLanguagePreferences(),
+            guildBudgets: this.listGuildBudgets(),
+            guildTokenUsage: this.getAllGuildDailyUsage(),
+            guildUsageHistory: this.getAllGuildUsageHistory(),
+            userBudgets: this.listUserBudgets(),
+            userTokenUsage: this.getAllUserDailyUsage(),
+            userUsageHistory: this.getAllUserUsageHistory(),
         };
+    }
+
+    importSnapshot(data: StoreData): void {
+        inTransaction(this.db, () => {
+            for (const key of CONFIG_VALUE_KEYS) this.setConfigValue(key, data[key]);
+            this.replaceDailyUsage(data.tokenUsage);
+            this.replaceUsageHistory(data.usageHistory);
+            this.replaceUserLanguagePrefs(data.userLanguagePrefs);
+            this.replaceUserLanguagePreferenceEntries(data.userLanguagePreferenceEntries);
+            this.replaceGuildBudgets(data.guildBudgets);
+            this.replaceGuildTokenUsage(data.guildTokenUsage);
+            this.replaceGuildUsageHistory(data.guildUsageHistory);
+            this.replaceUserBudgets(data.userBudgets);
+            this.replaceUserTokenUsage(data.userTokenUsage);
+            this.replaceUserUsageHistory(data.userUsageHistory);
+        });
     }
 
     isSetupComplete(): boolean {
@@ -249,12 +209,7 @@ export class ConfigStore {
     }
 
     clearGuildBudget(guildId: string): boolean {
-        if (!this.getGuildBudget(guildId)) {
-            return false;
-        }
-
-        this.stmt('DELETE FROM guild_budgets WHERE guild_id = ?').run(guildId);
-        return true;
+        return this.stmt('DELETE FROM guild_budgets WHERE guild_id = ?').run(guildId).changes > 0;
     }
 
     getUserBudget(userId: string): UserBudgetConfig | null {
@@ -280,12 +235,7 @@ export class ConfigStore {
     }
 
     clearUserBudget(userId: string): boolean {
-        if (!this.getUserBudget(userId)) {
-            return false;
-        }
-
-        this.stmt('DELETE FROM user_budgets WHERE user_id = ?').run(userId);
-        return true;
+        return this.stmt('DELETE FROM user_budgets WHERE user_id = ?').run(userId).changes > 0;
     }
 
     getUserLanguage(guildId: string, userId: string): string | null {
@@ -373,7 +323,7 @@ export class ConfigStore {
             return this.getGuildGlossaryEntry(guildId, input.id)!;
         }
 
-        const result = this.stmt(
+        const row = this.stmt(
             `
             INSERT INTO guild_glossary (
                 guild_id,
@@ -385,10 +335,26 @@ export class ConfigStore {
                 updated_at
             )
             VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT DO UPDATE SET
+                source_text = excluded.source_text,
+                target_language = excluded.target_language,
+                target_text = excluded.target_text,
+                notes = excluded.notes,
+                updated_at = excluded.updated_at
+            RETURNING id
         `,
-        ).run(guildId, sourceText, targetLanguage, targetText, notes, now, now);
+        ).get(guildId, sourceText, targetLanguage, targetText, notes, now, now) as { id: number };
 
-        return this.getGuildGlossaryEntry(guildId, Number(result.lastInsertRowid))!;
+        return this.getGuildGlossaryEntry(guildId, row.id)!;
+    }
+
+    upsertGuildGlossaryEntries(
+        guildId: string,
+        inputs: readonly GuildGlossaryInput[],
+    ): GuildGlossaryEntry[] {
+        return inTransaction(this.db, () =>
+            inputs.map((input) => this.upsertGuildGlossaryEntry(guildId, input)),
+        );
     }
 
     deleteGuildGlossaryEntry(guildId: string, entryId: number): boolean {
@@ -548,7 +514,7 @@ export class ConfigStore {
         return cloneConfigValue(value);
     }
 
-    private getDailyUsage(): TokenUsage | null {
+    getDailyUsage(): TokenUsage | null {
         const row = this.stmt(
             `
             SELECT date, input_tokens as inputTokens, output_tokens as outputTokens, requests
@@ -560,7 +526,7 @@ export class ConfigStore {
         return row ? { ...row } : null;
     }
 
-    private getUsageHistory(): UsageHistoryEntry[] {
+    getUsageHistory(): UsageHistoryEntry[] {
         const rows = this.stmt(
             `
             SELECT date, input_tokens as inputTokens, output_tokens as outputTokens, requests
@@ -585,7 +551,7 @@ export class ConfigStore {
         return Object.fromEntries(rows.map((row) => [row.userId, row.language]));
     }
 
-    private listUserLanguagePreferences(): UserLanguagePreferenceEntry[] {
+    listUserLanguagePreferences(): UserLanguagePreferenceEntry[] {
         const rows = this.stmt(
             `
             SELECT guild_id as guildId, user_id as userId, language
@@ -617,7 +583,7 @@ export class ConfigStore {
         return row ? { ...row } : null;
     }
 
-    private getAllGuildBudgets(): Record<string, GuildBudgetConfig> {
+    listGuildBudgets(): Record<string, GuildBudgetConfig> {
         const rows = this.stmt(
             `
             SELECT guild_id as guildId, daily_budget_usd as dailyBudgetUsd
@@ -631,7 +597,7 @@ export class ConfigStore {
         );
     }
 
-    private getAllUserBudgets(): Record<string, UserBudgetConfig> {
+    listUserBudgets(): Record<string, UserBudgetConfig> {
         const rows = this.stmt(
             `
             SELECT user_id as userId, daily_budget_usd as dailyBudgetUsd
@@ -645,7 +611,7 @@ export class ConfigStore {
         );
     }
 
-    private getGuildTokenUsage(): Record<string, TokenUsage> {
+    getAllGuildDailyUsage(): Record<string, TokenUsage> {
         const rows = this.stmt(
             `
             SELECT guild_id as guildId, date, input_tokens as inputTokens, output_tokens as outputTokens, requests
@@ -657,7 +623,7 @@ export class ConfigStore {
         return Object.fromEntries(rows.map(({ guildId, ...usage }) => [guildId, { ...usage }]));
     }
 
-    private getUserTokenUsage(): Record<string, TokenUsage> {
+    getAllUserDailyUsage(): Record<string, TokenUsage> {
         const rows = this.stmt(
             `
             SELECT user_id as userId, date, input_tokens as inputTokens, output_tokens as outputTokens, requests
@@ -669,7 +635,7 @@ export class ConfigStore {
         return Object.fromEntries(rows.map(({ userId, ...usage }) => [userId, { ...usage }]));
     }
 
-    private getAllGuildUsageHistory(): Record<string, UsageHistoryEntry[]> {
+    getAllGuildUsageHistory(): Record<string, UsageHistoryEntry[]> {
         const rows = this.stmt(
             `
             SELECT guild_id as guildId, date, input_tokens as inputTokens, output_tokens as outputTokens, requests
@@ -687,7 +653,7 @@ export class ConfigStore {
         return history;
     }
 
-    private getAllUserUsageHistory(): Record<string, UsageHistoryEntry[]> {
+    getAllUserUsageHistory(): Record<string, UsageHistoryEntry[]> {
         const rows = this.stmt(
             `
             SELECT user_id as userId, date, input_tokens as inputTokens, output_tokens as outputTokens, requests
@@ -705,55 +671,20 @@ export class ConfigStore {
         return history;
     }
 
-    private setValue<K extends keyof StoreData>(key: K, value: StoreData[K]): void {
-        if (CONFIG_KEYS.has(key)) {
-            this.stmt(
-                `
-                INSERT INTO app_config (key, value_json)
-                VALUES (?, ?)
-                ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json
-            `,
-            ).run(key, JSON.stringify(value));
-            // Drop (rather than overwrite) the cached value so a transaction
-            // rollback can never leave a value in cache that never committed.
-            this.configCache.delete(key as ConfigValueKey);
-            return;
-        }
+    private setConfigValue<K extends ConfigValueKey>(key: K, value: StoreData[K]): void {
+        this.stmt(
+            `
+            INSERT INTO app_config (key, value_json)
+            VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json
+        `,
+        ).run(key, JSON.stringify(value));
+        // Drop rather than overwrite so a rollback cannot leave an uncommitted cached value.
+        this.configCache.delete(key);
+    }
 
-        switch (key) {
-            case 'tokenUsage':
-                this.replaceDailyUsage(value as StoreData['tokenUsage']);
-                return;
-            case 'usageHistory':
-                this.replaceUsageHistory(value as StoreData['usageHistory']);
-                return;
-            case 'userLanguagePrefs':
-                this.replaceUserLanguagePrefs(value as StoreData['userLanguagePrefs']);
-                return;
-            case 'userLanguagePreferenceEntries':
-                this.replaceUserLanguagePreferenceEntries(
-                    value as StoreData['userLanguagePreferenceEntries'],
-                );
-                return;
-            case 'guildBudgets':
-                this.replaceGuildBudgets(value as StoreData['guildBudgets']);
-                return;
-            case 'guildTokenUsage':
-                this.replaceGuildTokenUsage(value as StoreData['guildTokenUsage']);
-                return;
-            case 'guildUsageHistory':
-                this.replaceGuildUsageHistory(value as StoreData['guildUsageHistory']);
-                return;
-            case 'userBudgets':
-                this.replaceUserBudgets(value as StoreData['userBudgets']);
-                return;
-            case 'userTokenUsage':
-                this.replaceUserTokenUsage(value as StoreData['userTokenUsage']);
-                return;
-            case 'userUsageHistory':
-                this.replaceUserUsageHistory(value as StoreData['userUsageHistory']);
-                return;
-        }
+    saveDailyUsage(usage: TokenUsage | null): void {
+        inTransaction(this.db, () => this.replaceDailyUsage(usage));
     }
 
     private replaceDailyUsage(usage: TokenUsage | null): void {
@@ -768,6 +699,10 @@ export class ConfigStore {
             VALUES (1, ?, ?, ?, ?)
         `,
         ).run(usage.date, usage.inputTokens, usage.outputTokens, usage.requests);
+    }
+
+    saveUsageHistory(history: UsageHistoryEntry[]): void {
+        inTransaction(this.db, () => this.replaceUsageHistory(history));
     }
 
     private replaceUsageHistory(history: UsageHistoryEntry[]): void {

@@ -23,6 +23,37 @@ describe('discord message formatting', () => {
         expect(messages.join('')).toBe(translatedText);
     });
 
+    it('should not split a Unicode code point at the message limit', () => {
+        const translatedText = `${'a'.repeat(DISCORD_MESSAGE_LIMIT - 1)}😀tail`;
+
+        const messages = buildTranslationMessages({
+            originalText: 'Hello world',
+            translatedText,
+            targetLanguage: 'ja',
+            cached: false,
+        });
+
+        expect(messages).toEqual(['a'.repeat(DISCORD_MESSAGE_LIMIT - 1), '😀tail']);
+        expect(messages.join('')).toBe(translatedText);
+    });
+
+    it.each([
+        ['newline', '\n'],
+        ['space', ' '],
+    ])('should prefer a natural %s boundary', (_name, boundary) => {
+        const translatedText = `${'a'.repeat(1500)}${boundary}${'b'.repeat(600)}`;
+
+        const messages = buildTranslationMessages({
+            originalText: 'Hello world',
+            translatedText,
+            targetLanguage: 'ja',
+            cached: false,
+        });
+
+        expect(messages[0]).toBe(`${'a'.repeat(1500)}${boundary}`);
+        expect(messages.join('')).toBe(translatedText);
+    });
+
     it('should include the original preview without diagnostics when requested', () => {
         const messages = buildTranslationMessages({
             originalText: 'line one\nline two',
@@ -38,6 +69,18 @@ describe('discord message formatting', () => {
         expect(messages[0]).not.toContain('Cache:');
         expect(messages[0]).not.toContain('Provider:');
         expect(messages[0]).not.toContain('Tokens:');
+    });
+
+    it('should not split a Unicode code point in the original preview', () => {
+        const messages = buildTranslationMessages({
+            originalText: `${'a'.repeat(199)}😀tail`,
+            translatedText: 'translated',
+            targetLanguage: 'en',
+            cached: false,
+            includeOriginalPreview: true,
+        });
+
+        expect(messages[0]).toBe(`> ${'a'.repeat(199)}...\n\ntranslated`);
     });
 
     it('should return only the translated text for short output', () => {

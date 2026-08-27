@@ -1,43 +1,39 @@
 {
   "name": "babel-discord-translator",
-  "version": "0.2.2",
-  "description": "Discord right-click translation bot powered by Vertex AI Gemini — with LRU cache, cost tracking, multilingual support, and web dashboard",
+  "version": "0.2.3",
+  "description": "Self-hosted Discord translation bot with Vertex AI and OpenAI-compatible providers, cost controls, and a web dashboard",
   "private": true,
-  "workspaces": [
-    "apps/*"
-  ],
   "type": "module",
   "main": "dist/src/index.js",
   "scripts": {
     "start": "node dist/src/index.js",
-    "start:guild": "npm run start -w @babel-discord-translator/guild",
-    "start:pocket": "npm run start -w @babel-discord-translator/pocket",
+    "start:guild": "npm start -- guild",
+    "start:pocket": "npm start -- pocket",
     "dev": "tsx watch src/index.ts",
-    "dev:guild": "npm run dev -w @babel-discord-translator/guild",
-    "dev:pocket": "npm run dev -w @babel-discord-translator/pocket",
-    "dev:worker": "npm run dev -w @babel-discord-translator/worker",
+    "dev:guild": "npm run dev -- guild",
+    "dev:pocket": "npm run dev -- pocket",
     "build": "tsc -p tsconfig.json && npm run build:assets",
     "build:assets": "node scripts/copy-assets.js",
-    "build:guild": "npm run build -w @babel-discord-translator/guild",
-    "build:pocket": "npm run build -w @babel-discord-translator/pocket",
-    "typecheck:worker": "npm run typecheck -w @babel-discord-translator/worker",
-    "deploy:worker": "npm run deploy -w @babel-discord-translator/worker",
+    "build:guild": "npm run build",
+    "build:pocket": "npm run build",
     "typecheck": "tsc --noEmit",
     "register": "tsx scripts/register.ts",
-    "register:guild": "npm run register -w @babel-discord-translator/guild",
-    "register:pocket": "npm run register -w @babel-discord-translator/pocket",
+    "register:guild": "npm run register -- guild",
+    "register:pocket": "npm run register -- pocket",
+    "register:built": "node dist/scripts/register.js",
+    "register:built:guild": "npm run register:built -- guild",
+    "register:built:pocket": "npm run register:built -- pocket",
     "db:migrate": "tsx scripts/migrate-json-to-sqlite.ts",
     "db:export:json": "tsx scripts/export-sqlite-to-json.ts",
-    "db:export:d1": "tsx scripts/export-sqlite-to-d1.ts",
+    "db:migrate:built": "node dist/scripts/migrate-json-to-sqlite.js",
+    "db:export:json:built": "node dist/scripts/export-sqlite-to-json.js",
     "demo:build": "tsx scripts/build-demo.ts",
-    "benchmark:runtime-config": "tsx scripts/benchmark-runtime-config.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint src/ apps/ tests/",
+    "lint": "eslint src/ tests/",
     "smoke:dashboard": "node scripts/smoke-dashboard-build.js",
-    "format": "prettier --write .",
-    "prepare": "node scripts/prepare-husky.js"
+    "format": "prettier --write ."
   },
   "keywords": [
     "discord",
@@ -45,6 +41,7 @@
     "bot",
     "gemini",
     "vertex-ai",
+    "openai-compatible",
     "discord.js",
     "multilingual"
   ],
@@ -58,12 +55,11 @@
   },
   "dependencies": {
     "discord.js": "^14.18.0",
-    "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "express-rate-limit": "^8.3.1"
   },
   "overrides": {
-    "undici": "6.27.0"
+    "undici": "6.28.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
@@ -71,18 +67,10 @@
     "@vitest/coverage-v8": "^4.1.9",
     "eslint": "^10.5.0",
     "globals": "^17.6.0",
-    "husky": "^9.1.7",
-    "lint-staged": "^17.0.7",
     "prettier": "^3.8.4",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.61.0",
     "vitest": "^4.1.9"
-  },
-  "lint-staged": {
-    "*.ts": [
-      "eslint --fix",
-      "prettier --write"
-    ]
   }
 }

@@ -1,10 +1,14 @@
-import { MessageFlags, type ChatInputCommandInteraction } from 'discord.js';
-import { sanitizeError } from './shared.js';
+import {
+    MessageFlags,
+    PermissionFlagsBits,
+    type ChatInputCommandInteraction,
+    type GuildMember,
+} from 'discord.js';
+import { sanitizeError } from '../shared/errors.js';
 import { buildTranslationMessages } from '../shared/discord-message-format.js';
 import { discordMessages } from '../shared/messages/discord-messages.js';
 import { appLogger, createRequestId } from '../shared/structured-logger.js';
 import type { TranslateCommandDeps } from '../shared/types.js';
-import type { GuildMember } from 'discord.js';
 
 type TranslateVisibility = 'public' | 'private';
 
@@ -30,6 +34,8 @@ export async function handleTranslate(
     const targetOpt = interaction.options.getString('to');
     const visibility = (interaction.options.getString('visibility') ??
         'public') as TranslateVisibility;
+    const interactionChannel = interaction.channel;
+    const isThread = interactionChannel?.isThread() ?? false;
     const requestId = createRequestId();
     const logger = appLogger.child({
         component: 'translate_command',
@@ -38,6 +44,21 @@ export async function handleTranslate(
         userId: interaction.user.id,
         command: 'translate',
     });
+
+    if (
+        visibility === 'public' &&
+        !interaction.memberPermissions?.has(
+            isThread ? PermissionFlagsBits.SendMessagesInThreads : PermissionFlagsBits.SendMessages,
+        )
+    ) {
+        logger.warn('translate.public.blocked', { blockReason: 'missing_send_messages' });
+        await interaction.reply({
+            content: discordMessages.publicTranslationForbidden(),
+            flags: MessageFlags.Ephemeral,
+        });
+        return;
+    }
+
     const result = await translationService.process({
         command: 'translate',
         commandLabel: '/translate',
@@ -83,12 +104,16 @@ export async function handleTranslate(
         }
 
         const member = interaction.member as GuildMember | null;
+        const webhookChannel = interactionChannel?.isThread()
+            ? interactionChannel.parent
+            : interactionChannel;
         for (const message of messages) {
             await webhookService.sendTranslation({
-                channel: interaction.channel as never,
+                channel: webhookChannel as never,
                 content: message,
                 username: member?.displayName || interaction.user.displayName,
                 avatarURL: interaction.user.displayAvatarURL({ size: 128 }),
+                ...(isThread ? { threadId: interactionChannel!.id } : {}),
                 requestId,
                 guildId: interaction.guildId,
                 userId: interaction.user.id,

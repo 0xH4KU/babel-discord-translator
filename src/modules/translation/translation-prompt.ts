@@ -1,3 +1,5 @@
+import type { TranslationPrompt } from '../../shared/types.js';
+
 export interface TranslationGlossaryPromptEntry {
     sourceText: string;
     targetLanguage?: string;
@@ -73,11 +75,11 @@ export function buildTranslationPrompt(
     targetLanguage: string = 'auto',
     customPrompt?: string | null,
     glossaryEntries: TranslationGlossaryPromptEntry[] = [],
-): string {
-    return `${resolveSystemPrompt(targetLanguage, customPrompt)}${buildGlossaryPromptSection(glossaryEntries, targetLanguage)}
-
-Text:
-${text}`;
+): TranslationPrompt {
+    return {
+        system: `${resolveSystemPrompt(targetLanguage, customPrompt)}${buildGlossaryPromptSection(glossaryEntries, targetLanguage)}`,
+        user: text,
+    };
 }
 
 export function buildGlossaryPromptSection(

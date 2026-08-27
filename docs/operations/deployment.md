@@ -15,7 +15,9 @@ You need:
 
 Babel does not require privileged Discord intents.
 
-Node/Docker/Railway deployments store runtime data with native `node:sqlite`. Before upgrading Node.js on those installs, back up `data/babel.sqlite`, rebuild, and run `npm run smoke:dashboard` after upgrading Node. The Cloudflare runtime uses D1 instead.
+Babel stores runtime data with native `node:sqlite`. Before upgrading Node.js, back up `data/babel.sqlite`, rebuild, and run `npm run smoke:dashboard` after upgrading Node. Treat the database and its backups as sensitive because provider credentials are stored with the dashboard configuration.
+
+Run exactly one Babel process or replica for each Discord application. Horizontal scaling is not supported: Discord event handling, cooldowns, queues, caches, and metrics are coordinated in memory, and sharing one SQLite file does not provide distributed request coordination. Use `BABEL_APP=combined` to run Guild and Pocket together in one process; do not run multiple replicas of that process.
 
 ## Choose The Product Profile
 
@@ -34,7 +36,7 @@ For Guild:
 ```bash
 npm run build:guild
 npm run register:guild
-npm run start -w @babel-discord-translator/guild
+npm run start:guild
 ```
 
 For Pocket:
@@ -42,10 +44,10 @@ For Pocket:
 ```bash
 npm run build:pocket
 npm run register:pocket
-npm run start -w @babel-discord-translator/pocket
+npm run start:pocket
 ```
 
-Root commands also support `BABEL_APP=guild`, `BABEL_APP=pocket`, or `BABEL_APP=combined` for Docker, PM2, Railway, and simple VPS deployments. Combined mode starts one Node.js process, two Discord clients, one dashboard, and one SQLite database. In combined mode, the combined dashboard root `/` shows a product chooser; `/guild` opens the Babel Guild dashboard; `/pocket` opens the Babel Pocket dashboard. The explicit workspace commands remain the clean management entrypoints for single-product local work and command registration.
+Root commands also support `BABEL_APP=guild`, `BABEL_APP=pocket`, or `BABEL_APP=combined` for Docker, PM2, Railway, and simple VPS deployments. Combined mode starts one Node.js process, two Discord clients, one dashboard, and one SQLite database. In combined mode, the combined dashboard root `/` shows a product chooser; `/guild` opens the Babel Guild dashboard; `/pocket` opens the Babel Pocket dashboard. The profile-specific scripts are aliases over the same root build and entrypoint.
 
 ## Discord Setup
 
@@ -65,33 +67,6 @@ DISCORD_APP_ID=your_app_id DISCORD_BOT_TOKEN=your_token npm run register
 ```
 
 This registers the default Babel Guild command set unless `BABEL_APP=pocket` is set. Use `npm run register:guild` or `npm run register:pocket` when you want the command surface to be explicit.
-
-## Cloudflare Workers
-
-The Worker workspace replaces the long-running Discord Gateway clients with signed HTTP interactions. It serves the same dashboard assets and persists configuration, sessions, usage, cache, cooldowns, logs, and runtime controls in D1.
-
-Create the D1 database once, add its generated ID to `apps/babel-worker/wrangler.jsonc`, then migrate and deploy:
-
-```bash
-npx wrangler d1 create babel-worker --config apps/babel-worker/wrangler.jsonc
-npm run db:migrate:remote -w @babel-discord-translator/worker
-npm run deploy:worker
-```
-
-Keep Cloudflare bindings small:
-
-- Variable: `BABEL_APP=combined`
-- Secrets: `DASHBOARD_PASSWORD` plus each profile's Discord token, public key, and application ID
-- Dashboard/D1: provider credentials, models, allowlists, prompts, runtime limits, prices, and budgets
-
-The checked-in deployment uses Worker `babel-discord-translator` and custom domain `babel.lum.bio`. Forks must replace the Worker name, D1 database ID, and route. Configure the Discord applications with separate endpoints:
-
-```text
-https://babel.lum.bio/guild/interactions
-https://babel.lum.bio/pocket/interactions
-```
-
-Discord validates each URL with a signed PING when it is saved. Do not retire the previous runtime until `/readyz` returns `200` and both endpoint updates succeed. See the [Worker guide](../../apps/babel-worker/README.md) for required secret names, local development, D1 import, and validation details.
 
 ## Railway
 
@@ -121,7 +96,7 @@ After deployment:
 2. Open the Railway public URL.
 3. Log in with `DASHBOARD_PASSWORD`.
 4. Complete the setup wizard and configure the provider.
-5. Register Discord commands from a local checkout or Railway shell with the matching `npm run register:guild` or `npm run register:pocket` command.
+5. Register commands with `npm run register:guild` or `npm run register:pocket` locally; use the matching `register:built:*` command in a Docker or Railway shell.
 6. Check `/livez`, `/readyz`, and the dashboard Operations panel.
 
 For the one-click template checklist, persistent volume notes, and affiliate disclosure wording, see [Railway deployment](railway.md).

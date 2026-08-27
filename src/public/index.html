@@ -162,21 +162,11 @@
                     <a
                         class="version-link"
                         id="version-link"
-                        href="https://github.com/0xH4KU/babel-discord-translator"
+                        href="https://github.com/0xH4KU/babel-discord-translator/releases"
                         target="_blank"
                         rel="noopener noreferrer"
                         >v0.1.3</a
                     >
-                    <button
-                        class="version-refresh"
-                        id="version-refresh"
-                        type="button"
-                        title="Refresh version check"
-                        aria-label="Refresh version check"
-                        data-action="refreshVersionMetadata"
-                    >
-                        ↻
-                    </button>
                     <div class="status">Online</div>
                     <span class="health-badge checking" id="api-health">API</span>
                 </div>
@@ -658,8 +648,8 @@
                 <div class="settings-section" id="section-openai">
                     <h3>OpenAI-Compatible API</h3>
                     <div class="desc-text">
-                        Works with OpenAI, OpenRouter, AI Studio (OpenAI format), and any
-                        compatible endpoint.
+                        Works with OpenAI, OpenRouter, and compatible endpoints that expose
+                        /v1/chat/completions.
                     </div>
                     <div class="settings-row">
                         <div class="input-group">
@@ -679,7 +669,7 @@
                                 id="cfg-openai-baseurl"
                                 placeholder="e.g. https://openrouter.ai/api"
                             />
-                            <div class="hint">The base URL without trailing /v1/chat/completions</div>
+                            <div class="hint">Babel appends /v1/chat/completions to this URL.</div>
                         </div>
                         <div class="input-group">
                             <label>Model</label>
@@ -748,6 +738,34 @@
                             <label>Max Output Tokens</label>
                             <input type="number" id="cfg-max-output" min="100" max="8192" />
                             <div class="hint">Gemini response token limit (default: 1000)</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <h3>Runtime Limits</h3>
+                    <div class="settings-row">
+                        <div class="input-group">
+                            <label>Concurrent Translations</label>
+                            <input type="number" id="cfg-max-concurrent" min="1" />
+                        </div>
+                        <div class="input-group">
+                            <label>Global Queue</label>
+                            <input type="number" id="cfg-max-global-queue" min="1" />
+                        </div>
+                        <div class="input-group">
+                            <label>Per-Server Queue</label>
+                            <input type="number" id="cfg-max-guild-queue" min="1" />
+                        </div>
+                    </div>
+                    <div class="settings-row">
+                        <div class="input-group">
+                            <label>Per-User Outstanding Requests</label>
+                            <input type="number" id="cfg-max-user-outstanding" min="1" />
+                        </div>
+                        <div class="input-group">
+                            <label>Queue Wait Timeout (ms)</label>
+                            <input type="number" id="cfg-max-queue-wait" min="1" step="1000" />
                         </div>
                     </div>
                 </div>

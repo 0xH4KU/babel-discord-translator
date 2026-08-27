@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.2.3 - 2026-08-27
+
+- Removed the Cloudflare Worker/D1 runtime and deployment tooling; Babel now ships one Node.js Gateway and SQLite runtime for Railway, Docker, VPS, and PM2 deployments.
+- Improved provider correctness with separate system/user prompts, atomic budget reservations, deterministic retries, and preserved fallback diagnostics.
+- Hardened Discord delivery with Unicode-safe message splitting, thread-aware webhook reuse, serialized webhook creation, and safer public webhook handling.
+- Made dashboard configuration, login handling, readiness checks, Setup Doctor, usage exports, and glossary imports more reliable.
+- Enforced glossary key uniqueness during migration and removed unused compatibility code and schema surfaces.
+- Fixed container maintenance commands and IPv4 health checks, documented single-replica operation, and refreshed vulnerable transitive dependencies.
+- Expanded critical dashboard browser coverage and made provider timing tests deterministic.
+
 ## 0.2.2 - 2026-07-12
 
 - Added a Cloudflare Workers runtime with signed Discord HTTP interactions, combined Guild/Pocket routing, static dashboard assets, and D1-backed config, sessions, usage, cache, cooldowns, logs, metrics, and runtime admission controls.

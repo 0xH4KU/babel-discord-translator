@@ -3,20 +3,18 @@ import type { CooldownManager } from './cooldown.js';
 import type { AccessMode, AppProfile } from '../../apps/app-profile.js';
 import { ProviderOrchestratorError } from '../../infra/provider-orchestrator.js';
 import type { TranslationLog } from '../../shared/log.js';
-import { isSameLanguage } from './lang.js';
 import {
     createProfileMetricsCollector,
     type AppMetricsCollector,
 } from '../../shared/app-metrics.js';
 import { configRepository, type RuntimeConfig } from '../config/config-repository.js';
-import { userPreferenceRepository } from './user-preference-repository.js';
-import { guildGlossaryRepository } from './guild-glossary-repository.js';
+import { store } from '../../persistence/store.js';
 import type {
     RuntimeLimitReason,
     TranslationRuntimeLimiter,
     TranslationRuntimeReservation,
 } from './translation-runtime-limiter.js';
-import { usage } from '../usage/usage.js';
+import { usage, type UsageBudgetReservation } from '../usage/usage.js';
 import { translate, resolveSystemPrompt } from './translate.js';
 import { sanitizeError } from '../../shared/errors.js';
 import {
@@ -29,11 +27,7 @@ import {
     getDiscordTranslationCommandMessages,
 } from '../../shared/messages/discord-messages.js';
 import { decideTranslationAccess } from './access-policy.js';
-import {
-    createTranslationScope,
-    getBillingUsageUserId,
-    getRuntimeLimiterUserId,
-} from './translation-scope.js';
+import { createTranslationScope, getEffectiveUserId } from './translation-scope.js';
 import {
     resolveTargetLanguage,
     type LangSource,
@@ -48,7 +42,7 @@ import {
     type ServiceCommand,
     type TranslatorOptions,
 } from './translation-service-helpers.js';
-import type { BotStats, GuildGlossaryEntry, TranslationResult } from '../../shared/types.js';
+import type { GuildGlossaryEntry, TranslationResult } from '../../shared/types.js';
 
 interface ConfigRepositoryLike {
     getRuntimeConfig(): RuntimeConfig;
@@ -56,22 +50,16 @@ interface ConfigRepositoryLike {
 }
 
 interface GlossaryRepositoryLike {
-    listEntries(guildId: string): GuildGlossaryEntry[];
+    listGuildGlossary(guildId: string): GuildGlossaryEntry[];
 }
 
 interface UsageLike {
-    isBudgetExceeded(scope?: { guildId?: string | null; userId?: string | null }): boolean;
-    wouldExceedBudget?(estimate: {
+    tryReserveBudget(estimate: {
         estimatedInputTokens: number;
         estimatedOutputTokens: number;
         guildId?: string | null;
         userId?: string | null;
-    }): boolean;
-    record(
-        inputTokens: number,
-        outputTokens: number,
-        scope?: { guildId?: string | null; userId?: string | null },
-    ): void;
+    }): UsageBudgetReservation | null;
 }
 
 interface PendingUserInstallOwnerRepositoryLike {
@@ -131,14 +119,13 @@ export interface TranslationServiceDeps {
     cache: TranslationCache;
     cooldown: CooldownManager;
     log: TranslationLog;
-    stats: BotStats;
     appProfileId?: AppProfile['id'];
     configStore?: ConfigRepositoryLike;
     userPreferenceStore?: UserPreferenceRepositoryLike;
     glossaryRepository?: GlossaryRepositoryLike;
     usageTracker?: UsageLike;
     translator?: Translator;
-    metrics?: AppMetricsCollector;
+    metrics: AppMetricsCollector;
     runtimeLimiter?: TranslationRuntimeLimiter;
     logger?: StructuredLogger;
     accessMode?: AccessMode;
@@ -197,10 +184,9 @@ export function createTranslationService({
     cache,
     cooldown,
     log,
-    stats,
     configStore = configRepository,
-    userPreferenceStore = userPreferenceRepository,
-    glossaryRepository = guildGlossaryRepository,
+    userPreferenceStore = store,
+    glossaryRepository = store,
     usageTracker = usage,
     translator = translate,
     metrics,
@@ -263,16 +249,8 @@ export function createTranslationService({
 
             const usageScope = {
                 guildId: accessMode === 'guild' ? (request.guildId ?? null) : null,
-                userId: accessMode === 'user-install' ? getBillingUsageUserId(scope) : null,
+                userId: accessMode === 'user-install' ? getEffectiveUserId(scope) : null,
             };
-
-            if (usageTracker.isBudgetExceeded(usageScope)) {
-                profileMetrics?.recordBudgetExceeded();
-                requestLogger.warn('translation.request.blocked', {
-                    blockReason: 'budget_exceeded',
-                });
-                return { status: 'blocked', message: messages.budgetExceeded };
-            }
 
             const cooldownState = cooldown.check(request.userId);
             if (!cooldownState.allowed) {
@@ -305,38 +283,15 @@ export function createTranslationService({
                 };
             }
 
-            if (
-                usageTracker.wouldExceedBudget?.({
-                    estimatedInputTokens: Math.ceil(originalText.length / 4),
-                    estimatedOutputTokens: runtimeConfig.maxOutputTokens || 1000,
-                    ...usageScope,
-                })
-            ) {
-                profileMetrics?.recordBudgetExceeded();
-                requestLogger.warn('translation.request.blocked', {
-                    blockReason: 'budget_estimate_exceeded',
-                });
-                return { status: 'blocked', message: messages.budgetExceeded };
-            }
-
             const { targetLanguage, langSource } = resolveTargetLanguage(
                 request,
                 userPreferenceStore,
                 { accessMode },
             );
-            if (isSameLanguage(originalText, targetLanguage, request.locale)) {
-                requestLogger.warn('translation.request.blocked', {
-                    blockReason: 'same_language',
-                    targetLanguage,
-                    langSource,
-                });
-                return { status: 'blocked', message: messages.sameLanguage };
-            }
-
             const prompt = resolveSystemPrompt(targetLanguage, runtimeConfig.translationPrompt);
             const glossaryEntries =
                 enableGuildGlossary && request.guildId
-                    ? glossaryRepository.listEntries(request.guildId)
+                    ? glossaryRepository.listGuildGlossary(request.guildId)
                     : [];
             const selectedGlossaryEntries = selectGlossaryEntriesForTarget(
                 glossaryEntries,
@@ -355,6 +310,7 @@ export function createTranslationService({
 
             let deferred = false;
             let reservation: TranslationRuntimeReservation | null = null;
+            let budgetReservation: UsageBudgetReservation | null = null;
             let leaderInFlight: InFlightTranslation | null = null;
             let resolveLeaderInFlight:
                 | ((value: TranslationResult | PromiseLike<TranslationResult>) => void)
@@ -388,7 +344,6 @@ export function createTranslationService({
                     }
 
                     cooldown.set(request.userId);
-                    stats.totalTranslations++;
 
                     const result = await inFlight.promise;
                     translated = result.text;
@@ -400,19 +355,10 @@ export function createTranslationService({
                     joinedInFlight = true;
                 }
 
-                if (!cached && !joinedInFlight) {
-                    const inFlightTranslation = createInFlightTranslation();
-                    leaderInFlight = inFlightTranslation.entry;
-                    resolveLeaderInFlight = inFlightTranslation.resolve;
-                    rejectLeaderInFlight = inFlightTranslation.reject;
-                    inFlightTranslations.set(cacheKey, leaderInFlight);
-                    void leaderInFlight.promise.catch(() => undefined);
-                }
-
                 if (!cached && runtimeLimiter) {
                     const admission = runtimeLimiter.acquire({
                         guildId: request.guildId ?? null,
-                        userId: getRuntimeLimiterUserId(scope),
+                        userId: getEffectiveUserId(scope),
                     });
 
                     if (!admission.accepted) {
@@ -437,6 +383,29 @@ export function createTranslationService({
                     );
                 }
 
+                if (!cached && !joinedInFlight) {
+                    budgetReservation = usageTracker.tryReserveBudget({
+                        estimatedInputTokens: Math.ceil(originalText.length / 4),
+                        estimatedOutputTokens: runtimeConfig.maxOutputTokens || 1000,
+                        ...usageScope,
+                    });
+                    if (!budgetReservation) {
+                        reservation?.cancel();
+                        profileMetrics?.recordBudgetExceeded();
+                        requestLogger.warn('translation.request.blocked', {
+                            blockReason: 'budget_exceeded',
+                        });
+                        return { status: 'blocked', message: messages.budgetExceeded };
+                    }
+
+                    const inFlightTranslation = createInFlightTranslation();
+                    leaderInFlight = inFlightTranslation.entry;
+                    resolveLeaderInFlight = inFlightTranslation.resolve;
+                    rejectLeaderInFlight = inFlightTranslation.reject;
+                    inFlightTranslations.set(cacheKey, leaderInFlight);
+                    void leaderInFlight.promise.catch(() => undefined);
+                }
+
                 if (!joinedInFlight && request.beforeTranslate) {
                     await request.beforeTranslate();
                     deferred = true;
@@ -445,10 +414,37 @@ export function createTranslationService({
 
                 if (!joinedInFlight) {
                     cooldown.set(request.userId);
-                    stats.totalTranslations++;
                 }
 
                 if (!translated) {
+                    const translateAndRecord = async (): Promise<string> => {
+                        profileMetrics?.recordTranslationApiCall();
+                        const result = await translator(
+                            originalText,
+                            targetLanguage,
+                            createTranslatorOptions(
+                                {
+                                    requestId,
+                                    guildId: request.guildId ?? null,
+                                    userId: getEffectiveUserId(scope),
+                                    command: request.command,
+                                },
+                                profileMetrics,
+                                selectedGlossaryEntries,
+                                runtimeConfig,
+                            ),
+                        );
+                        cache.set(cacheKey, result.text);
+                        inputTokens = result.inputTokens;
+                        outputTokens = result.outputTokens;
+                        provider = result.provider;
+                        fallback = result.fallback;
+                        budgetReservation?.settle(result.inputTokens, result.outputTokens);
+                        budgetReservation = null;
+                        resolveLeaderInFlight?.(result);
+                        return result.text;
+                    };
+
                     if (reservation) {
                         translated = await reservation.run(async (meta) => {
                             if (meta.queued) {
@@ -458,8 +454,10 @@ export function createTranslationService({
                                 });
                             }
 
-                            const queuedCached = cache.get(cacheKey);
+                            const queuedCached = meta.queued ? cache.get(cacheKey) : null;
                             if (queuedCached) {
+                                budgetReservation?.release();
+                                budgetReservation = null;
                                 requestLogger.info('translation.cache.hit_after_queue', {
                                     targetLanguage,
                                     langSource,
@@ -474,62 +472,10 @@ export function createTranslationService({
                                 return queuedCached;
                             }
 
-                            stats.apiCalls++;
-                            profileMetrics?.recordTranslationApiCall();
-                            const result = await translator(
-                                originalText,
-                                targetLanguage,
-                                createTranslatorOptions(
-                                    {
-                                        requestId,
-                                        guildId: request.guildId ?? null,
-                                        userId: getRuntimeLimiterUserId(scope),
-                                        command: request.command,
-                                    },
-                                    profileMetrics,
-                                    selectedGlossaryEntries,
-                                    runtimeConfig,
-                                ),
-                            );
-                            cache.set(cacheKey, result.text);
-                            inputTokens = result.inputTokens;
-                            outputTokens = result.outputTokens;
-                            provider = result.provider;
-                            fallback = result.fallback;
-                            usageTracker.record(
-                                result.inputTokens,
-                                result.outputTokens,
-                                usageScope,
-                            );
-                            resolveLeaderInFlight?.(result);
-                            return result.text;
+                            return translateAndRecord();
                         });
                     } else {
-                        stats.apiCalls++;
-                        profileMetrics?.recordTranslationApiCall();
-                        const result = await translator(
-                            originalText,
-                            targetLanguage,
-                            createTranslatorOptions(
-                                {
-                                    requestId,
-                                    guildId: request.guildId ?? null,
-                                    userId: getRuntimeLimiterUserId(scope),
-                                    command: request.command,
-                                },
-                                profileMetrics,
-                                selectedGlossaryEntries,
-                                runtimeConfig,
-                            ),
-                        );
-                        translated = result.text;
-                        inputTokens = result.inputTokens;
-                        outputTokens = result.outputTokens;
-                        provider = result.provider;
-                        fallback = result.fallback;
-                        cache.set(cacheKey, translated);
-                        usageTracker.record(result.inputTokens, result.outputTokens, usageScope);
-                        resolveLeaderInFlight?.(result);
+                        translated = await translateAndRecord();
                     }
                 }
 
@@ -568,6 +514,7 @@ export function createTranslationService({
             } catch (error) {
                 rejectLeaderInFlight?.(error);
                 reservation?.cancel();
+                budgetReservation?.release();
                 const caughtError = error instanceof Error ? error : new Error(String(error));
                 const message = caughtError.message;
                 const sanitizedMessage = sanitizeError(message);
