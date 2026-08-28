@@ -3,7 +3,7 @@ import http from 'http';
 import rateLimit from 'express-rate-limit';
 import { AppMetrics } from '../../shared/app-metrics.js';
 import { getConfig } from '../config/config.js';
-import { getHealthStatus, getLivenessStatus, getReadinessStatus } from '../../shared/health.js';
+import { getReadinessStatus } from '../../shared/health.js';
 import { usage } from '../usage/usage.js';
 import { createTranslationService } from '../translation/translation-service.js';
 import { createDashboardAuth } from './auth/dashboard-auth.js';
@@ -46,8 +46,8 @@ import {
     providerModeIncludes,
     providerSummary,
 } from './operations-summary.js';
-import { createMetricsAuthMiddleware } from './metrics-auth.js';
-import { createEmptyRuntimeSnapshot, renderPrometheusMetrics } from './prometheus-metrics.js';
+import { createEmptyRuntimeSnapshot } from './prometheus-metrics.js';
+import { registerHealthRoutes } from './health-dashboard.js';
 import { applySecurityHeaders } from './security-headers.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -277,39 +277,14 @@ export function createDashboardApp({
         res.json({ ok: true });
     });
 
-    app.get('/livez', (_req: Request, res: Response) => {
-        const health = getLivenessStatus();
-        res.status(health.live ? 200 : 503).json(health);
+    registerHealthRoutes(app, {
+        cache,
+        metrics,
+        runtimeLimiter,
+        discordReady: isDiscordReady,
+        metricsToken,
+        host,
     });
-
-    app.get('/readyz', async (_req: Request, res: Response) => {
-        const health = await getReadinessStatus({ discordReady: isDiscordReady });
-        res.status(health.ready ? 200 : 503).json(health);
-    });
-
-    app.get('/healthz', async (_req: Request, res: Response) => {
-        const metricsSnapshot = metrics.snapshot();
-        const health = await getHealthStatus({ discordReady: isDiscordReady }, metricsSnapshot);
-        res.status(health.live ? 200 : 503).json(health);
-    });
-
-    app.get(
-        '/metrics',
-        createMetricsAuthMiddleware({ token: metricsToken, host }),
-        (_req: Request, res: Response) => {
-            const metricsSnapshot = metrics.snapshot();
-            const runtimeSnapshot = runtimeLimiter?.snapshot() ?? createEmptyRuntimeSnapshot();
-
-            res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
-            res.send(
-                renderPrometheusMetrics({
-                    metricsSnapshot,
-                    cacheStats: cache.stats(),
-                    runtimeSnapshot,
-                }),
-            );
-        },
-    );
 
     api.get('/setup-status', auth.requireAuth, (_req: Request, res: Response) => {
         res.json({ complete: configRepository.isSetupComplete() });
