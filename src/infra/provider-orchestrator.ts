@@ -12,7 +12,10 @@ export interface TranslateOptions {
     logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'>;
     metrics?: AppMetricsCollector;
     runtimeConfig?: RuntimeConfig;
+    signal?: AbortSignal;
 }
+
+export const DEFAULT_TRANSLATION_PROVIDER_TIMEOUT_MS = 25_000;
 
 export interface TranslationProvider {
     /** Human-readable provider name for logging. */
@@ -88,6 +91,7 @@ export function classifyProviderError(error: Error | null): string {
     if (error && 'errorType' in error && typeof error.errorType === 'string') {
         return error.errorType;
     }
+    if (error?.name === 'TimeoutError' || error?.name === 'AbortError') return 'timeout';
 
     const message = error?.message ?? '';
     if (/429|rate/i.test(message)) return 'rate_limit';
@@ -141,6 +145,11 @@ export function createProviderOrchestrator(
             options?: TranslateOptions,
         ): Promise<ProviderOrchestratorResult> {
             const metrics = options?.metrics ?? orchestratorOptions.metrics;
+            const providerOptions = {
+                ...options,
+                signal:
+                    options?.signal ?? AbortSignal.timeout(DEFAULT_TRANSLATION_PROVIDER_TIMEOUT_MS),
+            };
             const ordered = resolveProviderOrder(mode, providers);
             const configured = ordered.filter((p) => p.isConfigured(options));
             const available = configured.filter((p) => !isCircuitOpen(p.name));
@@ -156,6 +165,8 @@ export function createProviderOrchestrator(
                     'All configured translation providers are temporarily unavailable.',
                 );
             }
+
+            providerOptions.signal.throwIfAborted();
 
             let lastError: Error | null = null;
             let lastProvider: string | null = null;
@@ -187,7 +198,11 @@ export function createProviderOrchestrator(
                     }
 
                     const startedAt = Date.now();
-                    const result = await provider.translate(prompt, maxOutputTokens, options);
+                    const result = await provider.translate(
+                        prompt,
+                        maxOutputTokens,
+                        providerOptions,
+                    );
                     recordBreakerSuccess(provider.name);
                     metrics?.recordProviderSuccess(provider.name, {
                         latencyMs: Date.now() - startedAt,
@@ -211,6 +226,7 @@ export function createProviderOrchestrator(
                         hasNextProvider: i < available.length - 1,
                         ...options?.logContext,
                     });
+                    if (providerOptions.signal.aborted) break;
                 }
             }
 

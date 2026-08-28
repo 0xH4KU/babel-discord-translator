@@ -12,6 +12,7 @@ export interface ProviderFetchOptions {
     provider: ProviderId;
     retries?: number;
     timeoutMs?: number;
+    signal?: AbortSignal;
     logPrefix: string;
     logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'>;
 }
@@ -39,6 +40,22 @@ function retryDelay(baseMs: number): number {
     return Math.min(MAX_PROVIDER_RETRY_DELAY_MS, Math.max(0, baseMs) + jitter);
 }
 
+function sleep(delayMs: number, signal?: AbortSignal): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const onAbort = () => {
+            clearTimeout(timer);
+            reject(signal?.reason);
+        };
+        const timer = setTimeout(() => {
+            signal?.removeEventListener('abort', onAbort);
+            resolve();
+        }, delayMs);
+
+        if (signal?.aborted) onAbort();
+        else signal?.addEventListener('abort', onAbort, { once: true });
+    });
+}
+
 export async function fetchProviderWithRetry(
     url: string,
     options: RequestInit,
@@ -46,6 +63,7 @@ export async function fetchProviderWithRetry(
         provider,
         retries = DEFAULT_PROVIDER_MAX_RETRIES,
         timeoutMs = DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
+        signal,
         logPrefix,
         logContext,
     }: ProviderFetchOptions,
@@ -55,9 +73,12 @@ export async function fetchProviderWithRetry(
 
     for (let attempt = 0; attempt <= retries; attempt++) {
         try {
+            signal?.throwIfAborted();
             const response = await fetch(url, {
                 ...options,
-                signal: AbortSignal.timeout(timeoutMs),
+                signal: signal
+                    ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
+                    : AbortSignal.timeout(timeoutMs),
             });
 
             if (
@@ -85,8 +106,9 @@ export async function fetchProviderWithRetry(
             } catch {
                 // The retry still proceeds when an implementation cannot cancel its body.
             }
-            await new Promise((resolve) => setTimeout(resolve, delay));
+            await sleep(delay, signal);
         } catch (error) {
+            if (signal?.aborted) throw signal.reason;
             if (attempt === retries) throw error;
 
             const delay = retryDelay(Math.pow(2, attempt) * 500);
@@ -99,7 +121,7 @@ export async function fetchProviderWithRetry(
                 errorType: classifyProviderFailure(error as Error),
                 retryReason: reason,
             });
-            await new Promise((resolve) => setTimeout(resolve, delay));
+            await sleep(delay, signal);
         }
     }
 

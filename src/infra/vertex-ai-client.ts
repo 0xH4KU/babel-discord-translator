@@ -9,7 +9,6 @@ import {
     estimateTokenCount,
     fetchProviderWithRetry,
     normalizeProviderTokenCount,
-    type ProviderFetchOptions,
 } from './provider-http.js';
 import type { TranslationPrompt, TranslationResult, VertexAIResponse } from '../shared/types.js';
 
@@ -23,10 +22,6 @@ interface VertexAiConfig {
     project: string;
     location: string;
     model: string;
-}
-
-interface FetchWithRetryOptions extends Omit<ProviderFetchOptions, 'provider' | 'logPrefix'> {
-    logPrefix?: string;
 }
 
 export interface VertexAiHealthStatus {
@@ -63,19 +58,6 @@ function buildGenerateContentUrl({ project, location, model }: VertexAiConfig): 
 
 const classifyVertexAiFailure = classifyProviderFailure;
 
-export async function fetchWithRetry(
-    url: string,
-    options: RequestInit,
-    config: FetchWithRetryOptions | number = {},
-): Promise<Response> {
-    const normalized = typeof config === 'number' ? { retries: config } : config;
-    return fetchProviderWithRetry(url, options, {
-        provider: 'vertex',
-        ...normalized,
-        logPrefix: normalized.logPrefix ?? 'VertexAI',
-    });
-}
-
 async function buildVertexAiError(response: Response): Promise<Error> {
     return buildProviderHttpError('vertex', response);
 }
@@ -90,6 +72,7 @@ async function requestGenerateContent(
         logPrefix = 'VertexAI',
         logContext,
         runtimeConfig,
+        signal,
     }: {
         maxOutputTokens: number;
         temperature?: number;
@@ -98,6 +81,7 @@ async function requestGenerateContent(
         logPrefix?: string;
         logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'>;
         runtimeConfig?: RuntimeConfig;
+        signal?: AbortSignal;
     },
 ): Promise<{ data: VertexAIResponse; latencyMs: number }> {
     const logger = appLogger.child({
@@ -129,7 +113,7 @@ async function requestGenerateContent(
 
     let response: Response;
     try {
-        response = await fetchWithRetry(
+        response = await fetchProviderWithRetry(
             url,
             {
                 method: 'POST',
@@ -154,8 +138,10 @@ async function requestGenerateContent(
                 }),
             },
             {
+                provider: 'vertex',
                 retries,
                 timeoutMs,
+                signal,
                 logPrefix,
                 logContext,
             },
@@ -199,16 +185,14 @@ async function requestGenerateContent(
 export async function generateTranslationContent(
     prompt: TranslationPrompt,
     maxOutputTokens: number,
-    options?: {
-        logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'>;
-        runtimeConfig?: RuntimeConfig;
-    },
+    options?: TranslateOptions,
 ): Promise<TranslationResult> {
     const { data } = await requestGenerateContent(prompt, {
         maxOutputTokens,
         logPrefix: 'Translate',
         logContext: options?.logContext,
         runtimeConfig: options?.runtimeConfig,
+        signal: options?.signal,
     });
 
     const result = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
