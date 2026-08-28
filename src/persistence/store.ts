@@ -28,6 +28,13 @@ interface ConfigStoreOptions {
     logger?: StructuredLogger;
 }
 
+export type UsageScopeKind = 'global' | 'guild' | 'user';
+
+export interface ScopedUsageRow extends TokenUsage {
+    scope: UsageScopeKind;
+    scopeId: string;
+}
+
 function cloneConfigValue<K extends ConfigValueKey>(value: StoreData[K]): StoreData[K] {
     return Array.isArray(value) ? ([...value] as StoreData[K]) : value;
 }
@@ -151,34 +158,25 @@ export class ConfigStore {
     }
 
     exportSnapshot(): StoreData {
+        const usageSnapshot = this.buildUsageSnapshot();
         return {
             ...this.getConfigValues(CONFIG_VALUE_KEYS),
-            tokenUsage: this.getDailyUsage(),
-            usageHistory: this.getUsageHistory(),
+            ...usageSnapshot,
             userLanguagePrefs: { ...this.getUserLanguagePrefs() },
             userLanguagePreferenceEntries: this.listUserLanguagePreferences(),
             guildBudgets: this.listGuildBudgets(),
-            guildTokenUsage: this.getAllGuildDailyUsage(),
-            guildUsageHistory: this.getAllGuildUsageHistory(),
             userBudgets: this.listUserBudgets(),
-            userTokenUsage: this.getAllUserDailyUsage(),
-            userUsageHistory: this.getAllUserUsageHistory(),
         };
     }
 
     importSnapshot(data: StoreData): void {
         inTransaction(this.db, () => {
             for (const key of CONFIG_VALUE_KEYS) this.setConfigValue(key, data[key]);
-            this.replaceDailyUsage(data.tokenUsage);
-            this.replaceUsageHistory(data.usageHistory);
+            this.replaceUsageSnapshot(data);
             this.replaceUserLanguagePrefs(data.userLanguagePrefs);
             this.replaceUserLanguagePreferenceEntries(data.userLanguagePreferenceEntries);
             this.replaceGuildBudgets(data.guildBudgets);
-            this.replaceGuildTokenUsage(data.guildTokenUsage);
-            this.replaceGuildUsageHistory(data.guildUsageHistory);
             this.replaceUserBudgets(data.userBudgets);
-            this.replaceUserTokenUsage(data.userTokenUsage);
-            this.replaceUserUsageHistory(data.userUsageHistory);
         });
     }
 
@@ -366,122 +364,133 @@ export class ConfigStore {
         return result.changes > 0;
     }
 
-    getGuildDailyUsage(guildId: string): TokenUsage | null {
+    getUsage(scope: UsageScopeKind, scopeId: string, date: string): TokenUsage | null {
         const row = this.stmt(
             `
             SELECT date, input_tokens as inputTokens, output_tokens as outputTokens, requests
-            FROM guild_daily_usage
-            WHERE guild_id = ?
+            FROM scoped_usage
+            WHERE scope = ? AND scope_id = ? AND date = ?
         `,
-        ).get(guildId) as TokenUsage | undefined;
+        ).get(scope, scopeId, date) as TokenUsage | undefined;
 
         return row ? { ...row } : null;
     }
 
-    saveGuildDailyUsage(guildId: string, usage: TokenUsage): void {
-        this.stmt(
-            `
-            INSERT INTO guild_daily_usage (guild_id, date, input_tokens, output_tokens, requests)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(guild_id) DO UPDATE SET
-                date = excluded.date,
-                input_tokens = excluded.input_tokens,
-                output_tokens = excluded.output_tokens,
-                requests = excluded.requests
-        `,
-        ).run(guildId, usage.date, usage.inputTokens, usage.outputTokens, usage.requests);
-    }
+    getUsageForIds(
+        scope: Exclude<UsageScopeKind, 'global'>,
+        scopeIds: readonly string[],
+        date: string,
+    ): Record<string, TokenUsage> {
+        if (scopeIds.length === 0) return {};
 
-    getGuildUsageHistory(guildId: string): UsageHistoryEntry[] {
+        const placeholders = scopeIds.map(() => '?').join(', ');
         const rows = this.stmt(
             `
-            SELECT date, input_tokens as inputTokens, output_tokens as outputTokens, requests
-            FROM guild_usage_history
-            WHERE guild_id = ?
-            ORDER BY date ASC
+            SELECT scope_id as scopeId, date,
+                   input_tokens as inputTokens, output_tokens as outputTokens, requests
+            FROM scoped_usage
+            WHERE scope = ? AND date = ? AND scope_id IN (${placeholders})
+            ORDER BY scope_id ASC
         `,
-        ).all(guildId) as unknown as UsageHistoryEntry[];
+        ).all(scope, date, ...scopeIds) as unknown as Array<{ scopeId: string } & TokenUsage>;
 
-        return rows.map((row) => ({ ...row }));
+        return Object.fromEntries(rows.map(({ scopeId, ...usage }) => [scopeId, { ...usage }]));
     }
 
-    saveGuildUsageHistory(guildId: string, history: UsageHistoryEntry[]): void {
-        inTransaction(this.db, () => {
-            this.stmt('DELETE FROM guild_usage_history WHERE guild_id = ?').run(guildId);
-            const insert = this.stmt(`
-                INSERT INTO guild_usage_history (guild_id, date, input_tokens, output_tokens, requests)
-                VALUES (?, ?, ?, ?, ?)
-            `);
+    getUsageHistory(
+        scope: UsageScopeKind,
+        beforeDate: string,
+        scopeIds?: readonly string[],
+    ): UsageHistoryEntry[] {
+        if (scopeIds?.length === 0) return [];
 
-            for (const entry of history) {
-                insert.run(
-                    guildId,
-                    entry.date,
-                    entry.inputTokens,
-                    entry.outputTokens,
-                    entry.requests,
-                );
-            }
-        });
+        const idFilter = scopeIds ? `AND scope_id IN (${scopeIds.map(() => '?').join(', ')})` : '';
+        const rows = this.stmt(
+            `
+            SELECT date,
+                   SUM(input_tokens) as inputTokens,
+                   SUM(output_tokens) as outputTokens,
+                   SUM(requests) as requests
+            FROM scoped_usage
+            WHERE scope = ? AND date < ? ${idFilter}
+            GROUP BY date
+            ORDER BY date DESC
+            LIMIT 30
+        `,
+        ).all(scope, beforeDate, ...(scopeIds ?? [])) as unknown as UsageHistoryEntry[];
+
+        return rows.reverse().map((row) => ({ ...row }));
     }
 
-    getUserDailyUsage(userId: string): TokenUsage | null {
+    getSharedGlobalUsage(date: string): TokenUsage {
         const row = this.stmt(
             `
-            SELECT date, input_tokens as inputTokens, output_tokens as outputTokens, requests
-            FROM user_daily_usage
-            WHERE user_id = ?
+            WITH total AS (
+                SELECT
+                    COALESCE(SUM(input_tokens), 0) AS inputTokens,
+                    COALESCE(SUM(output_tokens), 0) AS outputTokens,
+                    COALESCE(SUM(requests), 0) AS requests
+                FROM scoped_usage
+                WHERE scope = 'global' AND scope_id = '' AND date = ?
+            ), custom AS (
+                SELECT
+                    COALESCE(SUM(input_tokens), 0) AS inputTokens,
+                    COALESCE(SUM(output_tokens), 0) AS outputTokens,
+                    COALESCE(SUM(requests), 0) AS requests
+                FROM scoped_usage
+                JOIN guild_budgets ON guild_budgets.guild_id = scoped_usage.scope_id
+                WHERE scope = 'guild' AND date = ?
+            )
+            SELECT
+                MAX(total.inputTokens - custom.inputTokens, 0) AS inputTokens,
+                MAX(total.outputTokens - custom.outputTokens, 0) AS outputTokens,
+                MAX(total.requests - custom.requests, 0) AS requests
+            FROM total, custom
         `,
-        ).get(userId) as TokenUsage | undefined;
+        ).get(date, date) as Omit<TokenUsage, 'date'>;
 
-        return row ? { ...row } : null;
+        return { date, ...row };
     }
 
-    saveUserDailyUsage(userId: string, usage: TokenUsage): void {
-        this.stmt(
-            `
-            INSERT INTO user_daily_usage (user_id, date, input_tokens, output_tokens, requests)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET
-                date = excluded.date,
-                input_tokens = excluded.input_tokens,
-                output_tokens = excluded.output_tokens,
-                requests = excluded.requests
-        `,
-        ).run(userId, usage.date, usage.inputTokens, usage.outputTokens, usage.requests);
-    }
+    recordUsage(
+        date: string,
+        inputTokens: number,
+        outputTokens: number,
+        scope: { guildId?: string | null; userId?: string | null } = {},
+    ): void {
+        const rows: Array<[UsageScopeKind, string]> = [['global', '']];
+        if (scope.guildId) rows.push(['guild', scope.guildId]);
+        if (scope.userId) rows.push(['user', scope.userId]);
 
-    getUserUsageHistory(userId: string): UsageHistoryEntry[] {
-        const rows = this.stmt(
-            `
-            SELECT date, input_tokens as inputTokens, output_tokens as outputTokens, requests
-            FROM user_usage_history
-            WHERE user_id = ?
-            ORDER BY date ASC
-        `,
-        ).all(userId) as unknown as UsageHistoryEntry[];
-
-        return rows.map((row) => ({ ...row }));
-    }
-
-    saveUserUsageHistory(userId: string, history: UsageHistoryEntry[]): void {
         inTransaction(this.db, () => {
-            this.stmt('DELETE FROM user_usage_history WHERE user_id = ?').run(userId);
-            const insert = this.stmt(`
-                INSERT INTO user_usage_history (user_id, date, input_tokens, output_tokens, requests)
-                VALUES (?, ?, ?, ?, ?)
+            const upsert = this.stmt(`
+                INSERT INTO scoped_usage (
+                    scope, scope_id, date, input_tokens, output_tokens, requests
+                )
+                VALUES (?, ?, ?, ?, ?, 1)
+                ON CONFLICT(scope, scope_id, date) DO UPDATE SET
+                    input_tokens = input_tokens + excluded.input_tokens,
+                    output_tokens = output_tokens + excluded.output_tokens,
+                    requests = requests + 1
             `);
 
-            for (const entry of history) {
-                insert.run(
-                    userId,
-                    entry.date,
-                    entry.inputTokens,
-                    entry.outputTokens,
-                    entry.requests,
-                );
+            for (const [usageScope, scopeId] of rows) {
+                upsert.run(usageScope, scopeId, date, inputTokens || 0, outputTokens || 0);
             }
         });
+    }
+
+    listUsageRows(): ScopedUsageRow[] {
+        const rows = this.stmt(
+            `
+            SELECT scope, scope_id as scopeId, date,
+                   input_tokens as inputTokens, output_tokens as outputTokens, requests
+            FROM scoped_usage
+            ORDER BY scope ASC, scope_id ASC, date ASC
+        `,
+        ).all() as unknown as ScopedUsageRow[];
+
+        return rows.map((row) => ({ ...row }));
     }
 
     close(): void {
@@ -512,30 +521,6 @@ export class ConfigStore {
         this.configCache.set(key, value);
 
         return cloneConfigValue(value);
-    }
-
-    getDailyUsage(): TokenUsage | null {
-        const row = this.stmt(
-            `
-            SELECT date, input_tokens as inputTokens, output_tokens as outputTokens, requests
-            FROM daily_usage
-            WHERE id = 1
-        `,
-        ).get() as TokenUsage | undefined;
-
-        return row ? { ...row } : null;
-    }
-
-    getUsageHistory(): UsageHistoryEntry[] {
-        const rows = this.stmt(
-            `
-            SELECT date, input_tokens as inputTokens, output_tokens as outputTokens, requests
-            FROM usage_history
-            ORDER BY date ASC
-        `,
-        ).all() as unknown as UsageHistoryEntry[];
-
-        return rows.map((row) => ({ ...row }));
     }
 
     private getUserLanguagePrefs(): Record<string, string> {
@@ -611,66 +596,6 @@ export class ConfigStore {
         );
     }
 
-    getAllGuildDailyUsage(): Record<string, TokenUsage> {
-        const rows = this.stmt(
-            `
-            SELECT guild_id as guildId, date, input_tokens as inputTokens, output_tokens as outputTokens, requests
-            FROM guild_daily_usage
-            ORDER BY guild_id ASC
-        `,
-        ).all() as unknown as Array<{ guildId: string } & TokenUsage>;
-
-        return Object.fromEntries(rows.map(({ guildId, ...usage }) => [guildId, { ...usage }]));
-    }
-
-    getAllUserDailyUsage(): Record<string, TokenUsage> {
-        const rows = this.stmt(
-            `
-            SELECT user_id as userId, date, input_tokens as inputTokens, output_tokens as outputTokens, requests
-            FROM user_daily_usage
-            ORDER BY user_id ASC
-        `,
-        ).all() as unknown as Array<{ userId: string } & TokenUsage>;
-
-        return Object.fromEntries(rows.map(({ userId, ...usage }) => [userId, { ...usage }]));
-    }
-
-    getAllGuildUsageHistory(): Record<string, UsageHistoryEntry[]> {
-        const rows = this.stmt(
-            `
-            SELECT guild_id as guildId, date, input_tokens as inputTokens, output_tokens as outputTokens, requests
-            FROM guild_usage_history
-            ORDER BY guild_id ASC, date ASC
-        `,
-        ).all() as unknown as Array<{ guildId: string } & UsageHistoryEntry>;
-
-        const history: Record<string, UsageHistoryEntry[]> = {};
-        for (const { guildId, ...entry } of rows) {
-            history[guildId] ??= [];
-            history[guildId].push({ ...entry });
-        }
-
-        return history;
-    }
-
-    getAllUserUsageHistory(): Record<string, UsageHistoryEntry[]> {
-        const rows = this.stmt(
-            `
-            SELECT user_id as userId, date, input_tokens as inputTokens, output_tokens as outputTokens, requests
-            FROM user_usage_history
-            ORDER BY user_id ASC, date ASC
-        `,
-        ).all() as unknown as Array<{ userId: string } & UsageHistoryEntry>;
-
-        const history: Record<string, UsageHistoryEntry[]> = {};
-        for (const { userId, ...entry } of rows) {
-            history[userId] ??= [];
-            history[userId].push({ ...entry });
-        }
-
-        return history;
-    }
-
     private setConfigValue<K extends ConfigValueKey>(key: K, value: StoreData[K]): void {
         this.stmt(
             `
@@ -683,37 +608,89 @@ export class ConfigStore {
         this.configCache.delete(key);
     }
 
-    saveDailyUsage(usage: TokenUsage | null): void {
-        inTransaction(this.db, () => this.replaceDailyUsage(usage));
+    private buildUsageSnapshot(): Pick<
+        StoreData,
+        | 'tokenUsage'
+        | 'usageHistory'
+        | 'guildTokenUsage'
+        | 'guildUsageHistory'
+        | 'userTokenUsage'
+        | 'userUsageHistory'
+    > {
+        const rows = this.listUsageRows();
+        const split = (entries: ScopedUsageRow[]) => {
+            const usage = entries.map(({ date, inputTokens, outputTokens, requests }) => ({
+                date,
+                inputTokens,
+                outputTokens,
+                requests,
+            }));
+            return { current: usage.at(-1) ?? null, history: usage.slice(0, -1) };
+        };
+        const scoped = (scope: Exclude<UsageScopeKind, 'global'>) => {
+            const grouped = new Map<string, ScopedUsageRow[]>();
+            for (const row of rows) {
+                if (row.scope !== scope) continue;
+                const entries = grouped.get(row.scopeId) ?? [];
+                entries.push(row);
+                grouped.set(row.scopeId, entries);
+            }
+
+            const current: Record<string, TokenUsage> = {};
+            const history: Record<string, UsageHistoryEntry[]> = {};
+            for (const [id, entries] of grouped) {
+                const splitUsage = split(entries);
+                if (splitUsage.current) current[id] = splitUsage.current;
+                if (splitUsage.history.length > 0) history[id] = splitUsage.history;
+            }
+            return { current, history };
+        };
+
+        const global = split(rows.filter((row) => row.scope === 'global'));
+        const guild = scoped('guild');
+        const user = scoped('user');
+        return {
+            tokenUsage: global.current,
+            usageHistory: global.history,
+            guildTokenUsage: guild.current,
+            guildUsageHistory: guild.history,
+            userTokenUsage: user.current,
+            userUsageHistory: user.history,
+        };
     }
 
-    private replaceDailyUsage(usage: TokenUsage | null): void {
-        this.db.exec('DELETE FROM daily_usage');
-        if (!usage) {
-            return;
-        }
-
-        this.stmt(
-            `
-            INSERT INTO daily_usage (id, date, input_tokens, output_tokens, requests)
-            VALUES (1, ?, ?, ?, ?)
-        `,
-        ).run(usage.date, usage.inputTokens, usage.outputTokens, usage.requests);
-    }
-
-    saveUsageHistory(history: UsageHistoryEntry[]): void {
-        inTransaction(this.db, () => this.replaceUsageHistory(history));
-    }
-
-    private replaceUsageHistory(history: UsageHistoryEntry[]): void {
-        this.db.exec('DELETE FROM usage_history');
+    private replaceUsageSnapshot(data: StoreData): void {
+        this.db.exec('DELETE FROM scoped_usage');
         const insert = this.stmt(`
-            INSERT INTO usage_history (date, input_tokens, output_tokens, requests)
-            VALUES (?, ?, ?, ?)
+            INSERT OR REPLACE INTO scoped_usage (
+                scope, scope_id, date, input_tokens, output_tokens, requests
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
         `);
+        const write = (scope: UsageScopeKind, scopeId: string, entry: TokenUsage) => {
+            insert.run(
+                scope,
+                scopeId,
+                entry.date,
+                entry.inputTokens,
+                entry.outputTokens,
+                entry.requests,
+            );
+        };
 
-        for (const entry of history) {
-            insert.run(entry.date, entry.inputTokens, entry.outputTokens, entry.requests);
+        for (const entry of data.usageHistory) write('global', '', entry);
+        if (data.tokenUsage) write('global', '', data.tokenUsage);
+        for (const [guildId, entries] of Object.entries(data.guildUsageHistory)) {
+            for (const entry of entries) write('guild', guildId, entry);
+        }
+        for (const [guildId, entry] of Object.entries(data.guildTokenUsage)) {
+            write('guild', guildId, entry);
+        }
+        for (const [userId, entries] of Object.entries(data.userUsageHistory)) {
+            for (const entry of entries) write('user', userId, entry);
+        }
+        for (const [userId, entry] of Object.entries(data.userTokenUsage)) {
+            write('user', userId, entry);
         }
     }
 
@@ -762,70 +739,6 @@ export class ConfigStore {
 
         for (const [userId, budget] of Object.entries(budgets)) {
             insert.run(userId, budget.dailyBudgetUsd);
-        }
-    }
-
-    private replaceGuildTokenUsage(usage: Record<string, TokenUsage>): void {
-        this.db.exec('DELETE FROM guild_daily_usage');
-        const insert = this.stmt(`
-            INSERT INTO guild_daily_usage (guild_id, date, input_tokens, output_tokens, requests)
-            VALUES (?, ?, ?, ?, ?)
-        `);
-
-        for (const [guildId, entry] of Object.entries(usage)) {
-            insert.run(guildId, entry.date, entry.inputTokens, entry.outputTokens, entry.requests);
-        }
-    }
-
-    private replaceUserTokenUsage(usage: Record<string, TokenUsage>): void {
-        this.db.exec('DELETE FROM user_daily_usage');
-        const insert = this.stmt(`
-            INSERT INTO user_daily_usage (user_id, date, input_tokens, output_tokens, requests)
-            VALUES (?, ?, ?, ?, ?)
-        `);
-
-        for (const [userId, entry] of Object.entries(usage)) {
-            insert.run(userId, entry.date, entry.inputTokens, entry.outputTokens, entry.requests);
-        }
-    }
-
-    private replaceGuildUsageHistory(history: Record<string, UsageHistoryEntry[]>): void {
-        this.db.exec('DELETE FROM guild_usage_history');
-        const insert = this.stmt(`
-            INSERT INTO guild_usage_history (guild_id, date, input_tokens, output_tokens, requests)
-            VALUES (?, ?, ?, ?, ?)
-        `);
-
-        for (const [guildId, entries] of Object.entries(history)) {
-            for (const entry of entries) {
-                insert.run(
-                    guildId,
-                    entry.date,
-                    entry.inputTokens,
-                    entry.outputTokens,
-                    entry.requests,
-                );
-            }
-        }
-    }
-
-    private replaceUserUsageHistory(history: Record<string, UsageHistoryEntry[]>): void {
-        this.db.exec('DELETE FROM user_usage_history');
-        const insert = this.stmt(`
-            INSERT INTO user_usage_history (user_id, date, input_tokens, output_tokens, requests)
-            VALUES (?, ?, ?, ?, ?)
-        `);
-
-        for (const [userId, entries] of Object.entries(history)) {
-            for (const entry of entries) {
-                insert.run(
-                    userId,
-                    entry.date,
-                    entry.inputTokens,
-                    entry.outputTokens,
-                    entry.requests,
-                );
-            }
         }
     }
 }

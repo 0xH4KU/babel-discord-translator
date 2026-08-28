@@ -1,6 +1,6 @@
 /**
  * Daily token usage tracker with cost calculation, budget enforcement,
- * and 30-day history archiving. Supports global, per-guild, and per-user tracking.
+ * and 30-day history reporting. Supports global, per-guild, and per-user tracking.
  */
 import { configRepository, type RuntimeConfig } from '../config/config-repository.js';
 import { store } from '../../persistence/store.js';
@@ -44,85 +44,12 @@ interface BudgetAdmission {
     cost: UsageCost;
 }
 
-class UsageTracker {
-    private lastEnsuredDate: string | null = null;
+export class UsageTracker {
     private readonly pendingCosts = new Map<string, number>();
-
-    constructor() {
-        this.ensureToday();
-    }
-
-    /** Reset counters if the date has changed, archiving previous day. */
-    ensureToday(): void {
-        const todayValue = today();
-        if (this.lastEnsuredDate === todayValue) {
-            return;
-        }
-
-        rolloverUsage(
-            store.getDailyUsage(),
-            todayValue,
-            () => store.getUsageHistory(),
-            (history) => store.saveUsageHistory(history),
-            (usage) => store.saveDailyUsage(usage),
-        );
-
-        for (const [id, usage] of Object.entries(store.getAllGuildDailyUsage())) {
-            rolloverUsage(
-                usage,
-                todayValue,
-                () => store.getGuildUsageHistory(id),
-                (history) => store.saveGuildUsageHistory(id, history),
-                (entry) => store.saveGuildDailyUsage(id, entry),
-            );
-        }
-
-        for (const [id, usage] of Object.entries(store.getAllUserDailyUsage())) {
-            rolloverUsage(
-                usage,
-                todayValue,
-                () => store.getUserUsageHistory(id),
-                (history) => store.saveUserUsageHistory(id, history),
-                (entry) => store.saveUserDailyUsage(id, entry),
-            );
-        }
-
-        this.pendingCosts.clear();
-        this.lastEnsuredDate = todayValue;
-    }
 
     /** Record a translation's token usage (global + optional guild/user). */
     record(inputTokens: number, outputTokens: number, scope: UsageScope = {}): void {
-        this.ensureToday();
-
-        const todayValue = today();
-        store.saveDailyUsage(
-            addUsage(store.getDailyUsage(), todayValue, inputTokens, outputTokens),
-        );
-
-        if (scope.guildId) {
-            store.saveGuildDailyUsage(
-                scope.guildId,
-                addUsage(
-                    store.getGuildDailyUsage(scope.guildId),
-                    todayValue,
-                    inputTokens,
-                    outputTokens,
-                ),
-            );
-        }
-
-        if (scope.userId) {
-            store.saveUserDailyUsage(
-                scope.userId,
-                addUsage(
-                    store.getUserDailyUsage(scope.userId),
-                    todayValue,
-                    inputTokens,
-                    outputTokens,
-                ),
-            );
-        }
+        store.recordUsage(today(), inputTokens, outputTokens, scope);
     }
 
     /** Calculate today's cost for a specific user. */
@@ -130,8 +57,7 @@ class UsageTracker {
         userId: string,
         runtimeConfig = configRepository.getRuntimeConfig(),
     ): UsageCost {
-        this.ensureToday();
-        return currentCost(store.getUserDailyUsage(userId), runtimeConfig);
+        return currentCost(store.getUsage('user', userId, today()), runtimeConfig);
     }
 
     /** Calculate today's cost for a specific guild. */
@@ -139,8 +65,7 @@ class UsageTracker {
         guildId: string,
         runtimeConfig = configRepository.getRuntimeConfig(),
     ): UsageCost {
-        this.ensureToday();
-        return currentCost(store.getGuildDailyUsage(guildId), runtimeConfig);
+        return currentCost(store.getUsage('guild', guildId, today()), runtimeConfig);
     }
 
     tryReserveBudget({
@@ -149,7 +74,6 @@ class UsageTracker {
         guildId,
         userId,
     }: UsageBudgetEstimate): UsageBudgetReservation | null {
-        this.ensureToday();
         const runtimeConfig = configRepository.getRuntimeConfig();
         const scope = { guildId, userId };
         const estimatedCost = calculateCost(
@@ -270,18 +194,14 @@ class UsageTracker {
 
     /** Get stats for multiple guilds with shared config, budget, and usage snapshots. */
     getGuildStatsForGuilds(guildIds: readonly string[]): Record<string, UsageStats> {
-        this.ensureToday();
         const runtimeConfig = configRepository.getRuntimeConfig();
         const todayValue = today();
-        const guildUsage = store.getAllGuildDailyUsage();
+        const guildUsage = store.getUsageForIds('guild', guildIds, todayValue);
         const guildBudgets = store.listGuildBudgets();
 
         return Object.fromEntries(
             guildIds.map((guildId) => {
-                const usage =
-                    guildUsage[guildId]?.date === todayValue
-                        ? guildUsage[guildId]
-                        : createEmptyUsage(todayValue);
+                const usage = guildUsage[guildId] ?? createEmptyUsage(todayValue);
                 const cost = withCost(
                     usage,
                     runtimeConfig.inputPricePerMillion || 0,
@@ -297,8 +217,7 @@ class UsageTracker {
 
     /** Get global usage history (last 30 days) with cost calculations. */
     getHistory(): UsageHistoryDay[] {
-        this.ensureToday();
-        const history = store.getUsageHistory();
+        const history = store.getUsageHistory('global', today());
         const runtimeConfig = configRepository.getRuntimeConfig();
 
         return withHistoryCost(history, runtimeConfig);
@@ -306,8 +225,7 @@ class UsageTracker {
 
     /** Get usage history for a specific guild (last 30 days). */
     getGuildHistory(guildId: string): UsageHistoryDay[] {
-        this.ensureToday();
-        const history = store.getGuildUsageHistory(guildId);
+        const history = store.getUsageHistory('guild', today(), [guildId]);
         const runtimeConfig = configRepository.getRuntimeConfig();
 
         return withHistoryCost(history, runtimeConfig);
@@ -315,68 +233,39 @@ class UsageTracker {
 
     /** Get aggregated usage history for selected guilds (last 30 days). */
     getGuildHistoryForGuilds(guildIds: readonly string[]): UsageHistoryDay[] {
-        this.ensureToday();
-        const allHistory = store.getAllGuildUsageHistory();
-        const history = guildIds.flatMap((guildId) => allHistory[guildId] ?? []);
-
-        return aggregateHistoryByDate(history);
+        return withHistoryCost(
+            store.getUsageHistory('guild', today(), guildIds),
+            configRepository.getRuntimeConfig(),
+        );
     }
 
     /** Get aggregated usage history for all user-install users (last 30 days). */
     getAllUserHistory(): UsageHistoryDay[] {
-        this.ensureToday();
-        const allHistory = store.getAllUserUsageHistory();
-
-        return aggregateHistoryByDate(Object.values(allHistory).flat());
+        return withHistoryCost(
+            store.getUsageHistory('user', today()),
+            configRepository.getRuntimeConfig(),
+        );
     }
 
     getUsageExportRows(): UsageExportRow[] {
-        this.ensureToday();
         const runtimeConfig = configRepository.getRuntimeConfig();
-        const guildHistory = store.getAllGuildUsageHistory();
-        const guildDailyUsage = store.getAllGuildDailyUsage();
-        const userHistory = store.getAllUserUsageHistory();
-        const userDailyUsage = store.getAllUserDailyUsage();
-        const rows = [
-            ...toUsageExportRows(
-                'global',
-                '',
-                withCurrentUsage(store.getUsageHistory(), store.getDailyUsage()),
-                runtimeConfig,
-            ),
-            ...toScopedUsageExportRows('guild', guildHistory, guildDailyUsage, runtimeConfig),
-            ...toScopedUsageExportRows('user', userHistory, userDailyUsage, runtimeConfig),
-        ];
+        const rows = store.listUsageRows().map(({ scope, scopeId, ...day }) => ({
+            scope,
+            id: scopeId,
+            date: day.date,
+            requests: day.requests,
+            inputTokens: day.inputTokens,
+            outputTokens: day.outputTokens,
+            totalTokens: day.inputTokens + day.outputTokens,
+            costUsd: calculateCost(day, runtimeConfig),
+        }));
 
         return rows.sort(compareUsageExportRows);
     }
 
     private getSharedGlobalBudgetCost(runtimeConfig: RuntimeConfig): UsageCost {
-        this.ensureToday();
-        const todayValue = today();
-        const totalUsage = store.getDailyUsage();
-        const sharedUsage =
-            totalUsage?.date === todayValue ? { ...totalUsage } : createEmptyUsage(todayValue);
-        const guildUsage = store.getAllGuildDailyUsage();
-        const customBudgets = store.listGuildBudgets();
-
-        for (const guildId of Object.keys(customBudgets)) {
-            const customUsage = guildUsage[guildId];
-            if (customUsage?.date !== todayValue) {
-                continue;
-            }
-
-            sharedUsage.inputTokens -= customUsage.inputTokens;
-            sharedUsage.outputTokens -= customUsage.outputTokens;
-            sharedUsage.requests -= customUsage.requests;
-        }
-
-        sharedUsage.inputTokens = Math.max(sharedUsage.inputTokens, 0);
-        sharedUsage.outputTokens = Math.max(sharedUsage.outputTokens, 0);
-        sharedUsage.requests = Math.max(sharedUsage.requests, 0);
-
         return withCost(
-            sharedUsage,
+            store.getSharedGlobalUsage(today()),
             runtimeConfig.inputPricePerMillion || 0,
             runtimeConfig.outputPricePerMillion || 0,
         );
@@ -385,36 +274,6 @@ class UsageTracker {
 
 function today(): string {
     return new Date().toISOString().slice(0, 10);
-}
-
-function rolloverUsage(
-    usage: TokenUsage | null,
-    date: string,
-    getHistory: () => UsageHistoryEntry[],
-    saveHistory: (history: UsageHistoryEntry[]) => void,
-    saveDaily: (usage: TokenUsage) => void,
-): void {
-    if (usage?.date === date) return;
-
-    if (usage?.date) {
-        const history = [...getHistory(), toHistoryEntry(usage)].slice(-30);
-        saveHistory(history);
-    }
-
-    saveDaily(createEmptyUsage(date));
-}
-
-function addUsage(
-    current: TokenUsage | null,
-    date: string,
-    inputTokens: number,
-    outputTokens: number,
-): TokenUsage {
-    const usage = current?.date === date ? current : createEmptyUsage(date);
-    usage.inputTokens += inputTokens || 0;
-    usage.outputTokens += outputTokens || 0;
-    usage.requests += 1;
-    return usage;
 }
 
 function currentCost(usage: TokenUsage | null, runtimeConfig: RuntimeConfig): UsageCost {
@@ -437,89 +296,6 @@ function withHistoryCost(
     }));
 }
 
-function toHistoryEntry(usage: TokenUsage): UsageHistoryEntry {
-    return {
-        date: usage.date,
-        inputTokens: usage.inputTokens,
-        outputTokens: usage.outputTokens,
-        requests: usage.requests,
-    };
-}
-
-function aggregateHistoryByDate(history: UsageHistoryEntry[]): UsageHistoryDay[] {
-    const runtimeConfig = configRepository.getRuntimeConfig();
-    const byDate = new Map<string, UsageHistoryEntry>();
-
-    for (const entry of history) {
-        const aggregate =
-            byDate.get(entry.date) ??
-            ({
-                date: entry.date,
-                inputTokens: 0,
-                outputTokens: 0,
-                requests: 0,
-            } satisfies UsageHistoryEntry);
-        aggregate.inputTokens += entry.inputTokens;
-        aggregate.outputTokens += entry.outputTokens;
-        aggregate.requests += entry.requests;
-        byDate.set(entry.date, aggregate);
-    }
-
-    return Array.from(byDate.values())
-        .sort((a, b) => a.date.localeCompare(b.date))
-        .slice(-30)
-        .map((day) => ({
-            ...day,
-            totalTokens: day.inputTokens + day.outputTokens,
-            cost: calculateCost(day, runtimeConfig),
-        }));
-}
-
-function toUsageExportRows(
-    scope: UsageExportScope,
-    id: string,
-    history: UsageHistoryEntry[],
-    runtimeConfig: RuntimeConfig,
-): UsageExportRow[] {
-    return history.map((day) => ({
-        scope,
-        id,
-        date: day.date,
-        requests: day.requests,
-        inputTokens: day.inputTokens,
-        outputTokens: day.outputTokens,
-        totalTokens: day.inputTokens + day.outputTokens,
-        costUsd: calculateCost(day, runtimeConfig),
-    }));
-}
-
-function withCurrentUsage(
-    history: UsageHistoryEntry[],
-    current: TokenUsage | null,
-): UsageHistoryEntry[] {
-    if (!current || current.requests + current.inputTokens + current.outputTokens === 0) {
-        return history;
-    }
-
-    return [...history.filter((entry) => entry.date !== current.date), toHistoryEntry(current)];
-}
-
-function toScopedUsageExportRows(
-    scope: Exclude<UsageExportScope, 'global'>,
-    histories: Record<string, UsageHistoryEntry[]>,
-    currentUsage: Record<string, TokenUsage>,
-    runtimeConfig: RuntimeConfig,
-): UsageExportRow[] {
-    return [...new Set([...Object.keys(histories), ...Object.keys(currentUsage)])].flatMap((id) =>
-        toUsageExportRows(
-            scope,
-            id,
-            withCurrentUsage(histories[id] ?? [], currentUsage[id] ?? null),
-            runtimeConfig,
-        ),
-    );
-}
-
 function compareUsageExportRows(a: UsageExportRow, b: UsageExportRow): number {
     const scopeOrder: Record<UsageExportScope, number> = { global: 0, guild: 1, user: 2 };
     return (
@@ -530,15 +306,3 @@ function compareUsageExportRows(a: UsageExportRow, b: UsageExportRow): number {
 }
 
 export const usage = new UsageTracker();
-
-export const _test = {
-    /** Clear the same-day rollover memo so the next ensureToday() runs a full pass. */
-    resetRolloverMemo(): void {
-        const tracker = usage as unknown as {
-            lastEnsuredDate: string | null;
-            pendingCosts: Map<string, number>;
-        };
-        tracker.lastEnsuredDate = null;
-        tracker.pendingCosts.clear();
-    },
-};

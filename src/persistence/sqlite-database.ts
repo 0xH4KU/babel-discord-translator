@@ -16,6 +16,10 @@ function tableHasColumn(db: DatabaseSync, table: string, column: string): boolea
     return columns.some((row) => row.name === column);
 }
 
+function tableExists(db: DatabaseSync, table: string): boolean {
+    return !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table);
+}
+
 function tablePrimaryKeyColumns(db: DatabaseSync, table: string): string[] {
     const columns = db.prepare(`PRAGMA table_info("${table}")`).all() as Array<{
         name: string;
@@ -264,6 +268,50 @@ const MIGRATIONS: Migration[] = [
             `);
         },
     },
+    {
+        id: 9,
+        name: 'consolidate_scoped_usage',
+        up(db) {
+            db.exec(`
+                CREATE TABLE IF NOT EXISTS scoped_usage (
+                    scope TEXT NOT NULL CHECK (scope IN ('global', 'guild', 'user')),
+                    scope_id TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    input_tokens INTEGER NOT NULL,
+                    output_tokens INTEGER NOT NULL,
+                    requests INTEGER NOT NULL,
+                    PRIMARY KEY (scope, scope_id, date)
+                );
+            `);
+
+            const sources = [
+                ['usage_history', 'global', "''"],
+                ['daily_usage', 'global', "''"],
+                ['guild_usage_history', 'guild', 'guild_id'],
+                ['guild_daily_usage', 'guild', 'guild_id'],
+                ['user_usage_history', 'user', 'user_id'],
+                ['user_daily_usage', 'user', 'user_id'],
+            ] as const;
+
+            for (const [table, scope, scopeId] of sources) {
+                if (!tableExists(db, table)) continue;
+                db.exec(`
+                    INSERT OR REPLACE INTO scoped_usage (
+                        scope, scope_id, date, input_tokens, output_tokens, requests
+                    )
+                    SELECT '${scope}', ${scopeId}, date, input_tokens, output_tokens, requests
+                    FROM ${table};
+                `);
+            }
+
+            for (const [table] of sources) db.exec(`DROP TABLE IF EXISTS ${table};`);
+
+            db.exec(`
+                CREATE INDEX IF NOT EXISTS idx_scoped_usage_date
+                ON scoped_usage (scope, date, scope_id);
+            `);
+        },
+    },
 ];
 
 let sharedDatabase: DatabaseSync | null = null;
@@ -360,14 +408,9 @@ const STORE_TABLES = new Set([
     'app_config',
     'user_language_preferences',
     'guild_budgets',
-    'daily_usage',
-    'guild_daily_usage',
-    'usage_history',
-    'guild_usage_history',
+    'scoped_usage',
     'guild_glossary',
     'user_budgets',
-    'user_daily_usage',
-    'user_usage_history',
     'discord_user_profiles',
     'pending_user_install_owners',
 ]);
