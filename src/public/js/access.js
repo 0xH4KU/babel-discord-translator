@@ -18,29 +18,13 @@ let accessWhitelistLoaded = false;
 let glossaryGuildId = '';
 let glossaryEntries = [];
 
-function normalizeNumericIds(ids) {
+function normalizeIds(ids) {
     return [...new Set((ids || []).map((id) => String(id).trim()).filter(Boolean))];
 }
 
-function normalizeGuildIds(ids) {
-    return normalizeNumericIds(ids);
-}
-
-function normalizeUserIds(ids) {
-    return normalizeNumericIds(ids);
-}
-
-function sameGuildIds(a, b) {
-    const left = normalizeGuildIds(a).sort();
-    const right = normalizeGuildIds(b).sort();
-
-    if (left.length !== right.length) return false;
-    return left.every((id, index) => id === right[index]);
-}
-
-function sameUserIds(a, b) {
-    const left = normalizeUserIds(a).sort();
-    const right = normalizeUserIds(b).sort();
+function sameIds(a, b) {
+    const left = normalizeIds(a).sort();
+    const right = normalizeIds(b).sort();
 
     if (left.length !== right.length) return false;
     return left.every((id, index) => id === right[index]);
@@ -67,8 +51,8 @@ function updateAccessSaveState() {
 }
 
 function setAccessWhitelistDraft(allowedGuildIds) {
-    accessAllowedGuildIdsDraft = normalizeGuildIds(allowedGuildIds);
-    accessWhitelistDirty = !sameGuildIds(
+    accessAllowedGuildIdsDraft = normalizeIds(allowedGuildIds);
+    accessWhitelistDirty = !sameIds(
         accessAllowedGuildIdsDraft,
         currentConfig.allowedGuildIds || [],
     );
@@ -76,8 +60,8 @@ function setAccessWhitelistDraft(allowedGuildIds) {
 }
 
 function setUserAllowlistDraft(allowedUserIds) {
-    accessAllowedUserIdsDraft = normalizeUserIds(allowedUserIds);
-    accessWhitelistDirty = !sameUserIds(
+    accessAllowedUserIdsDraft = normalizeIds(allowedUserIds);
+    accessWhitelistDirty = !sameIds(
         accessAllowedUserIdsDraft,
         currentConfig.allowedUserIds || [],
     );
@@ -86,7 +70,7 @@ function setUserAllowlistDraft(allowedUserIds) {
 
 function updateAccessUsersFromBudgetPayload(payload) {
     userBudgetData = payload.budgets || payload || {};
-    const ids = normalizeUserIds(Object.keys(userBudgetData));
+    const ids = normalizeIds(Object.keys(userBudgetData));
     const merged = new Set([...ids, ...accessAllowedUserIdsDraft]);
     accessUserIds = [...merged];
 }
@@ -110,8 +94,8 @@ async function loadAccess() {
             requests.userBudgets,
         ]);
         currentConfig = await cfgRes.json();
-        currentConfig.allowedGuildIds = normalizeGuildIds(currentConfig.allowedGuildIds || []);
-        currentConfig.allowedUserIds = normalizeUserIds(currentConfig.allowedUserIds || []);
+        currentConfig.allowedGuildIds = normalizeIds(currentConfig.allowedGuildIds || []);
+        currentConfig.allowedUserIds = normalizeIds(currentConfig.allowedUserIds || []);
         if (guildAccess && (!accessWhitelistLoaded || !accessWhitelistDirty)) {
             accessAllowedGuildIdsDraft = [...currentConfig.allowedGuildIds];
         }
@@ -141,7 +125,7 @@ async function loadAccess() {
 async function saveGuildWhitelist() {
     if (!hasDashboardCapability('guildAccess')) return;
 
-    const allowedGuildIds = normalizeGuildIds(accessAllowedGuildIdsDraft);
+    const allowedGuildIds = normalizeIds(accessAllowedGuildIdsDraft);
 
     const res = await api('/config', {
         method: 'POST',
@@ -163,7 +147,7 @@ async function saveGuildWhitelist() {
 async function saveUserWhitelist() {
     if (!hasDashboardCapability('pendingUserInstallOwners')) return;
 
-    const allowedUserIds = normalizeUserIds(accessAllowedUserIdsDraft);
+    const allowedUserIds = normalizeIds(accessAllowedUserIdsDraft);
 
     const res = await api('/config', {
         method: 'POST',
@@ -790,7 +774,7 @@ function addAllowedUser() {
 
     nextAllowed.add(id);
     setUserAllowlistDraft([...nextAllowed]);
-    accessUserIds = normalizeUserIds([...accessUserIds, id]);
+    accessUserIds = normalizeIds([...accessUserIds, id]);
     allowedUsersPage = Math.max(Math.ceil(accessUserIds.length / allowedUsersPageSize), 1);
     input.value = '';
     renderAllowedUsers();
@@ -807,7 +791,7 @@ function setAllowedUserEnabled(id, enabled) {
         nextAllowed.delete(id);
     }
 
-    accessUserIds = normalizeUserIds([...accessUserIds, id]);
+    accessUserIds = normalizeIds([...accessUserIds, id]);
     setUserAllowlistDraft([...nextAllowed]);
     renderAllowedUsers();
     showToast(`${enabled ? 'User enabled' : 'User disabled'} — click Save to apply`);

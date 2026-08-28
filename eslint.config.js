@@ -4,7 +4,7 @@ import tseslint from 'typescript-eslint';
 export default [
     // --- Backend TypeScript + Node.js ---
     {
-        files: ['src/**/*.ts', 'scripts/**/*.ts'],
+        files: ['src/**/*.ts', 'scripts/**/*.{ts,js}'],
         languageOptions: {
             ecmaVersion: 2022,
             sourceType: 'module',

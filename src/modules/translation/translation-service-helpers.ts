@@ -18,20 +18,6 @@ export type TranslatorOptions = {
     };
 };
 
-export function createTranslatorOptions(
-    logContext: TranslatorOptions['logContext'],
-    metrics?: AppMetricsCollector,
-    glossaryEntries: TranslatorOptions['glossaryEntries'] = [],
-    runtimeConfig?: RuntimeConfig,
-): TranslatorOptions {
-    return {
-        logContext,
-        ...(metrics ? { metrics } : {}),
-        ...(glossaryEntries.length > 0 ? { glossaryEntries } : {}),
-        ...(runtimeConfig ? { runtimeConfig } : {}),
-    };
-}
-
 function normalizeGlossarySource(sourceText: string): string {
     return sourceText.trim().toLowerCase();
 }

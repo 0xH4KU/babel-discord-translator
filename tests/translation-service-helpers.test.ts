@@ -1,9 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
-import { AppMetrics } from '../src/shared/app-metrics.js';
+import { describe, expect, it } from 'vitest';
 import {
     buildGlossaryVersion,
     classifyTranslationError,
-    createTranslatorOptions,
     selectGlossaryEntriesForTarget,
     suggestedActionForErrorType,
 } from '../src/modules/translation/translation-service-helpers.js';
@@ -47,30 +45,6 @@ describe('translation service helpers', () => {
                 '\u001f',
             ),
         );
-    });
-
-    it('only includes optional translator fields when they are present', () => {
-        const metrics = new AppMetrics();
-        const logContext = {
-            requestId: 'req-1',
-            guildId: 'guild-1',
-            userId: 'user-1',
-            command: 'babel' as const,
-        };
-
-        expect(createTranslatorOptions(logContext)).toEqual({ logContext });
-        expect(
-            createTranslatorOptions(logContext, metrics, [
-                { sourceText: 'raid', targetLanguage: 'zh-TW', targetText: '團本', notes: '' },
-            ]),
-        ).toEqual({
-            logContext,
-            metrics,
-            glossaryEntries: [
-                { sourceText: 'raid', targetLanguage: 'zh-TW', targetText: '團本', notes: '' },
-            ],
-        });
-        expect(vi.isMockFunction(createTranslatorOptions)).toBe(false);
     });
 
     it('selects exact target-language glossary entries before auto fallbacks', () => {

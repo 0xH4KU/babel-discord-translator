@@ -36,7 +36,6 @@ import {
 import {
     buildGlossaryVersion,
     classifyTranslationError,
-    createTranslatorOptions,
     selectGlossaryEntriesForTarget,
     suggestedActionForErrorType,
     type ServiceCommand,
@@ -419,21 +418,19 @@ export function createTranslationService({
                 if (!translated) {
                     const translateAndRecord = async (): Promise<string> => {
                         profileMetrics?.recordTranslationApiCall();
-                        const result = await translator(
-                            originalText,
-                            targetLanguage,
-                            createTranslatorOptions(
-                                {
-                                    requestId,
-                                    guildId: request.guildId ?? null,
-                                    userId: getEffectiveUserId(scope),
-                                    command: request.command,
-                                },
-                                profileMetrics,
-                                selectedGlossaryEntries,
-                                runtimeConfig,
-                            ),
-                        );
+                        const result = await translator(originalText, targetLanguage, {
+                            logContext: {
+                                requestId,
+                                guildId: request.guildId ?? null,
+                                userId: getEffectiveUserId(scope),
+                                command: request.command,
+                            },
+                            metrics: profileMetrics,
+                            ...(selectedGlossaryEntries.length > 0
+                                ? { glossaryEntries: selectedGlossaryEntries }
+                                : {}),
+                            runtimeConfig,
+                        });
                         cache.set(cacheKey, result.text);
                         inputTokens = result.inputTokens;
                         outputTokens = result.outputTokens;

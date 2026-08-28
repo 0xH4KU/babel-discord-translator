@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AppMetrics } from '../src/shared/app-metrics.js';
-import { createWebhookService, _test } from '../src/modules/translation/webhook-service.js';
+import {
+    classifyWebhookError,
+    createWebhookService,
+} from '../src/modules/translation/webhook-service.js';
 import type {
     WebhookChannelLike,
     WebhookCollectionLike,
@@ -168,8 +171,6 @@ describe('WebhookService', () => {
 });
 
 describe('classifyWebhookError', () => {
-    const { classifyWebhookError } = _test;
-
     it('should classify stale webhook errors as retriable', () => {
         expect(classifyWebhookError({ code: 10015, status: 404 })).toEqual({
             kind: 'stale_webhook',

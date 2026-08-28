@@ -1106,5 +1106,3 @@ export function startDashboardServer(
 export function stopDashboardApp(app: express.Express): void {
     app.locals.disposeDashboardApp?.();
 }
-
-export const _test = { validateConfigUpdate };

@@ -31,7 +31,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint src/ tests/",
+    "lint": "eslint src/ scripts/ tests/",
     "smoke:dashboard": "node scripts/smoke-dashboard-build.js",
     "format": "prettier --write ."
   },

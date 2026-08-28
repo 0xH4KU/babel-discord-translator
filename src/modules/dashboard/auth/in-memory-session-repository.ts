@@ -23,8 +23,4 @@ export class InMemorySessionRepository implements SessionRepository {
     entries(): Iterable<[string, SessionData]> {
         return this.sessions.entries();
     }
-
-    clear(): void {
-        this.sessions.clear();
-    }
 }
