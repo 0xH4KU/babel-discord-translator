@@ -123,13 +123,13 @@ vi.mock('../src/persistence/store.js', () => {
                 }
                 return shared;
             }),
-        recordUsage: vi.fn((date: string, input: number, output: number, scope = {}) => {
-            const ids = scope as { guildId?: string; userId?: string };
-            const tokens = [input || 0, output || 0] as const;
-            record('global', '', date, ...tokens);
-            if (ids.guildId) record('guild', ids.guildId, date, ...tokens);
-            if (ids.userId) record('user', ids.userId, date, ...tokens);
-        }),
+            recordUsage: vi.fn((date: string, input: number, output: number, scope = {}) => {
+                const ids = scope as { guildId?: string; userId?: string };
+                const tokens = [input || 0, output || 0] as const;
+                record('global', '', date, ...tokens);
+                if (ids.guildId) record('guild', ids.guildId, date, ...tokens);
+                if (ids.userId) record('user', ids.userId, date, ...tokens);
+            }),
             listUsageRows: vi.fn(() => {
                 const rows = new Map<string, MockUsage & { scope: Scope; scopeId: string }>();
                 const add = (scope: Scope, scopeId: string, entry: MockUsage) => {
@@ -698,7 +698,7 @@ describe('UsageTracker', () => {
 
             usage.record(500_000, 0, { userId: 'user-X' });
 
-            const stats = usage.getUserStats('user-X');
+            const stats = usage.getUserStatsForUsers(['user-X'])['user-X']!;
             expect(stats.inputTokens).toBe(500_000);
             expect(stats.requests).toBe(1);
             expect(stats.totalCost).toBe(0.5);

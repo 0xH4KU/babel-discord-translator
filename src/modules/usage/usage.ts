@@ -163,8 +163,7 @@ export class UsageTracker {
     }
 
     /** Get stats for dashboard display (global). */
-    getStats(): UsageStats {
-        const runtimeConfig = configRepository.getRuntimeConfig();
+    getStats(runtimeConfig = configRepository.getRuntimeConfig()): UsageStats {
         const cost = this.getSharedGlobalBudgetCost(runtimeConfig);
         const budget = runtimeConfig.dailyBudgetUsd || 0;
 
@@ -181,36 +180,57 @@ export class UsageTracker {
         return toUsageStats(cost, budget);
     }
 
-    /** Get stats for a specific user. */
-    getUserStats(userId: string): UsageStats {
-        const runtimeConfig = configRepository.getRuntimeConfig();
-        const cost = this.getUserCost(userId, runtimeConfig);
-        const budget =
-            store.getUserBudget(userId)?.dailyBudgetUsd ??
-            (runtimeConfig.defaultUserDailyBudgetUsd || 0);
-
-        return toUsageStats(cost, budget);
+    /** Get stats for multiple guilds with shared config, budget, and usage snapshots. */
+    getGuildStatsForGuilds(
+        guildIds: readonly string[],
+        budgets = store.listGuildBudgets(),
+        runtimeConfig = configRepository.getRuntimeConfig(),
+    ): Record<string, UsageStats> {
+        return this.getScopedStatsForIds(
+            'guild',
+            guildIds,
+            budgets,
+            runtimeConfig.dailyBudgetUsd || 0,
+            runtimeConfig,
+        );
     }
 
-    /** Get stats for multiple guilds with shared config, budget, and usage snapshots. */
-    getGuildStatsForGuilds(guildIds: readonly string[]): Record<string, UsageStats> {
-        const runtimeConfig = configRepository.getRuntimeConfig();
+    /** Get stats for multiple users with one usage query. */
+    getUserStatsForUsers(
+        userIds: readonly string[],
+        budgets = store.listUserBudgets(),
+        runtimeConfig = configRepository.getRuntimeConfig(),
+    ): Record<string, UsageStats> {
+        return this.getScopedStatsForIds(
+            'user',
+            userIds,
+            budgets,
+            runtimeConfig.defaultUserDailyBudgetUsd || 0,
+            runtimeConfig,
+        );
+    }
+
+    private getScopedStatsForIds(
+        scope: 'guild' | 'user',
+        ids: readonly string[],
+        budgets: Record<string, { dailyBudgetUsd: number }>,
+        defaultBudget: number,
+        runtimeConfig: RuntimeConfig,
+    ): Record<string, UsageStats> {
         const todayValue = today();
-        const guildUsage = store.getUsageForIds('guild', guildIds, todayValue);
-        const guildBudgets = store.listGuildBudgets();
+        const scopedUsage = store.getUsageForIds(scope, ids, todayValue);
 
         return Object.fromEntries(
-            guildIds.map((guildId) => {
-                const usage = guildUsage[guildId] ?? createEmptyUsage(todayValue);
+            ids.map((id) => {
+                const usage = scopedUsage[id] ?? createEmptyUsage(todayValue);
                 const cost = withCost(
                     usage,
                     runtimeConfig.inputPricePerMillion || 0,
                     runtimeConfig.outputPricePerMillion || 0,
                 );
-                const budget =
-                    guildBudgets[guildId]?.dailyBudgetUsd ?? (runtimeConfig.dailyBudgetUsd || 0);
+                const budget = budgets[id]?.dailyBudgetUsd ?? defaultBudget;
 
-                return [guildId, toUsageStats(cost, budget)];
+                return [id, toUsageStats(cost, budget)];
             }),
         );
     }

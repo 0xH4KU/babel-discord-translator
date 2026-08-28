@@ -54,20 +54,22 @@ export async function resolveDiscordUserProfiles({
         (userId) => !cached[userId] || !isFresh(cached[userId], nowMs),
     );
 
-    for (const userId of missingOrStale) {
-        try {
-            const user = await client.users.fetch(userId);
-            const profile = profileFromDiscordUser(user, now);
-            repository.upsertProfile(profile);
-            profiles[userId] = profile;
-        } catch (error) {
-            appLogger.warn('dashboard.discord_user_profile.fetch_failed', {
-                component: 'dashboard',
-                userId,
-                error,
-            });
-        }
-    }
+    await Promise.all(
+        missingOrStale.map(async (userId) => {
+            try {
+                const user = await client.users.fetch(userId);
+                const profile = profileFromDiscordUser(user, now);
+                repository.upsertProfile(profile);
+                profiles[userId] = profile;
+            } catch (error) {
+                appLogger.warn('dashboard.discord_user_profile.fetch_failed', {
+                    component: 'dashboard',
+                    userId,
+                    error,
+                });
+            }
+        }),
+    );
 
     return profiles;
 }

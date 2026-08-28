@@ -279,6 +279,41 @@ describe('dashboard static assets', () => {
         expect(createdElements.some((element) => element.textContent === '$0 / $0.50')).toBe(true);
     });
 
+    it('refreshes stats every 15 seconds only while the dashboard is visible', () => {
+        const dashboardJs = readFileSync('src/public/js/dashboard.js', 'utf-8');
+        let scheduled = () => undefined;
+        let refreshMs = 0;
+        const context = {
+            document: { hidden: true },
+            statsCalls: 0,
+            healthCalls: 0,
+            setInterval(callback: () => void, delay: number) {
+                scheduled = callback;
+                refreshMs = delay;
+                return 1;
+            },
+            clearInterval() {},
+        };
+
+        vm.createContext(context);
+        vm.runInContext(dashboardJs, context);
+        vm.runInContext(
+            `loadStats = async () => { statsCalls += 1; };
+             checkApiHealth = async () => { healthCalls += 1; };
+             loadDashboard();`,
+            context,
+        );
+
+        expect(context.statsCalls).toBe(1);
+        expect(context.healthCalls).toBe(1);
+        expect(refreshMs).toBe(15000);
+        scheduled();
+        expect(context.statsCalls).toBe(1);
+        context.document.hidden = false;
+        scheduled();
+        expect(context.statsCalls).toBe(2);
+    });
+
     it('escapes glossary table fields rendered from stored import data', () => {
         const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
         const accessJs = readFileSync('src/public/js/access.js', 'utf-8');

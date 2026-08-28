@@ -378,7 +378,8 @@ export function createDashboardApp({
         const scope = getScope(res);
         const scopedClient = scope.client;
         const cacheStats = cache.stats();
-        const usageStats = usage.getStats();
+        const runtimeConfig = configRepository.getRuntimeConfig();
+        const usageStats = usage.getStats(runtimeConfig);
         const scopeProfileId = isCombinedDashboard ? scope.appProfileIdForLogs : undefined;
         const metricsSnapshot = metrics.snapshot({ appProfileId: scopeProfileId });
         const memoryUsage = process.memoryUsage();
@@ -386,7 +387,6 @@ export function createDashboardApp({
         const heapUsedMB = (memoryUsage.heapUsed / BYTES_PER_MB).toFixed(1);
         const externalMB = (memoryUsage.external / BYTES_PER_MB).toFixed(1);
         const runtimeSnapshot = runtimeLimiter?.snapshot() ?? createEmptyRuntimeSnapshot();
-        const runtimeConfig = configRepository.getRuntimeConfig();
         const providerMode = runtimeConfig.translationProvider || 'vertex';
         const translationTotals = {
             total: metricsSnapshot.translationsTotal,
@@ -397,7 +397,10 @@ export function createDashboardApp({
             ? scopedClient.guilds.cache.map((guild) => guild.id)
             : [];
         const guildBudgetConfigs = store.listGuildBudgets();
-        const guildStatsById = guildIds.length > 0 ? usage.getGuildStatsForGuilds(guildIds) : {};
+        const guildStatsById =
+            guildIds.length > 0
+                ? usage.getGuildStatsForGuilds(guildIds, guildBudgetConfigs, runtimeConfig)
+                : {};
         const guildBudgetList = scope.capabilities.guildAccess
             ? scopedClient.guilds.cache.map((guild) => {
                   const guildCfg = guildBudgetConfigs[guild.id];
@@ -420,14 +423,13 @@ export function createDashboardApp({
                   };
               })
             : [];
-        const cfg = configRepository.getDashboardConfig();
         const userBudgetConfigs = store.listUserBudgets();
-        const allowedUserIds = new Set(cfg.allowedUserIds);
+        const allowedUserIds = new Set(runtimeConfig.allowedUserIds);
         const pendingUserIds = new Set(pendingUserInstallOwnerRepository.listUserIds());
         const userIds = scope.capabilities.userAccess
             ? [
                   ...new Set([
-                      ...cfg.allowedUserIds,
+                      ...runtimeConfig.allowedUserIds,
                       ...pendingUserIds,
                       ...Object.keys(userBudgetConfigs),
                   ]),
@@ -440,11 +442,16 @@ export function createDashboardApp({
                   userIds,
               })
             : {};
+        const userStatsById =
+            userIds.length > 0
+                ? usage.getUserStatsForUsers(userIds, userBudgetConfigs, runtimeConfig)
+                : {};
         const userBudgetList = scope.capabilities.userAccess
             ? userIds.map((userId) => {
                   const customBudget = userBudgetConfigs[userId];
-                  const userStats = usage.getUserStats(userId);
-                  const budget = customBudget?.dailyBudgetUsd ?? cfg.defaultUserDailyBudgetUsd;
+                  const userStats = userStatsById[userId]!;
+                  const budget =
+                      customBudget?.dailyBudgetUsd ?? runtimeConfig.defaultUserDailyBudgetUsd;
                   const totalCost = userStats.totalCost ?? 0;
                   return {
                       id: userId,

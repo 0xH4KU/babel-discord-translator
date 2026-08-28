@@ -226,18 +226,25 @@ const usageMock = vi.hoisted(() => ({
     getAllUserHistory: vi.fn(() => []),
     getUsageExportRows: vi.fn(() => []),
     record: vi.fn(),
-    getUserStats: vi.fn((userId: string) => ({
-        date: '2025-03-01',
-        inputTokens: userId === 'user-1' ? 1000 : 0,
-        outputTokens: 0,
-        requests: userId === 'user-1' ? 1 : 0,
-        inputCost: userId === 'user-1' ? 0.01 : 0,
-        outputCost: 0,
-        totalCost: userId === 'user-1' ? 0.01 : 0,
-        dailyBudget: 0.5,
-        budgetUsedPercent: userId === 'user-1' ? 2 : 0,
-        budgetExceeded: false,
-    })),
+    getUserStatsForUsers: vi.fn((userIds: string[]) =>
+        Object.fromEntries(
+            userIds.map((userId) => [
+                userId,
+                {
+                    date: '2025-03-01',
+                    inputTokens: userId === 'user-1' ? 1000 : 0,
+                    outputTokens: 0,
+                    requests: userId === 'user-1' ? 1 : 0,
+                    inputCost: userId === 'user-1' ? 0.01 : 0,
+                    outputCost: 0,
+                    totalCost: userId === 'user-1' ? 0.01 : 0,
+                    dailyBudget: 0.5,
+                    budgetUsedPercent: userId === 'user-1' ? 2 : 0,
+                    budgetExceeded: false,
+                },
+            ]),
+        ),
+    ),
 }));
 
 vi.mock('../src/modules/usage/usage.js', () => ({
@@ -1183,7 +1190,7 @@ describe('Dashboard API', () => {
                 (id) => store.clearUserBudget(id),
                 (id, budget) => store.setUserBudget(id, budget),
             );
-            usageMock.getUserStats.mockClear();
+            usageMock.getUserStatsForUsers.mockClear();
 
             const login = await request(pocketServer, 'POST', '/api/login', {
                 body: { password: 'test-pass-123' },
@@ -1224,9 +1231,12 @@ describe('Dashboard API', () => {
                     pending: true,
                 }),
             ]);
-            expect(usageMock.getUserStats).toHaveBeenCalledWith('user-1');
-            expect(usageMock.getUserStats).toHaveBeenCalledWith('user-2');
-            expect(usageMock.getUserStats).toHaveBeenCalledWith('pending-owner');
+            expect(usageMock.getUserStatsForUsers).toHaveBeenCalledOnce();
+            expect(usageMock.getUserStatsForUsers).toHaveBeenCalledWith(
+                ['user-1', 'user-2', 'pending-owner'],
+                { 'user-1': { dailyBudgetUsd: 1.25 } },
+                expect.objectContaining({ defaultUserDailyBudgetUsd: 0.5 }),
+            );
         } finally {
             store.updateConfigValues(previousConfig);
             replaceBudgets(
