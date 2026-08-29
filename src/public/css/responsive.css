@@ -130,6 +130,15 @@
         width: 100%;
     }
 
+    .guild-feature-row,
+    .guild-budget-row {
+        padding-left: 0;
+    }
+
+    .guild-feature-row {
+        grid-template-columns: 1fr;
+    }
+
     .header h1 {
         font-size: 1.1rem;
     }

@@ -53,7 +53,7 @@ describe('SQLiteSessionRepository', () => {
         repository.delete('token-a');
         expect(repository.get('token-a')).toBeNull();
 
-        repository.clear();
+        repository.delete('token-b');
         expect(Array.from(repository.entries())).toEqual([]);
         db.close();
     });

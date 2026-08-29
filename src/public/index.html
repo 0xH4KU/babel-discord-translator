@@ -243,7 +243,7 @@
                         <div class="sub" id="stat-total-detail"></div>
                     </div>
                     <div class="card">
-                        <div class="label">Cache Hit Rate</div>
+                        <div class="label">Translation Cache Hit Rate</div>
                         <div class="value" id="stat-hitrate">-</div>
                         <div class="sub" id="stat-saved"></div>
                     </div>
@@ -341,10 +341,10 @@
             <!-- Access Tab -->
             <div class="tab-content" id="tab-access">
                 <div class="settings-section" data-capability="guildAccess">
-                    <h3>Server Whitelist</h3>
+                    <h3>Server Feature Access</h3>
                     <div class="desc-text">
-                        Only <strong>enabled</strong> servers can use translation. New servers are
-                        disabled by default.
+                        Choose access per server. Enabling Babel Lens also enables Translation;
+                        disabling Translation also disables Lens.
                     </div>
                     <div id="guild-list" class="guild-list">
                         <div class="no-guilds">Loading servers...</div>
@@ -567,7 +567,7 @@
 
                 <div class="save-bar" data-capability="guildAccess">
                     <span class="save-status" data-access-save-status
-                        >No unsaved whitelist changes</span
+                        >No unsaved access changes</span
                     >
                     <button
                         class="btn btn-primary"
@@ -683,6 +683,39 @@
                 </div>
 
                 <div class="settings-section">
+                    <h3>Babel Lens / Google Cloud Vision</h3>
+                    <div class="desc-text">
+                        Configure OCR separately from the translation provider. The monthly limit
+                        defaults to 900, is shared by Guild and Pocket, and disables Lens at 0.
+                    </div>
+                    <div class="settings-row">
+                        <div class="input-group">
+                            <label>Cloud Vision API Key</label>
+                            <input
+                                type="password"
+                                id="cfg-vision-apikey"
+                                placeholder="Enter new key to change"
+                            />
+                            <div class="hint">The key must allow the Cloud Vision API.</div>
+                        </div>
+                        <div class="input-group">
+                            <label>Monthly Image Limit (0 = disabled)</label>
+                            <input
+                                type="number"
+                                id="cfg-vision-limit"
+                                min="0"
+                                step="1"
+                                data-action="previewVisionLimit"
+                                data-action-value="value"
+                            />
+                            <div class="hint" id="cfg-vision-usage">
+                                0 / 900 images used this month
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-section">
                     <h3>Pricing &amp; Budget</h3>
                     <div class="settings-row">
                         <div class="input-group">
@@ -716,13 +749,13 @@
                             <input type="number" id="cfg-cooldown" min="1" max="60" />
                         </div>
                         <div class="input-group">
-                            <label>Cache Max Size</label>
+                            <label>Translation Cache Max Size</label>
                             <input type="number" id="cfg-cache" min="100" max="2000" />
                             <div class="hint">Recommended ceiling for small instances: 2000</div>
                         </div>
                         <div class="input-group inline-action">
                             <button class="btn btn-secondary btn-sm" data-action="clearCache">
-                                Clear Cache
+                                Clear Caches
                             </button>
                         </div>
                     </div>
@@ -852,6 +885,7 @@
         <script src="/js/dashboard.js"></script>
         <script src="/js/settings.js"></script>
         <script src="/js/access.js"></script>
+        <script src="/js/vision-limits.js"></script>
         <script src="/js/history.js"></script>
         <script src="/js/logs.js"></script>
         <script src="/js/app.js"></script>

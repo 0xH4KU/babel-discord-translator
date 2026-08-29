@@ -71,6 +71,15 @@ function withTitle(check: SetupDoctorCheckDraft): SetupDoctorCheck {
     return { title: CHECK_TITLES[check.id] ?? check.id, ...check };
 }
 
+function hasSameNumbers(actual: unknown, expected?: number[]): boolean {
+    return (
+        expected === undefined ||
+        (Array.isArray(actual) &&
+            actual.length === expected.length &&
+            expected.every((value) => actual.includes(value)))
+    );
+}
+
 export function runSqliteWriteProbe(): void {
     const db = getSqliteDatabase();
     inTransaction(db, () => {
@@ -120,6 +129,8 @@ async function commandsCheck({
     SetupDoctorDeps,
     'profile' | 'profiles' | 'env' | 'fetchFn' | 'requireProfileSpecificRegistrationEnv'
 >): Promise<SetupDoctorCheckDraft> {
+    const registerCommand =
+        profile.id === 'babel-pocket' ? 'npm run register:pocket' : 'npm run register:guild';
     try {
         const { appId, botToken } = resolveRegistrationEnv(profile, env, {
             requireProfileSpecificEnv:
@@ -131,7 +142,7 @@ async function commandsCheck({
                 id: 'commands',
                 status: 'skipped',
                 detail: 'Discord registration credentials are missing',
-                action: 'Set Discord registration env vars, then run npm run register.',
+                action: `Set Discord registration env vars, then run ${registerCommand}.`,
             };
         }
 
@@ -149,7 +160,7 @@ async function commandsCheck({
                 status: 'fail',
                 detail: `Discord command lookup failed with HTTP ${response.status}`,
                 error: await response.text(),
-                action: 'Run npm run register after fixing Discord API access.',
+                action: `Run ${registerCommand} after fixing Discord API access.`,
             };
         }
 
@@ -159,29 +170,52 @@ async function commandsCheck({
                 id: 'commands',
                 status: 'fail',
                 detail: 'Discord command lookup returned an unexpected response',
-                action: 'Run npm run register to refresh Discord commands.',
+                action: `Run ${registerCommand} to refresh Discord commands.`,
             };
         }
 
-        const registeredNames = new Set(
+        const registeredCommands = new Map(
             body
-                .map((command) =>
-                    typeof command === 'object' && command && 'name' in command
-                        ? command.name
-                        : undefined,
+                .filter(
+                    (command): command is Record<string, unknown> =>
+                        typeof command === 'object' &&
+                        command !== null &&
+                        'name' in command &&
+                        typeof command.name === 'string',
                 )
-                .filter((name): name is string => typeof name === 'string'),
+                .map((command) => [command.name as string, command]),
         );
-        const missingNames = getCommandsForProfile(profile)
-            .map((command) => command.name)
-            .filter((name) => !registeredNames.has(name));
+        const expectedCommands = getCommandsForProfile(profile);
+        const missingNames = expectedCommands
+            .map(({ name }) => name)
+            .filter((name) => !registeredCommands.has(name));
 
         if (missingNames.length > 0) {
             return {
                 id: 'commands',
                 status: 'fail',
                 detail: `Missing registered Discord commands: ${missingNames.join(', ')}`,
-                action: 'Run npm run register to refresh Discord commands.',
+                action: `Run ${registerCommand} to refresh Discord commands.`,
+            };
+        }
+
+        const mismatchedNames = expectedCommands
+            .filter((expected) => {
+                const actual = registeredCommands.get(expected.name)!;
+                return (
+                    actual.type !== expected.type ||
+                    !hasSameNumbers(actual.integration_types, expected.integration_types) ||
+                    !hasSameNumbers(actual.contexts, expected.contexts)
+                );
+            })
+            .map(({ name }) => name);
+
+        if (mismatchedNames.length > 0) {
+            return {
+                id: 'commands',
+                status: 'fail',
+                detail: `Outdated registered Discord commands: ${mismatchedNames.join(', ')}`,
+                action: `Run ${registerCommand} to refresh Discord commands.`,
             };
         }
 
@@ -196,7 +230,7 @@ async function commandsCheck({
             status: 'fail',
             detail: 'Discord command check failed',
             error: errorMessage(error),
-            action: 'Run npm run register after fixing the command check error.',
+            action: `Run ${registerCommand} after fixing the command check error.`,
         };
     }
 }

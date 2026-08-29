@@ -12,35 +12,20 @@ let allowedUsersPage = 1,
     allowedUsersPageSize = 15;
 let manualGuildIds = [];
 let accessAllowedGuildIdsDraft = [];
+let accessLensEnabledGuildIdsDraft = [];
 let accessAllowedUserIdsDraft = [];
 let accessWhitelistDirty = false;
 let accessWhitelistLoaded = false;
 let glossaryGuildId = '';
 let glossaryEntries = [];
 
-function normalizeNumericIds(ids) {
+function normalizeIds(ids) {
     return [...new Set((ids || []).map((id) => String(id).trim()).filter(Boolean))];
 }
 
-function normalizeGuildIds(ids) {
-    return normalizeNumericIds(ids);
-}
-
-function normalizeUserIds(ids) {
-    return normalizeNumericIds(ids);
-}
-
-function sameGuildIds(a, b) {
-    const left = normalizeGuildIds(a).sort();
-    const right = normalizeGuildIds(b).sort();
-
-    if (left.length !== right.length) return false;
-    return left.every((id, index) => id === right[index]);
-}
-
-function sameUserIds(a, b) {
-    const left = normalizeUserIds(a).sort();
-    const right = normalizeUserIds(b).sort();
+function sameIds(a, b) {
+    const left = normalizeIds(a).sort();
+    const right = normalizeIds(b).sort();
 
     if (left.length !== right.length) return false;
     return left.every((id, index) => id === right[index]);
@@ -48,13 +33,12 @@ function sameUserIds(a, b) {
 
 function updateAccessSaveState() {
     const userAccess = hasDashboardCapability('pendingUserInstallOwners');
-    const count = userAccess
-        ? accessAllowedUserIdsDraft.length
-        : accessAllowedGuildIdsDraft.length;
     const dirty = accessWhitelistDirty;
     const status = dirty
-        ? `${count} enabled ${userAccess ? 'user' : 'server'}(s) pending save`
-        : 'No unsaved whitelist changes';
+        ? userAccess
+            ? `${accessAllowedUserIdsDraft.length} enabled user(s) pending save`
+            : `${accessAllowedGuildIdsDraft.length} Translation · ${accessLensEnabledGuildIdsDraft.length} Lens server(s) pending save`
+        : 'No unsaved access changes';
 
     document.querySelectorAll('[data-access-save-status]').forEach((node) => {
         node.textContent = status;
@@ -66,27 +50,34 @@ function updateAccessSaveState() {
     });
 }
 
+function refreshAccessDirty() {
+    accessWhitelistDirty = hasDashboardCapability('guildAccess')
+        ? !sameIds(accessAllowedGuildIdsDraft, currentConfig.allowedGuildIds || []) ||
+          !sameIds(accessLensEnabledGuildIdsDraft, currentConfig.lensEnabledGuildIds || [])
+        : !sameIds(accessAllowedUserIdsDraft, currentConfig.allowedUserIds || []);
+}
+
 function setAccessWhitelistDraft(allowedGuildIds) {
-    accessAllowedGuildIdsDraft = normalizeGuildIds(allowedGuildIds);
-    accessWhitelistDirty = !sameGuildIds(
-        accessAllowedGuildIdsDraft,
-        currentConfig.allowedGuildIds || [],
-    );
+    accessAllowedGuildIdsDraft = normalizeIds(allowedGuildIds);
+    refreshAccessDirty();
+    updateAccessSaveState();
+}
+
+function setLensGuildDraft(guildIds) {
+    accessLensEnabledGuildIdsDraft = normalizeIds(guildIds);
+    refreshAccessDirty();
     updateAccessSaveState();
 }
 
 function setUserAllowlistDraft(allowedUserIds) {
-    accessAllowedUserIdsDraft = normalizeUserIds(allowedUserIds);
-    accessWhitelistDirty = !sameUserIds(
-        accessAllowedUserIdsDraft,
-        currentConfig.allowedUserIds || [],
-    );
+    accessAllowedUserIdsDraft = normalizeIds(allowedUserIds);
+    refreshAccessDirty();
     updateAccessSaveState();
 }
 
 function updateAccessUsersFromBudgetPayload(payload) {
     userBudgetData = payload.budgets || payload || {};
-    const ids = normalizeUserIds(Object.keys(userBudgetData));
+    const ids = normalizeIds(Object.keys(userBudgetData));
     const merged = new Set([...ids, ...accessAllowedUserIdsDraft]);
     accessUserIds = [...merged];
 }
@@ -110,15 +101,20 @@ async function loadAccess() {
             requests.userBudgets,
         ]);
         currentConfig = await cfgRes.json();
-        currentConfig.allowedGuildIds = normalizeGuildIds(currentConfig.allowedGuildIds || []);
-        currentConfig.allowedUserIds = normalizeUserIds(currentConfig.allowedUserIds || []);
+        currentConfig.allowedGuildIds = normalizeIds(currentConfig.allowedGuildIds || []);
+        currentConfig.lensEnabledGuildIds = normalizeIds(
+            currentConfig.lensEnabledGuildIds || [],
+        );
+        currentConfig.allowedUserIds = normalizeIds(currentConfig.allowedUserIds || []);
         if (guildAccess && (!accessWhitelistLoaded || !accessWhitelistDirty)) {
             accessAllowedGuildIdsDraft = [...currentConfig.allowedGuildIds];
+            accessLensEnabledGuildIdsDraft = [...currentConfig.lensEnabledGuildIds];
         }
         if (pendingUserInstallOwners && (!accessWhitelistLoaded || !accessWhitelistDirty)) {
             accessAllowedUserIdsDraft = [...currentConfig.allowedUserIds];
         }
         accessWhitelistLoaded = true;
+        refreshAccessDirty();
         allGuilds = guildRes ? await guildRes.json() : [];
         guildBudgetData = budgetRes ? await budgetRes.json() : {};
         if (guildAccess) {
@@ -141,16 +137,21 @@ async function loadAccess() {
 async function saveGuildWhitelist() {
     if (!hasDashboardCapability('guildAccess')) return;
 
-    const allowedGuildIds = normalizeGuildIds(accessAllowedGuildIdsDraft);
+    const allowedGuildIds = normalizeIds(accessAllowedGuildIdsDraft);
+    const lensEnabledGuildIds = normalizeIds(accessLensEnabledGuildIdsDraft).filter((id) =>
+        allowedGuildIds.includes(id),
+    );
 
     const res = await api('/config', {
         method: 'POST',
-        body: JSON.stringify({ allowedGuildIds }),
+        body: JSON.stringify({ allowedGuildIds, lensEnabledGuildIds }),
     });
 
     if (res.ok) {
         currentConfig.allowedGuildIds = [...allowedGuildIds];
+        currentConfig.lensEnabledGuildIds = [...lensEnabledGuildIds];
         accessAllowedGuildIdsDraft = [...allowedGuildIds];
+        accessLensEnabledGuildIdsDraft = [...lensEnabledGuildIds];
         accessWhitelistDirty = false;
         updateAccessSaveState();
         renderGuilds();
@@ -163,7 +164,7 @@ async function saveGuildWhitelist() {
 async function saveUserWhitelist() {
     if (!hasDashboardCapability('pendingUserInstallOwners')) return;
 
-    const allowedUserIds = normalizeUserIds(accessAllowedUserIdsDraft);
+    const allowedUserIds = normalizeIds(accessAllowedUserIdsDraft);
 
     const res = await api('/config', {
         method: 'POST',
@@ -195,9 +196,29 @@ function toggleGuildAllowed(guildId, checked) {
         nextAllowed.add(guildId);
     } else {
         nextAllowed.delete(guildId);
+        accessLensEnabledGuildIdsDraft = accessLensEnabledGuildIdsDraft.filter(
+            (id) => id !== guildId,
+        );
     }
 
     setAccessWhitelistDraft([...nextAllowed]);
+    renderGuilds();
+}
+
+function toggleGuildLens(guildId, checked) {
+    if (!hasDashboardCapability('guildAccess')) return;
+
+    const nextAllowed = new Set(accessAllowedGuildIdsDraft);
+    const nextEnabled = new Set(accessLensEnabledGuildIdsDraft);
+    if (checked) {
+        nextAllowed.add(guildId);
+        nextEnabled.add(guildId);
+    } else {
+        nextEnabled.delete(guildId);
+    }
+
+    accessAllowedGuildIdsDraft = [...nextAllowed];
+    setLensGuildDraft([...nextEnabled]);
     renderGuilds();
 }
 
@@ -207,10 +228,11 @@ function renderGuilds() {
     const container = document.getElementById('guild-list');
     if (!container) return;
     const allowed = accessAllowedGuildIdsDraft;
+    const lensEnabled = accessLensEnabledGuildIdsDraft;
     const globalBudget = currentConfig.dailyBudgetUsd || 0;
 
     const knownIds = new Set(allGuilds.map((g) => g.id));
-    manualGuildIds = allowed.filter((id) => !knownIds.has(id));
+    manualGuildIds = normalizeIds([...allowed, ...lensEnabled]).filter((id) => !knownIds.has(id));
 
     const allItems = [
         ...allGuilds.map((g) => ({ ...g, manual: false })),
@@ -232,6 +254,7 @@ function renderGuilds() {
     const html = pageItems
         .map((g) => {
             const checked = allowed.includes(g.id);
+            const lensChecked = lensEnabled.includes(g.id);
             const bd = guildBudgetData[g.id];
             const hasCustomBudget = bd && bd.budget >= 0;
             const effectiveBudget = hasCustomBudget ? bd.budget : globalBudget;
@@ -242,25 +265,28 @@ function renderGuilds() {
                   ? formatUsd(globalBudget) + ' (global)'
                   : 'Unlimited';
             const costLabel = bd ? formatUsd(todayCost) : '-';
+            const escapedId = escapeHtml(g.id);
+            const escapedName = escapeHtml(g.name || g.id);
+            const featureControls = `<div class="guild-feature-row" role="group" aria-label="Feature access for ${escapedName}">
+        <div class="guild-feature-control"><span class="guild-feature-label">Translation</span><span class="guild-feature-state${checked ? ' is-enabled' : ''}">${checked ? 'Enabled' : 'Disabled'}</span><label class="toggle"><input type="checkbox" aria-label="Enable Translation for ${escapedName}" data-guild-id="${escapedId}" ${actionAttrs('toggleGuildAllowed', [g.id], { value: 'checked' })} ${checked ? 'checked' : ''}><span class="slider"></span></label></div>
+        <div class="guild-feature-control"><span class="guild-feature-label">Babel Lens</span><span class="guild-feature-state${lensChecked ? ' is-enabled' : ''}">${lensChecked ? 'Enabled' : 'Disabled'}</span><label class="toggle"><input type="checkbox" aria-label="Enable Babel Lens for ${escapedName}" data-lens-guild-id="${escapedId}" ${actionAttrs('toggleGuildLens', [g.id], { value: 'checked' })} ${lensChecked ? 'checked' : ''}><span class="slider"></span></label></div>
+      </div>`;
 
             if (g.manual) {
-                const escapedId = escapeHtml(g.id);
                 return `<div class="guild-item guild-item-col">
         <div class="guild-item-row">
           <img src="${escapeHtml(genAvatar(g.id))}" alt="">
           <span class="guild-name guild-name-mono">${escapedId}</span>
           <span class="guild-members">manually added</span>
-          <label class="toggle"><input type="checkbox" data-guild-id="${escapedId}" ${actionAttrs('toggleGuildAllowed', [g.id], { value: 'checked' })} checked><span class="slider"></span></label>
           <button class="btn-danger" ${actionAttrs('removeManualGuild', [g.id])}>✕</button>
         </div>
+        ${featureControls}
       </div>`;
             }
 
             const pct =
                 effectiveBudget > 0 ? Math.min((todayCost / effectiveBudget) * 100, 100) : 0;
             const barClass = pct > 90 ? ' danger' : pct > 60 ? ' warning' : '';
-            const escapedId = escapeHtml(g.id);
-            const escapedName = escapeHtml(g.name || g.id);
             const escapedIcon = escapeHtml(g.icon || genAvatar(g.name || g.id));
 
             return `<div class="guild-item guild-item-col">
@@ -268,8 +294,8 @@ function renderGuilds() {
         <img src="${escapedIcon}" alt="">
         <span class="guild-name">${escapedName}</span>
         <span class="guild-members">${escapeHtml(g.memberCount ?? '?')} members</span>
-        <label class="toggle"><input type="checkbox" data-guild-id="${escapedId}" ${actionAttrs('toggleGuildAllowed', [g.id], { value: 'checked' })} ${checked ? 'checked' : ''}><span class="slider"></span></label>
       </div>
+      ${featureControls}
       <div class="guild-budget-row">
         <div class="guild-budget-info">
           <span class="guild-budget-label">Budget: ${budgetLabel}</span>
@@ -285,6 +311,7 @@ function renderGuilds() {
           ${hasCustomBudget ? `<button class="btn-danger btn-xs" ${actionAttrs('resetGuildBudget', [g.id])} title="Reset to global">↺</button>` : ''}
         </div>
       </div>
+      ${renderVisionLimitControl('guild', g.id, bd)}
     </div>`;
         })
         .join('');
@@ -392,6 +419,7 @@ function removeManualGuild(id) {
     if (!hasDashboardCapability('guildAccess')) return;
 
     setAccessWhitelistDraft(accessAllowedGuildIdsDraft.filter((g) => g !== id));
+    setLensGuildDraft(accessLensEnabledGuildIdsDraft.filter((g) => g !== id));
     renderGuilds();
     renderGlossaryGuildSelect();
     showToast('Guild removed — click Save to apply');
@@ -749,6 +777,7 @@ function renderAllowedUsers() {
           ${hasCustomBudget ? `<button class="btn-danger btn-xs" ${actionAttrs('resetUserBudget', [userId])} title="Reset to default">↺</button>` : ''}
         </div>
       </div>
+      ${renderVisionLimitControl('user', userId, budgetData)}
     </div>`;
         })
         .join('');
@@ -790,7 +819,7 @@ function addAllowedUser() {
 
     nextAllowed.add(id);
     setUserAllowlistDraft([...nextAllowed]);
-    accessUserIds = normalizeUserIds([...accessUserIds, id]);
+    accessUserIds = normalizeIds([...accessUserIds, id]);
     allowedUsersPage = Math.max(Math.ceil(accessUserIds.length / allowedUsersPageSize), 1);
     input.value = '';
     renderAllowedUsers();
@@ -807,7 +836,7 @@ function setAllowedUserEnabled(id, enabled) {
         nextAllowed.delete(id);
     }
 
-    accessUserIds = normalizeUserIds([...accessUserIds, id]);
+    accessUserIds = normalizeIds([...accessUserIds, id]);
     setUserAllowlistDraft([...nextAllowed]);
     renderAllowedUsers();
     showToast(`${enabled ? 'User enabled' : 'User disabled'} — click Save to apply`);

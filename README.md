@@ -21,18 +21,18 @@
 
 Babel now ships as two product profiles on one shared core: translation providers, cache, language detection, usage accounting, metrics, logging, persistence, and dashboard foundations are implemented once and reused by both apps.
 
-| App          | Install Model        | Best For                        | Command Surface                                       |
-| ------------ | -------------------- | ------------------------------- | ----------------------------------------------------- |
-| Babel Guild  | Server/Guild Install | Communities and servers         | `Babel`, `/translate`, `/setlang`, `/mylang`, `/help` |
-| Babel Pocket | User Install         | Individuals and trusted friends | `Babel Pocket`, `/setlang`, `/mylang`, `/help`        |
+| App          | Install Model        | Best For                        | Command Surface                                                     |
+| ------------ | -------------------- | ------------------------------- | ------------------------------------------------------------------- |
+| Babel Guild  | Server/Guild Install | Communities and servers         | `Babel`, `Babel Lens`, `/translate`, `/setlang`, `/mylang`, `/help` |
+| Babel Pocket | User Install         | Individuals and trusted friends | `Babel Pocket`, `Babel Lens`, `/setlang`, `/mylang`, `/help`        |
 
-Right-click any message → **Apps** → **Babel** or **Babel Pocket** → get an ephemeral translation only you can see. Operators keep control of hosting, provider keys, access policy, and token costs instead of paying for a shared hosted bot.
+Right-click any message → **Apps** → **Babel** or **Babel Pocket** for text, or **Babel Lens** for an attached image. Results are ephemeral and only visible to you. Operators keep control of hosting, provider keys, access policy, and token costs instead of paying for a shared hosted bot.
 
 [![License: GPL-3.0-only](https://img.shields.io/badge/License-GPL--3.0--only-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-22.13%2B-green.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue.svg)](https://www.typescriptlang.org/)
 [![discord.js](https://img.shields.io/badge/discord.js-v14-blue.svg)](https://discord.js.org)
-[![Version](https://img.shields.io/badge/version-0.2.3-brightgreen.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-0.3.0-brightgreen.svg)](package.json)
 [![CI](https://github.com/0xH4KU/babel-discord-translator/actions/workflows/ci.yml/badge.svg)](https://github.com/0xH4KU/babel-discord-translator/actions)
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/babel-discord-tran-1?referralCode=euhy-o&utm_medium=integration&utm_source=template&utm_campaign=generic)
@@ -55,7 +55,7 @@ Babel is for Discord communities and trusted individual installs that want trans
 
 - **Self-hosted** — your Discord token, provider keys, SQLite data, and logs stay in your deployment
 - **No privileged intents** — Babel uses context menu and slash commands, not full message-content access
-- **Cost controls** — global, per-server, and per-user budgets with cache hit tracking and usage history
+- **Cost controls** — translation budgets plus global, per-server, and per-user Lens image quotas
 - **Guild glossaries** — Babel Guild can define server-specific term mappings for names, brands, game terms, and community vocabulary
 - **Operations ready** — health endpoints, Prometheus metrics, runtime queue limits, provider fallback diagnostics, and backup docs
 
@@ -85,6 +85,18 @@ npm run build:pocket
 npm run start:pocket
 ```
 
+## Babel Lens
+
+Babel Lens reads text from the first supported image attached to a Discord message, translates it to your usual target language, and returns a private JPEG with the translation below the image. When Cloud Vision finds multiple text regions, matching numbers connect each highlighted source region to its translated line. If image rendering is unavailable, Babel falls back to private translated text.
+
+1. Send a PNG, JPEG, or WebP as a Discord attachment.
+2. On desktop, right-click the message; on mobile, long-press it.
+3. Choose **Apps** → **Babel Lens**.
+
+`/setlang` preferences apply to Lens; otherwise Babel uses your Discord locale. Images must be hosted by Discord and may be up to 7 MB and 16 megapixels. The image bytes go to Google Cloud Vision for OCR, and the detected text goes to your configured translation provider. Babel does not persist the image; OCR and translation cache entries remain in memory until restart.
+
+Operators configure the dedicated Cloud Vision API key and global monthly image limit in **Settings**. Babel Guild also requires Lens to be enabled for each server in **Access**; Pocket follows its user-install access policy. The global limit defaults to 900 images per UTC month, and optional per-server or per-user limits can add a tighter ceiling. Only outbound Vision requests count, so OCR cache hits do not consume quota. See the [budget model](docs/operations/budget-model.md) for exact quota semantics and the [deployment guide](docs/operations/deployment.md) for upgrade steps.
+
 ## Support
 
 Babel is free and self-hosted. If it saves you setup time or helps your community or private install avoid a hosted bot subscription, you can support upstream maintenance on [Ko-fi](https://ko-fi.com/P5P51QB1B7).
@@ -96,8 +108,9 @@ Sponsorship is optional and does not unlock private features. Supporting mainten
 ### Core Translation
 
 - **Context Menu Translation** — Right-click → Apps → Babel Guild or Babel Pocket
+- **Babel Lens** — OCR and translate Discord images with matching numbered source regions
 - **`/translate` Command** — Guild-only slash command with public webhook-based output
-- **Ephemeral Messages** — Context menu translations are private, only visible to you
+- **Ephemeral Messages** — Context menu text and Lens results are private, only visible to you
 - **Multi-language Support** — Auto-detects your Discord locale, or use `/setlang` to choose
 - **Custom Prompt** — Fully customizable translation system prompt from the dashboard
 - **Server Glossary** — Guild-only term mappings injected into translation prompts, with cache invalidation when terms change
@@ -133,7 +146,7 @@ Sponsorship is optional and does not unlock private features. Supporting mainten
 - **API Health Check** — Real-time health status for each configured provider
 - **Translation Test** — Test translations directly from the dashboard
 - **User Preferences** — View and manage per-user language settings
-- **Cost Tracking** — Real-time token usage with global, per-server, and per-user budget controls
+- **Cost Tracking** — Real-time token usage plus translation budgets and Lens image quotas
 
 ### Infrastructure
 
@@ -145,7 +158,7 @@ Sponsorship is optional and does not unlock private features. Supporting mainten
 
 ## Quick Start
 
-**Prerequisites:** Node.js `22.13+`, npm, a Discord bot token, and either a Vertex AI project or credentials for an OpenAI-compatible endpoint.
+**Prerequisites:** Node.js `22.13+`, npm, a Discord bot token, and either a Vertex AI project or credentials for an OpenAI-compatible endpoint. Babel Lens additionally requires a Google API key with the Cloud Vision API enabled. Direct Linux/PM2 installs also need Noto fonts for translated image captions; the Docker image already includes them.
 
 ```bash
 git clone https://github.com/0xH4KU/babel-discord-translator.git
@@ -225,7 +238,7 @@ For Railway, Docker, VPS, PM2, and static dashboard demo notes, see the [deploym
 DISCORD_APP_ID=your_app_id DISCORD_BOT_TOKEN=your_token npm run register
 ```
 
-By default, `npm run register` follows `BABEL_APP` and falls back to Babel Guild. Babel Guild registers **Babel**, **/translate**, **/setlang**, **/mylang**, and **/help**.
+By default, `npm run register` follows `BABEL_APP` and falls back to Babel Guild. Babel Guild registers **Babel**, **Babel Lens**, **/translate**, **/setlang**, **/mylang**, and **/help**.
 
 Choose a specific app:
 
@@ -234,7 +247,9 @@ DISCORD_APP_ID=your_app_id DISCORD_BOT_TOKEN=your_token npm run register:guild
 DISCORD_APP_ID=your_app_id DISCORD_BOT_TOKEN=your_token npm run register:pocket
 ```
 
-Babel Pocket registers **Babel Pocket**, **/setlang**, **/mylang**, and **/help** for User Install contexts.
+Babel Pocket registers **Babel Pocket**, **Babel Lens**, **/setlang**, **/mylang**, and **/help** for User Install contexts.
+
+Re-run the matching registration command after upgrading from a release without Lens. Combined deployments must run both `register:guild` and `register:pocket`; changing the runtime code alone does not update Discord's stored command definitions.
 
 ### 3. Invite the Bot
 
@@ -252,8 +267,8 @@ After starting the bot, open `http://localhost:3000`:
 | ------------ | --------------------------------------------------------------------------- |
 | **Setup**    | Provider mode, Vertex AI and/or OpenAI-compatible credentials and models    |
 | **Config**   | Cooldown, cache size, max input length, max output tokens, custom prompt    |
-| **Pricing**  | Per-million-token prices, global daily budget (0 = unlimited)               |
-| **Access**   | Guild whitelist, user allowlist, per-server and per-user budget overrides   |
+| **Settings** | Translation providers, dedicated Vision key, and global monthly image limit |
+| **Access**   | Translation/Lens access plus scoped budget and image-limit overrides        |
 | **Glossary** | Babel Guild source → target term mappings                                   |
 | **Users**    | View and manage per-user language preferences                               |
 | **Monitor**  | API health, cache hit rate, failure rate, API call volume, translation test |
@@ -298,6 +313,8 @@ If `DASHBOARD_PASSWORD` is omitted, Babel warns in local development and test en
 Set `BABEL_APP=combined` to run both Babel Guild and Babel Pocket in one process. In combined mode, the combined dashboard root `/` shows a product chooser; `/guild` opens the Babel Guild dashboard; `/pocket` opens the Babel Pocket dashboard.
 
 ### Migration & Legacy Export
+
+Babel applies SQLite schema migrations automatically during startup. The scoped Lens quota migration preserves the existing global monthly Vision usage counter. Back up the database before upgrading; do not run `db:migrate` for normal schema upgrades.
 
 Babel auto-imports `data/config.json` into SQLite on first startup. Manual scripts:
 
@@ -351,18 +368,18 @@ Babel stores runtime data through native `node:sqlite`. Before upgrading Node on
 
 ### Module Layout
 
-| Layer           | Path                       | Responsibility                                                                    |
-| --------------- | -------------------------- | --------------------------------------------------------------------------------- |
-| **Profiles**    | `src/apps/`                | Guild/Pocket profiles, bootstrap, and command definitions                         |
-| **Entry**       | `src/index.ts`             | Node entrypoint selected by `BABEL_APP` or a CLI profile argument                 |
-| **Commands**    | `src/commands/`            | Discord interaction handlers (`babel`, `translate`, `setlang`, `mylang`, `help`)  |
-| **Translation** | `src/modules/translation/` | Cache, cooldowns, runtime limiter, language detection, webhook delivery           |
-| **Config**      | `src/modules/config/`      | Environment validation, runtime config access, config change effects              |
-| **Usage**       | `src/modules/usage/`       | Token accounting, global/guild/user budgets, usage history                        |
-| **Dashboard**   | `src/modules/dashboard/`   | Express app, auth/session flow, capability-gated admin API surface                |
-| **Shared**      | `src/shared/`              | Structured logger, health model, graceful shutdown, app metrics, message catalogs |
-| **Infra**       | `src/infra/`               | Translation provider transports, retry, timeout, and health probes                |
-| **Persistence** | `src/persistence/`         | SQLite store, migrations, normalization, and legacy JSON import/export            |
+| Layer           | Path                       | Responsibility                                                                           |
+| --------------- | -------------------------- | ---------------------------------------------------------------------------------------- |
+| **Profiles**    | `src/apps/`                | Guild/Pocket profiles, bootstrap, and command definitions                                |
+| **Entry**       | `src/index.ts`             | Node entrypoint selected by `BABEL_APP` or a CLI profile argument                        |
+| **Commands**    | `src/commands/`            | Discord interaction handlers (`babel`, `lens`, `translate`, `setlang`, `mylang`, `help`) |
+| **Translation** | `src/modules/translation/` | Translation, OCR/image rendering, cache, cooldowns, runtime limits, webhooks             |
+| **Config**      | `src/modules/config/`      | Environment validation, runtime config access, config change effects                     |
+| **Usage**       | `src/modules/usage/`       | Token accounting, global/guild/user budgets, usage history                               |
+| **Dashboard**   | `src/modules/dashboard/`   | Express app, auth/session flow, capability-gated admin API surface                       |
+| **Shared**      | `src/shared/`              | Structured logger, health model, graceful shutdown, app metrics, message catalogs        |
+| **Infra**       | `src/infra/`               | Translation and Cloud Vision transports, retry, timeout, and health probes               |
+| **Persistence** | `src/persistence/`         | SQLite store, migrations, normalization, and legacy JSON import/export                   |
 
 ### Persistence Model
 

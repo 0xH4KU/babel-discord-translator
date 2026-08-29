@@ -121,6 +121,37 @@ describe('resolveDiscordUserProfiles', () => {
         expect(profiles['user-2']!.displayName).toBe('Tester Global');
     });
 
+    it('should start stale profile fetches in parallel', async () => {
+        let resolveFirst!: (user: User) => void;
+        const first = new Promise<User>((resolve) => {
+            resolveFirst = resolve;
+        });
+        const repository = createRepository();
+        const client = {
+            users: {
+                fetch: vi
+                    .fn()
+                    .mockReturnValueOnce(first)
+                    .mockResolvedValueOnce(discordUser({ id: 'user-2' })),
+            },
+        };
+
+        const pending = resolveDiscordUserProfiles({
+            client: client as never,
+            repository: repository as never,
+            userIds: ['user-1', 'user-2'],
+            now: NOW,
+        });
+        await Promise.resolve();
+
+        expect(client.users.fetch).toHaveBeenCalledTimes(2);
+        resolveFirst(discordUser({ id: 'user-1' }));
+        await expect(pending).resolves.toMatchObject({
+            'user-1': { userId: 'user-1' },
+            'user-2': { userId: 'user-2' },
+        });
+    });
+
     it('should keep going when a Discord fetch fails and fall back to the stale entry', async () => {
         const staleDate = new Date(NOW.getTime() - 25 * 60 * 60 * 1000).toISOString();
         const stale = storedProfile('user-1', staleDate);

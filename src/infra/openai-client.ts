@@ -61,6 +61,7 @@ async function requestChatCompletion(
         logPrefix = 'OpenAI',
         logContext,
         runtimeConfig,
+        signal,
     }: {
         maxOutputTokens: number;
         temperature?: number;
@@ -69,6 +70,7 @@ async function requestChatCompletion(
         logPrefix?: string;
         logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'>;
         runtimeConfig?: RuntimeConfig;
+        signal?: AbortSignal;
     },
 ): Promise<{ data: OpenAIChatResponse; latencyMs: number }> {
     const logger = appLogger.child({
@@ -125,6 +127,7 @@ async function requestChatCompletion(
                 provider: 'openai',
                 retries,
                 timeoutMs,
+                signal,
                 logPrefix,
                 logContext,
             },
@@ -167,16 +170,14 @@ async function requestChatCompletion(
 export async function generateTranslationContent(
     prompt: TranslationPrompt,
     maxOutputTokens: number,
-    options?: {
-        logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'>;
-        runtimeConfig?: RuntimeConfig;
-    },
+    options?: TranslateOptions,
 ): Promise<TranslationResult> {
     const { data } = await requestChatCompletion(prompt, {
         maxOutputTokens,
         logPrefix: 'Translate',
         logContext: options?.logContext,
         runtimeConfig: options?.runtimeConfig,
+        signal: options?.signal,
     });
 
     const result = data.choices?.[0]?.message?.content?.trim();

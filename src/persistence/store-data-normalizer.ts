@@ -129,6 +129,14 @@ export function cloneUserBudgets(
     );
 }
 
+function cloneVisionLimits(limits: Record<string, number> | undefined): Record<string, number> {
+    return Object.fromEntries(
+        Object.entries(limits ?? {}).filter(
+            ([scopeId, limit]) => scopeId && Number.isSafeInteger(limit) && limit >= 0,
+        ),
+    );
+}
+
 export function cloneGuildDailyUsage(
     usage: Record<string, TokenUsage> | undefined,
 ): Record<string, TokenUsage> {
@@ -178,11 +186,17 @@ export function normalizeStoreData(data: Partial<StoreData> | undefined): StoreD
 
     return {
         vertexAiApiKey: normalizeString(source.vertexAiApiKey),
+        visionApiKey: normalizeString(source.visionApiKey),
         gcpProject: normalizeString(source.gcpProject),
         gcpLocation: normalizeString(source.gcpLocation, 'global'),
         geminiModel: normalizeString(source.geminiModel, 'gemini-2.5-flash-lite'),
         allowedGuildIds: Array.isArray(source.allowedGuildIds)
             ? source.allowedGuildIds.filter(
+                  (guildId): guildId is string => typeof guildId === 'string',
+              )
+            : [],
+        lensEnabledGuildIds: Array.isArray(source.lensEnabledGuildIds)
+            ? source.lensEnabledGuildIds.filter(
                   (guildId): guildId is string => typeof guildId === 'string',
               )
             : [],
@@ -195,6 +209,7 @@ export function normalizeStoreData(data: Partial<StoreData> | undefined): StoreD
         inputPricePerMillion: normalizeNumber(source.inputPricePerMillion),
         outputPricePerMillion: normalizeNumber(source.outputPricePerMillion),
         dailyBudgetUsd: normalizeNumber(source.dailyBudgetUsd),
+        visionMonthlyImageLimit: normalizeNumber(source.visionMonthlyImageLimit, 900),
         defaultUserDailyBudgetUsd: normalizeNumber(source.defaultUserDailyBudgetUsd),
         tokenUsage: cloneTokenUsage(source.tokenUsage),
         usageHistory: cloneUsageHistory(source.usageHistory),
@@ -216,9 +231,11 @@ export function normalizeStoreData(data: Partial<StoreData> | undefined): StoreD
         openaiModel: normalizeString(source.openaiModel),
         translationProvider: normalizeProviderMode(source.translationProvider),
         guildBudgets: cloneGuildBudgets(source.guildBudgets),
+        guildVisionLimits: cloneVisionLimits(source.guildVisionLimits),
         guildTokenUsage: cloneGuildDailyUsage(source.guildTokenUsage),
         guildUsageHistory: cloneGuildUsageHistory(source.guildUsageHistory),
         userBudgets: cloneUserBudgets(source.userBudgets),
+        userVisionLimits: cloneVisionLimits(source.userVisionLimits),
         userTokenUsage: cloneUserDailyUsage(source.userTokenUsage),
         userUsageHistory: cloneUserUsageHistory(source.userUsageHistory),
     };

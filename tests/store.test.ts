@@ -53,12 +53,7 @@ describe('ConfigStore', () => {
         const first = new ConfigStore({ dbPath, autoImportLegacyJson: false });
         first.updateConfigValues({ cooldownSeconds: 15 });
         first.setUserLanguage('', 'user1', 'ja');
-        first.saveDailyUsage({
-            date: '2026-03-27',
-            inputTokens: 100,
-            outputTokens: 50,
-            requests: 1,
-        });
+        first.recordUsage('2026-03-27', 100, 50);
         first.close();
 
         const second = new ConfigStore({ dbPath, autoImportLegacyJson: false });
@@ -66,7 +61,7 @@ describe('ConfigStore', () => {
         expect(second.listUserLanguagePreferences()).toEqual([
             { guildId: '', userId: 'user1', language: 'ja' },
         ]);
-        expect(second.getDailyUsage()).toEqual({
+        expect(second.getUsage('global', '', '2026-03-27')).toEqual({
             date: '2026-03-27',
             inputTokens: 100,
             outputTokens: 50,
@@ -113,6 +108,7 @@ describe('ConfigStore', () => {
         const snapshot = store.exportSnapshot();
 
         expect(snapshot.userBudgets).toEqual({});
+        expect(snapshot.userVisionLimits).toEqual({});
         expect(snapshot.userTokenUsage).toEqual({});
         expect(snapshot.userUsageHistory).toEqual({});
         store.close();
@@ -302,83 +298,155 @@ describe('ConfigStore', () => {
         store.close();
     });
 
-    it('should support direct guild usage operations', async () => {
+    it('should record and query guild usage by date', async () => {
         const { ConfigStore } = await importStoreModule();
         const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
 
-        store.saveGuildDailyUsage('guild-1', {
-            date: '2026-03-27',
-            inputTokens: 100,
-            outputTokens: 50,
-            requests: 1,
-        });
-        store.saveGuildUsageHistory('guild-1', [
-            {
-                date: '2026-03-26',
-                inputTokens: 80,
-                outputTokens: 40,
-                requests: 2,
-            },
-        ]);
+        store.recordUsage('2026-03-26', 80, 40, { guildId: 'guild-1' });
+        store.recordUsage('2026-03-27', 100, 50, { guildId: 'guild-1' });
 
-        expect(store.getGuildDailyUsage('guild-1')).toEqual({
+        expect(store.getUsage('guild', 'guild-1', '2026-03-27')).toEqual({
             date: '2026-03-27',
             inputTokens: 100,
             outputTokens: 50,
             requests: 1,
         });
-        expect(store.getGuildUsageHistory('guild-1')).toEqual([
+        expect(store.getUsageHistory('guild', '2026-03-27', ['guild-1'])).toEqual([
             {
                 date: '2026-03-26',
                 inputTokens: 80,
                 outputTokens: 40,
-                requests: 2,
+                requests: 1,
             },
         ]);
-        expect(store.getGuildDailyUsage('guild-2')).toBeNull();
-        expect(store.getGuildUsageHistory('guild-2')).toEqual([]);
+        expect(store.getUsage('guild', 'guild-2', '2026-03-27')).toBeNull();
+        expect(store.getUsageForIds('guild', ['guild-1'], '2026-03-27')).toEqual({
+            'guild-1': {
+                date: '2026-03-27',
+                inputTokens: 100,
+                outputTokens: 50,
+                requests: 1,
+            },
+        });
         store.close();
     });
 
-    it('should support direct user budget and usage operations', async () => {
+    it('should enforce and persist the monthly Cloud Vision image limit', async () => {
+        const { ConfigStore } = await importStoreModule();
+        const first = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+
+        expect(first.getVisionMonthlyUsage('2026-08')).toBe(0);
+        expect(first.tryConsumeVisionImage('2026-08', 2)).toEqual({
+            consumed: true,
+            globalUsed: 1,
+            scopeUsed: null,
+        });
+        expect(first.tryConsumeVisionImage('2026-08', 2)).toEqual({
+            consumed: true,
+            globalUsed: 2,
+            scopeUsed: null,
+        });
+        expect(first.tryConsumeVisionImage('2026-08', 2)).toEqual({
+            consumed: false,
+            blockedBy: 'global',
+            used: 2,
+            limit: 2,
+        });
+        first.close();
+
+        const second = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+        expect(second.getVisionMonthlyUsage('2026-08')).toBe(2);
+        expect(second.tryConsumeVisionImage('2026-09', 2)).toMatchObject({
+            consumed: true,
+            globalUsed: 1,
+        });
+        second.close();
+    });
+
+    it('should enforce guild and user Vision limits without consuming the global quota', async () => {
+        const { ConfigStore } = await importStoreModule();
+        const first = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+        first.setVisionScopeLimit('guild', 'guild-1', 1);
+        first.setVisionScopeLimit('user', 'user-1', 0);
+
+        expect(
+            first.tryConsumeVisionImage('2026-08', 10, {
+                scope: 'guild',
+                scopeId: 'guild-1',
+            }),
+        ).toEqual({ consumed: true, globalUsed: 1, scopeUsed: 1 });
+        expect(
+            first.tryConsumeVisionImage('2026-08', 10, {
+                scope: 'guild',
+                scopeId: 'guild-1',
+            }),
+        ).toEqual({ consumed: false, blockedBy: 'guild', used: 1, limit: 1 });
+        expect(
+            first.tryConsumeVisionImage('2026-08', 10, {
+                scope: 'user',
+                scopeId: 'user-1',
+            }),
+        ).toEqual({ consumed: false, blockedBy: 'user', used: 0, limit: 0 });
+        expect(first.getVisionMonthlyUsage('2026-08')).toBe(1);
+        expect(first.listVisionMonthlyUsage('2026-08', 'guild')).toEqual({ 'guild-1': 1 });
+        expect(first.exportSnapshot()).toMatchObject({
+            guildVisionLimits: { 'guild-1': 1 },
+            userVisionLimits: { 'user-1': 0 },
+        });
+        first.close();
+
+        const second = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+        expect(second.getVisionScopeLimit('guild', 'guild-1')).toBe(1);
+        expect(second.clearVisionScopeLimit('guild', 'guild-1')).toBe(true);
+        expect(second.getVisionScopeLimit('guild', 'guild-1')).toBeNull();
+        second.close();
+    });
+
+    it('should calculate shared global usage in SQLite', async () => {
+        const { ConfigStore } = await importStoreModule();
+        const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+
+        store.setGuildBudget('custom', 1);
+        store.recordUsage('2026-03-27', 100, 50);
+        store.recordUsage('2026-03-27', 40, 20, { guildId: 'custom' });
+        store.recordUsage('2026-03-27', 30, 15, { guildId: 'shared' });
+
+        expect(store.getSharedGlobalUsage('2026-03-27')).toEqual({
+            date: '2026-03-27',
+            inputTokens: 130,
+            outputTokens: 65,
+            requests: 2,
+        });
+        store.close();
+    });
+
+    it('should support user budgets and scoped usage', async () => {
         const { ConfigStore } = await importStoreModule();
         const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
 
         expect(store.getUserBudget('user-1')).toBeNull();
 
         store.setUserBudget('user-1', 1.5);
-        store.saveUserDailyUsage('user-1', {
-            date: '2026-03-27',
-            inputTokens: 100,
-            outputTokens: 50,
-            requests: 1,
-        });
-        store.saveUserUsageHistory('user-1', [
-            {
-                date: '2026-03-26',
-                inputTokens: 80,
-                outputTokens: 40,
-                requests: 2,
-            },
-        ]);
+        store.recordUsage('2026-03-26', 80, 40, { userId: 'user-1' });
+        store.recordUsage('2026-03-27', 100, 50, { userId: 'user-1' });
 
         expect(store.getUserBudget('user-1')).toEqual({ dailyBudgetUsd: 1.5 });
-        expect(store.getUserDailyUsage('user-1')).toEqual({
+        expect(store.getUsage('user', 'user-1', '2026-03-27')).toEqual({
             date: '2026-03-27',
             inputTokens: 100,
             outputTokens: 50,
             requests: 1,
         });
-        expect(store.getUserUsageHistory('user-1')).toEqual([
+        expect(store.getUsageHistory('user', '2026-03-27', ['user-1'])).toEqual([
             {
                 date: '2026-03-26',
                 inputTokens: 80,
                 outputTokens: 40,
-                requests: 2,
+                requests: 1,
             },
         ]);
         expect(store.listUserBudgets()).toEqual({ 'user-1': { dailyBudgetUsd: 1.5 } });
-        expect(store.getAllUserDailyUsage()).toEqual({
+        expect(store.getUsageForIds('user', ['user-1'], '2026-03-27')).toEqual({
             'user-1': {
                 date: '2026-03-27',
                 inputTokens: 100,
@@ -386,17 +454,6 @@ describe('ConfigStore', () => {
                 requests: 1,
             },
         });
-        expect(store.getAllUserUsageHistory()).toEqual({
-            'user-1': [
-                {
-                    date: '2026-03-26',
-                    inputTokens: 80,
-                    outputTokens: 40,
-                    requests: 2,
-                },
-            ],
-        });
-
         expect(store.clearUserBudget('user-1')).toBe(true);
         expect(store.getUserBudget('user-1')).toBeNull();
         expect(store.clearUserBudget('user-1')).toBe(false);
@@ -410,6 +467,36 @@ describe('ConfigStore', () => {
                 cooldownSeconds: 10,
                 setupComplete: true,
                 userLanguagePrefs: { user2: 'ko' },
+                tokenUsage: {
+                    date: '2026-03-27',
+                    inputTokens: 100,
+                    outputTokens: 50,
+                    requests: 1,
+                },
+                usageHistory: [
+                    {
+                        date: '2026-03-26',
+                        inputTokens: 80,
+                        outputTokens: 40,
+                        requests: 2,
+                    },
+                ],
+                guildTokenUsage: {
+                    'guild-1': {
+                        date: '2026-03-27',
+                        inputTokens: 60,
+                        outputTokens: 30,
+                        requests: 1,
+                    },
+                },
+                userTokenUsage: {
+                    'user-1': {
+                        date: '2026-03-27',
+                        inputTokens: 40,
+                        outputTokens: 20,
+                        requests: 1,
+                    },
+                },
             }),
         );
 
@@ -423,6 +510,28 @@ describe('ConfigStore', () => {
         expect(store.listUserLanguagePreferences()).toEqual([
             { guildId: '', userId: 'user2', language: 'ko' },
         ]);
+        expect(store.exportSnapshot()).toMatchObject({
+            tokenUsage: {
+                date: '2026-03-27',
+                inputTokens: 100,
+                outputTokens: 50,
+                requests: 1,
+            },
+            usageHistory: [
+                {
+                    date: '2026-03-26',
+                    inputTokens: 80,
+                    outputTokens: 40,
+                    requests: 2,
+                },
+            ],
+            guildTokenUsage: {
+                'guild-1': expect.objectContaining({ inputTokens: 60 }),
+            },
+            userTokenUsage: {
+                'user-1': expect.objectContaining({ inputTokens: 40 }),
+            },
+        });
         store.close();
     });
 

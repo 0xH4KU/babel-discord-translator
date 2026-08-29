@@ -55,6 +55,47 @@ describe('ProviderOrchestrator diagnostics', () => {
         expect(metrics.snapshot().providerFallbackTotal).toBe(1);
     });
 
+    it('shares one timeout signal across fallback providers', async () => {
+        const vertex = provider('vertex', 'fail');
+        const openai = provider('openai', 'ok');
+        const orchestrator = createProviderOrchestrator(
+            'vertex+openai',
+            new Map([
+                ['vertex', vertex],
+                ['openai', openai],
+            ]),
+        );
+
+        await orchestrator.translate(TRANSLATION_PROMPT, 100);
+
+        const vertexSignal = vi.mocked(vertex.translate).mock.calls[0]?.[2]?.signal;
+        const openAiSignal = vi.mocked(openai.translate).mock.calls[0]?.[2]?.signal;
+        expect(vertexSignal).toBeInstanceOf(AbortSignal);
+        expect(openAiSignal).toBe(vertexSignal);
+    });
+
+    it('does not start a fallback after the shared signal expires', async () => {
+        const controller = new AbortController();
+        const vertex = provider('vertex', 'fail');
+        const openai = provider('openai', 'ok');
+        vi.mocked(vertex.translate).mockImplementationOnce(async () => {
+            controller.abort(new DOMException('Provider deadline exceeded', 'TimeoutError'));
+            throw controller.signal.reason;
+        });
+        const orchestrator = createProviderOrchestrator(
+            'vertex+openai',
+            new Map([
+                ['vertex', vertex],
+                ['openai', openai],
+            ]),
+        );
+
+        await expect(
+            orchestrator.translate(TRANSLATION_PROMPT, 100, { signal: controller.signal }),
+        ).rejects.toMatchObject({ errorType: 'timeout' });
+        expect(openai.translate).not.toHaveBeenCalled();
+    });
+
     it('records all provider failures', async () => {
         const metrics = new AppMetrics();
         const orchestrator = createProviderOrchestrator(

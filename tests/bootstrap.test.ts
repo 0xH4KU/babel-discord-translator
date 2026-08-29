@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => {
         clients,
         createClient,
         createTranslationService: vi.fn(() => ({ process: vi.fn() })),
+        handleBabelLens: vi.fn(async () => undefined),
         createDashboardApp: vi.fn(),
         createHealthDashboardApp: vi.fn(),
         resolveDashboardMode: vi.fn(() => 'full' as const),
@@ -114,6 +115,10 @@ vi.mock('../src/commands/babel.js', () => ({
     handleBabel: vi.fn(),
 }));
 
+vi.mock('../src/commands/lens.js', () => ({
+    handleBabelLens: mocks.handleBabelLens,
+}));
+
 vi.mock('../src/commands/translate.js', () => ({
     handleTranslate: vi.fn(),
 }));
@@ -154,6 +159,47 @@ describe('startBabelApp', () => {
                 enableGuildGlossary: false,
             }),
         );
+    });
+
+    it('dispatches Pocket Lens interactions with isolated OCR and render limits', async () => {
+        const { startBabelApp } = await import('../src/apps/bootstrap.js');
+
+        await startBabelApp(BABEL_POCKET_PROFILE);
+        const interactionHandler = mocks.clients[0]!.on.mock.calls.find(
+            ([event]) => event === 'interactionCreate',
+        )?.[1] as (interaction: {
+            isChatInputCommand: () => boolean;
+            isMessageContextMenuCommand: () => boolean;
+            commandName: string;
+        }) => Promise<void>;
+        const interaction = {
+            isChatInputCommand: () => false,
+            isMessageContextMenuCommand: () => true,
+            commandName: 'Babel Lens',
+        };
+
+        await interactionHandler(interaction);
+
+        expect(mocks.handleBabelLens).toHaveBeenCalledWith(
+            interaction,
+            expect.objectContaining({
+                profile: BABEL_POCKET_PROFILE,
+                translationService: mocks.createTranslationService.mock.results[0]?.value,
+                ocrCache: expect.anything(),
+                renderLimiter: expect.anything(),
+            }),
+        );
+        const lensDeps = mocks.handleBabelLens.mock.calls[0]?.[1];
+        const translationDeps = mocks.createTranslationService.mock.calls[0]?.[0];
+        expect(lensDeps.ocrCache).not.toBe(translationDeps.cache);
+        expect(mocks.createDashboardApp).toHaveBeenCalledWith(
+            expect.objectContaining({ ocrCache: lensDeps.ocrCache }),
+        );
+        expect(lensDeps.renderLimiter).not.toBe(translationDeps.runtimeLimiter);
+        expect(lensDeps.renderLimiter.snapshot().limits).toMatchObject({
+            maxConcurrent: 1,
+            maxGlobalQueue: 2,
+        });
     });
 
     it('logs in the selected single profile with its profile-specific token when present', async () => {

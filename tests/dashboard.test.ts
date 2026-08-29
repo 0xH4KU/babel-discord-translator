@@ -14,6 +14,7 @@ vi.mock('../src/modules/config/config.js', () => ({
 vi.mock('../src/persistence/store.js', () => {
     const data: Record<string, unknown> = {
         vertexAiApiKey: 'sk-abcdef123456',
+        visionApiKey: 'vision-abcdef654321',
         gcpProject: 'test-project',
         gcpLocation: 'global',
         geminiModel: 'gemini-2.5-flash-lite',
@@ -22,6 +23,7 @@ vi.mock('../src/persistence/store.js', () => {
         openaiModel: '',
         translationProvider: 'vertex',
         allowedGuildIds: [],
+        lensEnabledGuildIds: [],
         allowedUserIds: [],
         cooldownSeconds: 5,
         cacheMaxSize: 2000,
@@ -29,6 +31,7 @@ vi.mock('../src/persistence/store.js', () => {
         inputPricePerMillion: 0,
         outputPricePerMillion: 0,
         dailyBudgetUsd: 0,
+        visionMonthlyImageLimit: 900,
         defaultUserDailyBudgetUsd: 0,
         translationPrompt: '',
         userLanguagePrefs: { legacyUser: 'en' },
@@ -48,9 +51,11 @@ vi.mock('../src/persistence/store.js', () => {
         tokenUsage: null,
         usageHistory: [],
         guildBudgets: {},
+        guildVisionLimits: {},
         guildTokenUsage: {},
         guildUsageHistory: {},
         userBudgets: {},
+        userVisionLimits: {},
         userTokenUsage: {},
         userUsageHistory: {},
     };
@@ -198,9 +203,30 @@ vi.mock('../src/persistence/store.js', () => {
             }),
             listGuildBudgets: vi.fn(() => ({ ...(data.guildBudgets as object) })),
             listUserBudgets: vi.fn(() => ({ ...(data.userBudgets as object) })),
+            listVisionScopeLimits: vi.fn((scope: 'guild' | 'user') => ({
+                ...(data[scope === 'guild' ? 'guildVisionLimits' : 'userVisionLimits'] as object),
+            })),
+            setVisionScopeLimit: vi.fn(
+                (scope: 'guild' | 'user', scopeId: string, limit: number) => {
+                    const limits = data[
+                        scope === 'guild' ? 'guildVisionLimits' : 'userVisionLimits'
+                    ] as Record<string, number>;
+                    limits[scopeId] = limit;
+                },
+            ),
+            clearVisionScopeLimit: vi.fn((scope: 'guild' | 'user', scopeId: string) => {
+                const limits = data[
+                    scope === 'guild' ? 'guildVisionLimits' : 'userVisionLimits'
+                ] as Record<string, number>;
+                if (!(scopeId in limits)) return false;
+                delete limits[scopeId];
+                return true;
+            }),
+            listVisionMonthlyUsage: vi.fn(() => ({})),
             listUserLanguagePreferences: vi.fn(() => [
                 ...(data.userLanguagePreferenceEntries as unknown[]),
             ]),
+            getVisionMonthlyUsage: vi.fn(() => 0),
             isSetupComplete: vi.fn(() => data.setupComplete),
         },
     };
@@ -226,18 +252,25 @@ const usageMock = vi.hoisted(() => ({
     getAllUserHistory: vi.fn(() => []),
     getUsageExportRows: vi.fn(() => []),
     record: vi.fn(),
-    getUserStats: vi.fn((userId: string) => ({
-        date: '2025-03-01',
-        inputTokens: userId === 'user-1' ? 1000 : 0,
-        outputTokens: 0,
-        requests: userId === 'user-1' ? 1 : 0,
-        inputCost: userId === 'user-1' ? 0.01 : 0,
-        outputCost: 0,
-        totalCost: userId === 'user-1' ? 0.01 : 0,
-        dailyBudget: 0.5,
-        budgetUsedPercent: userId === 'user-1' ? 2 : 0,
-        budgetExceeded: false,
-    })),
+    getUserStatsForUsers: vi.fn((userIds: string[]) =>
+        Object.fromEntries(
+            userIds.map((userId) => [
+                userId,
+                {
+                    date: '2025-03-01',
+                    inputTokens: userId === 'user-1' ? 1000 : 0,
+                    outputTokens: 0,
+                    requests: userId === 'user-1' ? 1 : 0,
+                    inputCost: userId === 'user-1' ? 0.01 : 0,
+                    outputCost: 0,
+                    totalCost: userId === 'user-1' ? 0.01 : 0,
+                    dailyBudget: 0.5,
+                    budgetUsedPercent: userId === 'user-1' ? 2 : 0,
+                    budgetExceeded: false,
+                },
+            ]),
+        ),
+    ),
 }));
 
 vi.mock('../src/modules/usage/usage.js', () => ({
@@ -439,6 +472,7 @@ describe('dashboard mode parsing', () => {
 describe('Dashboard API', () => {
     let app: ReturnType<typeof createDashboardApp>;
     let cache: TranslationCache;
+    let ocrCache: TranslationCache;
     let metrics: AppMetrics;
     let server: http.Server;
     let sessionCookie: string;
@@ -459,6 +493,7 @@ describe('Dashboard API', () => {
     ) {
         const testApp = createDashboardApp({
             cache,
+            ocrCache,
             cooldown: new CooldownManager(5),
             log,
             client: createMinimalClient(),
@@ -501,6 +536,7 @@ describe('Dashboard API', () => {
 
     beforeAll(async () => {
         cache = new TranslationCache(100);
+        ocrCache = new TranslationCache(25);
         metrics = new AppMetrics();
         runtimeLimiter = new TranslationRuntimeLimiter({
             maxConcurrent: 2,
@@ -578,6 +614,7 @@ describe('Dashboard API', () => {
             translationService: TranslationService;
         } = {
             cache,
+            ocrCache,
             cooldown,
             log,
             client: mockClient,
@@ -839,6 +876,31 @@ describe('Dashboard API', () => {
         expect((res.body!.bot as Record<string, unknown>).memory).toBeDefined();
     });
 
+    it('should report and clear translation and OCR caches together', async () => {
+        cache.clear();
+        ocrCache.clear();
+        cache.set('translation-key', 'translation');
+        ocrCache.set('ocr-key', 'detected text');
+        ocrCache.get('ocr-key');
+
+        const stats = await request(server, 'GET', '/api/stats', { cookie: sessionCookie });
+        expect(stats.body!.cache).toMatchObject({ size: 1, maxSize: 100 });
+        expect(stats.body!.ocrCache).toMatchObject({ size: 1, maxSize: 25, hits: 1 });
+
+        const cleared = await request(server, 'POST', '/api/cache/clear', {
+            cookie: sessionCookie,
+            csrf: csrfToken,
+        });
+        expect(cleared.body).toMatchObject({
+            ok: true,
+            cleared: 2,
+            translationCleared: 1,
+            ocrCleared: 1,
+        });
+        expect(cache.stats().size).toBe(0);
+        expect(ocrCache.stats().size).toBe(0);
+    });
+
     it('should export usage history as CSV with guild and user rows', async () => {
         usageMock.getUsageExportRows.mockReturnValueOnce([
             {
@@ -1001,6 +1063,37 @@ describe('Dashboard API', () => {
         });
     });
 
+    it('should manage a per-guild Vision limit without changing its API budget', async () => {
+        const { store } = await import('../src/persistence/store.js');
+
+        try {
+            const saved = await request(server, 'POST', '/api/guild-budgets/guild-1', {
+                cookie: sessionCookie,
+                csrf: csrfToken,
+                body: { visionMonthlyImageLimit: 25 },
+            });
+            expect(saved.status).toBe(200);
+            expect(store.getGuildBudget('guild-1')).toBeNull();
+
+            const budgets = await request(server, 'GET', '/api/guild-budgets', {
+                cookie: sessionCookie,
+            });
+            expect(budgets.body!['guild-1']).toMatchObject({
+                vision: { images: 0, limit: 25 },
+            });
+
+            const invalid = await request(server, 'POST', '/api/guild-budgets/guild-1', {
+                cookie: sessionCookie,
+                csrf: csrfToken,
+                body: { visionMonthlyImageLimit: 1.5 },
+            });
+            expect(invalid.status).toBe(400);
+            expect(store.listVisionScopeLimits('guild')).toEqual({ 'guild-1': 25 });
+        } finally {
+            store.clearVisionScopeLimit('guild', 'guild-1');
+        }
+    });
+
     it('should show custom guild budget usage separately from the global budget pool', async () => {
         const { store } = await import('../src/persistence/store.js');
         const previousGuildBudgets = store.listGuildBudgets();
@@ -1082,6 +1175,7 @@ describe('Dashboard API', () => {
         const previousUserBudgets = store.listUserBudgets();
         const pocketApp = createDashboardApp({
             cache,
+            ocrCache,
             cooldown: new CooldownManager(5),
             log,
             client: createMinimalClient(),
@@ -1122,12 +1216,22 @@ describe('Dashboard API', () => {
                         isCustom: true,
                         allowed: true,
                         pending: false,
+                        vision: {
+                            month: new Date().toISOString().slice(0, 7),
+                            images: 0,
+                            limit: null,
+                        },
                     },
                     'pending-owner': {
                         budget: 0.5,
                         isCustom: false,
                         allowed: false,
                         pending: true,
+                        vision: {
+                            month: new Date().toISOString().slice(0, 7),
+                            images: 0,
+                            limit: null,
+                        },
                     },
                 },
                 profiles: {
@@ -1151,6 +1255,41 @@ describe('Dashboard API', () => {
         }
     });
 
+    it('should manage a Pocket user Vision limit', async () => {
+        const { store } = await import('../src/persistence/store.js');
+        const dashboard = startProfileDashboard(BABEL_POCKET_PROFILE);
+
+        try {
+            const { cookie, csrf } = await loginDashboard(dashboard.server);
+            const saved = await request(
+                dashboard.server,
+                'POST',
+                '/api/user-budgets/pending-owner',
+                { cookie, csrf, body: { visionMonthlyImageLimit: 12 } },
+            );
+            expect(saved.status).toBe(200);
+
+            const budgets = await request(dashboard.server, 'GET', '/api/user-budgets', {
+                cookie,
+            });
+            expect(
+                (budgets.body!.budgets as Record<string, unknown>)['pending-owner'],
+            ).toMatchObject({ vision: { images: 0, limit: 12 } });
+
+            const reset = await request(
+                dashboard.server,
+                'POST',
+                '/api/user-budgets/pending-owner',
+                { cookie, csrf, body: { visionMonthlyImageLimit: null } },
+            );
+            expect(reset.status).toBe(200);
+            expect(store.listVisionScopeLimits('user')).toEqual({});
+        } finally {
+            store.clearVisionScopeLimit('user', 'pending-owner');
+            dashboard.close();
+        }
+    });
+
     it('should include user budget overview data in Babel Pocket stats', async () => {
         const { store } = await import('../src/persistence/store.js');
         const previousConfig = store.getConfigValues([
@@ -1160,6 +1299,7 @@ describe('Dashboard API', () => {
         const previousUserBudgets = store.listUserBudgets();
         const pocketApp = createDashboardApp({
             cache,
+            ocrCache,
             cooldown: new CooldownManager(5),
             log,
             client: createMinimalClient(),
@@ -1183,7 +1323,7 @@ describe('Dashboard API', () => {
                 (id) => store.clearUserBudget(id),
                 (id, budget) => store.setUserBudget(id, budget),
             );
-            usageMock.getUserStats.mockClear();
+            usageMock.getUserStatsForUsers.mockClear();
 
             const login = await request(pocketServer, 'POST', '/api/login', {
                 body: { password: 'test-pass-123' },
@@ -1224,9 +1364,12 @@ describe('Dashboard API', () => {
                     pending: true,
                 }),
             ]);
-            expect(usageMock.getUserStats).toHaveBeenCalledWith('user-1');
-            expect(usageMock.getUserStats).toHaveBeenCalledWith('user-2');
-            expect(usageMock.getUserStats).toHaveBeenCalledWith('pending-owner');
+            expect(usageMock.getUserStatsForUsers).toHaveBeenCalledOnce();
+            expect(usageMock.getUserStatsForUsers).toHaveBeenCalledWith(
+                ['user-1', 'user-2', 'pending-owner'],
+                { 'user-1': { dailyBudgetUsd: 1.25 } },
+                expect.objectContaining({ defaultUserDailyBudgetUsd: 0.5 }),
+            );
         } finally {
             store.updateConfigValues(previousConfig);
             replaceBudgets(
@@ -1265,6 +1408,7 @@ describe('Dashboard API', () => {
         } as unknown as Client;
         const combinedApp = createDashboardApp({
             cache,
+            ocrCache,
             cooldown: new CooldownManager(5),
             log,
             client: guildClient,
@@ -1346,7 +1490,7 @@ describe('Dashboard API', () => {
 
         expect(res.status).toBe(200);
         expect(res.body).toEqual({
-            version: '0.2.3',
+            version: '0.3.0',
             repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases',
         });
     });
@@ -1386,7 +1530,7 @@ describe('Dashboard API', () => {
             expect(res.status).toBe(200);
             expect(res.headers['content-type']).toContain('text/plain');
             expect(res.text).toContain(
-                'babel_app_version_info{version="0.2.3",repository_url="https://github.com/0xH4KU/babel-discord-translator/releases"} 1',
+                'babel_app_version_info{version="0.3.0",repository_url="https://github.com/0xH4KU/babel-discord-translator/releases"} 1',
             );
             expect(res.text).toContain('babel_translations_total');
             expect(res.text).toContain('babel_translation_failures_total');
@@ -1577,8 +1721,11 @@ describe('Dashboard API', () => {
         expect(res.status).toBe(200);
         expect(res.body!.vertexAiApiKey as string).toMatch(/^••••/);
         expect(res.body!.hasApiKey).toBe(true);
+        expect(res.body!.visionApiKey as string).toMatch(/^••••/);
+        expect(res.body!.hasVisionApiKey).toBe(true);
         // Should NOT expose the real key
         expect(res.body!.vertexAiApiKey as string).not.toContain('sk-abcdef');
+        expect(res.body!.visionApiKey as string).not.toContain('vision-abcdef');
     });
 
     // --- CSRF protection ---
@@ -1801,6 +1948,7 @@ describe('Dashboard API', () => {
         };
         const combinedApp = createDashboardApp({
             cache,
+            ocrCache,
             cooldown: new CooldownManager(5),
             log,
             client: createMinimalClient(),
@@ -2158,6 +2306,7 @@ describe('Dashboard API', () => {
     it('should expose global user language preferences for Babel Pocket', async () => {
         const pocketApp = createDashboardApp({
             cache,
+            ocrCache,
             cooldown: new CooldownManager(5),
             log,
             client: createMinimalClient(),

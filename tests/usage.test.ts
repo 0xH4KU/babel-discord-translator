@@ -3,106 +3,171 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // --- Mock store as an in-memory object ---
 const mockData: Record<string, unknown> = vi.hoisted(() => ({}));
 
-vi.mock('../src/persistence/store.js', () => ({
-    store: {
-        getConfigValues: vi.fn((keys: readonly string[]) =>
-            Object.fromEntries(
-                keys.map((key) => {
-                    const value = mockData[key];
-                    return [key, Array.isArray(value) ? [...value] : value];
-                }),
+vi.mock('../src/persistence/store.js', () => {
+    type MockUsage = { date: string; inputTokens: number; outputTokens: number; requests: number };
+    type Scope = 'global' | 'guild' | 'user';
+
+    const currentUsage = (scope: Scope, id: string): MockUsage | null => {
+        if (scope === 'global') return (mockData.tokenUsage as MockUsage | null) ?? null;
+        const key = scope === 'guild' ? 'guildTokenUsage' : 'userTokenUsage';
+        return ((mockData[key] as Record<string, MockUsage>)[id] as MockUsage | undefined) ?? null;
+    };
+    const histories = (scope: Scope): Record<string, MockUsage[]> => {
+        if (scope === 'global') return { '': (mockData.usageHistory as MockUsage[]) ?? [] };
+        const key = scope === 'guild' ? 'guildUsageHistory' : 'userUsageHistory';
+        return (mockData[key] as Record<string, MockUsage[]>) ?? {};
+    };
+    const record = (scope: Scope, id: string, date: string, input: number, output: number) => {
+        const next =
+            currentUsage(scope, id)?.date === date
+                ? { ...currentUsage(scope, id)! }
+                : { date, inputTokens: 0, outputTokens: 0, requests: 0 };
+        next.inputTokens += input;
+        next.outputTokens += output;
+        next.requests += 1;
+
+        if (scope === 'global') mockData.tokenUsage = next;
+        else {
+            const key = scope === 'guild' ? 'guildTokenUsage' : 'userTokenUsage';
+            (mockData[key] as Record<string, MockUsage>)[id] = next;
+        }
+    };
+
+    return {
+        store: {
+            getConfigValues: vi.fn((keys: readonly string[]) =>
+                Object.fromEntries(
+                    keys.map((key) => {
+                        const value = mockData[key];
+                        return [key, Array.isArray(value) ? [...value] : value];
+                    }),
+                ),
             ),
-        ),
-        getDailyUsage: vi.fn(() => mockData.tokenUsage),
-        saveDailyUsage: vi.fn((usage: unknown) => {
-            mockData.tokenUsage = usage;
-        }),
-        getUsageHistory: vi.fn(() => mockData.usageHistory ?? []),
-        saveUsageHistory: vi.fn((history: unknown) => {
-            mockData.usageHistory = history;
-        }),
-        getGuildBudget: vi.fn((guildId: string) => {
-            const budgets = mockData.guildBudgets as Record<string, unknown>;
-            return budgets[guildId] ?? null;
-        }),
-        setGuildBudget: vi.fn((guildId: string, dailyBudgetUsd: number) => {
-            const budgets = mockData.guildBudgets as Record<string, unknown>;
-            budgets[guildId] = { dailyBudgetUsd };
-        }),
-        clearGuildBudget: vi.fn((guildId: string) => {
-            const budgets = mockData.guildBudgets as Record<string, unknown>;
-            if (!(guildId in budgets)) return false;
-            delete budgets[guildId];
-            return true;
-        }),
-        listGuildBudgets: vi.fn(() => mockData.guildBudgets ?? {}),
-        getUserBudget: vi.fn((userId: string) => {
-            const budgets = mockData.userBudgets as Record<string, unknown>;
-            return budgets[userId] ?? null;
-        }),
-        setUserBudget: vi.fn((userId: string, dailyBudgetUsd: number) => {
-            const budgets = mockData.userBudgets as Record<string, unknown>;
-            budgets[userId] = { dailyBudgetUsd };
-        }),
-        clearUserBudget: vi.fn((userId: string) => {
-            const budgets = mockData.userBudgets as Record<string, unknown>;
-            if (!(userId in budgets)) return false;
-            delete budgets[userId];
-            return true;
-        }),
-        listUserBudgets: vi.fn(() => mockData.userBudgets ?? {}),
-        getGuildDailyUsage: vi.fn((guildId: string) => {
-            const usage = mockData.guildTokenUsage as Record<string, unknown>;
-            return usage[guildId] ?? null;
-        }),
-        saveGuildDailyUsage: vi.fn((guildId: string, usage: unknown) => {
-            const allUsage = mockData.guildTokenUsage as Record<string, unknown>;
-            allUsage[guildId] = usage;
-        }),
-        getAllGuildDailyUsage: vi.fn(() => mockData.guildTokenUsage ?? {}),
-        getGuildUsageHistory: vi.fn((guildId: string) => {
-            const history = mockData.guildUsageHistory as Record<string, unknown>;
-            return history[guildId] ?? [];
-        }),
-        saveGuildUsageHistory: vi.fn((guildId: string, history: unknown) => {
-            const allHistory = mockData.guildUsageHistory as Record<string, unknown>;
-            allHistory[guildId] = history;
-        }),
-        getAllGuildUsageHistory: vi.fn(() => mockData.guildUsageHistory ?? {}),
-        getUserDailyUsage: vi.fn((userId: string) => {
-            const usage = mockData.userTokenUsage as Record<string, unknown>;
-            return usage[userId] ?? null;
-        }),
-        saveUserDailyUsage: vi.fn((userId: string, usage: unknown) => {
-            const allUsage = mockData.userTokenUsage as Record<string, unknown>;
-            allUsage[userId] = usage;
-        }),
-        getAllUserDailyUsage: vi.fn(() => mockData.userTokenUsage ?? {}),
-        getUserUsageHistory: vi.fn((userId: string) => {
-            const history = mockData.userUsageHistory as Record<string, unknown>;
-            return history[userId] ?? [];
-        }),
-        saveUserUsageHistory: vi.fn((userId: string, history: unknown) => {
-            const allHistory = mockData.userUsageHistory as Record<string, unknown>;
-            allHistory[userId] = history;
-        }),
-        getAllUserUsageHistory: vi.fn(() => mockData.userUsageHistory ?? {}),
-    },
-}));
+            getGuildBudget: vi.fn((guildId: string) => {
+                const budgets = mockData.guildBudgets as Record<string, unknown>;
+                return budgets[guildId] ?? null;
+            }),
+            setGuildBudget: vi.fn((guildId: string, dailyBudgetUsd: number) => {
+                const budgets = mockData.guildBudgets as Record<string, unknown>;
+                budgets[guildId] = { dailyBudgetUsd };
+            }),
+            clearGuildBudget: vi.fn((guildId: string) => {
+                const budgets = mockData.guildBudgets as Record<string, unknown>;
+                if (!(guildId in budgets)) return false;
+                delete budgets[guildId];
+                return true;
+            }),
+            listGuildBudgets: vi.fn(() => mockData.guildBudgets ?? {}),
+            getUserBudget: vi.fn((userId: string) => {
+                const budgets = mockData.userBudgets as Record<string, unknown>;
+                return budgets[userId] ?? null;
+            }),
+            setUserBudget: vi.fn((userId: string, dailyBudgetUsd: number) => {
+                const budgets = mockData.userBudgets as Record<string, unknown>;
+                budgets[userId] = { dailyBudgetUsd };
+            }),
+            clearUserBudget: vi.fn((userId: string) => {
+                const budgets = mockData.userBudgets as Record<string, unknown>;
+                if (!(userId in budgets)) return false;
+                delete budgets[userId];
+                return true;
+            }),
+            listUserBudgets: vi.fn(() => mockData.userBudgets ?? {}),
+            getUsage: vi.fn((scope: Scope, id: string, date: string) => {
+                const usage = currentUsage(scope, id);
+                return usage?.date === date ? { ...usage } : null;
+            }),
+            getUsageForIds: vi.fn(
+                (scope: Exclude<Scope, 'global'>, ids: string[], date: string) => {
+                    return Object.fromEntries(
+                        ids.flatMap((id) => {
+                            const usage = currentUsage(scope, id);
+                            return usage?.date === date ? [[id, { ...usage }]] : [];
+                        }),
+                    );
+                },
+            ),
+            getUsageHistory: vi.fn((scope: Scope, beforeDate: string, ids?: string[]) => {
+                const byDate = new Map<string, MockUsage>();
+                for (const [id, entries] of Object.entries(histories(scope))) {
+                    if (ids && !ids.includes(id)) continue;
+                    for (const entry of entries) {
+                        if (entry.date >= beforeDate) continue;
+                        const aggregate = byDate.get(entry.date) ?? {
+                            date: entry.date,
+                            inputTokens: 0,
+                            outputTokens: 0,
+                            requests: 0,
+                        };
+                        aggregate.inputTokens += entry.inputTokens;
+                        aggregate.outputTokens += entry.outputTokens;
+                        aggregate.requests += entry.requests;
+                        byDate.set(entry.date, aggregate);
+                    }
+                }
+                return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)).slice(-30);
+            }),
+            getSharedGlobalUsage: vi.fn((date: string) => {
+                const total = currentUsage('global', '');
+                const shared =
+                    total?.date === date
+                        ? { ...total }
+                        : { date, inputTokens: 0, outputTokens: 0, requests: 0 };
+                const budgets = mockData.guildBudgets as Record<string, unknown>;
+                for (const guildId of Object.keys(budgets)) {
+                    const usage = currentUsage('guild', guildId);
+                    if (usage?.date !== date) continue;
+                    shared.inputTokens = Math.max(0, shared.inputTokens - usage.inputTokens);
+                    shared.outputTokens = Math.max(0, shared.outputTokens - usage.outputTokens);
+                    shared.requests = Math.max(0, shared.requests - usage.requests);
+                }
+                return shared;
+            }),
+            recordUsage: vi.fn((date: string, input: number, output: number, scope = {}) => {
+                const ids = scope as { guildId?: string; userId?: string };
+                const tokens = [input || 0, output || 0] as const;
+                record('global', '', date, ...tokens);
+                if (ids.guildId) record('guild', ids.guildId, date, ...tokens);
+                if (ids.userId) record('user', ids.userId, date, ...tokens);
+            }),
+            listUsageRows: vi.fn(() => {
+                const rows = new Map<string, MockUsage & { scope: Scope; scopeId: string }>();
+                const add = (scope: Scope, scopeId: string, entry: MockUsage) => {
+                    rows.set(`${scope}:${scopeId}:${entry.date}`, { scope, scopeId, ...entry });
+                };
+                for (const scope of ['global', 'guild', 'user'] as const) {
+                    for (const [id, entries] of Object.entries(histories(scope))) {
+                        for (const entry of entries) add(scope, id, entry);
+                    }
+                }
+                const global = currentUsage('global', '');
+                if (global) add('global', '', global);
+                for (const [id, entry] of Object.entries(
+                    mockData.guildTokenUsage as Record<string, MockUsage>,
+                ))
+                    add('guild', id, entry);
+                for (const [id, entry] of Object.entries(
+                    mockData.userTokenUsage as Record<string, MockUsage>,
+                ))
+                    add('user', id, entry);
+                return [...rows.values()];
+            }),
+        },
+    };
+});
 
 import { store } from '../src/persistence/store.js';
-import { usage, _test as usageTest } from '../src/modules/usage/usage.js';
+import { UsageTracker } from '../src/modules/usage/usage.js';
 import type { TokenUsage } from '../src/shared/types.js';
 
 describe('UsageTracker', () => {
+    let usage: UsageTracker;
     const mockedStore = store as unknown as {
         getConfigValues: ReturnType<typeof vi.fn>;
-        getDailyUsage: ReturnType<typeof vi.fn>;
     };
 
     beforeEach(() => {
-        // Forget the same-day rollover memo so each test exercises a fresh pass
-        usageTest.resetRolloverMemo();
+        usage = new UsageTracker();
         // Reset mock store data
         const today = new Date().toISOString().slice(0, 10);
         mockData.tokenUsage = { date: today, inputTokens: 0, outputTokens: 0, requests: 0 };
@@ -132,26 +197,6 @@ describe('UsageTracker', () => {
         mockData.userUsageHistory = {};
 
         mockedStore.getConfigValues.mockClear();
-    });
-
-    it('should retry date rollover after a failed ensureToday pass', () => {
-        mockedStore.getDailyUsage.mockImplementationOnce(() => {
-            throw new Error('temporary sqlite failure');
-        });
-        mockData.tokenUsage = {
-            date: '2025-01-01',
-            inputTokens: 500,
-            outputTokens: 300,
-            requests: 5,
-        };
-
-        expect(() => usage.ensureToday()).toThrow('temporary sqlite failure');
-        usage.ensureToday();
-
-        const history = mockData.usageHistory as Array<{ date: string; inputTokens: number }>;
-        expect(history).toHaveLength(1);
-        expect(history[0].date).toBe('2025-01-01');
-        expect(history[0].inputTokens).toBe(500);
     });
 
     it('should record token usage', () => {
@@ -315,43 +360,17 @@ describe('UsageTracker', () => {
         expect(mockedStore.getConfigValues).toHaveBeenCalledOnce();
     });
 
-    it('should archive previous day when date changes', () => {
-        // Simulate yesterday's data
-        mockData.tokenUsage = {
-            date: '2025-01-01',
-            inputTokens: 500,
-            outputTokens: 300,
-            requests: 5,
-        };
-
-        // ensureToday() should detect date change and archive
-        usage.ensureToday();
-
-        const history = mockData.usageHistory as Array<{ date: string; inputTokens: number }>;
-        expect(history).toHaveLength(1);
-        expect(history[0].date).toBe('2025-01-01');
-        expect(history[0].inputTokens).toBe(500);
-    });
-
     it('should keep only 30 days of history', () => {
-        // Fill with 30 days
-        mockData.usageHistory = Array.from({ length: 30 }, (_, i) => ({
+        mockData.usageHistory = Array.from({ length: 31 }, (_, i) => ({
             date: `2025-01-${String(i + 1).padStart(2, '0')}`,
             inputTokens: 100,
             outputTokens: 50,
             requests: 1,
         }));
 
-        mockData.tokenUsage = {
-            date: '2025-02-01',
-            inputTokens: 999,
-            outputTokens: 888,
-            requests: 7,
-        };
-
-        usage.ensureToday();
-
-        expect((mockData.usageHistory as unknown[]).length).toBeLessThanOrEqual(30);
+        const history = usage.getHistory();
+        expect(history).toHaveLength(30);
+        expect(history[0]?.date).toBe('2025-01-02');
     });
 
     it('should calculate history with costs', () => {
@@ -440,31 +459,6 @@ describe('UsageTracker', () => {
             expect(stats.inputTokens).toBe(0);
             expect(stats.requests).toBe(0);
             expect(stats.totalCost).toBe(0);
-        });
-
-        it('should archive guild history on date change', () => {
-            const today = new Date().toISOString().slice(0, 10);
-            mockData.guildTokenUsage = {
-                'guild-A': { date: '2025-01-01', inputTokens: 300, outputTokens: 200, requests: 3 },
-            };
-
-            usage.ensureToday();
-
-            const guildHistory = mockData.guildUsageHistory as Record<
-                string,
-                Array<{ date: string; inputTokens: number }>
-            >;
-            expect(guildHistory['guild-A']).toHaveLength(1);
-            expect(guildHistory['guild-A'][0].date).toBe('2025-01-01');
-            expect(guildHistory['guild-A'][0].inputTokens).toBe(300);
-
-            // Current usage should be reset
-            const guildUsage = mockData.guildTokenUsage as Record<
-                string,
-                { date: string; inputTokens: number }
-            >;
-            expect(guildUsage['guild-A'].date).toBe(today);
-            expect(guildUsage['guild-A'].inputTokens).toBe(0);
         });
 
         it('should return guild history with costs', () => {
@@ -704,36 +698,12 @@ describe('UsageTracker', () => {
 
             usage.record(500_000, 0, { userId: 'user-X' });
 
-            const stats = usage.getUserStats('user-X');
+            const stats = usage.getUserStatsForUsers(['user-X'])['user-X']!;
             expect(stats.inputTokens).toBe(500_000);
             expect(stats.requests).toBe(1);
             expect(stats.totalCost).toBe(0.5);
             expect(stats.dailyBudget).toBe(2.0);
             expect(stats.budgetUsedPercent).toBe(25);
-        });
-
-        it('should archive user history on date change', () => {
-            const today = new Date().toISOString().slice(0, 10);
-            mockData.userTokenUsage = {
-                'user-A': { date: '2025-01-01', inputTokens: 300, outputTokens: 200, requests: 3 },
-            };
-
-            usage.ensureToday();
-
-            const userHistory = mockData.userUsageHistory as Record<
-                string,
-                Array<{ date: string; inputTokens: number }>
-            >;
-            expect(userHistory['user-A']).toHaveLength(1);
-            expect(userHistory['user-A'][0].date).toBe('2025-01-01');
-            expect(userHistory['user-A'][0].inputTokens).toBe(300);
-
-            const userUsage = mockData.userTokenUsage as Record<
-                string,
-                { date: string; inputTokens: number }
-            >;
-            expect(userUsage['user-A'].date).toBe(today);
-            expect(userUsage['user-A'].inputTokens).toBe(0);
         });
 
         it('should aggregate history across all users by date', () => {

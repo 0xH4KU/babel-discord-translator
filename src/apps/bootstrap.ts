@@ -11,6 +11,8 @@ import { configRepository } from '../modules/config/config-repository.js';
 import { createGracefulShutdownHandler } from '../shared/shutdown.js';
 import { createTranslationService } from '../modules/translation/translation-service.js';
 import { handleBabel } from '../commands/babel.js';
+import { handleBabelLens } from '../commands/lens.js';
+import { BABEL_LENS_COMMAND_NAME } from './commands.js';
 import { handleTranslate } from '../commands/translate.js';
 import { handleSetlang, handleMylang } from '../commands/setlang.js';
 import { handleHelp } from '../commands/help.js';
@@ -25,13 +27,19 @@ import type express from 'express';
 import type http from 'http';
 
 let processHandlersInstalled = false;
+// ponytail: OCR entries are larger; add a separate setting only if measured hit rates need it.
+const OCR_CACHE_MAX_SIZE = 250;
+// ponytail: serialize Sharp work for 250 MB workers; raise only after memory load testing.
+const LENS_RENDER_MAX_QUEUE = 2;
 
 interface SharedBabelRuntime {
     config: ReturnType<typeof loadConfig>;
     cache: TranslationCache;
+    ocrCache: TranslationCache;
     log: TranslationLog;
     metrics: AppMetrics;
     runtimeLimiter: TranslationRuntimeLimiter;
+    renderLimiter: TranslationRuntimeLimiter;
 }
 
 interface ProfileBabelRuntime {
@@ -83,6 +91,7 @@ function createSharedRuntime(): SharedBabelRuntime {
     return {
         config,
         cache: new TranslationCache(runtimeConfig.cacheMaxSize),
+        ocrCache: new TranslationCache(OCR_CACHE_MAX_SIZE),
         log: new TranslationLog(),
         metrics: new AppMetrics(),
         runtimeLimiter: new TranslationRuntimeLimiter({
@@ -91,6 +100,13 @@ function createSharedRuntime(): SharedBabelRuntime {
             maxGuildQueue: runtimeConfig.translationMaxGuildQueue,
             maxUserOutstanding: runtimeConfig.translationMaxUserOutstanding,
             maxQueueWaitMs: runtimeConfig.translationMaxQueueWaitMs,
+        }),
+        renderLimiter: new TranslationRuntimeLimiter({
+            maxConcurrent: 1,
+            maxGlobalQueue: LENS_RENDER_MAX_QUEUE,
+            maxGuildQueue: LENS_RENDER_MAX_QUEUE,
+            maxUserOutstanding: 1,
+            maxQueueWaitMs: 15_000,
         }),
     };
 }
@@ -168,6 +184,18 @@ function createProfileRuntime(
         ) {
             return handleBabel(interaction, { translationService, profile });
         }
+
+        if (
+            interaction.isMessageContextMenuCommand() &&
+            interaction.commandName === BABEL_LENS_COMMAND_NAME
+        ) {
+            return handleBabelLens(interaction, {
+                translationService,
+                ocrCache: shared.ocrCache,
+                renderLimiter: shared.renderLimiter,
+                profile,
+            });
+        }
     });
 
     return { profile, client, cooldown, translationService };
@@ -242,6 +270,7 @@ export async function startBabelApps(profiles: AppProfile[]): Promise<void> {
 
         dashboardApp = createDashboardApp({
             cache: shared.cache,
+            ocrCache: shared.ocrCache,
             cooldown: primaryRuntime.cooldown,
             cooldowns: cooldownsByProfile,
             log: shared.log,

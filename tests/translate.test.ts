@@ -1,14 +1,22 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { translate, _test } from '../src/modules/translation/translate.js';
-import { fetchWithRetry } from '../src/infra/vertex-ai-client.js';
+import { fetchProviderWithRetry } from '../src/infra/provider-http.js';
 
 const {
     getLanguageName,
     buildTargetedPrompt,
+    resolveSystemPrompt,
     LOCALE_MAP,
     DEFAULT_PROMPT,
     buildGlossaryPromptSection,
 } = _test;
+
+const fetchWithRetry = (url: string, options: RequestInit, retries: number) =>
+    fetchProviderWithRetry(url, options, {
+        provider: 'vertex',
+        retries,
+        logPrefix: 'VertexAI',
+    });
 
 // --- Mock store ---
 vi.mock('../src/persistence/store.js', () => {
@@ -104,6 +112,16 @@ describe('buildTargetedPrompt', () => {
         const prompt = buildTargetedPrompt('ko');
         expect(prompt).toContain('already in');
         expect(prompt).toContain('English instead');
+    });
+
+    it('should add marker rules only for Lens prompts', () => {
+        expect(DEFAULT_PROMPT).not.toContain('BABEL_REGION_1');
+        expect(resolveSystemPrompt('auto', 'Custom translator prompt')).not.toContain(
+            'BABEL_REGION_1',
+        );
+        expect(resolveSystemPrompt('auto', 'Custom translator prompt', true)).toContain(
+            '[[BABEL_REGION_1]]',
+        );
     });
 });
 
@@ -246,6 +264,29 @@ describe('fetchWithRetry', () => {
         const error = await caught;
         expect(error).toBeInstanceOf(Error);
         expect(error.message).toBe('Network down');
+    });
+
+    it('stops retrying when the shared provider deadline expires', async () => {
+        const controller = new AbortController();
+        const fail = { ok: false, status: 429 } as Response;
+        globalThis.fetch = vi.fn().mockResolvedValue(fail);
+
+        vi.useFakeTimers();
+        const caught = fetchProviderWithRetry(
+            'https://example.com',
+            {},
+            {
+                provider: 'vertex',
+                retries: 3,
+                signal: controller.signal,
+                logPrefix: 'VertexAI',
+            },
+        ).catch((error: Error) => error);
+        await vi.advanceTimersByTimeAsync(0);
+        controller.abort(new DOMException('Provider deadline exceeded', 'TimeoutError'));
+
+        await expect(caught).resolves.toMatchObject({ name: 'TimeoutError' });
+        expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     });
 });
 

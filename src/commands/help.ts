@@ -9,6 +9,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 interface HelpText {
     title: string;
     translate: [string, string];
+    lens: [string, string];
     quick: [string, string];
     setlang: [string, string];
     mylang: [string, string];
@@ -28,7 +29,10 @@ function personalizeForProfile(text: string, profile: AppProfile): string {
         return text;
     }
     const suffix = profile.commandName.replace(/^Babel\s*/, '');
-    return text.replace(new RegExp(`\\bBabel\\b(?!\\s+${suffix}\\b)`, 'g'), profile.commandName);
+    return text.replace(
+        new RegExp(`\\bBabel\\b(?!\\s+(?:${suffix}|Lens)\\b)`, 'g'),
+        profile.commandName,
+    );
 }
 
 /** Handle /help command — show localized help text. */
@@ -41,6 +45,7 @@ export async function handleHelp(
     const t = HELP_TEXTS[lang] ?? HELP_TEXTS['en']!;
     const sections = [
         [t.translate[0], t.translate[1]],
+        [t.lens[0], t.lens[1]],
         ...(profile.enableTranslateCommand ? [[t.quick[0], t.quick[1]]] : []),
         [t.setlang[0], t.setlang[1]],
         [t.mylang[0], t.mylang[1]],

@@ -78,10 +78,12 @@ export interface UserLanguagePreferenceEntry {
 
 export interface StoreData {
     vertexAiApiKey: string;
+    visionApiKey: string;
     gcpProject: string;
     gcpLocation: string;
     geminiModel: string;
     allowedGuildIds: string[];
+    lensEnabledGuildIds: string[];
     allowedUserIds: string[];
     cooldownSeconds: number;
     cacheMaxSize: number;
@@ -89,6 +91,7 @@ export interface StoreData {
     inputPricePerMillion: number;
     outputPricePerMillion: number;
     dailyBudgetUsd: number;
+    visionMonthlyImageLimit: number;
     defaultUserDailyBudgetUsd: number;
     tokenUsage: TokenUsage | null;
     usageHistory: UsageHistoryEntry[];
@@ -109,10 +112,12 @@ export interface StoreData {
     translationProvider: TranslationProviderMode;
     // Per-guild budget & usage
     guildBudgets: Record<string, GuildBudgetConfig>;
+    guildVisionLimits: Record<string, number>;
     guildTokenUsage: Record<string, TokenUsage>;
     guildUsageHistory: Record<string, UsageHistoryEntry[]>;
     // Per-user budget & usage
     userBudgets: Record<string, UserBudgetConfig>;
+    userVisionLimits: Record<string, number>;
     userTokenUsage: Record<string, TokenUsage>;
     userUsageHistory: Record<string, UsageHistoryEntry[]>;
 }
@@ -187,6 +192,7 @@ export interface TranslationLogEntry {
     cached: boolean;
     targetLanguage: string;
     langSource: string;
+    command: string;
     timestamp: number;
 }
 
@@ -217,6 +223,7 @@ export interface SessionData {
 
 export interface DashboardDeps {
     cache: TranslationCache;
+    ocrCache: TranslationCache;
     cooldown: CooldownManager;
     cooldowns?: Partial<Record<AppProfile['id'], CooldownManager>>;
     log: TranslationLog;

@@ -30,6 +30,7 @@ export class TranslationLog {
         cached?: boolean;
         targetLanguage?: string;
         langSource?: string;
+        command?: string;
         timestamp?: number;
     }): void {
         this.pushEntry({
@@ -43,6 +44,7 @@ export class TranslationLog {
             cached: !!params.cached,
             targetLanguage: params.targetLanguage || 'auto',
             langSource: params.langSource || 'auto',
+            command: params.command || 'unknown',
             timestamp: params.timestamp || Date.now(),
         });
     }

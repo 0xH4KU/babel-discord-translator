@@ -92,7 +92,7 @@ function registeredCommandsFetch(profile = BABEL_GUILD_PROFILE) {
         response(
             getCommandsForProfile(profile).map((command, index) => ({
                 id: String(index),
-                name: command.name,
+                ...command,
             })),
         ),
     );
@@ -105,7 +105,7 @@ describe('runSetupDoctor', () => {
             response(
                 expectedCommands.map((command, index) => ({
                     id: String(index),
-                    name: command.name,
+                    ...command,
                 })),
             ),
         );
@@ -173,7 +173,38 @@ describe('runSetupDoctor', () => {
             expect.objectContaining({
                 id: 'commands',
                 status: 'fail',
-                action: expect.stringContaining('npm run register'),
+                action: expect.stringContaining('npm run register:guild'),
+            }),
+        );
+    });
+
+    it('fails when Pocket Lens is registered with stale install contexts', async () => {
+        const commands = getCommandsForProfile(BABEL_POCKET_PROFILE).map((command, index) => ({
+            id: String(index),
+            ...command,
+            ...(command.name === 'Babel Lens' ? { integration_types: [0], contexts: [0] } : {}),
+        }));
+        const report = await runSetupDoctor({
+            profile: BABEL_POCKET_PROFILE,
+            profiles: [BABEL_POCKET_PROFILE],
+            client: client(),
+            configStore: configStore(),
+            healthCheck: vi.fn(async () => ({ healthy: true, latencyMs: 12 })),
+            openAiHealthCheck: vi.fn(async () => ({ healthy: true, latencyMs: 10 })),
+            env: {
+                BABEL_POCKET_DISCORD_APP_ID: 'pocket-app',
+                BABEL_POCKET_DISCORD_TOKEN: 'pocket-token',
+            },
+            fetchFn: vi.fn(async () => response(commands)),
+            sqliteProbe: vi.fn(),
+        });
+
+        expect(report.checks).toContainEqual(
+            expect.objectContaining({
+                id: 'commands',
+                status: 'fail',
+                detail: 'Outdated registered Discord commands: Babel Lens',
+                action: expect.stringContaining('npm run register:pocket'),
             }),
         );
     });

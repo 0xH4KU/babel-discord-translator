@@ -58,7 +58,7 @@ describe('createSqliteDatabase', () => {
         }
     });
 
-    it('should create user-install usage and pending owner tables', async () => {
+    it('should create consolidated usage and pending owner tables', async () => {
         const { createSqliteDatabase } = await import('../src/persistence/sqlite-database.js');
         const db = createSqliteDatabase(':memory:');
 
@@ -71,8 +71,7 @@ describe('createSqliteDatabase', () => {
                     WHERE type = 'table'
                       AND name IN (
                           'user_budgets',
-                          'user_daily_usage',
-                          'user_usage_history',
+                          'scoped_usage',
                           'pending_user_install_owners'
                       )
                     ORDER BY name ASC
@@ -82,9 +81,8 @@ describe('createSqliteDatabase', () => {
 
             expect(rows.map((row) => row.name)).toEqual([
                 'pending_user_install_owners',
+                'scoped_usage',
                 'user_budgets',
-                'user_daily_usage',
-                'user_usage_history',
             ]);
         } finally {
             db.close();
@@ -321,7 +319,186 @@ describe('createSqliteDatabase', () => {
             const migrationIds = db
                 .prepare('SELECT id FROM schema_migrations ORDER BY id ASC')
                 .all() as Array<{ id: number }>;
-            expect(migrationIds.map((row) => row.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+            expect(migrationIds.map((row) => row.id)).toEqual([
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+            ]);
+        } finally {
+            db.close();
+        }
+    });
+
+    it('should preserve global Vision usage when adding scoped quotas', async () => {
+        const { DatabaseSync } = await import('node:sqlite');
+        const { runMigrations } = await import('../src/persistence/sqlite-database.js');
+        const db = new DatabaseSync(':memory:');
+
+        try {
+            db.exec(`
+                CREATE TABLE schema_migrations (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    applied_at TEXT NOT NULL
+                );
+                INSERT INTO schema_migrations (id, name, applied_at)
+                VALUES
+                    (1, 'one', '2026-01-01'), (2, 'two', '2026-01-01'),
+                    (3, 'three', '2026-01-01'), (4, 'four', '2026-01-01'),
+                    (5, 'five', '2026-01-01'), (6, 'six', '2026-01-01'),
+                    (7, 'seven', '2026-01-01'), (8, 'eight', '2026-01-01'),
+                    (9, 'nine', '2026-01-01'), (10, 'ten', '2026-01-01');
+
+                CREATE TABLE vision_monthly_usage (
+                    month TEXT PRIMARY KEY,
+                    images INTEGER NOT NULL CHECK (images >= 0)
+                );
+                INSERT INTO vision_monthly_usage (month, images) VALUES ('2026-08', 7);
+            `);
+
+            runMigrations(db);
+
+            expect(
+                db.prepare(
+                    `
+                        SELECT scope, scope_id as scopeId, month, images
+                        FROM vision_monthly_usage
+                    `,
+                ).get(),
+            ).toEqual({ scope: 'global', scopeId: '', month: '2026-08', images: 7 });
+        } finally {
+            db.close();
+        }
+    });
+
+    it('should consolidate legacy usage tables without losing rows', async () => {
+        const { DatabaseSync } = await import('node:sqlite');
+        const { runMigrations } = await import('../src/persistence/sqlite-database.js');
+        const db = new DatabaseSync(':memory:');
+
+        try {
+            db.exec(`
+                CREATE TABLE schema_migrations (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    applied_at TEXT NOT NULL
+                );
+                INSERT INTO schema_migrations (id, name, applied_at)
+                VALUES
+                    (1, 'one', '2026-01-01'), (2, 'two', '2026-01-01'),
+                    (3, 'three', '2026-01-01'), (4, 'four', '2026-01-01'),
+                    (5, 'five', '2026-01-01'), (6, 'six', '2026-01-01'),
+                    (7, 'seven', '2026-01-01'), (8, 'eight', '2026-01-01');
+
+                CREATE TABLE usage_history (
+                    date TEXT, input_tokens INTEGER, output_tokens INTEGER, requests INTEGER
+                );
+                CREATE TABLE daily_usage (
+                    date TEXT, input_tokens INTEGER, output_tokens INTEGER, requests INTEGER
+                );
+                CREATE TABLE guild_usage_history (
+                    guild_id TEXT, date TEXT, input_tokens INTEGER,
+                    output_tokens INTEGER, requests INTEGER
+                );
+                CREATE TABLE guild_daily_usage (
+                    guild_id TEXT, date TEXT, input_tokens INTEGER,
+                    output_tokens INTEGER, requests INTEGER
+                );
+                CREATE TABLE user_usage_history (
+                    user_id TEXT, date TEXT, input_tokens INTEGER,
+                    output_tokens INTEGER, requests INTEGER
+                );
+                CREATE TABLE user_daily_usage (
+                    user_id TEXT, date TEXT, input_tokens INTEGER,
+                    output_tokens INTEGER, requests INTEGER
+                );
+
+                INSERT INTO usage_history VALUES ('2026-01-01', 1, 2, 3);
+                INSERT INTO daily_usage VALUES ('2026-01-02', 4, 5, 6);
+                INSERT INTO guild_usage_history VALUES ('guild-1', '2026-01-01', 7, 8, 9);
+                INSERT INTO guild_daily_usage VALUES ('guild-1', '2026-01-02', 10, 11, 12);
+                INSERT INTO user_usage_history VALUES ('user-1', '2026-01-01', 13, 14, 15);
+                INSERT INTO user_daily_usage VALUES ('user-1', '2026-01-02', 16, 17, 18);
+            `);
+
+            runMigrations(db);
+
+            const rows = db
+                .prepare(
+                    `
+                    SELECT scope, scope_id as scopeId, date,
+                           input_tokens as inputTokens,
+                           output_tokens as outputTokens,
+                           requests
+                    FROM scoped_usage
+                    ORDER BY scope, scope_id, date
+                `,
+                )
+                .all();
+            expect(rows).toEqual([
+                {
+                    scope: 'global',
+                    scopeId: '',
+                    date: '2026-01-01',
+                    inputTokens: 1,
+                    outputTokens: 2,
+                    requests: 3,
+                },
+                {
+                    scope: 'global',
+                    scopeId: '',
+                    date: '2026-01-02',
+                    inputTokens: 4,
+                    outputTokens: 5,
+                    requests: 6,
+                },
+                {
+                    scope: 'guild',
+                    scopeId: 'guild-1',
+                    date: '2026-01-01',
+                    inputTokens: 7,
+                    outputTokens: 8,
+                    requests: 9,
+                },
+                {
+                    scope: 'guild',
+                    scopeId: 'guild-1',
+                    date: '2026-01-02',
+                    inputTokens: 10,
+                    outputTokens: 11,
+                    requests: 12,
+                },
+                {
+                    scope: 'user',
+                    scopeId: 'user-1',
+                    date: '2026-01-01',
+                    inputTokens: 13,
+                    outputTokens: 14,
+                    requests: 15,
+                },
+                {
+                    scope: 'user',
+                    scopeId: 'user-1',
+                    date: '2026-01-02',
+                    inputTokens: 16,
+                    outputTokens: 17,
+                    requests: 18,
+                },
+            ]);
+
+            const legacyTableCount = db
+                .prepare(
+                    `
+                    SELECT COUNT(*) as count
+                    FROM sqlite_master
+                    WHERE type = 'table'
+                      AND name IN (
+                          'daily_usage', 'usage_history',
+                          'guild_daily_usage', 'guild_usage_history',
+                          'user_daily_usage', 'user_usage_history'
+                      )
+                `,
+                )
+                .get() as { count: number };
+            expect(legacyTableCount.count).toBe(0);
         } finally {
             db.close();
         }

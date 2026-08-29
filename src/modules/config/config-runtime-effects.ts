@@ -5,6 +5,7 @@ import type { StoreData } from '../../shared/types.js';
 
 export const MANAGED_RUNTIME_CONFIG_KEYS = [
     'vertexAiApiKey',
+    'visionApiKey',
     'gcpProject',
     'gcpLocation',
     'cooldownSeconds',
@@ -14,6 +15,7 @@ export const MANAGED_RUNTIME_CONFIG_KEYS = [
     'maxInputLength',
     'maxOutputTokens',
     'dailyBudgetUsd',
+    'visionMonthlyImageLimit',
     'openaiApiKey',
     'openaiBaseUrl',
     'openaiModel',
@@ -46,6 +48,8 @@ type RuntimeConfigUpdate = Partial<Pick<StoreData, ManagedRuntimeConfigKey>>;
 const CONFIG_EFFECT_DESCRIPTIONS: Record<ManagedRuntimeConfigKey, string> = {
     vertexAiApiKey:
         'Clear translation cache and reset provider state so future requests use the updated Vertex AI credentials.',
+    visionApiKey:
+        'No in-memory sync required; Babel Lens reads the persisted Vision credentials on each call.',
     gcpProject:
         'Clear translation cache and reset provider state so future requests use the updated Vertex AI project.',
     gcpLocation:
@@ -62,6 +66,8 @@ const CONFIG_EFFECT_DESCRIPTIONS: Record<ManagedRuntimeConfigKey, string> = {
         'Clear the translation cache so future requests use the new output token limit.',
     dailyBudgetUsd:
         'No in-memory sync required; budget checks read the persisted value on each call.',
+    visionMonthlyImageLimit:
+        'No in-memory sync required; Babel Lens reads the persisted monthly limit on each call.',
     openaiApiKey:
         'Clear translation cache and reset provider state so future requests use the updated OpenAI-compatible credentials.',
     openaiBaseUrl:
@@ -136,6 +142,8 @@ export function applyConfigUpdateEffects(
                 break;
             case 'maxInputLength':
             case 'dailyBudgetUsd':
+            case 'visionApiKey':
+            case 'visionMonthlyImageLimit':
                 break;
             case 'translationMaxConcurrent':
                 runtimeLimiter?.updateLimits({ maxConcurrent: updates.translationMaxConcurrent! });

@@ -231,6 +231,7 @@ describe('dashboard static assets', () => {
                         cacheHitRate: 0,
                     },
                     cache: { size: 0, maxSize: 2000 },
+                    ocrCache: { size: 3, maxSize: 250, hitRate: '60.0%' },
                 }),
             }),
         };
@@ -262,6 +263,9 @@ describe('dashboard static assets', () => {
         expect(nodes['budget-card'].style.display).toBe('');
         expect(nodes['budget-card-label'].textContent).toBe('Daily Budget');
         expect(nodes['budget-amount'].textContent).toBe('Total: $0.21');
+        expect(nodes['stat-saved'].textContent).toBe(
+            '0 / 2000 translations · 3 / 250 OCR (60.0%)',
+        );
         expect(nodes['guild-budget-overview'].children).toHaveLength(3);
         expect(
             createdElements.some((element) => element.textContent === 'Global Safety Budget'),
@@ -277,6 +281,41 @@ describe('dashboard static assets', () => {
             true,
         );
         expect(createdElements.some((element) => element.textContent === '$0 / $0.50')).toBe(true);
+    });
+
+    it('refreshes stats every 15 seconds only while the dashboard is visible', () => {
+        const dashboardJs = readFileSync('src/public/js/dashboard.js', 'utf-8');
+        let scheduled = () => undefined;
+        let refreshMs = 0;
+        const context = {
+            document: { hidden: true },
+            statsCalls: 0,
+            healthCalls: 0,
+            setInterval(callback: () => void, delay: number) {
+                scheduled = callback;
+                refreshMs = delay;
+                return 1;
+            },
+            clearInterval() {},
+        };
+
+        vm.createContext(context);
+        vm.runInContext(dashboardJs, context);
+        vm.runInContext(
+            `loadStats = async () => { statsCalls += 1; };
+             checkApiHealth = async () => { healthCalls += 1; };
+             loadDashboard();`,
+            context,
+        );
+
+        expect(context.statsCalls).toBe(1);
+        expect(context.healthCalls).toBe(1);
+        expect(refreshMs).toBe(15000);
+        scheduled();
+        expect(context.statsCalls).toBe(1);
+        context.document.hidden = false;
+        scheduled();
+        expect(context.statsCalls).toBe(2);
     });
 
     it('escapes glossary table fields rendered from stored import data', () => {
@@ -324,6 +363,7 @@ describe('dashboard static assets', () => {
     it('escapes guild access rows rendered from Discord data', () => {
         const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
         const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const visionLimitsJs = readFileSync('src/public/js/vision-limits.js', 'utf-8');
         const nodes = {
             'guild-list': { innerHTML: '' },
             'guild-pagination': { innerHTML: '' },
@@ -354,6 +394,7 @@ describe('dashboard static assets', () => {
             [
                 utilsJs,
                 accessJs,
+                visionLimitsJs,
                 `currentConfig = {
                     allowedGuildIds: ["guild');alert(1)//"],
                     dailyBudgetUsd: 0
@@ -375,6 +416,73 @@ describe('dashboard static assets', () => {
         expect(nodes['guild-list'].innerHTML).not.toContain('<img src=x');
         expect(nodes['guild-list'].innerHTML).not.toContain('onerror="alert(2)');
         expect(nodes['guild-list'].innerHTML).not.toContain("toggleGuildAllowed('guild');alert");
+    });
+
+    it('keeps Lens access scoped to translation-enabled guilds', () => {
+        const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
+        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const visionLimitsJs = readFileSync('src/public/js/vision-limits.js', 'utf-8');
+        const nodes = {
+            'guild-list': { innerHTML: '' },
+            'guild-pagination': { innerHTML: '' },
+        };
+        const context = {
+            document: {
+                getElementById(id: string) {
+                    return nodes[id as keyof typeof nodes] || null;
+                },
+                querySelectorAll() {
+                    return [];
+                },
+            },
+            hasDashboardCapability(name: string) {
+                return name === 'guildAccess';
+            },
+            renderPagination() {},
+            formatUsd(value: number) {
+                return `$${value}`;
+            },
+            showToast() {},
+            window: { location: { pathname: '/' } },
+        };
+
+        vm.createContext(context);
+        vm.runInContext(
+            [
+                utilsJs,
+                accessJs,
+                visionLimitsJs,
+                `currentConfig = {
+                    allowedGuildIds: ['guild-1'],
+                    lensEnabledGuildIds: ['guild-1'],
+                    dailyBudgetUsd: 0
+                };`,
+                `accessAllowedGuildIdsDraft = ['guild-1'];`,
+                `accessLensEnabledGuildIdsDraft = ['guild-1'];`,
+                `allGuilds = [
+                    { id: 'guild-1', name: 'Server 1', icon: 'one.png', memberCount: 10 },
+                    { id: 'guild-2', name: 'Server 2', icon: 'two.png', memberCount: 20 }
+                ];`,
+                'guildBudgetData = {};',
+                "toggleGuildAllowed('guild-1', false);",
+                "toggleGuildLens('guild-2', true);",
+            ].join('\n'),
+            context,
+        );
+
+        const state = JSON.parse(
+            vm.runInContext(
+                'JSON.stringify({ allowed: accessAllowedGuildIdsDraft, lens: accessLensEnabledGuildIdsDraft })',
+                context,
+            ),
+        );
+        expect(state).toEqual({ allowed: ['guild-2'], lens: ['guild-2'] });
+        expect(nodes['guild-list'].innerHTML).toContain('Translation');
+        expect(nodes['guild-list'].innerHTML).toContain('Babel Lens');
+        expect(nodes['guild-list'].innerHTML).toContain('Enabled');
+        expect(nodes['guild-list'].innerHTML).not.toMatch(
+            /data-lens-guild-id="guild-1"[^>]*disabled/,
+        );
     });
 
     it('escapes session rows before rendering dashboard session metadata', () => {
@@ -467,6 +575,7 @@ describe('dashboard static assets', () => {
         const settingsJs = readFileSync('src/public/js/settings.js', 'utf-8');
         const fields: Record<string, { value: string }> = {
             'cfg-apikey': { value: '' },
+            'cfg-vision-apikey': { value: 'vision-key' },
             'cfg-project': { value: 'project-1' },
             'cfg-location': { value: 'global' },
             'cfg-model': { value: 'gemini-model' },
@@ -482,6 +591,7 @@ describe('dashboard static assets', () => {
             'cfg-input-price': { value: '0.25' },
             'cfg-output-price': { value: '1.5' },
             'cfg-budget': { value: '3.75' },
+            'cfg-vision-limit': { value: '950' },
             'cfg-prompt': { value: 'Translate precisely.' },
             'cfg-provider': { value: 'openai' },
             'cfg-openai-apikey': { value: '' },
@@ -521,12 +631,35 @@ describe('dashboard static assets', () => {
             translationMaxQueueWaitMs: 45000,
             maxInputLength: 4096,
             maxOutputTokens: 2048,
+            visionMonthlyImageLimit: 950,
+            visionApiKey: 'vision-key',
         });
         expect(
             Object.values(payload)
                 .filter((value) => typeof value === 'number')
                 .every((value) => Number.isFinite(value)),
         ).toBe(true);
+    });
+
+    it('previews a custom Vision limit while editing', () => {
+        const settingsJs = readFileSync('src/public/js/settings.js', 'utf-8');
+        const usage = { textContent: '' };
+        const context = {
+            document: {
+                getElementById(id: string) {
+                    return id === 'cfg-vision-usage' ? usage : null;
+                },
+            },
+        };
+
+        vm.createContext(context);
+        vm.runInContext(settingsJs, context);
+        vm.runInContext(
+            `currentConfig = { visionMonthlyImageLimit: 900, visionUsage: { images: 0, limit: 900, month: '2026-08' } }; previewVisionLimit('950');`,
+            context,
+        );
+
+        expect(usage.textContent).toBe('0 / 950 images used · 2026-08');
     });
 
     it('returns to login when an authenticated API request expires', async () => {

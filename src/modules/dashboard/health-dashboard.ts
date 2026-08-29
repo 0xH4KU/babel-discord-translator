@@ -10,16 +10,10 @@ type HealthDashboardDeps = Pick<
     'cache' | 'metrics' | 'runtimeLimiter' | 'discordReady' | 'metricsToken' | 'host'
 >;
 
-export function createHealthDashboardApp({
-    cache,
-    metrics,
-    runtimeLimiter,
-    discordReady,
-    metricsToken,
-    host,
-}: HealthDashboardDeps): express.Express {
-    const app = express();
-
+export function registerHealthRoutes(
+    app: express.Express,
+    { cache, metrics, runtimeLimiter, discordReady, metricsToken, host }: HealthDashboardDeps,
+): void {
     app.get('/livez', (_req: Request, res: Response) => {
         const health = getLivenessStatus();
         res.status(health.live ? 200 : 503).json(health);
@@ -53,6 +47,10 @@ export function createHealthDashboardApp({
             );
         },
     );
+}
 
+export function createHealthDashboardApp(deps: HealthDashboardDeps): express.Express {
+    const app = express();
+    registerHealthRoutes(app, deps);
     return app;
 }

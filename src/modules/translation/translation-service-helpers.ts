@@ -9,6 +9,7 @@ export type TranslatorOptions = {
     glossaryEntries?: Array<
         Pick<GuildGlossaryEntry, 'sourceText' | 'targetLanguage' | 'targetText' | 'notes'>
     >;
+    preserveNumberedMarkers?: boolean;
     runtimeConfig?: RuntimeConfig;
     logContext: {
         requestId: string;
@@ -17,20 +18,6 @@ export type TranslatorOptions = {
         command: ServiceCommand;
     };
 };
-
-export function createTranslatorOptions(
-    logContext: TranslatorOptions['logContext'],
-    metrics?: AppMetricsCollector,
-    glossaryEntries: TranslatorOptions['glossaryEntries'] = [],
-    runtimeConfig?: RuntimeConfig,
-): TranslatorOptions {
-    return {
-        logContext,
-        ...(metrics ? { metrics } : {}),
-        ...(glossaryEntries.length > 0 ? { glossaryEntries } : {}),
-        ...(runtimeConfig ? { runtimeConfig } : {}),
-    };
-}
 
 function normalizeGlossarySource(sourceText: string): string {
     return sourceText.trim().toLowerCase();

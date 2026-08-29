@@ -77,8 +77,4 @@ export class SQLiteSessionRepository implements SessionRepository {
             },
         ]);
     }
-
-    clear(): void {
-        this.db.exec('DELETE FROM sessions');
-    }
 }

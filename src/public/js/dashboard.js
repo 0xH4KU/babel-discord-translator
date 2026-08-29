@@ -3,6 +3,8 @@
  */
 
 let refreshTimer;
+let statsLoading = false;
+const STATS_REFRESH_MS = 15000;
 
 function formatRatio(value) {
     return (Number(value || 0) * 100).toFixed(1) + '%';
@@ -319,6 +321,8 @@ function switchTab(name) {
 }
 
 async function loadStats() {
+    if (statsLoading) return;
+    statsLoading = true;
     try {
         const res = await api('/stats');
         if (!res.ok) return;
@@ -375,14 +379,19 @@ async function loadStats() {
         document.getElementById('stat-hitrate').textContent = formatRatio(
             d.translations.cacheHitRate,
         );
+        const ocrCache = d.ocrCache || { size: 0, maxSize: 0, hitRate: 'N/A' };
         document.getElementById('stat-saved').textContent =
-            d.cache.size + ' / ' + d.cache.maxSize + ' cached';
+            d.cache.size + ' / ' + d.cache.maxSize + ' translations · ' +
+            ocrCache.size + ' / ' + ocrCache.maxSize + ' OCR (' + ocrCache.hitRate + ')';
         document.getElementById('stat-uptime').textContent = formatUptime(d.bot.uptime);
         const memory = d.bot.memory || {};
         const rssMB = memory.rssMB || d.bot.memoryMB || '?';
         document.getElementById('stat-memory').textContent =
             'RSS ' + rssMB + ' MB · ' + getDashboardUsageScopeLabel(d);
-    } catch {}
+    } catch {
+    } finally {
+        statsLoading = false;
+    }
 }
 
 async function checkApiHealth() {
@@ -504,5 +513,7 @@ async function loadDashboard() {
     loadStats();
     checkApiHealth();
     if (refreshTimer) clearInterval(refreshTimer);
-    refreshTimer = setInterval(loadStats, 5000);
+    refreshTimer = setInterval(() => {
+        if (!document.hidden) loadStats();
+    }, STATS_REFRESH_MS);
 }

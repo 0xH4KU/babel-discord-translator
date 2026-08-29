@@ -36,7 +36,6 @@ import {
 import {
     buildGlossaryVersion,
     classifyTranslationError,
-    createTranslatorOptions,
     selectGlossaryEntriesForTarget,
     suggestedActionForErrorType,
     type ServiceCommand,
@@ -87,7 +86,9 @@ export interface TranslationServiceRequest {
     billingUserId?: string | null;
     userTag: string;
     locale?: string;
-    text: string;
+    text?: string;
+    resolveText?: () => Promise<string>;
+    preserveNumberedMarkers?: boolean;
     targetLanguageOption?: string | null;
     requestId?: string;
     beforeTranslate?: () => Promise<unknown>;
@@ -95,7 +96,7 @@ export interface TranslationServiceRequest {
 }
 
 export type TranslationServiceResult =
-    | { status: 'blocked'; message: string }
+    | { status: 'blocked'; message: string; deferred?: boolean }
     | {
           status: 'success';
           deferred: boolean;
@@ -209,10 +210,12 @@ export function createTranslationService({
                 guildId: request.guildId ?? null,
                 userId: request.userId,
                 command: request.command,
+                commandLabel: request.commandLabel,
             });
             requestLogger.info('translation.request.started', {
                 locale: request.locale ?? null,
-                textLength: request.text.length,
+                textLength: request.text?.length ?? null,
+                deferredTextResolution: !!request.resolveText,
                 hasTargetLanguageOption: !!(
                     request.targetLanguageOption && request.targetLanguageOption !== 'auto'
                 ),
@@ -252,6 +255,42 @@ export function createTranslationService({
                 userId: accessMode === 'user-install' ? getEffectiveUserId(scope) : null,
             };
 
+            const acquireRuntime = (
+                stage: 'text_resolution' | 'translation',
+            ): {
+                reservation: TranslationRuntimeReservation | null;
+                blocked: TranslationServiceResult | null;
+            } => {
+                if (!runtimeLimiter) return { reservation: null, blocked: null };
+
+                const admission = runtimeLimiter.acquire({
+                    guildId: request.guildId ?? null,
+                    userId: getEffectiveUserId(scope),
+                });
+                if (!admission.accepted) {
+                    requestLogger.warn('translation.request.blocked', {
+                        blockReason: admission.reason,
+                        stage,
+                        runtime: admission.snapshot,
+                    });
+                    return {
+                        reservation: null,
+                        blocked: {
+                            status: 'blocked',
+                            message: resolveQueueBusyMessage(admission.reason, messages),
+                        },
+                    };
+                }
+
+                requestLogger.info(
+                    admission.reservation.queued
+                        ? 'translation.queue.enqueued'
+                        : 'translation.queue.acquired',
+                    { stage, runtime: runtimeLimiter.snapshot() },
+                );
+                return { reservation: admission.reservation, blocked: null };
+            };
+
             const cooldownState = cooldown.check(request.userId);
             if (!cooldownState.allowed) {
                 requestLogger.warn('translation.request.blocked', {
@@ -264,10 +303,65 @@ export function createTranslationService({
                 };
             }
 
-            const originalText = request.text;
+            let deferred = false;
+            let originalText = request.text ?? '';
+            if (request.resolveText) {
+                const runtime = acquireRuntime('text_resolution');
+                if (runtime.blocked) return runtime.blocked;
+
+                try {
+                    cooldown.set(request.userId);
+                    if (request.beforeTranslate) {
+                        await request.beforeTranslate();
+                        deferred = true;
+                        requestLogger.info('translation.request.deferred');
+                    }
+                    const resolveText = request.resolveText;
+                    originalText = runtime.reservation
+                        ? await runtime.reservation.run(async (meta) => {
+                              if (meta.queued) {
+                                  requestLogger.info('translation.queue.started', {
+                                      stage: 'text_resolution',
+                                      waitMs: meta.waitMs,
+                                      runtime: meta.snapshot,
+                                  });
+                              }
+                              return resolveText();
+                          })
+                        : await resolveText();
+                } catch (error) {
+                    runtime.reservation?.cancel();
+                    const caughtError = error instanceof Error ? error : new Error(String(error));
+                    const sanitizedMessage = sanitizeError(caughtError.message);
+                    const diagnostic = classifyTranslationError(caughtError.message);
+                    profileMetrics?.recordTranslationFailure();
+                    log.addError({
+                        appProfileId,
+                        guildId: request.guildId,
+                        guildName: request.guildName,
+                        userId: request.userId,
+                        userTag: request.userTag,
+                        error: sanitizedMessage,
+                        command: request.commandLabel,
+                        requestId,
+                        errorType: diagnostic.errorType,
+                        suggestedAction: diagnostic.suggestedAction,
+                    });
+                    requestLogger.error('translation.text_resolution.failed', {
+                        error: sanitizedMessage,
+                        errorType: diagnostic.errorType,
+                    });
+                    return {
+                        status: 'error',
+                        deferred,
+                        message: discordMessages.translationFailed(sanitizedMessage),
+                    };
+                }
+            }
+
             if (!originalText.trim()) {
                 requestLogger.warn('translation.request.blocked', { blockReason: 'empty_text' });
-                return { status: 'blocked', message: messages.emptyText };
+                return { status: 'blocked', message: messages.emptyText, deferred };
             }
 
             const maxInputLength = runtimeConfig.maxInputLength || 2000;
@@ -280,6 +374,7 @@ export function createTranslationService({
                 return {
                     status: 'blocked',
                     message: discordMessages.textTooLong(originalText.length, maxInputLength),
+                    deferred,
                 };
             }
 
@@ -288,7 +383,11 @@ export function createTranslationService({
                 userPreferenceStore,
                 { accessMode },
             );
-            const prompt = resolveSystemPrompt(targetLanguage, runtimeConfig.translationPrompt);
+            const prompt = resolveSystemPrompt(
+                targetLanguage,
+                runtimeConfig.translationPrompt,
+                request.preserveNumberedMarkers,
+            );
             const glossaryEntries =
                 enableGuildGlossary && request.guildId
                     ? glossaryRepository.listGuildGlossary(request.guildId)
@@ -308,7 +407,6 @@ export function createTranslationService({
                 glossaryVersion,
             });
 
-            let deferred = false;
             let reservation: TranslationRuntimeReservation | null = null;
             let budgetReservation: UsageBudgetReservation | null = null;
             let leaderInFlight: InFlightTranslation | null = null;
@@ -337,7 +435,7 @@ export function createTranslationService({
                         langSource,
                     });
 
-                    if (request.beforeTranslate) {
+                    if (!deferred && request.beforeTranslate) {
                         await request.beforeTranslate();
                         deferred = true;
                         requestLogger.info('translation.request.deferred');
@@ -356,31 +454,11 @@ export function createTranslationService({
                 }
 
                 if (!cached && runtimeLimiter) {
-                    const admission = runtimeLimiter.acquire({
-                        guildId: request.guildId ?? null,
-                        userId: getEffectiveUserId(scope),
-                    });
-
-                    if (!admission.accepted) {
-                        requestLogger.warn('translation.request.blocked', {
-                            blockReason: admission.reason,
-                            runtime: admission.snapshot,
-                        });
-                        return {
-                            status: 'blocked',
-                            message: resolveQueueBusyMessage(admission.reason, messages),
-                        };
+                    const runtime = acquireRuntime('translation');
+                    if (runtime.blocked) {
+                        return deferred ? { ...runtime.blocked, deferred: true } : runtime.blocked;
                     }
-
-                    reservation = admission.reservation;
-                    requestLogger.info(
-                        reservation.queued
-                            ? 'translation.queue.enqueued'
-                            : 'translation.queue.acquired',
-                        {
-                            runtime: runtimeLimiter.snapshot(),
-                        },
-                    );
+                    reservation = runtime.reservation;
                 }
 
                 if (!cached && !joinedInFlight) {
@@ -395,7 +473,11 @@ export function createTranslationService({
                         requestLogger.warn('translation.request.blocked', {
                             blockReason: 'budget_exceeded',
                         });
-                        return { status: 'blocked', message: messages.budgetExceeded };
+                        return {
+                            status: 'blocked',
+                            message: messages.budgetExceeded,
+                            ...(deferred ? { deferred: true } : {}),
+                        };
                     }
 
                     const inFlightTranslation = createInFlightTranslation();
@@ -406,7 +488,7 @@ export function createTranslationService({
                     void leaderInFlight.promise.catch(() => undefined);
                 }
 
-                if (!joinedInFlight && request.beforeTranslate) {
+                if (!deferred && !joinedInFlight && request.beforeTranslate) {
                     await request.beforeTranslate();
                     deferred = true;
                     requestLogger.info('translation.request.deferred');
@@ -419,21 +501,20 @@ export function createTranslationService({
                 if (!translated) {
                     const translateAndRecord = async (): Promise<string> => {
                         profileMetrics?.recordTranslationApiCall();
-                        const result = await translator(
-                            originalText,
-                            targetLanguage,
-                            createTranslatorOptions(
-                                {
-                                    requestId,
-                                    guildId: request.guildId ?? null,
-                                    userId: getEffectiveUserId(scope),
-                                    command: request.command,
-                                },
-                                profileMetrics,
-                                selectedGlossaryEntries,
-                                runtimeConfig,
-                            ),
-                        );
+                        const result = await translator(originalText, targetLanguage, {
+                            logContext: {
+                                requestId,
+                                guildId: request.guildId ?? null,
+                                userId: getEffectiveUserId(scope),
+                                command: request.command,
+                            },
+                            metrics: profileMetrics,
+                            ...(selectedGlossaryEntries.length > 0
+                                ? { glossaryEntries: selectedGlossaryEntries }
+                                : {}),
+                            preserveNumberedMarkers: request.preserveNumberedMarkers === true,
+                            runtimeConfig,
+                        });
                         cache.set(cacheKey, result.text);
                         inputTokens = result.inputTokens;
                         outputTokens = result.outputTokens;
@@ -449,6 +530,7 @@ export function createTranslationService({
                         translated = await reservation.run(async (meta) => {
                             if (meta.queued) {
                                 requestLogger.info('translation.queue.started', {
+                                    stage: 'translation',
                                     waitMs: meta.waitMs,
                                     runtime: meta.snapshot,
                                 });
@@ -490,6 +572,7 @@ export function createTranslationService({
                     cached,
                     targetLanguage,
                     langSource,
+                    command: request.commandLabel,
                 });
                 requestLogger.info('translation.request.completed', {
                     cached,

@@ -4,6 +4,7 @@ import type { StoreData } from '../../shared/types.js';
 const MAX_CACHE_SIZE = 2000;
 const STRING_CONFIG_KEYS = [
     'vertexAiApiKey',
+    'visionApiKey',
     'gcpProject',
     'gcpLocation',
     'geminiModel',
@@ -12,7 +13,7 @@ const STRING_CONFIG_KEYS = [
     'openaiBaseUrl',
     'openaiModel',
 ] as const;
-const ARRAY_CONFIG_KEYS = ['allowedGuildIds', 'allowedUserIds'] as const;
+const ARRAY_CONFIG_KEYS = ['allowedGuildIds', 'lensEnabledGuildIds', 'allowedUserIds'] as const;
 const BOOLEAN_CONFIG_KEYS = ['setupComplete'] as const;
 const NUMBER_CONFIG_KEYS = [
     'cooldownSeconds',
@@ -20,6 +21,7 @@ const NUMBER_CONFIG_KEYS = [
     'maxInputLength',
     'maxOutputTokens',
     'dailyBudgetUsd',
+    'visionMonthlyImageLimit',
     'defaultUserDailyBudgetUsd',
     'inputPricePerMillion',
     'outputPricePerMillion',
@@ -48,7 +50,7 @@ function toFiniteNumber(value: unknown): number {
 
 function sanitizeStringArrayField(
     value: unknown,
-    key: 'allowedGuildIds' | 'allowedUserIds',
+    key: 'allowedGuildIds' | 'lensEnabledGuildIds' | 'allowedUserIds',
 ): { ok: true; value: string[] } | { ok: false; error: string } {
     if (!Array.isArray(value)) {
         return { ok: false, error: `${key} must be an array of non-empty strings` };
@@ -132,6 +134,10 @@ export function validateConfigUpdate(updates: Record<string, unknown>): {
         delete sanitized.vertexAiApiKey;
     }
 
+    if (!sanitized.visionApiKey || String(sanitized.visionApiKey).startsWith('••••')) {
+        delete sanitized.visionApiKey;
+    }
+
     if (!sanitized.openaiApiKey || String(sanitized.openaiApiKey).startsWith('••••')) {
         delete sanitized.openaiApiKey;
     }
@@ -200,6 +206,17 @@ export function validateConfigUpdate(updates: Record<string, unknown>): {
         dashboardMessages.validation.dailyBudgetUsd,
     );
     if (!dailyBudget.valid) return dailyBudget;
+    if (sanitized.visionMonthlyImageLimit !== undefined) {
+        const v = toFiniteNumber(sanitized.visionMonthlyImageLimit);
+        if (!Number.isSafeInteger(v) || v < 0) {
+            return {
+                valid: false,
+                error: 'visionMonthlyImageLimit must be a non-negative integer',
+                sanitized: sanitized as Partial<StoreData>,
+            };
+        }
+        sanitized.visionMonthlyImageLimit = v;
+    }
     const defaultUserDailyBudget = sanitizeNonNegativeNumberField(
         sanitized,
         'defaultUserDailyBudgetUsd',

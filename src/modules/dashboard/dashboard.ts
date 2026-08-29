@@ -3,7 +3,7 @@ import http from 'http';
 import rateLimit from 'express-rate-limit';
 import { AppMetrics } from '../../shared/app-metrics.js';
 import { getConfig } from '../config/config.js';
-import { getHealthStatus, getLivenessStatus, getReadinessStatus } from '../../shared/health.js';
+import { getReadinessStatus } from '../../shared/health.js';
 import { usage } from '../usage/usage.js';
 import { createTranslationService } from '../translation/translation-service.js';
 import { createDashboardAuth } from './auth/dashboard-auth.js';
@@ -46,8 +46,8 @@ import {
     providerModeIncludes,
     providerSummary,
 } from './operations-summary.js';
-import { createMetricsAuthMiddleware } from './metrics-auth.js';
-import { createEmptyRuntimeSnapshot, renderPrometheusMetrics } from './prometheus-metrics.js';
+import { createEmptyRuntimeSnapshot } from './prometheus-metrics.js';
+import { registerHealthRoutes } from './health-dashboard.js';
 import { applySecurityHeaders } from './security-headers.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -88,6 +88,60 @@ function sanitizeUserPreferenceRef(value: unknown): { guildId: string; userId: s
     const userId = String(source.userId ?? '').trim();
 
     return userId ? { guildId, userId } : null;
+}
+
+function parseVisionLimit(value: unknown): number | null {
+    if (value === null) return null;
+    if (typeof value !== 'number' && typeof value !== 'string') return NaN;
+    if (typeof value === 'string' && !value.trim()) return NaN;
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : NaN;
+}
+
+function applyScopedBudgetUpdate(
+    scope: 'guild' | 'user',
+    scopeId: string,
+    input: unknown,
+):
+    | { ok: true; budget?: number | null; visionLimit?: number | null }
+    | { ok: false; error: string } {
+    const body = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
+    const hasBudget = Object.hasOwn(body, 'dailyBudgetUsd');
+    const hasVisionLimit = Object.hasOwn(body, 'visionMonthlyImageLimit');
+    if (!hasBudget && !hasVisionLimit) {
+        return { ok: false, error: 'A budget or Vision limit is required' };
+    }
+
+    const budget =
+        hasBudget && body.dailyBudgetUsd !== null && body.dailyBudgetUsd !== undefined
+            ? parseFloat(String(body.dailyBudgetUsd))
+            : null;
+    if (hasBudget && budget !== null && (isNaN(budget) || budget < 0)) {
+        return { ok: false, error: dashboardMessages.validation.dailyBudgetUsd };
+    }
+
+    const visionLimit = hasVisionLimit ? parseVisionLimit(body.visionMonthlyImageLimit) : null;
+    if (hasVisionLimit && Number.isNaN(visionLimit)) {
+        return { ok: false, error: 'Vision limit must be a non-negative integer' };
+    }
+
+    if (hasBudget) {
+        if (scope === 'guild') {
+            if (budget === null) store.clearGuildBudget(scopeId);
+            else store.setGuildBudget(scopeId, budget);
+        } else if (budget === null) store.clearUserBudget(scopeId);
+        else store.setUserBudget(scopeId, budget);
+    }
+    if (hasVisionLimit) {
+        if (visionLimit === null) store.clearVisionScopeLimit(scope, scopeId);
+        else store.setVisionScopeLimit(scope, scopeId, visionLimit);
+    }
+
+    return {
+        ok: true,
+        ...(hasBudget ? { budget } : {}),
+        ...(hasVisionLimit ? { visionLimit } : {}),
+    };
 }
 
 type UsageExportRow = ReturnType<typeof usage.getUsageExportRows>[number];
@@ -137,6 +191,7 @@ declare module 'express-serve-static-core' {
 
 export function createDashboardApp({
     cache,
+    ocrCache,
     cooldown,
     cooldowns,
     log,
@@ -277,39 +332,14 @@ export function createDashboardApp({
         res.json({ ok: true });
     });
 
-    app.get('/livez', (_req: Request, res: Response) => {
-        const health = getLivenessStatus();
-        res.status(health.live ? 200 : 503).json(health);
+    registerHealthRoutes(app, {
+        cache,
+        metrics,
+        runtimeLimiter,
+        discordReady: isDiscordReady,
+        metricsToken,
+        host,
     });
-
-    app.get('/readyz', async (_req: Request, res: Response) => {
-        const health = await getReadinessStatus({ discordReady: isDiscordReady });
-        res.status(health.ready ? 200 : 503).json(health);
-    });
-
-    app.get('/healthz', async (_req: Request, res: Response) => {
-        const metricsSnapshot = metrics.snapshot();
-        const health = await getHealthStatus({ discordReady: isDiscordReady }, metricsSnapshot);
-        res.status(health.live ? 200 : 503).json(health);
-    });
-
-    app.get(
-        '/metrics',
-        createMetricsAuthMiddleware({ token: metricsToken, host }),
-        (_req: Request, res: Response) => {
-            const metricsSnapshot = metrics.snapshot();
-            const runtimeSnapshot = runtimeLimiter?.snapshot() ?? createEmptyRuntimeSnapshot();
-
-            res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
-            res.send(
-                renderPrometheusMetrics({
-                    metricsSnapshot,
-                    cacheStats: cache.stats(),
-                    runtimeSnapshot,
-                }),
-            );
-        },
-    );
 
     api.get('/setup-status', auth.requireAuth, (_req: Request, res: Response) => {
         res.json({ complete: configRepository.isSetupComplete() });
@@ -378,7 +408,9 @@ export function createDashboardApp({
         const scope = getScope(res);
         const scopedClient = scope.client;
         const cacheStats = cache.stats();
-        const usageStats = usage.getStats();
+        const ocrCacheStats = ocrCache.stats();
+        const runtimeConfig = configRepository.getRuntimeConfig();
+        const usageStats = usage.getStats(runtimeConfig);
         const scopeProfileId = isCombinedDashboard ? scope.appProfileIdForLogs : undefined;
         const metricsSnapshot = metrics.snapshot({ appProfileId: scopeProfileId });
         const memoryUsage = process.memoryUsage();
@@ -386,7 +418,6 @@ export function createDashboardApp({
         const heapUsedMB = (memoryUsage.heapUsed / BYTES_PER_MB).toFixed(1);
         const externalMB = (memoryUsage.external / BYTES_PER_MB).toFixed(1);
         const runtimeSnapshot = runtimeLimiter?.snapshot() ?? createEmptyRuntimeSnapshot();
-        const runtimeConfig = configRepository.getRuntimeConfig();
         const providerMode = runtimeConfig.translationProvider || 'vertex';
         const translationTotals = {
             total: metricsSnapshot.translationsTotal,
@@ -397,7 +428,10 @@ export function createDashboardApp({
             ? scopedClient.guilds.cache.map((guild) => guild.id)
             : [];
         const guildBudgetConfigs = store.listGuildBudgets();
-        const guildStatsById = guildIds.length > 0 ? usage.getGuildStatsForGuilds(guildIds) : {};
+        const guildStatsById =
+            guildIds.length > 0
+                ? usage.getGuildStatsForGuilds(guildIds, guildBudgetConfigs, runtimeConfig)
+                : {};
         const guildBudgetList = scope.capabilities.guildAccess
             ? scopedClient.guilds.cache.map((guild) => {
                   const guildCfg = guildBudgetConfigs[guild.id];
@@ -420,14 +454,13 @@ export function createDashboardApp({
                   };
               })
             : [];
-        const cfg = configRepository.getDashboardConfig();
         const userBudgetConfigs = store.listUserBudgets();
-        const allowedUserIds = new Set(cfg.allowedUserIds);
+        const allowedUserIds = new Set(runtimeConfig.allowedUserIds);
         const pendingUserIds = new Set(pendingUserInstallOwnerRepository.listUserIds());
         const userIds = scope.capabilities.userAccess
             ? [
                   ...new Set([
-                      ...cfg.allowedUserIds,
+                      ...runtimeConfig.allowedUserIds,
                       ...pendingUserIds,
                       ...Object.keys(userBudgetConfigs),
                   ]),
@@ -440,11 +473,16 @@ export function createDashboardApp({
                   userIds,
               })
             : {};
+        const userStatsById =
+            userIds.length > 0
+                ? usage.getUserStatsForUsers(userIds, userBudgetConfigs, runtimeConfig)
+                : {};
         const userBudgetList = scope.capabilities.userAccess
             ? userIds.map((userId) => {
                   const customBudget = userBudgetConfigs[userId];
-                  const userStats = usage.getUserStats(userId);
-                  const budget = customBudget?.dailyBudgetUsd ?? cfg.defaultUserDailyBudgetUsd;
+                  const userStats = userStatsById[userId]!;
+                  const budget =
+                      customBudget?.dailyBudgetUsd ?? runtimeConfig.defaultUserDailyBudgetUsd;
                   const totalCost = userStats.totalCost ?? 0;
                   return {
                       id: userId,
@@ -530,6 +568,7 @@ export function createDashboardApp({
             runtime: runtimeSnapshot,
             operations,
             cache: cacheStats,
+            ocrCache: ocrCacheStats,
             usage: usageStats,
             guildBudgets: guildBudgetList,
             userBudgets: userBudgetList,
@@ -539,12 +578,22 @@ export function createDashboardApp({
 
     api.get('/config', auth.requireAuth, (_req: Request, res: Response) => {
         const cfg = configRepository.getDashboardConfig();
+        const visionMonth = new Date().toISOString().slice(0, 7);
+        const visionImages = store.getVisionMonthlyUsage(visionMonth);
         res.json({
             ...cfg,
             vertexAiApiKey: cfg.vertexAiApiKey ? '••••' + cfg.vertexAiApiKey.slice(-6) : '',
             hasApiKey: !!cfg.vertexAiApiKey,
+            visionApiKey: cfg.visionApiKey ? '••••' + cfg.visionApiKey.slice(-6) : '',
+            hasVisionApiKey: !!cfg.visionApiKey,
             openaiApiKey: cfg.openaiApiKey ? '••••' + cfg.openaiApiKey.slice(-6) : '',
             hasOpenaiApiKey: !!cfg.openaiApiKey,
+            visionUsage: {
+                month: visionMonth,
+                images: visionImages,
+                limit: cfg.visionMonthlyImageLimit,
+                remaining: Math.max(cfg.visionMonthlyImageLimit - visionImages, 0),
+            },
         });
     });
 
@@ -625,6 +674,9 @@ export function createDashboardApp({
         (_req: Request, res: Response) => {
             const scope = getScope(res);
             const guildBudgets = store.listGuildBudgets();
+            const visionMonth = new Date().toISOString().slice(0, 7);
+            const visionLimits = store.listVisionScopeLimits('guild');
+            const visionUsage = store.listVisionMonthlyUsage(visionMonth, 'guild');
             const guilds = scope.client.guilds.cache;
             const guildIds = guilds.map((guild) => guild.id);
             const usageStats = usage.getStats();
@@ -632,7 +684,12 @@ export function createDashboardApp({
                 guildIds.length > 0 ? usage.getGuildStatsForGuilds(guildIds) : {};
             const result: Record<
                 string,
-                { name: string; budget: number; usage: ReturnType<typeof usage.getGuildStats> }
+                {
+                    name: string;
+                    budget: number;
+                    usage: ReturnType<typeof usage.getGuildStats>;
+                    vision: { month: string; images: number; limit: number | null };
+                }
             > = {};
 
             for (const [id, guild] of guilds) {
@@ -641,6 +698,11 @@ export function createDashboardApp({
                     name: guild.name,
                     budget: guildBudgets[id]?.dailyBudgetUsd ?? -1,
                     usage: hasCustom ? (guildStatsById[id] ?? usage.getGuildStats(id)) : usageStats,
+                    vision: {
+                        month: visionMonth,
+                        images: visionUsage[id] ?? 0,
+                        limit: visionLimits[id] ?? null,
+                    },
                 };
             }
             res.json(result);
@@ -653,15 +715,29 @@ export function createDashboardApp({
         auth.requireAuth,
         async (_req: Request, res: Response) => {
             const userBudgets = store.listUserBudgets();
+            const visionMonth = new Date().toISOString().slice(0, 7);
+            const visionLimits = store.listVisionScopeLimits('user');
+            const visionUsage = store.listVisionMonthlyUsage(visionMonth, 'user');
             const cfg = configRepository.getDashboardConfig();
             const allowedUserIds = new Set(cfg.allowedUserIds);
             const pendingUserIds = new Set(pendingUserInstallOwnerRepository.listUserIds());
             const userIds = [
-                ...new Set([...cfg.allowedUserIds, ...pendingUserIds, ...Object.keys(userBudgets)]),
+                ...new Set([
+                    ...cfg.allowedUserIds,
+                    ...pendingUserIds,
+                    ...Object.keys(userBudgets),
+                    ...Object.keys(visionLimits),
+                ]),
             ];
             const result: Record<
                 string,
-                { budget: number; isCustom: boolean; allowed: boolean; pending: boolean }
+                {
+                    budget: number;
+                    isCustom: boolean;
+                    allowed: boolean;
+                    pending: boolean;
+                    vision: { month: string; images: number; limit: number | null };
+                }
             > = {};
 
             for (const userId of userIds) {
@@ -671,6 +747,11 @@ export function createDashboardApp({
                     isCustom: customBudget !== undefined,
                     allowed: allowedUserIds.has(userId),
                     pending: pendingUserIds.has(userId) && !allowedUserIds.has(userId),
+                    vision: {
+                        month: visionMonth,
+                        images: visionUsage[userId] ?? 0,
+                        limit: visionLimits[userId] ?? null,
+                    },
                 };
             }
 
@@ -691,27 +772,25 @@ export function createDashboardApp({
         auth.requireCsrf,
         (req: Request, res: Response) => {
             const userId = String(req.params.userId ?? '').trim();
-            const { dailyBudgetUsd } = req.body;
 
             if (!userId) {
                 res.status(400).json({ error: 'User id is required' });
                 return;
             }
 
-            if (dailyBudgetUsd === null || dailyBudgetUsd === undefined) {
-                store.clearUserBudget(userId);
-                res.json({ ok: true, mode: 'default' });
+            const result = applyScopedBudgetUpdate('user', userId, req.body);
+            if (!result.ok) {
+                res.status(400).json({ error: result.error });
                 return;
             }
-
-            const v = parseFloat(String(dailyBudgetUsd));
-            if (isNaN(v) || v < 0) {
-                res.status(400).json({ error: dashboardMessages.validation.dailyBudgetUsd });
-                return;
-            }
-
-            store.setUserBudget(userId, v);
-            res.json({ ok: true, budget: v });
+            res.json({
+                ok: true,
+                ...('budget' in result
+                    ? result.budget === null
+                        ? { mode: 'default' }
+                        : { budget: result.budget }
+                    : {}),
+            });
         },
     );
 
@@ -721,23 +800,26 @@ export function createDashboardApp({
         auth.requireAuth,
         auth.requireCsrf,
         (req: Request, res: Response) => {
-            const guildId = req.params.guildId as string;
-            const { dailyBudgetUsd } = req.body;
+            const guildId = String(req.params.guildId ?? '').trim();
 
-            if (dailyBudgetUsd === null || dailyBudgetUsd === undefined) {
-                store.clearGuildBudget(guildId);
-                res.json({ ok: true, mode: 'global' });
+            if (!guildId) {
+                res.status(400).json({ error: 'Guild id is required' });
                 return;
             }
 
-            const v = parseFloat(String(dailyBudgetUsd));
-            if (isNaN(v) || v < 0) {
-                res.status(400).json({ error: dashboardMessages.validation.dailyBudgetUsd });
+            const result = applyScopedBudgetUpdate('guild', guildId, req.body);
+            if (!result.ok) {
+                res.status(400).json({ error: result.error });
                 return;
             }
-
-            store.setGuildBudget(guildId, v);
-            res.json({ ok: true, budget: v });
+            res.json({
+                ok: true,
+                ...('budget' in result
+                    ? result.budget === null
+                        ? { mode: 'global' }
+                        : { budget: result.budget }
+                    : {}),
+            });
         },
     );
 
@@ -1029,8 +1111,15 @@ export function createDashboardApp({
 
     api.post('/cache/clear', auth.requireAuth, auth.requireCsrf, (_req: Request, res: Response) => {
         const before = cache.stats();
+        const ocrBefore = ocrCache.stats();
         cache.clear();
-        res.json({ ok: true, cleared: before.size });
+        ocrCache.clear();
+        res.json({
+            ok: true,
+            cleared: before.size + ocrBefore.size,
+            translationCleared: before.size,
+            ocrCleared: ocrBefore.size,
+        });
     });
 
     api.post(
@@ -1124,5 +1213,3 @@ export function startDashboardServer(
 export function stopDashboardApp(app: express.Express): void {
     app.locals.disposeDashboardApp?.();
 }
-
-export const _test = { validateConfigUpdate };

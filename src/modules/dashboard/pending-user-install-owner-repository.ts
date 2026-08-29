@@ -63,12 +63,4 @@ export class PendingUserInstallOwnerRepository {
     listUserIds(): string[] {
         return this.list().map((owner) => owner.userId);
     }
-
-    clear(userId: string): boolean {
-        const result = this.db
-            .prepare('DELETE FROM pending_user_install_owners WHERE user_id = ?')
-            .run(userId);
-
-        return result.changes > 0;
-    }
 }

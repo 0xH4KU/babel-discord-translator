@@ -12,10 +12,12 @@ You need:
 - Node.js `22.13+` for local/VPS installs and deployment tooling, or Docker for container installs
 - A dashboard password that is not `admin`
 - At least one configured translation provider in the dashboard after startup
+- A dedicated Google API key with Cloud Vision enabled when using Babel Lens
+- Noto Core and CJK fonts when running Lens directly on Linux; the Docker image includes them
 
 Babel does not require privileged Discord intents.
 
-Babel stores runtime data with native `node:sqlite`. Before upgrading Node.js, back up `data/babel.sqlite`, rebuild, and run `npm run smoke:dashboard` after upgrading Node. Treat the database and its backups as sensitive because provider credentials are stored with the dashboard configuration.
+Babel stores runtime data with native `node:sqlite`. Before upgrading Node.js, back up `data/babel.sqlite`, rebuild, and run `npm run smoke:dashboard` after upgrading Node. Treat the database and its backups as sensitive because provider credentials are stored with the dashboard configuration. SQLite schema migrations run automatically on startup; `npm run db:migrate` is only for importing the legacy JSON store.
 
 Run exactly one Babel process or replica for each Discord application. Horizontal scaling is not supported: Discord event handling, cooldowns, queues, caches, and metrics are coordinated in memory, and sharing one SQLite file does not provide distributed request coordination. Use `BABEL_APP=combined` to run Guild and Pocket together in one process; do not run multiple replicas of that process.
 
@@ -96,8 +98,11 @@ After deployment:
 2. Open the Railway public URL.
 3. Log in with `DASHBOARD_PASSWORD`.
 4. Complete the setup wizard and configure the provider.
-5. Register commands with `npm run register:guild` or `npm run register:pocket` locally; use the matching `register:built:*` command in a Docker or Railway shell.
-6. Check `/livez`, `/readyz`, and the dashboard Operations panel.
+5. Configure the Cloud Vision key and monthly image limit in Settings, then enable Lens for selected Guild servers in Access.
+6. Register commands with `npm run register:guild` or `npm run register:pocket` locally; use the matching `register:built:*` command in a Docker or Railway shell.
+7. Check `/livez`, `/readyz`, and the dashboard Operations panel.
+
+Re-register commands after upgrading from a release without Babel Lens. Combined deployments must register both Guild and Pocket applications with their profile-specific app IDs and bot tokens.
 
 For the one-click template checklist, persistent volume notes, and affiliate disclosure wording, see [Railway deployment](railway.md).
 
@@ -152,6 +157,8 @@ For Docker Compose, update, cleanup, backup, and server migration commands, see 
 For a direct Node.js install:
 
 ```bash
+sudo apt-get update
+sudo apt-get install -y fonts-noto-core fonts-noto-cjk
 npm install
 npm run build
 pm2 start ecosystem.config.cjs
