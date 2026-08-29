@@ -112,10 +112,12 @@ export interface StoreData {
     translationProvider: TranslationProviderMode;
     // Per-guild budget & usage
     guildBudgets: Record<string, GuildBudgetConfig>;
+    guildVisionLimits: Record<string, number>;
     guildTokenUsage: Record<string, TokenUsage>;
     guildUsageHistory: Record<string, UsageHistoryEntry[]>;
     // Per-user budget & usage
     userBudgets: Record<string, UserBudgetConfig>;
+    userVisionLimits: Record<string, number>;
     userTokenUsage: Record<string, TokenUsage>;
     userUsageHistory: Record<string, UsageHistoryEntry[]>;
 }

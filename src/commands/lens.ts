@@ -10,7 +10,7 @@ import { renderLensImage } from '../modules/translation/lens-image.js';
 import { type TranslationCache } from '../modules/translation/cache.js';
 import { buildTranslationMessages } from '../shared/discord-message-format.js';
 import { appLogger, createRequestId } from '../shared/structured-logger.js';
-import { store } from '../persistence/store.js';
+import { store, type VisionQuotaScope } from '../persistence/store.js';
 import { detectTextWithCloudVision, type VisionTextResult } from '../infra/cloud-vision-client.js';
 import type { CommandDeps } from '../shared/types.js';
 
@@ -85,6 +85,7 @@ async function detectTextWithBudget(
     image: Buffer,
     cache: TranslationCache,
     requestId: string,
+    quotaScope?: VisionQuotaScope,
 ): Promise<VisionTextResult> {
     const config = configRepository.getRuntimeConfig();
     const limit = Math.max(Math.floor(config.visionMonthlyImageLimit), 0);
@@ -103,19 +104,43 @@ async function detectTextWithBudget(
 
     const operation = (async () => {
         const month = new Date().toISOString().slice(0, 7);
-        const used = store.tryConsumeVisionImage(month, limit);
-        if (used === null) {
-            throw new Error(`Babel Lens monthly image limit reached (${limit}/${limit}).`);
+        const logger = appLogger.child({ component: 'babel_lens', requestId });
+        const quota = store.tryConsumeVisionImage(month, limit, quotaScope);
+        if (!quota.consumed) {
+            logger.warn('lens.vision.quota_blocked', {
+                month,
+                scope: quota.blockedBy,
+                used: quota.used,
+                limit: quota.limit,
+            });
+            const owner =
+                quota.blockedBy === 'guild'
+                    ? "This server's Babel Lens"
+                    : quota.blockedBy === 'user'
+                      ? 'Your Babel Lens'
+                      : 'Babel Lens';
+            throw new Error(
+                `${owner} monthly image limit reached (${quota.used}/${quota.limit}).`,
+            );
         }
 
-        const logger = appLogger.child({ component: 'babel_lens', requestId });
-        logger.info('lens.vision.request.started', { month, used, limit });
+        logger.info('lens.vision.request.started', {
+            month,
+            globalUsed: quota.globalUsed,
+            globalLimit: limit,
+            scope: quotaScope?.scope,
+            scopeId: quotaScope?.scopeId,
+            scopeUsed: quota.scopeUsed,
+        });
         const detected = await detectTextWithCloudVision(image, { apiKey: config.visionApiKey });
         cache.set(cacheKey, JSON.stringify(detected));
         logger.info('lens.vision.request.completed', {
             month,
-            used,
-            limit,
+            globalUsed: quota.globalUsed,
+            globalLimit: limit,
+            scope: quotaScope?.scope,
+            scopeId: quotaScope?.scopeId,
+            scopeUsed: quota.scopeUsed,
             detectedCharacters: detected.text.length,
             detectedRegions: detected.regions.length,
         });
@@ -194,6 +219,10 @@ export async function handleBabelLens(
         profile.accessMode === 'user-install'
             ? (getUserInstallOwnerId(interaction) ?? interaction.user.id)
             : null;
+    const visionQuotaScope: VisionQuotaScope =
+        profile.accessMode === 'guild'
+            ? { scope: 'guild', scopeId: interaction.guildId! }
+            : { scope: 'user', scopeId: billingUserId! };
     let sourceImage: Buffer | null = null;
     let detectedText: VisionTextResult | null = null;
     const result = await translationService.process({
@@ -208,7 +237,12 @@ export async function handleBabelLens(
         requestId,
         resolveText: async () => {
             sourceImage = await downloadDiscordImage(attachment);
-            detectedText = await detectTextWithBudget(sourceImage, cache, requestId);
+            detectedText = await detectTextWithBudget(
+                sourceImage,
+                cache,
+                requestId,
+                visionQuotaScope,
+            );
             if (!detectedText.text) throw new Error('Cloud Vision found no text in this image.');
             return formatDetectedText(detectedText);
         },

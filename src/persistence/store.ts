@@ -29,6 +29,16 @@ interface ConfigStoreOptions {
 }
 
 export type UsageScopeKind = 'global' | 'guild' | 'user';
+export type VisionScopeKind = Exclude<UsageScopeKind, 'global'>;
+
+export interface VisionQuotaScope {
+    scope: VisionScopeKind;
+    scopeId: string;
+}
+
+export type VisionQuotaResult =
+    | { consumed: true; globalUsed: number; scopeUsed: number | null }
+    | { consumed: false; blockedBy: UsageScopeKind; used: number; limit: number };
 
 export interface ScopedUsageRow extends TokenUsage {
     scope: UsageScopeKind;
@@ -165,7 +175,9 @@ export class ConfigStore {
             userLanguagePrefs: { ...this.getUserLanguagePrefs() },
             userLanguagePreferenceEntries: this.listUserLanguagePreferences(),
             guildBudgets: this.listGuildBudgets(),
+            guildVisionLimits: this.listVisionScopeLimits('guild'),
             userBudgets: this.listUserBudgets(),
+            userVisionLimits: this.listVisionScopeLimits('user'),
         };
     }
 
@@ -177,6 +189,8 @@ export class ConfigStore {
             this.replaceUserLanguagePreferenceEntries(data.userLanguagePreferenceEntries);
             this.replaceGuildBudgets(data.guildBudgets);
             this.replaceUserBudgets(data.userBudgets);
+            this.replaceVisionScopeLimits('guild', data.guildVisionLimits);
+            this.replaceVisionScopeLimits('user', data.userVisionLimits);
         });
     }
 
@@ -480,27 +494,116 @@ export class ConfigStore {
         });
     }
 
-    getVisionMonthlyUsage(month: string): number {
-        const row = this.stmt('SELECT images FROM vision_monthly_usage WHERE month = ?').get(
-            month,
-        ) as { images: number } | undefined;
+    getVisionMonthlyUsage(
+        month: string,
+        scope: UsageScopeKind = 'global',
+        scopeId = '',
+    ): number {
+        const row = this.stmt(
+            `
+                SELECT images
+                FROM vision_monthly_usage
+                WHERE scope = ? AND scope_id = ? AND month = ?
+            `,
+        ).get(scope, scopeId, month) as { images: number } | undefined;
         return row?.images ?? 0;
     }
 
-    tryConsumeVisionImage(month: string, limit: number): number | null {
-        if (!Number.isSafeInteger(limit) || limit < 1) return null;
+    listVisionMonthlyUsage(month: string, scope: VisionScopeKind): Record<string, number> {
+        const rows = this.stmt(
+            `
+                SELECT scope_id as scopeId, images
+                FROM vision_monthly_usage
+                WHERE scope = ? AND month = ?
+                ORDER BY scope_id ASC
+            `,
+        ).all(scope, month) as Array<{ scopeId: string; images: number }>;
+        return Object.fromEntries(rows.map((row) => [row.scopeId, row.images]));
+    }
 
+    getVisionScopeLimit(scope: VisionScopeKind, scopeId: string): number | null {
         const row = this.stmt(
             `
-                INSERT INTO vision_monthly_usage (month, images)
-                VALUES (?, 1)
-                ON CONFLICT(month) DO UPDATE SET images = images + 1
-                WHERE images < ?
-                RETURNING images
+                SELECT monthly_image_limit as monthlyImageLimit
+                FROM vision_scope_limits
+                WHERE scope = ? AND scope_id = ?
             `,
-        ).get(month, limit) as { images: number } | undefined;
+        ).get(scope, scopeId) as { monthlyImageLimit: number } | undefined;
+        return row?.monthlyImageLimit ?? null;
+    }
 
-        return row?.images ?? null;
+    listVisionScopeLimits(scope: VisionScopeKind): Record<string, number> {
+        const rows = this.stmt(
+            `
+                SELECT scope_id as scopeId, monthly_image_limit as monthlyImageLimit
+                FROM vision_scope_limits
+                WHERE scope = ?
+                ORDER BY scope_id ASC
+            `,
+        ).all(scope) as Array<{ scopeId: string; monthlyImageLimit: number }>;
+        return Object.fromEntries(rows.map((row) => [row.scopeId, row.monthlyImageLimit]));
+    }
+
+    setVisionScopeLimit(scope: VisionScopeKind, scopeId: string, limit: number): void {
+        this.stmt(
+            `
+                INSERT INTO vision_scope_limits (scope, scope_id, monthly_image_limit)
+                VALUES (?, ?, ?)
+                ON CONFLICT(scope, scope_id) DO UPDATE SET
+                    monthly_image_limit = excluded.monthly_image_limit
+            `,
+        ).run(scope, scopeId, limit);
+    }
+
+    clearVisionScopeLimit(scope: VisionScopeKind, scopeId: string): boolean {
+        return (
+            this.stmt('DELETE FROM vision_scope_limits WHERE scope = ? AND scope_id = ?').run(
+                scope,
+                scopeId,
+            ).changes > 0
+        );
+    }
+
+    tryConsumeVisionImage(
+        month: string,
+        globalLimit: number,
+        quotaScope?: VisionQuotaScope,
+    ): VisionQuotaResult {
+        return inTransaction(this.db, () => {
+            const globalUsed = this.getVisionMonthlyUsage(month);
+            if (!Number.isSafeInteger(globalLimit) || globalLimit < 1 || globalUsed >= globalLimit) {
+                return { consumed: false, blockedBy: 'global', used: globalUsed, limit: globalLimit };
+            }
+
+            const scopeUsed = quotaScope
+                ? this.getVisionMonthlyUsage(month, quotaScope.scope, quotaScope.scopeId)
+                : null;
+            const scopeLimit = quotaScope
+                ? this.getVisionScopeLimit(quotaScope.scope, quotaScope.scopeId)
+                : null;
+            if (quotaScope && scopeLimit !== null && scopeUsed! >= scopeLimit) {
+                return {
+                    consumed: false,
+                    blockedBy: quotaScope.scope,
+                    used: scopeUsed!,
+                    limit: scopeLimit,
+                };
+            }
+
+            const increment = this.stmt(`
+                INSERT INTO vision_monthly_usage (scope, scope_id, month, images)
+                VALUES (?, ?, ?, 1)
+                ON CONFLICT(scope, scope_id, month) DO UPDATE SET images = images + 1
+            `);
+            increment.run('global', '', month);
+            if (quotaScope) increment.run(quotaScope.scope, quotaScope.scopeId, month);
+
+            return {
+                consumed: true,
+                globalUsed: globalUsed + 1,
+                scopeUsed: scopeUsed === null ? null : scopeUsed + 1,
+            };
+        });
     }
 
     listUsageRows(): ScopedUsageRow[] {
@@ -762,6 +865,16 @@ export class ConfigStore {
 
         for (const [userId, budget] of Object.entries(budgets)) {
             insert.run(userId, budget.dailyBudgetUsd);
+        }
+    }
+
+    private replaceVisionScopeLimits(
+        scope: VisionScopeKind,
+        limits: Record<string, number>,
+    ): void {
+        this.stmt('DELETE FROM vision_scope_limits WHERE scope = ?').run(scope);
+        for (const [scopeId, limit] of Object.entries(limits)) {
+            this.setVisionScopeLimit(scope, scopeId, limit);
         }
     }
 }

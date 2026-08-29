@@ -324,6 +324,35 @@ const MIGRATIONS: Migration[] = [
             `);
         },
     },
+    {
+        id: 11,
+        name: 'scoped_vision_quotas',
+        up(db) {
+            db.exec(`
+                CREATE TABLE IF NOT EXISTS vision_scope_limits (
+                    scope TEXT NOT NULL CHECK (scope IN ('guild', 'user')),
+                    scope_id TEXT NOT NULL,
+                    monthly_image_limit INTEGER NOT NULL CHECK (monthly_image_limit >= 0),
+                    PRIMARY KEY (scope, scope_id)
+                );
+
+                CREATE TABLE vision_monthly_usage_new (
+                    scope TEXT NOT NULL CHECK (scope IN ('global', 'guild', 'user')),
+                    scope_id TEXT NOT NULL,
+                    month TEXT NOT NULL,
+                    images INTEGER NOT NULL CHECK (images >= 0),
+                    PRIMARY KEY (scope, scope_id, month)
+                );
+
+                INSERT INTO vision_monthly_usage_new (scope, scope_id, month, images)
+                SELECT 'global', '', month, images
+                FROM vision_monthly_usage;
+
+                DROP TABLE vision_monthly_usage;
+                ALTER TABLE vision_monthly_usage_new RENAME TO vision_monthly_usage;
+            `);
+        },
+    },
 ];
 
 let sharedDatabase: DatabaseSync | null = null;
@@ -425,6 +454,7 @@ const STORE_TABLES = new Set([
     'user_budgets',
     'discord_user_profiles',
     'pending_user_install_owners',
+    'vision_scope_limits',
     'vision_monthly_usage',
 ]);
 

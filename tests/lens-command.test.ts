@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { BABEL_POCKET_PROFILE } from '../src/apps/app-profile.js';
 import { TranslationCache } from '../src/modules/translation/cache.js';
+import type { VisionQuotaResult } from '../src/persistence/store.js';
 
 const mocks = vi.hoisted(() => ({
     getRuntimeConfig: vi.fn(() => ({
@@ -7,7 +9,9 @@ const mocks = vi.hoisted(() => ({
         visionMonthlyImageLimit: 900,
         lensEnabledGuildIds: ['guild-1'],
     })),
-    tryConsumeVisionImage: vi.fn(() => 1),
+    tryConsumeVisionImage: vi.fn(
+        (): VisionQuotaResult => ({ consumed: true, globalUsed: 1, scopeUsed: 1 }),
+    ),
     detectText: vi.fn(async () => ({
         text: 'Text from image',
         imageWidth: 100,
@@ -72,7 +76,11 @@ describe('Babel Lens command', () => {
             visionMonthlyImageLimit: 950,
             lensEnabledGuildIds: ['guild-1'],
         });
-        mocks.tryConsumeVisionImage.mockReturnValue(1);
+        mocks.tryConsumeVisionImage.mockReturnValue({
+            consumed: true,
+            globalUsed: 1,
+            scopeUsed: 1,
+        });
         mocks.detectText.mockResolvedValue({
             text: 'Text from image',
             imageWidth: 100,
@@ -119,6 +127,7 @@ describe('Babel Lens command', () => {
         expect(mocks.tryConsumeVisionImage).toHaveBeenCalledWith(
             new Date().toISOString().slice(0, 7),
             950,
+            { scope: 'guild', scopeId: 'guild-1' },
         );
         expect(mocks.detectText).toHaveBeenCalledOnce();
         expect(mocks.detectText).toHaveBeenCalledWith(expect.any(Buffer), {
@@ -173,6 +182,48 @@ describe('Babel Lens command', () => {
         expect(interaction.reply).toHaveBeenCalledWith(
             expect.objectContaining({ content: 'Babel Lens is not enabled for this server.' }),
         );
+    });
+
+    it('should charge Pocket Lens to the installation owner', async () => {
+        const interaction = createInteraction();
+        interaction.authorizingIntegrationOwners = { '1': 'owner-1' };
+        const translationService = {
+            process: vi.fn(async (request) => {
+                await request.resolveText();
+                return { status: 'blocked', deferred: false, message: 'stop' };
+            }),
+        };
+
+        await handleBabelLens(interaction as never, {
+            translationService: translationService as never,
+            cache: new TranslationCache(20),
+            profile: BABEL_POCKET_PROFILE,
+        });
+
+        expect(mocks.tryConsumeVisionImage).toHaveBeenCalledWith(
+            new Date().toISOString().slice(0, 7),
+            950,
+            { scope: 'user', scopeId: 'owner-1' },
+        );
+    });
+
+    it('should report a scoped Vision quota without calling Cloud Vision', async () => {
+        mocks.tryConsumeVisionImage.mockReturnValue({
+            consumed: false,
+            blockedBy: 'guild',
+            used: 2,
+            limit: 2,
+        });
+
+        await expect(
+            _test.detectTextWithBudget(
+                Buffer.from('quota-image'),
+                new TranslationCache(20),
+                'request-1',
+                { scope: 'guild', scopeId: 'guild-1' },
+            ),
+        ).rejects.toThrow("This server's Babel Lens monthly image limit reached (2/2).");
+        expect(mocks.detectText).not.toHaveBeenCalled();
     });
 
     it('should enforce global disable before serving a cached OCR result', async () => {

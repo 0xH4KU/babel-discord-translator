@@ -108,6 +108,7 @@ describe('ConfigStore', () => {
         const snapshot = store.exportSnapshot();
 
         expect(snapshot.userBudgets).toEqual({});
+        expect(snapshot.userVisionLimits).toEqual({});
         expect(snapshot.userTokenUsage).toEqual({});
         expect(snapshot.userUsageHistory).toEqual({});
         store.close();
@@ -335,14 +336,69 @@ describe('ConfigStore', () => {
         const first = new ConfigStore({ dbPath, autoImportLegacyJson: false });
 
         expect(first.getVisionMonthlyUsage('2026-08')).toBe(0);
-        expect(first.tryConsumeVisionImage('2026-08', 2)).toBe(1);
-        expect(first.tryConsumeVisionImage('2026-08', 2)).toBe(2);
-        expect(first.tryConsumeVisionImage('2026-08', 2)).toBeNull();
+        expect(first.tryConsumeVisionImage('2026-08', 2)).toEqual({
+            consumed: true,
+            globalUsed: 1,
+            scopeUsed: null,
+        });
+        expect(first.tryConsumeVisionImage('2026-08', 2)).toEqual({
+            consumed: true,
+            globalUsed: 2,
+            scopeUsed: null,
+        });
+        expect(first.tryConsumeVisionImage('2026-08', 2)).toEqual({
+            consumed: false,
+            blockedBy: 'global',
+            used: 2,
+            limit: 2,
+        });
         first.close();
 
         const second = new ConfigStore({ dbPath, autoImportLegacyJson: false });
         expect(second.getVisionMonthlyUsage('2026-08')).toBe(2);
-        expect(second.tryConsumeVisionImage('2026-09', 2)).toBe(1);
+        expect(second.tryConsumeVisionImage('2026-09', 2)).toMatchObject({
+            consumed: true,
+            globalUsed: 1,
+        });
+        second.close();
+    });
+
+    it('should enforce guild and user Vision limits without consuming the global quota', async () => {
+        const { ConfigStore } = await importStoreModule();
+        const first = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+        first.setVisionScopeLimit('guild', 'guild-1', 1);
+        first.setVisionScopeLimit('user', 'user-1', 0);
+
+        expect(
+            first.tryConsumeVisionImage('2026-08', 10, {
+                scope: 'guild',
+                scopeId: 'guild-1',
+            }),
+        ).toEqual({ consumed: true, globalUsed: 1, scopeUsed: 1 });
+        expect(
+            first.tryConsumeVisionImage('2026-08', 10, {
+                scope: 'guild',
+                scopeId: 'guild-1',
+            }),
+        ).toEqual({ consumed: false, blockedBy: 'guild', used: 1, limit: 1 });
+        expect(
+            first.tryConsumeVisionImage('2026-08', 10, {
+                scope: 'user',
+                scopeId: 'user-1',
+            }),
+        ).toEqual({ consumed: false, blockedBy: 'user', used: 0, limit: 0 });
+        expect(first.getVisionMonthlyUsage('2026-08')).toBe(1);
+        expect(first.listVisionMonthlyUsage('2026-08', 'guild')).toEqual({ 'guild-1': 1 });
+        expect(first.exportSnapshot()).toMatchObject({
+            guildVisionLimits: { 'guild-1': 1 },
+            userVisionLimits: { 'user-1': 0 },
+        });
+        first.close();
+
+        const second = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+        expect(second.getVisionScopeLimit('guild', 'guild-1')).toBe(1);
+        expect(second.clearVisionScopeLimit('guild', 'guild-1')).toBe(true);
+        expect(second.getVisionScopeLimit('guild', 'guild-1')).toBeNull();
         second.close();
     });
 

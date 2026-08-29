@@ -34,9 +34,11 @@ export const DEFAULT_STORE_DATA: StoreData = {
     openaiModel: '',
     translationProvider: 'vertex',
     guildBudgets: {},
+    guildVisionLimits: {},
     guildTokenUsage: {},
     guildUsageHistory: {},
     userBudgets: {},
+    userVisionLimits: {},
     userTokenUsage: {},
     userUsageHistory: {},
 };

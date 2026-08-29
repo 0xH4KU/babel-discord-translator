@@ -129,6 +129,14 @@ export function cloneUserBudgets(
     );
 }
 
+function cloneVisionLimits(limits: Record<string, number> | undefined): Record<string, number> {
+    return Object.fromEntries(
+        Object.entries(limits ?? {}).filter(
+            ([scopeId, limit]) => scopeId && Number.isSafeInteger(limit) && limit >= 0,
+        ),
+    );
+}
+
 export function cloneGuildDailyUsage(
     usage: Record<string, TokenUsage> | undefined,
 ): Record<string, TokenUsage> {
@@ -223,9 +231,11 @@ export function normalizeStoreData(data: Partial<StoreData> | undefined): StoreD
         openaiModel: normalizeString(source.openaiModel),
         translationProvider: normalizeProviderMode(source.translationProvider),
         guildBudgets: cloneGuildBudgets(source.guildBudgets),
+        guildVisionLimits: cloneVisionLimits(source.guildVisionLimits),
         guildTokenUsage: cloneGuildDailyUsage(source.guildTokenUsage),
         guildUsageHistory: cloneGuildUsageHistory(source.guildUsageHistory),
         userBudgets: cloneUserBudgets(source.userBudgets),
+        userVisionLimits: cloneVisionLimits(source.userVisionLimits),
         userTokenUsage: cloneUserDailyUsage(source.userTokenUsage),
         userUsageHistory: cloneUserUsageHistory(source.userUsageHistory),
     };

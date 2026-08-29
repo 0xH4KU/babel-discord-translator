@@ -319,7 +319,51 @@ describe('createSqliteDatabase', () => {
             const migrationIds = db
                 .prepare('SELECT id FROM schema_migrations ORDER BY id ASC')
                 .all() as Array<{ id: number }>;
-            expect(migrationIds.map((row) => row.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+            expect(migrationIds.map((row) => row.id)).toEqual([
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+            ]);
+        } finally {
+            db.close();
+        }
+    });
+
+    it('should preserve global Vision usage when adding scoped quotas', async () => {
+        const { DatabaseSync } = await import('node:sqlite');
+        const { runMigrations } = await import('../src/persistence/sqlite-database.js');
+        const db = new DatabaseSync(':memory:');
+
+        try {
+            db.exec(`
+                CREATE TABLE schema_migrations (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    applied_at TEXT NOT NULL
+                );
+                INSERT INTO schema_migrations (id, name, applied_at)
+                VALUES
+                    (1, 'one', '2026-01-01'), (2, 'two', '2026-01-01'),
+                    (3, 'three', '2026-01-01'), (4, 'four', '2026-01-01'),
+                    (5, 'five', '2026-01-01'), (6, 'six', '2026-01-01'),
+                    (7, 'seven', '2026-01-01'), (8, 'eight', '2026-01-01'),
+                    (9, 'nine', '2026-01-01'), (10, 'ten', '2026-01-01');
+
+                CREATE TABLE vision_monthly_usage (
+                    month TEXT PRIMARY KEY,
+                    images INTEGER NOT NULL CHECK (images >= 0)
+                );
+                INSERT INTO vision_monthly_usage (month, images) VALUES ('2026-08', 7);
+            `);
+
+            runMigrations(db);
+
+            expect(
+                db.prepare(
+                    `
+                        SELECT scope, scope_id as scopeId, month, images
+                        FROM vision_monthly_usage
+                    `,
+                ).get(),
+            ).toEqual({ scope: 'global', scopeId: '', month: '2026-08', images: 7 });
         } finally {
             db.close();
         }
