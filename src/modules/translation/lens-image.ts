@@ -87,6 +87,65 @@ function clamp(value: number, min: number, max: number): number {
     return Math.min(Math.max(value, min), max);
 }
 
+function orientDetectedText(detected: VisionTextResult, orientation = 1): VisionTextResult {
+    if (orientation < 2 || orientation > 8) return detected;
+
+    const { imageWidth: width, imageHeight: height } = detected;
+    const regions = detected.regions.map((region) => {
+        const right = region.x + region.width;
+        const bottom = region.y + region.height;
+        switch (orientation) {
+            case 2:
+                return { ...region, x: width - right };
+            case 3:
+                return { ...region, x: width - right, y: height - bottom };
+            case 4:
+                return { ...region, y: height - bottom };
+            case 5:
+                return {
+                    ...region,
+                    x: region.y,
+                    y: region.x,
+                    width: region.height,
+                    height: region.width,
+                };
+            case 6:
+                return {
+                    ...region,
+                    x: height - bottom,
+                    y: region.x,
+                    width: region.height,
+                    height: region.width,
+                };
+            case 7:
+                return {
+                    ...region,
+                    x: height - bottom,
+                    y: width - right,
+                    width: region.height,
+                    height: region.width,
+                };
+            case 8:
+                return {
+                    ...region,
+                    x: region.y,
+                    y: width - right,
+                    width: region.height,
+                    height: region.width,
+                };
+            default:
+                return region;
+        }
+    });
+
+    return {
+        ...detected,
+        imageWidth: orientation >= 5 ? height : width,
+        imageHeight: orientation >= 5 ? width : height,
+        regions,
+    };
+}
+
 function buildRegionBoxesSvg(
     width: number,
     height: number,
@@ -129,6 +188,7 @@ export async function renderLensImage(
     translatedText: string,
     detected?: VisionTextResult,
 ): Promise<Buffer> {
+    const { orientation } = await sharp(image, { limitInputPixels: MAX_INPUT_PIXELS }).metadata();
     const normalized = await sharp(image, { limitInputPixels: MAX_INPUT_PIXELS })
         .rotate()
         .resize({
@@ -140,7 +200,9 @@ export async function renderLensImage(
         .jpeg({ quality: 88 })
         .toBuffer({ resolveWithObject: true });
     const { width, height } = normalized.info;
-    const boxes = detected ? buildRegionBoxesSvg(width, height, detected) : null;
+    const boxes = detected
+        ? buildRegionBoxesSvg(width, height, orientDetectedText(detected, orientation))
+        : null;
     const caption = buildCaptionSvg(width, translatedText);
 
     return sharp({
@@ -160,4 +222,4 @@ export async function renderLensImage(
         .toBuffer();
 }
 
-export const _test = { wrapCaption, buildCaptionSvg, buildRegionBoxesSvg };
+export const _test = { wrapCaption, buildCaptionSvg, buildRegionBoxesSvg, orientDetectedText };

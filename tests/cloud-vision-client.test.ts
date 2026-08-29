@@ -92,9 +92,11 @@ describe('Cloud Vision client', () => {
         ).rejects.toThrow('Cloud Vision request failed: API disabled');
     });
 
-    it('should ignore short ASCII logo misreads without dropping short CJK text', () => {
+    it('should ignore isolated ASCII glyphs without dropping valid short text', () => {
         expect(_test.isMeaningfulBlockText('8')).toBe(false);
-        expect(_test.isMeaningfulBlockText('tA')).toBe(false);
+        expect(_test.isMeaningfulBlockText('OK')).toBe(true);
+        expect(_test.isMeaningfulBlockText('AI')).toBe(true);
+        expect(_test.isMeaningfulBlockText('$5')).toBe(true);
         expect(_test.isMeaningfulBlockText('CODE')).toBe(true);
         expect(_test.isMeaningfulBlockText('程式')).toBe(true);
     });

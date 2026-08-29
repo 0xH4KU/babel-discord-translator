@@ -102,8 +102,8 @@ function blockText(block: VisionBlock): string {
 
 function isMeaningfulBlockText(text: string): boolean {
     const compact = text.replace(/\s/gu, '');
-    // ponytail: short ASCII UI labels are skipped; use OCR confidence if they become important.
-    return compact.length > 2 || /[^\u0000-\u007f]/u.test(compact);
+    // ponytail: only isolated ASCII glyphs are skipped; add confidence filtering if noise returns.
+    return compact.length > 1 || /[^\u0000-\u007f]/u.test(compact);
 }
 
 function parseVisionText(result?: VisionImageResponse): VisionTextResult {
