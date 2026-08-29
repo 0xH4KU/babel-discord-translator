@@ -48,30 +48,38 @@ Rules:
 - If the text contains both Chinese and English → translate each part to the other language
 - If the text is in another language → translate to both English and Traditional Chinese
 - Output ONLY the translation. No explanations, no labels, no extra text.
-- Preserve the original formatting (line breaks, punctuation, etc.)
-- ${NUMBERED_MARKER_RULE}`;
+- Preserve the original formatting (line breaks, punctuation, etc.)`;
 
-export function buildTargetedPrompt(targetLang: string): string {
+function withNumberedMarkerRule(prompt: string, preserveNumberedMarkers: boolean): string {
+    return preserveNumberedMarkers ? `${prompt}\n- ${NUMBERED_MARKER_RULE}` : prompt;
+}
+
+export function buildTargetedPrompt(targetLang: string, preserveNumberedMarkers = false): string {
     const langName = getLanguageName(targetLang);
-    return `You are a translator. Detect the language of the following text and translate it.
+    return withNumberedMarkerRule(
+        `You are a translator. Detect the language of the following text and translate it.
 
 Rules:
 - Translate the text to ${langName}.
 - If the text is already in ${langName}, translate it to English instead.
 - If the text contains multiple languages, translate all parts to ${langName}.
 - Output ONLY the translation. No explanations, no labels, no extra text.
-- Preserve the original formatting (line breaks, punctuation, etc.)
-- ${NUMBERED_MARKER_RULE}`;
+- Preserve the original formatting (line breaks, punctuation, etc.)`,
+        preserveNumberedMarkers,
+    );
 }
 
 export function resolveSystemPrompt(
     targetLanguage: string = 'auto',
     customPrompt?: string | null,
+    preserveNumberedMarkers = false,
 ): string {
-    if (customPrompt?.trim()) return `${customPrompt.trim()}\n\n${NUMBERED_MARKER_RULE}`;
+    if (customPrompt?.trim()) {
+        return withNumberedMarkerRule(customPrompt.trim(), preserveNumberedMarkers);
+    }
     return targetLanguage && targetLanguage !== 'auto'
-        ? buildTargetedPrompt(targetLanguage)
-        : DEFAULT_PROMPT;
+        ? buildTargetedPrompt(targetLanguage, preserveNumberedMarkers)
+        : withNumberedMarkerRule(DEFAULT_PROMPT, preserveNumberedMarkers);
 }
 
 export function buildTranslationPrompt(
@@ -79,9 +87,10 @@ export function buildTranslationPrompt(
     targetLanguage: string = 'auto',
     customPrompt?: string | null,
     glossaryEntries: TranslationGlossaryPromptEntry[] = [],
+    preserveNumberedMarkers = false,
 ): TranslationPrompt {
     return {
-        system: `${resolveSystemPrompt(targetLanguage, customPrompt)}${buildGlossaryPromptSection(glossaryEntries, targetLanguage)}`,
+        system: `${resolveSystemPrompt(targetLanguage, customPrompt, preserveNumberedMarkers)}${buildGlossaryPromptSection(glossaryEntries, targetLanguage)}`,
         user: text,
     };
 }

@@ -88,6 +88,7 @@ export interface TranslationServiceRequest {
     locale?: string;
     text?: string;
     resolveText?: () => Promise<string>;
+    preserveNumberedMarkers?: boolean;
     targetLanguageOption?: string | null;
     requestId?: string;
     beforeTranslate?: () => Promise<unknown>;
@@ -382,7 +383,11 @@ export function createTranslationService({
                 userPreferenceStore,
                 { accessMode },
             );
-            const prompt = resolveSystemPrompt(targetLanguage, runtimeConfig.translationPrompt);
+            const prompt = resolveSystemPrompt(
+                targetLanguage,
+                runtimeConfig.translationPrompt,
+                request.preserveNumberedMarkers,
+            );
             const glossaryEntries =
                 enableGuildGlossary && request.guildId
                     ? glossaryRepository.listGuildGlossary(request.guildId)
@@ -501,6 +506,7 @@ export function createTranslationService({
                             ...(selectedGlossaryEntries.length > 0
                                 ? { glossaryEntries: selectedGlossaryEntries }
                                 : {}),
+                            preserveNumberedMarkers: request.preserveNumberedMarkers === true,
                             runtimeConfig,
                         });
                         cache.set(cacheKey, result.text);

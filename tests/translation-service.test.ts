@@ -330,6 +330,7 @@ describe('TranslationService', () => {
             userId: 'user1',
             userTag: 'user#0001',
             locale: 'en-US',
+            preserveNumberedMarkers: true,
             resolveText,
             beforeTranslate,
         });
@@ -340,7 +341,7 @@ describe('TranslationService', () => {
         expect(translator).toHaveBeenCalledWith(
             'Text from image',
             expect.any(String),
-            expect.any(Object),
+            expect.objectContaining({ preserveNumberedMarkers: true }),
         );
         expect(log.getRecent(1)[0]).toMatchObject({
             type: 'translation',
@@ -387,6 +388,39 @@ describe('TranslationService', () => {
             command: 'Babel Lens (context menu)',
             requestId: 'req-lens-ocr-failed',
             errorType: 'server_error',
+        });
+    });
+
+    it('should keep Lens translations separate from the plain translation cache', async () => {
+        const { service, translator } = createService();
+        const request = {
+            command: 'babel' as const,
+            guildId: 'guild-1',
+            userTag: 'user#0001',
+            locale: 'en-US',
+            text: '[1] Hello',
+        };
+
+        const plain = await service.process({
+            ...request,
+            commandLabel: 'Babel (context menu)',
+            userId: 'user1',
+        });
+        const lens = await service.process({
+            ...request,
+            commandLabel: 'Babel Lens (context menu)',
+            userId: 'user2',
+            preserveNumberedMarkers: true,
+        });
+
+        expect(plain.status).toBe('success');
+        expect(lens.status).toBe('success');
+        expect(translator).toHaveBeenCalledTimes(2);
+        expect(translator.mock.calls[0]?.[2]).toMatchObject({
+            preserveNumberedMarkers: false,
+        });
+        expect(translator.mock.calls[1]?.[2]).toMatchObject({
+            preserveNumberedMarkers: true,
         });
     });
 

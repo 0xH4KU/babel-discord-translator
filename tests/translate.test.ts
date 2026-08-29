@@ -114,9 +114,12 @@ describe('buildTargetedPrompt', () => {
         expect(prompt).toContain('English instead');
     });
 
-    it('should preserve Lens region markers in default and custom prompts', () => {
-        expect(DEFAULT_PROMPT).toContain('Preserve bracketed numeric markers');
-        expect(resolveSystemPrompt('auto', 'Custom translator prompt')).toContain(
+    it('should add marker rules only for Lens prompts', () => {
+        expect(DEFAULT_PROMPT).not.toContain('Preserve bracketed numeric markers');
+        expect(resolveSystemPrompt('auto', 'Custom translator prompt')).not.toContain(
+            'Preserve bracketed numeric markers',
+        );
+        expect(resolveSystemPrompt('auto', 'Custom translator prompt', true)).toContain(
             'Preserve bracketed numeric markers',
         );
     });

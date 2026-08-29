@@ -124,6 +124,9 @@ describe('Babel Lens command', () => {
         });
 
         expect(interaction.deferReply).toHaveBeenCalledOnce();
+        expect(translationService.process).toHaveBeenCalledWith(
+            expect.objectContaining({ preserveNumberedMarkers: true }),
+        );
         expect(mocks.tryConsumeVisionImage).toHaveBeenCalledWith(
             new Date().toISOString().slice(0, 7),
             950,
@@ -161,6 +164,33 @@ describe('Babel Lens command', () => {
                 content: expect.stringContaining('PNG, JPEG, or WebP'),
             }),
         );
+    });
+
+    it('should omit region boxes when translated markers do not match', async () => {
+        const interaction = createInteraction();
+        const translationService = {
+            process: vi.fn(async (request) => {
+                await request.resolveText();
+                return {
+                    status: 'success',
+                    deferred: false,
+                    translatedText: '圖片翻譯',
+                    originalText: '[1] Text from image',
+                    cached: false,
+                    targetLanguage: 'zh-TW',
+                    langSource: 'locale',
+                    inputTokens: 10,
+                    outputTokens: 4,
+                };
+            }),
+        };
+
+        await handleBabelLens(interaction as never, {
+            translationService: translationService as never,
+            cache: new TranslationCache(20),
+        });
+
+        expect(mocks.renderImage).toHaveBeenCalledWith(expect.any(Buffer), '圖片翻譯', undefined);
     });
 
     it('should reject a guild without Lens access before downloading the image', async () => {

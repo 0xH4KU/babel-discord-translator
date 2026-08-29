@@ -77,6 +77,7 @@ export async function translate(
         logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'>;
         metrics?: AppMetricsCollector;
         glossaryEntries?: TranslationGlossaryPromptEntry[];
+        preserveNumberedMarkers?: boolean;
         runtimeConfig?: RuntimeConfig;
     },
 ): Promise<TranslationResult> {
@@ -87,6 +88,7 @@ export async function translate(
         targetLanguage,
         customPrompt,
         options?.glossaryEntries,
+        options?.preserveNumberedMarkers,
     );
     const maxOutputTokens = config.maxOutputTokens || 1000;
     const mode = config.translationProvider || 'vertex';

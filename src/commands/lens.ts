@@ -119,9 +119,7 @@ async function detectTextWithBudget(
                     : quota.blockedBy === 'user'
                       ? 'Your Babel Lens'
                       : 'Babel Lens';
-            throw new Error(
-                `${owner} monthly image limit reached (${quota.used}/${quota.limit}).`,
-            );
+            throw new Error(`${owner} monthly image limit reached (${quota.used}/${quota.limit}).`);
         }
 
         logger.info('lens.vision.request.started', {
@@ -158,6 +156,12 @@ async function detectTextWithBudget(
 function formatDetectedText(detected: VisionTextResult): string {
     if (detected.regions.length === 0) return detected.text;
     return detected.regions.map((region, index) => `[${index + 1}] ${region.text}`).join('\n\n');
+}
+
+function hasMatchingRegionMarkers(text: string, regionCount: number): boolean {
+    if (regionCount === 0) return true;
+    const markers = [...text.matchAll(/\[(\d+)\]/gu)].map((match) => Number(match[1]));
+    return markers.length === regionCount && markers.every((marker, index) => marker === index + 1);
 }
 
 async function sendLensReply(
@@ -235,6 +239,7 @@ export async function handleBabelLens(
         userTag: interaction.user.tag,
         locale: interaction.locale,
         requestId,
+        preserveNumberedMarkers: true,
         resolveText: async () => {
             sourceImage = await downloadDiscordImage(attachment);
             detectedText = await detectTextWithBudget(
@@ -261,10 +266,24 @@ export async function handleBabelLens(
     }
 
     try {
+        // The resolver mutates this value inside TranslationService.process().
+        const resolvedDetectedText = detectedText as VisionTextResult | null;
+        const markersMatch = hasMatchingRegionMarkers(
+            result.translatedText,
+            resolvedDetectedText?.regions.length ?? 0,
+        );
+        if (!markersMatch) {
+            appLogger
+                .child({ component: 'babel_lens', requestId })
+                .warn('lens.translation.markers_invalid', {
+                    expectedMarkers: resolvedDetectedText?.regions.length ?? 0,
+                    translatedLength: result.translatedText.length,
+                });
+        }
         const rendered = await renderLensImage(
             sourceImage!,
             result.translatedText,
-            detectedText ?? undefined,
+            markersMatch ? (resolvedDetectedText ?? undefined) : undefined,
         );
         await sendLensReply(interaction, result.translatedText, rendered);
     } catch (error) {
@@ -280,6 +299,7 @@ export const _test = {
     downloadDiscordImage,
     detectTextWithBudget,
     formatDetectedText,
+    hasMatchingRegionMarkers,
     MAX_IMAGE_BYTES,
     MAX_IMAGE_PIXELS,
 };

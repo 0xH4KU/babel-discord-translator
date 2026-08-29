@@ -9,6 +9,7 @@ export type TranslatorOptions = {
     glossaryEntries?: Array<
         Pick<GuildGlossaryEntry, 'sourceText' | 'targetLanguage' | 'targetText' | 'notes'>
     >;
+    preserveNumberedMarkers?: boolean;
     runtimeConfig?: RuntimeConfig;
     logContext: {
         requestId: string;
