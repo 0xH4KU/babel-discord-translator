@@ -161,7 +161,7 @@ describe('startBabelApp', () => {
         );
     });
 
-    it('dispatches Pocket Lens interactions with the Pocket profile and OCR cache', async () => {
+    it('dispatches Pocket Lens interactions with isolated OCR and render limits', async () => {
         const { startBabelApp } = await import('../src/apps/bootstrap.js');
 
         await startBabelApp(BABEL_POCKET_PROFILE);
@@ -186,11 +186,17 @@ describe('startBabelApp', () => {
                 profile: BABEL_POCKET_PROFILE,
                 translationService: mocks.createTranslationService.mock.results[0]?.value,
                 ocrCache: expect.anything(),
+                renderLimiter: expect.anything(),
             }),
         );
-        expect(mocks.handleBabelLens.mock.calls[0]?.[1].ocrCache).not.toBe(
-            mocks.createTranslationService.mock.calls[0]?.[0].cache,
-        );
+        const lensDeps = mocks.handleBabelLens.mock.calls[0]?.[1];
+        const translationDeps = mocks.createTranslationService.mock.calls[0]?.[0];
+        expect(lensDeps.ocrCache).not.toBe(translationDeps.cache);
+        expect(lensDeps.renderLimiter).not.toBe(translationDeps.runtimeLimiter);
+        expect(lensDeps.renderLimiter.snapshot().limits).toMatchObject({
+            maxConcurrent: 1,
+            maxGlobalQueue: 2,
+        });
     });
 
     it('logs in the selected single profile with its profile-specific token when present', async () => {

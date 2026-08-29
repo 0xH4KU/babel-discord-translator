@@ -29,6 +29,8 @@ import type http from 'http';
 let processHandlersInstalled = false;
 // ponytail: OCR entries are larger; add a separate setting only if measured hit rates need it.
 const OCR_CACHE_MAX_SIZE = 250;
+// ponytail: serialize Sharp work for 250 MB workers; raise only after memory load testing.
+const LENS_RENDER_MAX_QUEUE = 2;
 
 interface SharedBabelRuntime {
     config: ReturnType<typeof loadConfig>;
@@ -37,6 +39,7 @@ interface SharedBabelRuntime {
     log: TranslationLog;
     metrics: AppMetrics;
     runtimeLimiter: TranslationRuntimeLimiter;
+    renderLimiter: TranslationRuntimeLimiter;
 }
 
 interface ProfileBabelRuntime {
@@ -97,6 +100,13 @@ function createSharedRuntime(): SharedBabelRuntime {
             maxGuildQueue: runtimeConfig.translationMaxGuildQueue,
             maxUserOutstanding: runtimeConfig.translationMaxUserOutstanding,
             maxQueueWaitMs: runtimeConfig.translationMaxQueueWaitMs,
+        }),
+        renderLimiter: new TranslationRuntimeLimiter({
+            maxConcurrent: 1,
+            maxGlobalQueue: LENS_RENDER_MAX_QUEUE,
+            maxGuildQueue: LENS_RENDER_MAX_QUEUE,
+            maxUserOutstanding: 1,
+            maxQueueWaitMs: 15_000,
         }),
     };
 }
@@ -182,6 +192,7 @@ function createProfileRuntime(
             return handleBabelLens(interaction, {
                 translationService,
                 ocrCache: shared.ocrCache,
+                renderLimiter: shared.renderLimiter,
                 profile,
             });
         }

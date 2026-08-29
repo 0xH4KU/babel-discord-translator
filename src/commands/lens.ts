@@ -15,6 +15,7 @@ import {
     normalizeRegionTranslation,
 } from '../modules/translation/lens-regions.js';
 import { type TranslationCache } from '../modules/translation/cache.js';
+import type { TranslationRuntimeLimiter } from '../modules/translation/translation-runtime-limiter.js';
 import { buildTranslationMessages } from '../shared/discord-message-format.js';
 import { appLogger, createRequestId } from '../shared/structured-logger.js';
 import type { VisionQuotaScope } from '../persistence/store.js';
@@ -29,6 +30,7 @@ const SUPPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 
 interface BabelLensCommandDeps extends CommandDeps {
     ocrCache: TranslationCache;
+    renderLimiter: TranslationRuntimeLimiter;
     profile?: AppProfile;
 }
 
@@ -116,7 +118,12 @@ async function sendLensReply(
 
 export async function handleBabelLens(
     interaction: MessageContextMenuCommandInteraction,
-    { translationService, ocrCache, profile = BABEL_GUILD_PROFILE }: BabelLensCommandDeps,
+    {
+        translationService,
+        ocrCache,
+        renderLimiter,
+        profile = BABEL_GUILD_PROFILE,
+    }: BabelLensCommandDeps,
 ): Promise<void> {
     if (
         profile.accessMode === 'guild' &&
@@ -205,11 +212,28 @@ export async function handleBabelLens(
         );
     }
 
+    const renderAdmission = renderLimiter.acquire({
+        guildId: interaction.guildId,
+        userId: billingUserId ?? interaction.user.id,
+    });
+    if (!renderAdmission.accepted) {
+        appLogger
+            .child({ component: 'babel_lens', requestId })
+            .warn('lens.render.capacity_rejected', {
+                reason: renderAdmission.reason,
+                runtime: renderAdmission.snapshot,
+            });
+        await sendLensReply(interaction, displayText);
+        return;
+    }
+
     try {
-        const rendered = await renderLensImage(
-            sourceImage!,
-            displayText,
-            markersMatch ? (resolvedDetectedText ?? undefined) : undefined,
+        const rendered = await renderAdmission.reservation.run(() =>
+            renderLensImage(
+                sourceImage!,
+                displayText,
+                markersMatch ? (resolvedDetectedText ?? undefined) : undefined,
+            ),
         );
         await sendLensReply(interaction, displayText, rendered);
     } catch (error) {

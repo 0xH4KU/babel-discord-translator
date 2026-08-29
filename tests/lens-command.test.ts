@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BABEL_POCKET_PROFILE } from '../src/apps/app-profile.js';
 import { TranslationCache } from '../src/modules/translation/cache.js';
+import { TranslationRuntimeLimiter } from '../src/modules/translation/translation-runtime-limiter.js';
 import type { VisionQuotaResult } from '../src/persistence/store.js';
 
 const mocks = vi.hoisted(() => ({
@@ -72,6 +73,14 @@ function createInteraction(withImage = true) {
     };
 }
 
+function createCommandDeps(translationService: unknown) {
+    return {
+        translationService: translationService as never,
+        ocrCache: new TranslationCache(20),
+        renderLimiter: new TranslationRuntimeLimiter({ maxConcurrent: 1 }),
+    };
+}
+
 describe('Babel Lens command', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -123,10 +132,7 @@ describe('Babel Lens command', () => {
             }),
         };
 
-        await handleBabelLens(interaction as never, {
-            translationService: translationService as never,
-            ocrCache: new TranslationCache(20),
-        });
+        await handleBabelLens(interaction as never, createCommandDeps(translationService));
 
         expect(interaction.deferReply).toHaveBeenCalledOnce();
         expect(translationService.process).toHaveBeenCalledWith(
@@ -158,10 +164,7 @@ describe('Babel Lens command', () => {
         const interaction = createInteraction(false);
         const translationService = { process: vi.fn() };
 
-        await handleBabelLens(interaction as never, {
-            translationService: translationService as never,
-            ocrCache: new TranslationCache(20),
-        });
+        await handleBabelLens(interaction as never, createCommandDeps(translationService));
 
         expect(translationService.process).not.toHaveBeenCalled();
         expect(interaction.reply).toHaveBeenCalledWith(
@@ -190,12 +193,46 @@ describe('Babel Lens command', () => {
             }),
         };
 
-        await handleBabelLens(interaction as never, {
-            translationService: translationService as never,
-            ocrCache: new TranslationCache(20),
-        });
+        await handleBabelLens(interaction as never, createCommandDeps(translationService));
 
         expect(mocks.renderImage).toHaveBeenCalledWith(expect.any(Buffer), '圖片翻譯', undefined);
+    });
+
+    it('should return translated text when render capacity is full', async () => {
+        const interaction = createInteraction();
+        const translationService = {
+            process: vi.fn(async (request) => {
+                await request.resolveText();
+                return {
+                    status: 'success',
+                    deferred: true,
+                    translatedText: '[[BABEL_REGION_1]] 圖片翻譯',
+                    originalText: '[[BABEL_REGION_1]] Text from image',
+                    cached: false,
+                    targetLanguage: 'zh-TW',
+                    langSource: 'locale',
+                    inputTokens: 10,
+                    outputTokens: 4,
+                };
+            }),
+        };
+        const renderLimiter = {
+            acquire: vi.fn(() => ({
+                accepted: false,
+                reason: 'global_queue_full',
+                snapshot: {},
+            })),
+        };
+
+        await handleBabelLens(interaction as never, {
+            ...createCommandDeps(translationService),
+            renderLimiter: renderLimiter as never,
+        });
+
+        expect(mocks.renderImage).not.toHaveBeenCalled();
+        expect(interaction.editReply).toHaveBeenCalledWith(
+            expect.objectContaining({ content: expect.stringContaining('[1] 圖片翻譯') }),
+        );
     });
 
     it('should reject a guild without Lens access before downloading the image', async () => {
@@ -207,10 +244,7 @@ describe('Babel Lens command', () => {
         const interaction = createInteraction();
         const translationService = { process: vi.fn() };
 
-        await handleBabelLens(interaction as never, {
-            translationService: translationService as never,
-            ocrCache: new TranslationCache(20),
-        });
+        await handleBabelLens(interaction as never, createCommandDeps(translationService));
 
         expect(translationService.process).not.toHaveBeenCalled();
         expect(fetch).not.toHaveBeenCalled();
@@ -230,8 +264,7 @@ describe('Babel Lens command', () => {
         };
 
         await handleBabelLens(interaction as never, {
-            translationService: translationService as never,
-            ocrCache: new TranslationCache(20),
+            ...createCommandDeps(translationService),
             profile: BABEL_POCKET_PROFILE,
         });
 
