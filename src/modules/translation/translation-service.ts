@@ -209,6 +209,7 @@ export function createTranslationService({
                 guildId: request.guildId ?? null,
                 userId: request.userId,
                 command: request.command,
+                commandLabel: request.commandLabel,
             });
             requestLogger.info('translation.request.started', {
                 locale: request.locale ?? null,
@@ -278,9 +279,23 @@ export function createTranslationService({
                 } catch (error) {
                     const caughtError = error instanceof Error ? error : new Error(String(error));
                     const sanitizedMessage = sanitizeError(caughtError.message);
+                    const diagnostic = classifyTranslationError(caughtError.message);
                     profileMetrics?.recordTranslationFailure();
+                    log.addError({
+                        appProfileId,
+                        guildId: request.guildId,
+                        guildName: request.guildName,
+                        userId: request.userId,
+                        userTag: request.userTag,
+                        error: sanitizedMessage,
+                        command: request.commandLabel,
+                        requestId,
+                        errorType: diagnostic.errorType,
+                        suggestedAction: diagnostic.suggestedAction,
+                    });
                     requestLogger.error('translation.text_resolution.failed', {
                         error: sanitizedMessage,
+                        errorType: diagnostic.errorType,
                     });
                     return {
                         status: 'error',
@@ -513,6 +528,7 @@ export function createTranslationService({
                     cached,
                     targetLanguage,
                     langSource,
+                    command: request.commandLabel,
                 });
                 requestLogger.info('translation.request.completed', {
                     cached,

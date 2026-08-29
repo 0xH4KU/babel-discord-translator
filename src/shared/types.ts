@@ -190,6 +190,7 @@ export interface TranslationLogEntry {
     cached: boolean;
     targetLanguage: string;
     langSource: string;
+    command: string;
     timestamp: number;
 }
 

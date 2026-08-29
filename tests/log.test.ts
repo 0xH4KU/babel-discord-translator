@@ -12,12 +12,14 @@ describe('TranslationLog', () => {
             userTag: 'User#1234',
             contentPreview: 'Hello world',
             cached: false,
+            command: 'Babel Lens (context menu)',
         });
 
         const entries = log.getRecent(10);
         expect(entries).toHaveLength(1);
         expect((entries[0] as TranslationLogEntry).guildName).toBe('Test Server');
         expect((entries[0] as TranslationLogEntry).cached).toBe(false);
+        expect((entries[0] as TranslationLogEntry).command).toBe('Babel Lens (context menu)');
     });
 
     it('should return entries in newest-first order', () => {
@@ -291,6 +293,7 @@ describe('TranslationLog', () => {
         expect(entry.contentPreview).toBe('');
         expect(entry.targetLanguage).toBe('auto');
         expect(entry.langSource).toBe('auto');
+        expect(entry.command).toBe('unknown');
     });
 
     it('should use default values for optional fields in addError()', () => {

@@ -73,7 +73,7 @@ async function loadLogs() {
 
 function renderHeaderRow(thead) {
   const tr = document.createElement('tr');
-  ['Time', 'Type', 'Server', 'User', 'Detail', 'Diagnostic'].forEach((label) => {
+  ['Time', 'Status / Source', 'Server', 'User', 'Detail', 'Diagnostic'].forEach((label) => {
     const th = document.createElement('th');
     th.textContent = label;
     tr.appendChild(th);
@@ -136,7 +136,9 @@ function renderLogRow(entry) {
   tr.appendChild(createCell(time, 'mono dim'));
 
   const typeCell = document.createElement('td');
+  typeCell.className = 'log-diagnostics';
   typeCell.appendChild(createBadge(entry.type === 'error' ? 'Error' : 'OK', entry.type === 'error' ? 'badge-red' : 'badge-green'));
+  appendTextBadge(typeCell, 'source', entry.command);
   tr.appendChild(typeCell);
 
   tr.appendChild(createCell(entry.guildName));

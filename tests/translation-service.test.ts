@@ -321,7 +321,7 @@ describe('TranslationService', () => {
     it('should resolve Lens text after access checks and defer only once', async () => {
         const resolveText = vi.fn(async () => 'Text from image');
         const beforeTranslate = vi.fn(async () => undefined);
-        const { service, translator } = createService();
+        const { service, translator, log, loggerState } = createService();
 
         const result = await service.process({
             command: 'babel',
@@ -342,6 +342,18 @@ describe('TranslationService', () => {
             expect.any(String),
             expect.any(Object),
         );
+        expect(log.getRecent(1)[0]).toMatchObject({
+            type: 'translation',
+            command: 'Babel Lens (context menu)',
+        });
+        expect(loggerState.entries).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    event: 'translation.request.completed',
+                    commandLabel: 'Babel Lens (context menu)',
+                }),
+            ]),
+        );
 
         const blockedResolver = vi.fn(async () => 'should not run');
         const { service: blockedService } = createService({
@@ -356,6 +368,26 @@ describe('TranslationService', () => {
             resolveText: blockedResolver,
         });
         expect(blockedResolver).not.toHaveBeenCalled();
+
+        const { service: failedService, log: failedLog } = createService();
+        const failedResult = await failedService.process({
+            command: 'babel',
+            commandLabel: 'Babel Lens (context menu)',
+            guildId: 'guild-1',
+            userId: 'user1',
+            userTag: 'user#0001',
+            requestId: 'req-lens-ocr-failed',
+            resolveText: async () => {
+                throw new Error('Cloud Vision request failed (500)');
+            },
+        });
+        expect(failedResult.status).toBe('error');
+        expect(failedLog.getRecent(1)[0]).toMatchObject({
+            type: 'error',
+            command: 'Babel Lens (context menu)',
+            requestId: 'req-lens-ocr-failed',
+            errorType: 'server_error',
+        });
     });
 
     it('should read runtime config once per request', async () => {
