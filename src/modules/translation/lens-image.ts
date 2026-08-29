@@ -1,4 +1,5 @@
 import sharp from 'sharp';
+import type { VisionTextResult } from '../../infra/cloud-vision-client.js';
 
 const MAX_INPUT_PIXELS = 16_000_000;
 const MAX_OUTPUT_EDGE = 1600;
@@ -95,7 +96,58 @@ function buildCaptionSvg(width: number, text: string): { image: Buffer; height: 
     };
 }
 
-export async function renderLensImage(image: Buffer, translatedText: string): Promise<Buffer> {
+function clamp(value: number, min: number, max: number): number {
+    return Math.min(Math.max(value, min), max);
+}
+
+function buildRegionMarkersSvg(
+    width: number,
+    height: number,
+    detected: VisionTextResult,
+): Buffer | null {
+    if (
+        detected.regions.length === 0 ||
+        detected.imageWidth <= 0 ||
+        detected.imageHeight <= 0
+    ) {
+        return null;
+    }
+
+    const scaleX = width / detected.imageWidth;
+    const scaleY = height / detected.imageHeight;
+    const diameter = clamp(Math.round(Math.min(width, height) / 18), 22, 40);
+    const radius = diameter / 2;
+    const markers = detected.regions
+        .map((region, index) => {
+            const label = String(index + 1);
+            const left = Math.round(region.x * scaleX);
+            const top = Math.round(region.y * scaleY);
+            const hasLeftSpace = left >= diameter + 6;
+            const x = clamp(
+                hasLeftSpace ? left - radius - 6 : left + radius,
+                radius + 2,
+                width - radius - 2,
+            );
+            const y = clamp(
+                hasLeftSpace || top < diameter + 6 ? top + radius : top - radius - 6,
+                radius + 2,
+                height - radius - 2,
+            );
+            const fontSize = Math.round(diameter * (label.length > 1 ? 0.4 : 0.52));
+            return `<circle cx="${x}" cy="${y}" r="${radius}" fill="#5865f2" stroke="#ffffff" stroke-width="2"/><text x="${x}" y="${y + Math.round(fontSize * 0.35)}" text-anchor="middle" fill="#ffffff" font-family="Noto Sans, sans-serif" font-size="${fontSize}" font-weight="700">${label}</text>`;
+        })
+        .join('');
+
+    return Buffer.from(
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${markers}</svg>`,
+    );
+}
+
+export async function renderLensImage(
+    image: Buffer,
+    translatedText: string,
+    detected?: VisionTextResult,
+): Promise<Buffer> {
     const normalized = await sharp(image, { limitInputPixels: MAX_INPUT_PIXELS })
         .rotate()
         .resize({
@@ -107,6 +159,14 @@ export async function renderLensImage(image: Buffer, translatedText: string): Pr
         .jpeg({ quality: 88 })
         .toBuffer({ resolveWithObject: true });
     const { width, height } = normalized.info;
+    const markers = detected ? buildRegionMarkersSvg(width, height, detected) : null;
+    if (markers) {
+        return sharp(normalized.data)
+            .composite([{ input: markers, left: 0, top: 0 }])
+            .jpeg({ quality: 88 })
+            .toBuffer();
+    }
+
     const caption = buildCaptionSvg(width, translatedText);
 
     return sharp({
@@ -125,4 +185,4 @@ export async function renderLensImage(image: Buffer, translatedText: string): Pr
         .toBuffer();
 }
 
-export const _test = { wrapCaption, buildCaptionSvg };
+export const _test = { wrapCaption, buildCaptionSvg, buildRegionMarkersSvg };

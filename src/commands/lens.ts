@@ -11,16 +11,18 @@ import { type TranslationCache } from '../modules/translation/cache.js';
 import { buildTranslationMessages } from '../shared/discord-message-format.js';
 import { appLogger, createRequestId } from '../shared/structured-logger.js';
 import { store } from '../persistence/store.js';
-import { detectTextWithCloudVision } from '../infra/cloud-vision-client.js';
+import {
+    detectTextWithCloudVision,
+    type VisionTextResult,
+} from '../infra/cloud-vision-client.js';
 import type { CommandDeps } from '../shared/types.js';
 
 const MAX_IMAGE_BYTES = 7 * 1024 * 1024;
 const MAX_IMAGE_PIXELS = 16_000_000;
 const IMAGE_DOWNLOAD_TIMEOUT_MS = 15_000;
-const NO_TEXT_CACHE_VALUE = '\u0000';
 const ALLOWED_IMAGE_HOSTS = new Set(['cdn.discordapp.com', 'media.discordapp.net']);
 const SUPPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
-const inFlightOcr = new Map<string, Promise<string>>();
+const inFlightOcr = new Map<string, Promise<VisionTextResult>>();
 
 interface BabelLensCommandDeps extends CommandDeps {
     cache: TranslationCache;
@@ -86,7 +88,7 @@ async function detectTextWithBudget(
     image: Buffer,
     cache: TranslationCache,
     requestId: string,
-): Promise<string> {
+): Promise<VisionTextResult> {
     const config = configRepository.getRuntimeConfig();
     const limit = Math.max(Math.floor(config.visionMonthlyImageLimit), 0);
     if (limit === 0) throw new Error('Babel Lens is disabled in Settings.');
@@ -95,9 +97,9 @@ async function detectTextWithBudget(
     }
 
     const hash = createHash('sha256').update(image).digest('hex');
-    const cacheKey = `vision:text:v1:${hash}`;
+    const cacheKey = `vision:text:v2:${hash}`;
     const cached = cache.get(cacheKey);
-    if (cached !== null) return cached === NO_TEXT_CACHE_VALUE ? '' : cached;
+    if (cached !== null) return JSON.parse(cached) as VisionTextResult;
 
     const pending = inFlightOcr.get(cacheKey);
     if (pending) return pending;
@@ -111,15 +113,16 @@ async function detectTextWithBudget(
 
         const logger = appLogger.child({ component: 'babel_lens', requestId });
         logger.info('lens.vision.request.started', { month, used, limit });
-        const text = await detectTextWithCloudVision(image, { apiKey: config.visionApiKey });
-        cache.set(cacheKey, text || NO_TEXT_CACHE_VALUE);
+        const detected = await detectTextWithCloudVision(image, { apiKey: config.visionApiKey });
+        cache.set(cacheKey, JSON.stringify(detected));
         logger.info('lens.vision.request.completed', {
             month,
             used,
             limit,
-            detectedCharacters: text.length,
+            detectedCharacters: detected.text.length,
+            detectedRegions: detected.regions.length,
         });
-        return text;
+        return detected;
     })();
 
     inFlightOcr.set(cacheKey, operation);
@@ -128,6 +131,13 @@ async function detectTextWithBudget(
     } finally {
         if (inFlightOcr.get(cacheKey) === operation) inFlightOcr.delete(cacheKey);
     }
+}
+
+function formatDetectedText(detected: VisionTextResult): string {
+    if (detected.regions.length === 0) return detected.text;
+    return detected.regions
+        .map((region, index) => `[${index + 1}] ${region.text}`)
+        .join('\n\n');
 }
 
 async function sendLensReply(
@@ -184,6 +194,7 @@ export async function handleBabelLens(
             ? (getUserInstallOwnerId(interaction) ?? interaction.user.id)
             : null;
     let sourceImage: Buffer | null = null;
+    let detectedText: VisionTextResult | null = null;
     const result = await translationService.process({
         command: 'babel',
         commandLabel: 'Babel Lens (context menu)',
@@ -196,9 +207,9 @@ export async function handleBabelLens(
         requestId,
         resolveText: async () => {
             sourceImage = await downloadDiscordImage(attachment);
-            const text = await detectTextWithBudget(sourceImage, cache, requestId);
-            if (!text) throw new Error('Cloud Vision found no text in this image.');
-            return text;
+            detectedText = await detectTextWithBudget(sourceImage, cache, requestId);
+            if (!detectedText.text) throw new Error('Cloud Vision found no text in this image.');
+            return formatDetectedText(detectedText);
         },
         beforeTranslate: () => interaction.deferReply({ flags: MessageFlags.Ephemeral }),
     });
@@ -215,7 +226,11 @@ export async function handleBabelLens(
     }
 
     try {
-        const rendered = await renderLensImage(sourceImage!, result.translatedText);
+        const rendered = await renderLensImage(
+            sourceImage!,
+            result.translatedText,
+            detectedText ?? undefined,
+        );
         await sendLensReply(interaction, result.translatedText, rendered);
     } catch (error) {
         appLogger.child({ component: 'babel_lens', requestId }).error('lens.render.failed', {
@@ -229,6 +244,7 @@ export const _test = {
     findImageAttachment,
     downloadDiscordImage,
     detectTextWithBudget,
+    formatDetectedText,
     MAX_IMAGE_BYTES,
     MAX_IMAGE_PIXELS,
 };

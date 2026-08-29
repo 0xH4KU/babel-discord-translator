@@ -8,7 +8,12 @@ const mocks = vi.hoisted(() => ({
         lensEnabledGuildIds: ['guild-1'],
     })),
     tryConsumeVisionImage: vi.fn(() => 1),
-    detectText: vi.fn(async () => 'Text from image'),
+    detectText: vi.fn(async () => ({
+        text: 'Text from image',
+        imageWidth: 100,
+        imageHeight: 100,
+        regions: [{ text: 'Text from image', x: 5, y: 10, width: 80, height: 20 }],
+    })),
     renderImage: vi.fn(async () => Buffer.from('rendered-image')),
 }));
 
@@ -68,7 +73,12 @@ describe('Babel Lens command', () => {
             lensEnabledGuildIds: ['guild-1'],
         });
         mocks.tryConsumeVisionImage.mockReturnValue(1);
-        mocks.detectText.mockResolvedValue('Text from image');
+        mocks.detectText.mockResolvedValue({
+            text: 'Text from image',
+            imageWidth: 100,
+            imageHeight: 100,
+            regions: [{ text: 'Text from image', x: 5, y: 10, width: 80, height: 20 }],
+        });
         vi.stubGlobal(
             'fetch',
             vi.fn(async () => new Response(Buffer.from('image'), { status: 200 })),
@@ -85,10 +95,11 @@ describe('Babel Lens command', () => {
             process: vi.fn(async (request) => {
                 await request.beforeTranslate();
                 const originalText = await request.resolveText();
+                expect(originalText).toBe('[1] Text from image');
                 return {
                     status: 'success',
                     deferred: true,
-                    translatedText: '圖片翻譯',
+                    translatedText: '[1] 圖片翻譯',
                     originalText,
                     cached: false,
                     targetLanguage: 'zh-TW',
@@ -113,9 +124,13 @@ describe('Babel Lens command', () => {
         expect(mocks.detectText).toHaveBeenCalledWith(expect.any(Buffer), {
             apiKey: 'vision-key',
         });
-        expect(mocks.renderImage).toHaveBeenCalledWith(expect.any(Buffer), '圖片翻譯');
+        expect(mocks.renderImage).toHaveBeenCalledWith(
+            expect.any(Buffer),
+            '[1] 圖片翻譯',
+            expect.objectContaining({ regions: [expect.objectContaining({ text: 'Text from image' })] }),
+        );
         expect(interaction.editReply).toHaveBeenCalledWith({
-            content: '圖片翻譯',
+            content: '[1] 圖片翻譯',
             files: [{ attachment: Buffer.from('rendered-image'), name: 'babel-lens.jpg' }],
         });
     });

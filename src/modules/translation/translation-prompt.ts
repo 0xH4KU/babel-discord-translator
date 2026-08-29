@@ -38,6 +38,8 @@ export function getLanguageName(code: string | null | undefined): string | null 
     return LOCALE_MAP[code] ?? LOCALE_MAP[code.split('-')[0]!] ?? code;
 }
 
+const NUMBERED_MARKER_RULE = 'Preserve bracketed numeric markers such as [1] and [2] exactly.';
+
 export const DEFAULT_PROMPT = `You are a translator. Detect the language of the following text and translate it.
 
 Rules:
@@ -46,7 +48,8 @@ Rules:
 - If the text contains both Chinese and English → translate each part to the other language
 - If the text is in another language → translate to both English and Traditional Chinese
 - Output ONLY the translation. No explanations, no labels, no extra text.
-- Preserve the original formatting (line breaks, punctuation, etc.)`;
+- Preserve the original formatting (line breaks, punctuation, etc.)
+- ${NUMBERED_MARKER_RULE}`;
 
 export function buildTargetedPrompt(targetLang: string): string {
     const langName = getLanguageName(targetLang);
@@ -57,14 +60,15 @@ Rules:
 - If the text is already in ${langName}, translate it to English instead.
 - If the text contains multiple languages, translate all parts to ${langName}.
 - Output ONLY the translation. No explanations, no labels, no extra text.
-- Preserve the original formatting (line breaks, punctuation, etc.)`;
+- Preserve the original formatting (line breaks, punctuation, etc.)
+- ${NUMBERED_MARKER_RULE}`;
 }
 
 export function resolveSystemPrompt(
     targetLanguage: string = 'auto',
     customPrompt?: string | null,
 ): string {
-    if (customPrompt?.trim()) return customPrompt.trim();
+    if (customPrompt?.trim()) return `${customPrompt.trim()}\n\n${NUMBERED_MARKER_RULE}`;
     return targetLanguage && targetLanguage !== 'auto'
         ? buildTargetedPrompt(targetLanguage)
         : DEFAULT_PROMPT;

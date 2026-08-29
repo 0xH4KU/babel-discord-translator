@@ -6,13 +6,46 @@ interface VisionError {
     message?: string;
 }
 
-interface VisionResponse {
-    responses?: Array<{
-        fullTextAnnotation?: { text?: string };
-        textAnnotations?: Array<{ description?: string }>;
-        error?: VisionError;
-    }>;
+interface VisionSymbol {
+    text?: string;
+    property?: { detectedBreak?: { type?: string } };
+}
+
+interface VisionParagraph {
+    boundingBox?: { vertices?: Array<{ x?: number; y?: number }> };
+    words?: Array<{ symbols?: VisionSymbol[] }>;
+}
+
+interface VisionPage {
+    width?: number;
+    height?: number;
+    blocks?: Array<{ paragraphs?: VisionParagraph[] }>;
+}
+
+interface VisionImageResponse {
+    fullTextAnnotation?: { text?: string; pages?: VisionPage[] };
+    textAnnotations?: Array<{ description?: string }>;
     error?: VisionError;
+}
+
+interface VisionResponse {
+    responses?: VisionImageResponse[];
+    error?: VisionError;
+}
+
+export interface VisionTextRegion {
+    text: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
+export interface VisionTextResult {
+    text: string;
+    imageWidth: number;
+    imageHeight: number;
+    regions: VisionTextRegion[];
 }
 
 interface DetectTextOptions {
@@ -21,10 +54,71 @@ interface DetectTextOptions {
     signal?: AbortSignal;
 }
 
+function detectedBreak(type?: string): string | undefined {
+    if (type === 'SPACE' || type === 'SURE_SPACE') return ' ';
+    if (type === 'EOL_SURE_SPACE' || type === 'LINE_BREAK') return '\n';
+    if (type === 'HYPHEN') return '-';
+    return undefined;
+}
+
+function paragraphText(paragraph: VisionParagraph): string {
+    const words = paragraph.words ?? [];
+    return words
+        .map((word) => {
+            const symbols = word.symbols ?? [];
+            const text = symbols.map((symbol) => symbol.text ?? '').join('');
+            const suffix = detectedBreak(symbols.at(-1)?.property?.detectedBreak?.type);
+            return text + (suffix ?? '');
+        })
+        .join('')
+        .trim();
+}
+
+function paragraphBounds(paragraph: VisionParagraph): Omit<VisionTextRegion, 'text'> | null {
+    const points = (paragraph.boundingBox?.vertices ?? []).map((point) => ({
+        x: point.x ?? 0,
+        y: point.y ?? 0,
+    }));
+    if (points.length < 2) return null;
+
+    const xs = points.map((point) => point.x);
+    const ys = points.map((point) => point.y);
+    const x = Math.min(...xs);
+    const y = Math.min(...ys);
+    const width = Math.max(...xs) - x;
+    const height = Math.max(...ys) - y;
+    return width > 0 && height > 0 ? { x, y, width, height } : null;
+}
+
+function parseVisionText(result?: VisionImageResponse): VisionTextResult {
+    const annotation = result?.fullTextAnnotation;
+    const page = annotation?.pages?.[0];
+    const imageWidth = page?.width ?? 0;
+    const imageHeight = page?.height ?? 0;
+    const paragraphs = page?.blocks?.flatMap((block) => block.paragraphs ?? []) ?? [];
+    const parsedRegions =
+        imageWidth > 0 && imageHeight > 0
+            ? paragraphs.flatMap((paragraph) => {
+                  const text = paragraphText(paragraph);
+                  const bounds = paragraphBounds(paragraph);
+                  return text && bounds ? [{ text, ...bounds }] : [];
+              })
+            : [];
+
+    // ponytail: dense OCR falls back to the existing caption instead of drawing 100+ markers.
+    const regions = parsedRegions.length <= 99 ? parsedRegions : [];
+    const text = (
+        annotation?.text ??
+        result?.textAnnotations?.[0]?.description ??
+        regions.map((region) => region.text).join('\n')
+    ).trim();
+    return { text, imageWidth, imageHeight, regions };
+}
+
 export async function detectTextWithCloudVision(
     image: Buffer,
     { apiKey, fetchImpl = fetch, signal }: DetectTextOptions,
-): Promise<string> {
+): Promise<VisionTextResult> {
     if (!apiKey) throw new Error('Cloud Vision API key is not configured');
     if (image.length === 0) throw new Error('Image is empty');
 
@@ -64,9 +158,7 @@ export async function detectTextWithCloudVision(
     }
 
     const result = data.responses?.[0];
-    return (
-        result?.fullTextAnnotation?.text ?? result?.textAnnotations?.[0]?.description ?? ''
-    ).trim();
+    return parseVisionText(result);
 }
 
-export const _test = { VISION_ENDPOINT, VISION_TIMEOUT_MS };
+export const _test = { VISION_ENDPOINT, VISION_TIMEOUT_MS, parseVisionText };

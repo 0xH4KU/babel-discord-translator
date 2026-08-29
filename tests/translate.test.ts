@@ -5,6 +5,7 @@ import { fetchProviderWithRetry } from '../src/infra/provider-http.js';
 const {
     getLanguageName,
     buildTargetedPrompt,
+    resolveSystemPrompt,
     LOCALE_MAP,
     DEFAULT_PROMPT,
     buildGlossaryPromptSection,
@@ -111,6 +112,13 @@ describe('buildTargetedPrompt', () => {
         const prompt = buildTargetedPrompt('ko');
         expect(prompt).toContain('already in');
         expect(prompt).toContain('English instead');
+    });
+
+    it('should preserve Lens region markers in default and custom prompts', () => {
+        expect(DEFAULT_PROMPT).toContain('Preserve bracketed numeric markers');
+        expect(resolveSystemPrompt('auto', 'Custom translator prompt')).toContain(
+            'Preserve bracketed numeric markers',
+        );
     });
 });
 

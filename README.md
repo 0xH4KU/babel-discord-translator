@@ -96,7 +96,7 @@ Sponsorship is optional and does not unlock private features. Supporting mainten
 ### Core Translation
 
 - **Context Menu Translation** — Right-click → Apps → Babel Guild or Babel Pocket
-- **Babel Lens** — OCR a Discord image with Cloud Vision, translate the detected text, and return a captioned image
+- **Babel Lens** — OCR a Discord image with Cloud Vision and number matching image/translation regions
 - **`/translate` Command** — Guild-only slash command with public webhook-based output
 - **Ephemeral Messages** — Context menu translations are private, only visible to you
 - **Multi-language Support** — Auto-detects your Discord locale, or use `/setlang` to choose

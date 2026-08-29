@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Added Babel Lens image OCR through Google Cloud Vision, translated caption images, a dedicated Vision API key, a configurable monthly image limit, per-server Guild access, and shared Guild/Pocket context-menu support.
+- Added Babel Lens image OCR through Google Cloud Vision, numbered image/translation regions, a dedicated Vision API key, a configurable monthly image limit, per-server Guild access, and shared Guild/Pocket context-menu support.
 
 ## 0.2.3 - 2026-08-27
 
