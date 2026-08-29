@@ -2,6 +2,7 @@
     "en": {
         "title": "How to Use Babel",
         "translate": ["Translate a Message (Private)", "**Desktop:** Right-click a message → Apps → **Babel**\n**Mobile:** Long-press a message → Apps → **Babel**\nTranslation is only visible to you."],
+        "lens": ["Translate an Image (Private)", "**Desktop:** Right-click a message with an image → Apps → **Babel Lens**\n**Mobile:** Long-press the message → Apps → **Babel Lens**\nSupports Discord PNG, JPEG, and WebP attachments up to 7 MB / 16 MP. The translated image is only visible to you."],
         "quick": ["/translate (Public)", "Type text and send the translation **publicly** with your avatar:\n`/translate text:Hello world`\nYou can also specify a target language with the hidden `to` option:\n`/translate text:Hello world to:ja` → translates to Japanese"],
         "setlang": ["/setlang", "Set your preferred translation language (remembered permanently):\n`/setlang ja` → all translations will be in Japanese\n`/setlang auto` → reset to auto-detect from Discord settings"],
         "mylang": ["/mylang", "Check your current translation language setting."],
@@ -10,6 +11,7 @@
     "zh": {
         "title": "如何使用 Babel",
         "translate": ["翻譯訊息（私密）", "**電腦版：** 右鍵點擊訊息 → 應用程式 → **Babel**\n**手機版：** 長按訊息 → 應用程式 → **Babel**\n翻譯結果僅你可見。"],
+        "lens": ["翻譯圖片（私密）", "**電腦版：** 右鍵點擊含圖片的訊息 → 應用程式 → **Babel Lens**\n**手機版：** 長按該訊息 → 應用程式 → **Babel Lens**\n支援 Discord 上限 7 MB／1,600 萬像素的 PNG、JPEG、WebP 附件；翻譯圖片僅你可見。"],
         "quick": ["/translate（公開）", "輸入文字，用你的頭像和名字**公開發送**翻譯結果：\n`/translate text:你好世界`\n可用 `to` 參數指定目標語言：\n`/translate text:你好世界 to:en` → 公開發送英文翻譯"],
         "setlang": ["/setlang", "設定偏好翻譯語言（永久記住）：\n`/setlang ja` → 之後所有翻譯都翻成日文\n`/setlang auto` → 重置回自動偵測"],
         "mylang": ["/mylang", "查看你目前的翻譯語言設定。"],
@@ -18,6 +20,7 @@
     "ja": {
         "title": "Babel の使い方",
         "translate": ["メッセージを翻訳（プライベート）", "**PC：** 右クリック → アプリ → **Babel**\n**モバイル：** 長押し → アプリ → **Babel**\nあなただけに表示されます。"],
+        "lens": ["画像を翻訳（プライベート）", "**PC：** 画像付きメッセージを右クリック → アプリ → **Babel Lens**\n**モバイル：** メッセージを長押し → アプリ → **Babel Lens**\n7 MB／1,600 万画素までの PNG、JPEG、WebP 添付に対応。翻訳画像はあなただけに表示されます。"],
         "quick": ["/translate（公開）", "テキストを入力し、アバターと名前で**公開送信**：\n`/translate text:こんにちは`\n`to` で翻訳先言語を指定：\n`/translate text:こんにちは to:en` → 英語の翻訳を公開送信"],
         "setlang": ["/setlang", "翻訳先の言語を設定（永続保存）：\n`/setlang en` → 全て英語\n`/setlang auto` → 自動検出にリセット"],
         "mylang": ["/mylang", "現在の翻訳言語設定を確認します。"],
@@ -26,6 +29,7 @@
     "ko": {
         "title": "Babel 사용법",
         "translate": ["메시지 번역 (비공개)", "**PC:** 우클릭 → 앱 → **Babel**\n**모바일:** 길게 누르기 → 앱 → **Babel**\n본인에게만 보입니다."],
+        "lens": ["이미지 번역 (비공개)", "**PC:** 이미지가 있는 메시지를 우클릭 → 앱 → **Babel Lens**\n**모바일:** 메시지를 길게 누르기 → 앱 → **Babel Lens**\n7 MB / 1,600만 화소 이하 Discord PNG, JPEG, WebP 첨부를 지원합니다. 번역 이미지는 본인에게만 보입니다."],
         "quick": ["/translate (공개)", "아바타와 이름으로 **공개 전송**:\n`/translate text:안녕하세요`\n`to`로 언어 지정:\n`/translate text:안녕하세요 to:en` → 영어 번역 공개 전송"],
         "setlang": ["/setlang", "번역 언어 설정 (영구 저장):\n`/setlang en` → 모두 영어\n`/setlang auto` → 자동 감지"],
         "mylang": ["/mylang", "현재 번역 언어 설정을 확인합니다."],
@@ -34,6 +38,7 @@
     "es": {
         "title": "Cómo usar Babel",
         "translate": ["Traducir mensaje (Privado)", "**PC:** Clic derecho → Apps → **Babel**\n**Móvil:** Mantén presionado → Apps → **Babel**\nSolo tú ves la traducción."],
+        "lens": ["Traducir una imagen (Privado)", "**PC:** Clic derecho en un mensaje con imagen → Apps → **Babel Lens**\n**Móvil:** Mantén presionado el mensaje → Apps → **Babel Lens**\nAdmite adjuntos PNG, JPEG y WebP de Discord de hasta 7 MB / 16 MP. Solo tú ves la imagen traducida."],
         "quick": ["/translate (Público)", "Escribe texto y envía **públicamente** con tu avatar:\n`/translate text:Hola mundo`\nUsa `to` para elegir idioma:\n`/translate text:Hola mundo to:en` → publica en inglés"],
         "setlang": ["/setlang", "Configura idioma (permanente):\n`/setlang en` → todo en inglés\n`/setlang auto` → detección automática"],
         "mylang": ["/mylang", "Consulta tu idioma de traducción actual."],
@@ -42,6 +47,7 @@
     "fr": {
         "title": "Comment utiliser Babel",
         "translate": ["Traduire message (Privé)", "**PC :** Clic droit → Apps → **Babel**\n**Mobile :** Appui long → Apps → **Babel**\nSeul vous voyez la traduction."],
+        "lens": ["Traduire une image (Privé)", "**PC :** Clic droit sur un message avec image → Apps → **Babel Lens**\n**Mobile :** Appui long sur le message → Apps → **Babel Lens**\nAccepte les pièces jointes Discord PNG, JPEG et WebP jusqu’à 7 Mo / 16 Mpx. Vous seul voyez l’image traduite."],
         "quick": ["/translate (Public)", "Tapez texte et envoyez **publiquement** avec votre avatar :\n`/translate text:Bonjour`\nUtilisez `to` pour la langue :\n`/translate text:Bonjour to:en` → publie en anglais"],
         "setlang": ["/setlang", "Définir langue (sauvegardé) :\n`/setlang en` → tout en anglais\n`/setlang auto` → détection automatique"],
         "mylang": ["/mylang", "Vérifiez votre langue de traduction actuelle."],
@@ -50,6 +56,7 @@
     "de": {
         "title": "So verwendest du Babel",
         "translate": ["Nachricht übersetzen (Privat)", "**PC:** Rechtsklick → Apps → **Babel**\n**Mobil:** Lange drücken → Apps → **Babel**\nNur für dich sichtbar."],
+        "lens": ["Bild übersetzen (Privat)", "**PC:** Rechtsklick auf eine Nachricht mit Bild → Apps → **Babel Lens**\n**Mobil:** Nachricht lange drücken → Apps → **Babel Lens**\nUnterstützt Discord-Anhänge als PNG, JPEG und WebP bis 7 MB / 16 MP. Nur du siehst das übersetzte Bild."],
         "quick": ["/translate (Öffentlich)", "Text eingeben und **öffentlich** mit Avatar senden:\n`/translate text:Hallo Welt`\nMit `to` Zielsprache wählen:\n`/translate text:Hallo Welt to:en` → postet auf Englisch"],
         "setlang": ["/setlang", "Sprache einstellen (dauerhaft):\n`/setlang en` → alles auf Englisch\n`/setlang auto` → automatische Erkennung"],
         "mylang": ["/mylang", "Überprüfe deine aktuelle Übersetzungssprache."],
@@ -58,6 +65,7 @@
     "pt": {
         "title": "Como usar o Babel",
         "translate": ["Traduzir mensagem (Privado)", "**PC:** Clique direito → Apps → **Babel**\n**Mobile:** Pressione longo → Apps → **Babel**\nSó você vê."],
+        "lens": ["Traduzir uma imagem (Privado)", "**PC:** Clique direito em uma mensagem com imagem → Apps → **Babel Lens**\n**Mobile:** Pressione a mensagem → Apps → **Babel Lens**\nAceita anexos PNG, JPEG e WebP do Discord de até 7 MB / 16 MP. Só você vê a imagem traduzida."],
         "quick": ["/translate (Público)", "Digite texto e envie **publicamente** com seu avatar:\n`/translate text:Olá mundo`\nUse `to` para idioma:\n`/translate text:Olá mundo to:en` → publica em inglês"],
         "setlang": ["/setlang", "Defina idioma (permanente):\n`/setlang en` → tudo em inglês\n`/setlang auto` → detecção automática"],
         "mylang": ["/mylang", "Verifique seu idioma de tradução atual."],
@@ -66,6 +74,7 @@
     "ru": {
         "title": "Как пользоваться Babel",
         "translate": ["Перевести (Приватно)", "**ПК:** ПКМ → Приложения → **Babel**\n**Мобильное:** Долгое нажатие → **Babel**\nВидно только вам."],
+        "lens": ["Перевести изображение (Приватно)", "**ПК:** ПКМ по сообщению с изображением → Приложения → **Babel Lens**\n**Мобильное:** Удерживайте сообщение → Приложения → **Babel Lens**\nПоддерживаются вложения Discord PNG, JPEG и WebP до 7 МБ / 16 Мп. Переведённое изображение видно только вам."],
         "quick": ["/translate (Публично)", "Введите текст и отправьте **публично** с аватаром:\n`/translate text:Привет мир`\nПараметр `to` для языка:\n`/translate text:Привет мир to:en` → публикует на английском"],
         "setlang": ["/setlang", "Язык перевода (сохраняется):\n`/setlang en` → всё на английском\n`/setlang auto` → автоопределение"],
         "mylang": ["/mylang", "Проверьте текущий язык перевода."],
@@ -74,6 +83,7 @@
     "it": {
         "title": "Come usare Babel",
         "translate": ["Traduci messaggio (Privato)", "**PC:** Clic destro → App → **Babel**\n**Mobile:** Tieni premuto → App → **Babel**\nSolo tu vedi."],
+        "lens": ["Traduci un’immagine (Privato)", "**PC:** Clic destro su un messaggio con immagine → App → **Babel Lens**\n**Mobile:** Tieni premuto il messaggio → App → **Babel Lens**\nSupporta allegati Discord PNG, JPEG e WebP fino a 7 MB / 16 MP. Solo tu vedi l’immagine tradotta."],
         "quick": ["/translate (Pubblico)", "Scrivi testo e invia **pubblicamente** con avatar:\n`/translate text:Ciao mondo`\nUsa `to` per lingua:\n`/translate text:Ciao mondo to:en` → pubblica in inglese"],
         "setlang": ["/setlang", "Imposta lingua (permanente):\n`/setlang en` → tutto in inglese\n`/setlang auto` → rilevamento automatico"],
         "mylang": ["/mylang", "Controlla la tua lingua di traduzione attuale."],
@@ -82,6 +92,7 @@
     "vi": {
         "title": "Cách sử dụng Babel",
         "translate": ["Dịch tin nhắn (Riêng tư)", "**PC:** Chuột phải → Ứng dụng → **Babel**\n**Di động:** Nhấn giữ → **Babel**\nChỉ bạn nhìn thấy."],
+        "lens": ["Dịch hình ảnh (Riêng tư)", "**PC:** Nhấp phải tin nhắn có ảnh → Ứng dụng → **Babel Lens**\n**Di động:** Nhấn giữ tin nhắn → Ứng dụng → **Babel Lens**\nHỗ trợ tệp đính kèm Discord PNG, JPEG và WebP tối đa 7 MB / 16 MP. Chỉ bạn thấy ảnh đã dịch."],
         "quick": ["/translate (Công khai)", "Nhập văn bản và gửi **công khai** với avatar:\n`/translate text:Xin chào`\nDùng `to` để chọn ngôn ngữ:\n`/translate text:Xin chào to:en` → đăng tiếng Anh công khai"],
         "setlang": ["/setlang", "Cài ngôn ngữ (vĩnh viễn):\n`/setlang en` → tất cả tiếng Anh\n`/setlang auto` → tự động phát hiện"],
         "mylang": ["/mylang", "Kiểm tra ngôn ngữ dịch hiện tại của bạn."],
@@ -90,6 +101,7 @@
     "th": {
         "title": "วิธีใช้ Babel",
         "translate": ["แปลข้อความ (ส่วนตัว)", "**PC:** คลิกขวา → แอป → **Babel**\n**มือถือ:** กดค้าง → **Babel**\nเฉพาะคุณเห็น"],
+        "lens": ["แปลรูปภาพ (ส่วนตัว)", "**PC:** คลิกขวาข้อความที่มีรูป → แอป → **Babel Lens**\n**มือถือ:** กดข้อความค้าง → แอป → **Babel Lens**\nรองรับไฟล์แนบ Discord แบบ PNG, JPEG และ WebP สูงสุด 7 MB / 16 MP รูปที่แปลแล้วจะเห็นเฉพาะคุณ"],
         "quick": ["/translate (สาธารณะ)", "พิมพ์และส่ง**สาธารณะ**ด้วยอวาตาร์:\n`/translate text:สวัสดี`\nใช้ `to` เลือกภาษา:\n`/translate text:สวัสดี to:en` → โพสต์ภาษาอังกฤษ"],
         "setlang": ["/setlang", "ตั้งภาษา (ถาวร):\n`/setlang en` → ทั้งหมดอังกฤษ\n`/setlang auto` → ตรวจจับอัตโนมัติ"],
         "mylang": ["/mylang", "ตรวจสอบภาษาแปลปัจจุบันของคุณ"],
@@ -98,6 +110,7 @@
     "ar": {
         "title": "كيفية استخدام Babel",
         "translate": ["ترجمة رسالة (خاص)", "**كمبيوتر:** زر أيمن → التطبيقات → **Babel**\n**جوال:** اضغط مطولاً → **Babel**\nلك فقط."],
+        "lens": ["ترجمة صورة (خاص)", "**كمبيوتر:** انقر بزر الفأرة الأيمن على رسالة تحتوي صورة → التطبيقات → **Babel Lens**\n**جوال:** اضغط مطولاً على الرسالة → التطبيقات → **Babel Lens**\nيدعم مرفقات Discord بصيغ PNG وJPEG وWebP حتى 7 MB / 16 MP. الصورة المترجمة مرئية لك فقط."],
         "quick": ["/translate (عام)", "اكتب وأرسل **علنياً** بصورتك:\n`/translate text:مرحبا`\nاستخدم `to` للغة:\n`/translate text:مرحبا to:en` → ينشر بالإنجليزية"],
         "setlang": ["/setlang", "تعيين اللغة (دائم):\n`/setlang en` → الكل بالإنجليزية\n`/setlang auto` → كشف تلقائي"],
         "mylang": ["/mylang", "تحقق من لغة الترجمة الحالية."],
@@ -106,6 +119,7 @@
     "hi": {
         "title": "Babel का उपयोग",
         "translate": ["अनुवाद (निजी)", "**PC:** राइट-क्लिक → ऐप्स → **Babel**\n**मोबाइल:** लंबे समय दबाएं → **Babel**\nकेवल आपको दिखता है।"],
+        "lens": ["चित्र का अनुवाद (निजी)", "**PC:** चित्र वाले संदेश पर राइट-क्लिक → ऐप्स → **Babel Lens**\n**मोबाइल:** संदेश को दबाकर रखें → ऐप्स → **Babel Lens**\n7 MB / 16 MP तक के Discord PNG, JPEG और WebP अटैचमेंट समर्थित हैं। अनुवादित चित्र केवल आपको दिखता है।"],
         "quick": ["/translate (सार्वजनिक)", "टेक्स्ट टाइप करें, अवतार के साथ **सार्वजनिक** भेजें:\n`/translate text:नमस्ते`\n`to` से भाषा चुनें:\n`/translate text:नमस्ते to:en` → अंग्रेजी में पोस्ट"],
         "setlang": ["/setlang", "भाषा सेट करें (स्थायी):\n`/setlang en` → सब अंग्रेजी\n`/setlang auto` → स्वचालित पहचान"],
         "mylang": ["/mylang", "अपनी वर्तमान अनुवाद भाषा जाँचें।"],
@@ -114,6 +128,7 @@
     "id": {
         "title": "Cara Menggunakan Babel",
         "translate": ["Terjemahkan pesan (Pribadi)", "**PC:** Klik kanan → Aplikasi → **Babel**\n**Mobile:** Tekan lama → **Babel**\nHanya Anda yang melihat."],
+        "lens": ["Terjemahkan gambar (Pribadi)", "**PC:** Klik kanan pesan dengan gambar → Aplikasi → **Babel Lens**\n**Mobile:** Tekan lama pesan → Aplikasi → **Babel Lens**\nMendukung lampiran Discord PNG, JPEG, dan WebP hingga 7 MB / 16 MP. Hanya Anda yang melihat gambar terjemahan."],
         "quick": ["/translate (Publik)", "Ketik teks dan kirim **publik** dengan avatar:\n`/translate text:Halo dunia`\nGunakan `to` untuk bahasa:\n`/translate text:Halo dunia to:en` → posting dalam Inggris"],
         "setlang": ["/setlang", "Atur bahasa (permanen):\n`/setlang en` → semua Inggris\n`/setlang auto` → deteksi otomatis"],
         "mylang": ["/mylang", "Periksa bahasa terjemahan Anda saat ini."],
@@ -122,6 +137,7 @@
     "tr": {
         "title": "Babel Nasıl Kullanılır",
         "translate": ["Mesaj çevir (Özel)", "**PC:** Sağ tıkla → Uygulamalar → **Babel**\n**Mobil:** Uzun bas → **Babel**\nYalnızca siz görürsünüz."],
+        "lens": ["Görsel çevir (Özel)", "**PC:** Görsel içeren mesaja sağ tıkla → Uygulamalar → **Babel Lens**\n**Mobil:** Mesaja uzun bas → Uygulamalar → **Babel Lens**\n7 MB / 16 MP’ye kadar Discord PNG, JPEG ve WebP eklerini destekler. Çevrilen görseli yalnızca siz görürsünüz."],
         "quick": ["/translate (Herkese Açık)", "Metin yazın ve avatarınızla **herkese açık** gönderin:\n`/translate text:Merhaba dünya`\n`to` ile dili belirleyin:\n`/translate text:Merhaba dünya to:en` → İngilizce yayınla"],
         "setlang": ["/setlang", "Dil ayarla (kalıcı):\n`/setlang en` → hepsi İngilizce\n`/setlang auto` → otomatik algılama"],
         "mylang": ["/mylang", "Mevcut çeviri dilinizi kontrol edin."],

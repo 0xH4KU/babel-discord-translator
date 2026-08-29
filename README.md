@@ -32,7 +32,7 @@ Right-click any message → **Apps** → **Babel** or **Babel Pocket** for text,
 [![Node.js](https://img.shields.io/badge/Node.js-22.13%2B-green.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue.svg)](https://www.typescriptlang.org/)
 [![discord.js](https://img.shields.io/badge/discord.js-v14-blue.svg)](https://discord.js.org)
-[![Version](https://img.shields.io/badge/version-0.2.3-brightgreen.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-0.3.0-brightgreen.svg)](package.json)
 [![CI](https://github.com/0xH4KU/babel-discord-translator/actions/workflows/ci.yml/badge.svg)](https://github.com/0xH4KU/babel-discord-translator/actions)
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/babel-discord-tran-1?referralCode=euhy-o&utm_medium=integration&utm_source=template&utm_campaign=generic)
@@ -85,6 +85,18 @@ npm run build:pocket
 npm run start:pocket
 ```
 
+## Babel Lens
+
+Babel Lens reads text from the first supported image attached to a Discord message, translates it to your usual target language, and returns a private JPEG with the translation below the image. When Cloud Vision finds multiple text regions, matching numbers connect each highlighted source region to its translated line. If image rendering is unavailable, Babel falls back to private translated text.
+
+1. Send a PNG, JPEG, or WebP as a Discord attachment.
+2. On desktop, right-click the message; on mobile, long-press it.
+3. Choose **Apps** → **Babel Lens**.
+
+`/setlang` preferences apply to Lens; otherwise Babel uses your Discord locale. Images must be hosted by Discord and may be up to 7 MB and 16 megapixels. The image bytes go to Google Cloud Vision for OCR, and the detected text goes to your configured translation provider. Babel does not persist the image; OCR and translation cache entries remain in memory until restart.
+
+Operators configure the dedicated Cloud Vision API key and global monthly image limit in **Settings**. Babel Guild also requires Lens to be enabled for each server in **Access**; Pocket follows its user-install access policy. The global limit defaults to 900 images per UTC month, and optional per-server or per-user limits can add a tighter ceiling. Only outbound Vision requests count, so OCR cache hits do not consume quota. See the [budget model](docs/operations/budget-model.md) for exact quota semantics and the [deployment guide](docs/operations/deployment.md) for upgrade steps.
+
 ## Support
 
 Babel is free and self-hosted. If it saves you setup time or helps your community or private install avoid a hosted bot subscription, you can support upstream maintenance on [Ko-fi](https://ko-fi.com/P5P51QB1B7).
@@ -96,9 +108,9 @@ Sponsorship is optional and does not unlock private features. Supporting mainten
 ### Core Translation
 
 - **Context Menu Translation** — Right-click → Apps → Babel Guild or Babel Pocket
-- **Babel Lens** — OCR a Discord image with Cloud Vision and number matching image/translation regions
+- **Babel Lens** — OCR and translate Discord images with matching numbered source regions
 - **`/translate` Command** — Guild-only slash command with public webhook-based output
-- **Ephemeral Messages** — Context menu translations are private, only visible to you
+- **Ephemeral Messages** — Context menu text and Lens results are private, only visible to you
 - **Multi-language Support** — Auto-detects your Discord locale, or use `/setlang` to choose
 - **Custom Prompt** — Fully customizable translation system prompt from the dashboard
 - **Server Glossary** — Guild-only term mappings injected into translation prompts, with cache invalidation when terms change
@@ -134,7 +146,7 @@ Sponsorship is optional and does not unlock private features. Supporting mainten
 - **API Health Check** — Real-time health status for each configured provider
 - **Translation Test** — Test translations directly from the dashboard
 - **User Preferences** — View and manage per-user language settings
-- **Cost Tracking** — Real-time token usage with global, per-server, and per-user budget controls
+- **Cost Tracking** — Real-time token usage plus translation budgets and Lens image quotas
 
 ### Infrastructure
 
@@ -190,8 +202,6 @@ Babel ships two provider adapters. Either can run alone, or both can be configur
 | OpenAI-compatible API | API key, base URL, and model                        | `${baseUrl}/v1/chat/completions`                |
 
 The OpenAI-compatible adapter covers OpenAI, OpenRouter, and other services that expose the same chat-completions path and bearer-token authentication. A dedicated adapter is only needed when a provider uses a different request or authentication contract.
-
-Babel Lens uses one Cloud Vision `TEXT_DETECTION` feature per image and has a dedicated API key in Settings. Its global hard limit defaults to 900 images per UTC month. Access can add a per-server Guild limit or per-user Pocket limit; both the global and scoped counters are reserved atomically in SQLite. No scoped override means global-only, while `0` disables Lens globally or for that scope. Only outbound Vision requests count, so OCR cache hits do not consume quota. Babel Guild also requires Lens to be enabled per server; enabling Lens automatically enables Translation, and new servers default to off. Supported Discord attachments are PNG, JPEG, and WebP up to 7 MB and 16 megapixels. Image bytes are sent to Google Cloud Vision for OCR and are not persisted by Babel.
 
 For production:
 
@@ -358,18 +368,18 @@ Babel stores runtime data through native `node:sqlite`. Before upgrading Node on
 
 ### Module Layout
 
-| Layer           | Path                       | Responsibility                                                                    |
-| --------------- | -------------------------- | --------------------------------------------------------------------------------- |
-| **Profiles**    | `src/apps/`                | Guild/Pocket profiles, bootstrap, and command definitions                         |
-| **Entry**       | `src/index.ts`             | Node entrypoint selected by `BABEL_APP` or a CLI profile argument                 |
-| **Commands**    | `src/commands/`            | Discord interaction handlers (`babel`, `translate`, `setlang`, `mylang`, `help`)  |
-| **Translation** | `src/modules/translation/` | Cache, cooldowns, runtime limiter, language detection, webhook delivery           |
-| **Config**      | `src/modules/config/`      | Environment validation, runtime config access, config change effects              |
-| **Usage**       | `src/modules/usage/`       | Token accounting, global/guild/user budgets, usage history                        |
-| **Dashboard**   | `src/modules/dashboard/`   | Express app, auth/session flow, capability-gated admin API surface                |
-| **Shared**      | `src/shared/`              | Structured logger, health model, graceful shutdown, app metrics, message catalogs |
-| **Infra**       | `src/infra/`               | Translation provider transports, retry, timeout, and health probes                |
-| **Persistence** | `src/persistence/`         | SQLite store, migrations, normalization, and legacy JSON import/export            |
+| Layer           | Path                       | Responsibility                                                                           |
+| --------------- | -------------------------- | ---------------------------------------------------------------------------------------- |
+| **Profiles**    | `src/apps/`                | Guild/Pocket profiles, bootstrap, and command definitions                                |
+| **Entry**       | `src/index.ts`             | Node entrypoint selected by `BABEL_APP` or a CLI profile argument                        |
+| **Commands**    | `src/commands/`            | Discord interaction handlers (`babel`, `lens`, `translate`, `setlang`, `mylang`, `help`) |
+| **Translation** | `src/modules/translation/` | Translation, OCR/image rendering, cache, cooldowns, runtime limits, webhooks             |
+| **Config**      | `src/modules/config/`      | Environment validation, runtime config access, config change effects                     |
+| **Usage**       | `src/modules/usage/`       | Token accounting, global/guild/user budgets, usage history                               |
+| **Dashboard**   | `src/modules/dashboard/`   | Express app, auth/session flow, capability-gated admin API surface                       |
+| **Shared**      | `src/shared/`              | Structured logger, health model, graceful shutdown, app metrics, message catalogs        |
+| **Infra**       | `src/infra/`               | Translation and Cloud Vision transports, retry, timeout, and health probes               |
+| **Persistence** | `src/persistence/`         | SQLite store, migrations, normalization, and legacy JSON import/export                   |
 
 ### Persistence Model
 
