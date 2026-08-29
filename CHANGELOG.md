@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-- Added Babel Lens image OCR through Google Cloud Vision, numbered image/translation regions, a dedicated Vision API key, a configurable monthly image limit, per-server Guild access, and shared Guild/Pocket context-menu support.
+- Added Babel Lens image OCR through Google Cloud Vision, numbered image/translation regions, dedicated OCR caching, a Vision API key, and shared Guild/Pocket context-menu support.
+- Added atomic global plus per-server/per-user monthly Vision quotas and dashboard controls while preserving existing global usage during migration.
+- Fixed Lens runtime admission, rotated-image coordinates, short ASCII OCR, marker validation, cache isolation, and log identification; Setup Doctor now detects stale Pocket command contexts.
 
 ## 0.2.3 - 2026-08-27
 

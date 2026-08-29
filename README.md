@@ -55,7 +55,7 @@ Babel is for Discord communities and trusted individual installs that want trans
 
 - **Self-hosted** — your Discord token, provider keys, SQLite data, and logs stay in your deployment
 - **No privileged intents** — Babel uses context menu and slash commands, not full message-content access
-- **Cost controls** — global, per-server, and per-user budgets with cache hit tracking and usage history
+- **Cost controls** — translation budgets plus global, per-server, and per-user Lens image quotas
 - **Guild glossaries** — Babel Guild can define server-specific term mappings for names, brands, game terms, and community vocabulary
 - **Operations ready** — health endpoints, Prometheus metrics, runtime queue limits, provider fallback diagnostics, and backup docs
 
@@ -146,7 +146,7 @@ Sponsorship is optional and does not unlock private features. Supporting mainten
 
 ## Quick Start
 
-**Prerequisites:** Node.js `22.13+`, npm, a Discord bot token, and either a Vertex AI project or credentials for an OpenAI-compatible endpoint. Babel Lens additionally requires a Google API key with the Cloud Vision API enabled.
+**Prerequisites:** Node.js `22.13+`, npm, a Discord bot token, and either a Vertex AI project or credentials for an OpenAI-compatible endpoint. Babel Lens additionally requires a Google API key with the Cloud Vision API enabled. Direct Linux/PM2 installs also need Noto fonts for translated image captions; the Docker image already includes them.
 
 ```bash
 git clone https://github.com/0xH4KU/babel-discord-translator.git
@@ -191,7 +191,7 @@ Babel ships two provider adapters. Either can run alone, or both can be configur
 
 The OpenAI-compatible adapter covers OpenAI, OpenRouter, and other services that expose the same chat-completions path and bearer-token authentication. A dedicated adapter is only needed when a provider uses a different request or authentication contract.
 
-Babel Lens uses one Cloud Vision `TEXT_DETECTION` feature per image and has a dedicated API key in Settings. Its shared dashboard limit defaults to 900 images per UTC month and is enforced atomically in SQLite; set any non-negative integer, or `0` to disable Lens globally. Babel Guild also requires Lens to be enabled per server in Access; enabling Lens automatically enables Translation, and new servers default to off. Supported Discord attachments are PNG, JPEG, and WebP up to 7 MB and 16 megapixels. Image bytes are sent to Google Cloud Vision for OCR and are not persisted by Babel.
+Babel Lens uses one Cloud Vision `TEXT_DETECTION` feature per image and has a dedicated API key in Settings. Its global hard limit defaults to 900 images per UTC month. Access can add a per-server Guild limit or per-user Pocket limit; both the global and scoped counters are reserved atomically in SQLite. No scoped override means global-only, while `0` disables Lens globally or for that scope. Only outbound Vision requests count, so OCR cache hits do not consume quota. Babel Guild also requires Lens to be enabled per server; enabling Lens automatically enables Translation, and new servers default to off. Supported Discord attachments are PNG, JPEG, and WebP up to 7 MB and 16 megapixels. Image bytes are sent to Google Cloud Vision for OCR and are not persisted by Babel.
 
 For production:
 
@@ -239,6 +239,8 @@ DISCORD_APP_ID=your_app_id DISCORD_BOT_TOKEN=your_token npm run register:pocket
 
 Babel Pocket registers **Babel Pocket**, **Babel Lens**, **/setlang**, **/mylang**, and **/help** for User Install contexts.
 
+Re-run the matching registration command after upgrading from a release without Lens. Combined deployments must run both `register:guild` and `register:pocket`; changing the runtime code alone does not update Discord's stored command definitions.
+
 ### 3. Invite the Bot
 
 Replace `YOUR_APP_ID` with your application ID:
@@ -255,8 +257,8 @@ After starting the bot, open `http://localhost:3000`:
 | ------------ | --------------------------------------------------------------------------- |
 | **Setup**    | Provider mode, Vertex AI and/or OpenAI-compatible credentials and models    |
 | **Config**   | Cooldown, cache size, max input length, max output tokens, custom prompt    |
-| **Settings** | Translation providers, dedicated Vision key and monthly image limit         |
-| **Access**   | Translation/Lens server access, user allowlist, and budget overrides         |
+| **Settings** | Translation providers, dedicated Vision key, and global monthly image limit |
+| **Access**   | Translation/Lens access plus scoped budget and image-limit overrides        |
 | **Glossary** | Babel Guild source → target term mappings                                   |
 | **Users**    | View and manage per-user language preferences                               |
 | **Monitor**  | API health, cache hit rate, failure rate, API call volume, translation test |
@@ -301,6 +303,8 @@ If `DASHBOARD_PASSWORD` is omitted, Babel warns in local development and test en
 Set `BABEL_APP=combined` to run both Babel Guild and Babel Pocket in one process. In combined mode, the combined dashboard root `/` shows a product chooser; `/guild` opens the Babel Guild dashboard; `/pocket` opens the Babel Pocket dashboard.
 
 ### Migration & Legacy Export
+
+Babel applies SQLite schema migrations automatically during startup. The scoped Lens quota migration preserves the existing global monthly Vision usage counter. Back up the database before upgrading; do not run `db:migrate` for normal schema upgrades.
 
 Babel auto-imports `data/config.json` into SQLite on first startup. Manual scripts:
 

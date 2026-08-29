@@ -1,8 +1,8 @@
 # Babel Budget Model
 
-This document explains how Babel Guild and Babel Pocket enforce daily spending limits.
-Budgets are expressed in USD per day and are calculated from the configured input and
-output token prices.
+This document explains how Babel Guild and Babel Pocket enforce daily translation
+spending limits and monthly Babel Lens image quotas. Translation budgets are expressed
+in USD per day and are calculated from the configured input and output token prices.
 
 ## Shared Rules
 
@@ -131,3 +131,20 @@ In short:
 
 - Pocket is `per-user cap + shared safety cap`.
 - Guild is `custom server caps + shared global pool for non-custom servers`.
+
+## Babel Lens Image Quotas
+
+Lens quotas are separate from translation token budgets and reset by UTC month.
+The global monthly image limit in Settings is always a hard ceiling across Lens usage.
+Access can optionally add a second ceiling for a Guild server or Pocket user:
+
+| Product | Scoped counter | No override       | Scoped limit `0`             |
+| ------- | -------------- | ----------------- | ---------------------------- |
+| Guild   | Discord server | Global limit only | Disable Lens for that server |
+| Pocket  | Install owner  | Global limit only | Disable Lens for that user   |
+
+Unlike translation budgets, a Lens limit of `0` means disabled, not unlimited. A request
+must fit under both the global and scoped limits when an override exists. Babel reserves
+both counters in one SQLite transaction immediately before an outbound Cloud Vision
+request. OCR cache hits and callers joining the same in-flight OCR request do not consume
+another image.
