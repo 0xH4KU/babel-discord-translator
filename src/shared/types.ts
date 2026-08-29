@@ -223,6 +223,7 @@ export interface SessionData {
 
 export interface DashboardDeps {
     cache: TranslationCache;
+    ocrCache: TranslationCache;
     cooldown: CooldownManager;
     cooldowns?: Partial<Record<AppProfile['id'], CooldownManager>>;
     log: TranslationLog;

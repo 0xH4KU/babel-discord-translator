@@ -270,6 +270,7 @@ export async function startBabelApps(profiles: AppProfile[]): Promise<void> {
 
         dashboardApp = createDashboardApp({
             cache: shared.cache,
+            ocrCache: shared.ocrCache,
             cooldown: primaryRuntime.cooldown,
             cooldowns: cooldownsByProfile,
             log: shared.log,

@@ -379,8 +379,10 @@ async function loadStats() {
         document.getElementById('stat-hitrate').textContent = formatRatio(
             d.translations.cacheHitRate,
         );
+        const ocrCache = d.ocrCache || { size: 0, maxSize: 0, hitRate: 'N/A' };
         document.getElementById('stat-saved').textContent =
-            d.cache.size + ' / ' + d.cache.maxSize + ' cached';
+            d.cache.size + ' / ' + d.cache.maxSize + ' translations · ' +
+            ocrCache.size + ' / ' + ocrCache.maxSize + ' OCR (' + ocrCache.hitRate + ')';
         document.getElementById('stat-uptime').textContent = formatUptime(d.bot.uptime);
         const memory = d.bot.memory || {};
         const rssMB = memory.rssMB || d.bot.memoryMB || '?';

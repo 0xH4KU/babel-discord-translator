@@ -191,6 +191,7 @@ declare module 'express-serve-static-core' {
 
 export function createDashboardApp({
     cache,
+    ocrCache,
     cooldown,
     cooldowns,
     log,
@@ -407,6 +408,7 @@ export function createDashboardApp({
         const scope = getScope(res);
         const scopedClient = scope.client;
         const cacheStats = cache.stats();
+        const ocrCacheStats = ocrCache.stats();
         const runtimeConfig = configRepository.getRuntimeConfig();
         const usageStats = usage.getStats(runtimeConfig);
         const scopeProfileId = isCombinedDashboard ? scope.appProfileIdForLogs : undefined;
@@ -566,6 +568,7 @@ export function createDashboardApp({
             runtime: runtimeSnapshot,
             operations,
             cache: cacheStats,
+            ocrCache: ocrCacheStats,
             usage: usageStats,
             guildBudgets: guildBudgetList,
             userBudgets: userBudgetList,
@@ -1108,8 +1111,15 @@ export function createDashboardApp({
 
     api.post('/cache/clear', auth.requireAuth, auth.requireCsrf, (_req: Request, res: Response) => {
         const before = cache.stats();
+        const ocrBefore = ocrCache.stats();
         cache.clear();
-        res.json({ ok: true, cleared: before.size });
+        ocrCache.clear();
+        res.json({
+            ok: true,
+            cleared: before.size + ocrBefore.size,
+            translationCleared: before.size,
+            ocrCleared: ocrBefore.size,
+        });
     });
 
     api.post(

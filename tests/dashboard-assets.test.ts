@@ -231,6 +231,7 @@ describe('dashboard static assets', () => {
                         cacheHitRate: 0,
                     },
                     cache: { size: 0, maxSize: 2000 },
+                    ocrCache: { size: 3, maxSize: 250, hitRate: '60.0%' },
                 }),
             }),
         };
@@ -262,6 +263,9 @@ describe('dashboard static assets', () => {
         expect(nodes['budget-card'].style.display).toBe('');
         expect(nodes['budget-card-label'].textContent).toBe('Daily Budget');
         expect(nodes['budget-amount'].textContent).toBe('Total: $0.21');
+        expect(nodes['stat-saved'].textContent).toBe(
+            '0 / 2000 translations · 3 / 250 OCR (60.0%)',
+        );
         expect(nodes['guild-budget-overview'].children).toHaveLength(3);
         expect(
             createdElements.some((element) => element.textContent === 'Global Safety Budget'),

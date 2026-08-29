@@ -160,7 +160,7 @@ async function clearCache() {
   const res = await api('/cache/clear', { method: 'POST' });
   if (res.ok) {
     const data = await res.json();
-    showToast(`Cache cleared (${data.cleared} entries removed)`);
+    showToast(`Caches cleared (${data.cleared} entries removed)`);
     loadStats();
   } else {
     showToast('Clear failed', true);

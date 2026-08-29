@@ -192,6 +192,9 @@ describe('startBabelApp', () => {
         const lensDeps = mocks.handleBabelLens.mock.calls[0]?.[1];
         const translationDeps = mocks.createTranslationService.mock.calls[0]?.[0];
         expect(lensDeps.ocrCache).not.toBe(translationDeps.cache);
+        expect(mocks.createDashboardApp).toHaveBeenCalledWith(
+            expect.objectContaining({ ocrCache: lensDeps.ocrCache }),
+        );
         expect(lensDeps.renderLimiter).not.toBe(translationDeps.runtimeLimiter);
         expect(lensDeps.renderLimiter.snapshot().limits).toMatchObject({
             maxConcurrent: 1,

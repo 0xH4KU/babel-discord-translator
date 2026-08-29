@@ -472,6 +472,7 @@ describe('dashboard mode parsing', () => {
 describe('Dashboard API', () => {
     let app: ReturnType<typeof createDashboardApp>;
     let cache: TranslationCache;
+    let ocrCache: TranslationCache;
     let metrics: AppMetrics;
     let server: http.Server;
     let sessionCookie: string;
@@ -492,6 +493,7 @@ describe('Dashboard API', () => {
     ) {
         const testApp = createDashboardApp({
             cache,
+            ocrCache,
             cooldown: new CooldownManager(5),
             log,
             client: createMinimalClient(),
@@ -534,6 +536,7 @@ describe('Dashboard API', () => {
 
     beforeAll(async () => {
         cache = new TranslationCache(100);
+        ocrCache = new TranslationCache(25);
         metrics = new AppMetrics();
         runtimeLimiter = new TranslationRuntimeLimiter({
             maxConcurrent: 2,
@@ -611,6 +614,7 @@ describe('Dashboard API', () => {
             translationService: TranslationService;
         } = {
             cache,
+            ocrCache,
             cooldown,
             log,
             client: mockClient,
@@ -870,6 +874,31 @@ describe('Dashboard API', () => {
             (res.body!.runtime as Record<string, Record<string, unknown>>).limits.maxConcurrent,
         ).toBe(2);
         expect((res.body!.bot as Record<string, unknown>).memory).toBeDefined();
+    });
+
+    it('should report and clear translation and OCR caches together', async () => {
+        cache.clear();
+        ocrCache.clear();
+        cache.set('translation-key', 'translation');
+        ocrCache.set('ocr-key', 'detected text');
+        ocrCache.get('ocr-key');
+
+        const stats = await request(server, 'GET', '/api/stats', { cookie: sessionCookie });
+        expect(stats.body!.cache).toMatchObject({ size: 1, maxSize: 100 });
+        expect(stats.body!.ocrCache).toMatchObject({ size: 1, maxSize: 25, hits: 1 });
+
+        const cleared = await request(server, 'POST', '/api/cache/clear', {
+            cookie: sessionCookie,
+            csrf: csrfToken,
+        });
+        expect(cleared.body).toMatchObject({
+            ok: true,
+            cleared: 2,
+            translationCleared: 1,
+            ocrCleared: 1,
+        });
+        expect(cache.stats().size).toBe(0);
+        expect(ocrCache.stats().size).toBe(0);
     });
 
     it('should export usage history as CSV with guild and user rows', async () => {
@@ -1146,6 +1175,7 @@ describe('Dashboard API', () => {
         const previousUserBudgets = store.listUserBudgets();
         const pocketApp = createDashboardApp({
             cache,
+            ocrCache,
             cooldown: new CooldownManager(5),
             log,
             client: createMinimalClient(),
@@ -1269,6 +1299,7 @@ describe('Dashboard API', () => {
         const previousUserBudgets = store.listUserBudgets();
         const pocketApp = createDashboardApp({
             cache,
+            ocrCache,
             cooldown: new CooldownManager(5),
             log,
             client: createMinimalClient(),
@@ -1377,6 +1408,7 @@ describe('Dashboard API', () => {
         } as unknown as Client;
         const combinedApp = createDashboardApp({
             cache,
+            ocrCache,
             cooldown: new CooldownManager(5),
             log,
             client: guildClient,
@@ -1916,6 +1948,7 @@ describe('Dashboard API', () => {
         };
         const combinedApp = createDashboardApp({
             cache,
+            ocrCache,
             cooldown: new CooldownManager(5),
             log,
             client: createMinimalClient(),
@@ -2273,6 +2306,7 @@ describe('Dashboard API', () => {
     it('should expose global user language preferences for Babel Pocket', async () => {
         const pocketApp = createDashboardApp({
             cache,
+            ocrCache,
             cooldown: new CooldownManager(5),
             log,
             client: createMinimalClient(),
