@@ -254,6 +254,42 @@ export function createTranslationService({
                 userId: accessMode === 'user-install' ? getEffectiveUserId(scope) : null,
             };
 
+            const acquireRuntime = (
+                stage: 'text_resolution' | 'translation',
+            ): {
+                reservation: TranslationRuntimeReservation | null;
+                blocked: TranslationServiceResult | null;
+            } => {
+                if (!runtimeLimiter) return { reservation: null, blocked: null };
+
+                const admission = runtimeLimiter.acquire({
+                    guildId: request.guildId ?? null,
+                    userId: getEffectiveUserId(scope),
+                });
+                if (!admission.accepted) {
+                    requestLogger.warn('translation.request.blocked', {
+                        blockReason: admission.reason,
+                        stage,
+                        runtime: admission.snapshot,
+                    });
+                    return {
+                        reservation: null,
+                        blocked: {
+                            status: 'blocked',
+                            message: resolveQueueBusyMessage(admission.reason, messages),
+                        },
+                    };
+                }
+
+                requestLogger.info(
+                    admission.reservation.queued
+                        ? 'translation.queue.enqueued'
+                        : 'translation.queue.acquired',
+                    { stage, runtime: runtimeLimiter.snapshot() },
+                );
+                return { reservation: admission.reservation, blocked: null };
+            };
+
             const cooldownState = cooldown.check(request.userId);
             if (!cooldownState.allowed) {
                 requestLogger.warn('translation.request.blocked', {
@@ -269,14 +305,31 @@ export function createTranslationService({
             let deferred = false;
             let originalText = request.text ?? '';
             if (request.resolveText) {
+                const runtime = acquireRuntime('text_resolution');
+                if (runtime.blocked) return runtime.blocked;
+
                 try {
+                    cooldown.set(request.userId);
                     if (request.beforeTranslate) {
                         await request.beforeTranslate();
                         deferred = true;
                         requestLogger.info('translation.request.deferred');
                     }
-                    originalText = await request.resolveText();
+                    const resolveText = request.resolveText;
+                    originalText = runtime.reservation
+                        ? await runtime.reservation.run(async (meta) => {
+                              if (meta.queued) {
+                                  requestLogger.info('translation.queue.started', {
+                                      stage: 'text_resolution',
+                                      waitMs: meta.waitMs,
+                                      runtime: meta.snapshot,
+                                  });
+                              }
+                              return resolveText();
+                          })
+                        : await resolveText();
                 } catch (error) {
+                    runtime.reservation?.cancel();
                     const caughtError = error instanceof Error ? error : new Error(String(error));
                     const sanitizedMessage = sanitizeError(caughtError.message);
                     const diagnostic = classifyTranslationError(caughtError.message);
@@ -396,31 +449,9 @@ export function createTranslationService({
                 }
 
                 if (!cached && runtimeLimiter) {
-                    const admission = runtimeLimiter.acquire({
-                        guildId: request.guildId ?? null,
-                        userId: getEffectiveUserId(scope),
-                    });
-
-                    if (!admission.accepted) {
-                        requestLogger.warn('translation.request.blocked', {
-                            blockReason: admission.reason,
-                            runtime: admission.snapshot,
-                        });
-                        return {
-                            status: 'blocked',
-                            message: resolveQueueBusyMessage(admission.reason, messages),
-                        };
-                    }
-
-                    reservation = admission.reservation;
-                    requestLogger.info(
-                        reservation.queued
-                            ? 'translation.queue.enqueued'
-                            : 'translation.queue.acquired',
-                        {
-                            runtime: runtimeLimiter.snapshot(),
-                        },
-                    );
+                    const runtime = acquireRuntime('translation');
+                    if (runtime.blocked) return runtime.blocked;
+                    reservation = runtime.reservation;
                 }
 
                 if (!cached && !joinedInFlight) {
@@ -487,6 +518,7 @@ export function createTranslationService({
                         translated = await reservation.run(async (meta) => {
                             if (meta.queued) {
                                 requestLogger.info('translation.queue.started', {
+                                    stage: 'translation',
                                     waitMs: meta.waitMs,
                                     runtime: meta.snapshot,
                                 });

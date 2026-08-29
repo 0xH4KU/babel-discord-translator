@@ -390,6 +390,51 @@ describe('TranslationService', () => {
         });
     });
 
+    it('should reserve runtime capacity before resolving Lens text', async () => {
+        const pending = deferred<void>();
+        const firstResolver = vi.fn(async () => {
+            await pending.promise;
+            return 'Text from first image';
+        });
+        const secondResolver = vi.fn(async () => 'Text from second image');
+        const runtimeLimiter = new TranslationRuntimeLimiter({
+            maxConcurrent: 1,
+            maxGlobalQueue: 1,
+            maxGuildQueue: 1,
+            maxUserOutstanding: 1,
+        });
+        const { service } = createService({ runtimeLimiter });
+
+        const first = service.process({
+            command: 'babel',
+            commandLabel: 'Babel Lens (context menu)',
+            guildId: 'guild-1',
+            userId: 'user1',
+            userTag: 'user#0001',
+            resolveText: firstResolver,
+            beforeTranslate: async () => undefined,
+        });
+        await vi.waitFor(() => expect(firstResolver).toHaveBeenCalledOnce());
+
+        const second = await service.process({
+            command: 'babel',
+            commandLabel: 'Babel Lens (context menu)',
+            guildId: 'guild-1',
+            userId: 'user1',
+            userTag: 'user#0001',
+            resolveText: secondResolver,
+        });
+
+        expect(second).toEqual({
+            status: 'blocked',
+            message: 'You already have a translation in progress. Please wait a moment.',
+        });
+        expect(secondResolver).not.toHaveBeenCalled();
+
+        pending.resolve();
+        await expect(first).resolves.toMatchObject({ status: 'success' });
+    });
+
     it('should read runtime config once per request', async () => {
         const { service, configStore } = createService({
             storeOverrides: {
