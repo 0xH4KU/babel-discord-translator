@@ -455,7 +455,9 @@ export function createTranslationService({
 
                 if (!cached && runtimeLimiter) {
                     const runtime = acquireRuntime('translation');
-                    if (runtime.blocked) return runtime.blocked;
+                    if (runtime.blocked) {
+                        return deferred ? { ...runtime.blocked, deferred: true } : runtime.blocked;
+                    }
                     reservation = runtime.reservation;
                 }
 
@@ -471,7 +473,11 @@ export function createTranslationService({
                         requestLogger.warn('translation.request.blocked', {
                             blockReason: 'budget_exceeded',
                         });
-                        return { status: 'blocked', message: messages.budgetExceeded };
+                        return {
+                            status: 'blocked',
+                            message: messages.budgetExceeded,
+                            ...(deferred ? { deferred: true } : {}),
+                        };
                     }
 
                     const inFlightTranslation = createInFlightTranslation();

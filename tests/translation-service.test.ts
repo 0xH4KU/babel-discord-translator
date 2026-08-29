@@ -391,6 +391,71 @@ describe('TranslationService', () => {
         });
     });
 
+    it('should preserve deferred state when Lens translation is blocked after OCR', async () => {
+        const beforeTranslate = vi.fn(async () => undefined);
+        const usageTracker = createUsageMock();
+        usageTracker.tryReserveBudget.mockReturnValueOnce(null as never);
+        const { service } = createService({ usageTracker });
+
+        const result = await service.process({
+            command: 'babel',
+            commandLabel: 'Babel Lens (context menu)',
+            guildId: 'guild-1',
+            userId: 'user1',
+            userTag: 'user#0001',
+            resolveText: async () => 'Text from image',
+            beforeTranslate,
+        });
+
+        expect(beforeTranslate).toHaveBeenCalledOnce();
+        expect(result).toEqual({
+            status: 'blocked',
+            message: 'Daily budget exceeded, try again tomorrow!',
+            deferred: true,
+        });
+    });
+
+    it('should preserve deferred state when Lens translation cannot re-enter the runtime', async () => {
+        const run = vi.fn(async (task) =>
+            task({
+                queued: false,
+                waitMs: 0,
+                snapshot: {},
+            }),
+        );
+        const runtimeLimiter = {
+            acquire: vi
+                .fn()
+                .mockReturnValueOnce({
+                    accepted: true,
+                    reservation: { queued: false, run, cancel: vi.fn() },
+                })
+                .mockReturnValueOnce({
+                    accepted: false,
+                    reason: 'global_queue_full',
+                    snapshot: {},
+                }),
+            snapshot: vi.fn(() => ({})),
+        };
+        const { service } = createService({ runtimeLimiter: runtimeLimiter as never });
+
+        const result = await service.process({
+            command: 'babel',
+            commandLabel: 'Babel Lens (context menu)',
+            guildId: 'guild-1',
+            userId: 'user1',
+            userTag: 'user#0001',
+            resolveText: async () => 'Text from image',
+            beforeTranslate: async () => undefined,
+        });
+
+        expect(result).toEqual({
+            status: 'blocked',
+            message: 'Translation service is busy right now. Please try again in a moment.',
+            deferred: true,
+        });
+    });
+
     it('should keep Lens translations separate from the plain translation cache', async () => {
         const { service, translator } = createService();
         const request = {
