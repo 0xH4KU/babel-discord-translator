@@ -359,6 +359,7 @@ describe('dashboard static assets', () => {
     it('escapes guild access rows rendered from Discord data', () => {
         const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
         const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const visionLimitsJs = readFileSync('src/public/js/vision-limits.js', 'utf-8');
         const nodes = {
             'guild-list': { innerHTML: '' },
             'guild-pagination': { innerHTML: '' },
@@ -389,6 +390,7 @@ describe('dashboard static assets', () => {
             [
                 utilsJs,
                 accessJs,
+                visionLimitsJs,
                 `currentConfig = {
                     allowedGuildIds: ["guild');alert(1)//"],
                     dailyBudgetUsd: 0
@@ -415,6 +417,7 @@ describe('dashboard static assets', () => {
     it('keeps Lens access scoped to translation-enabled guilds', () => {
         const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
         const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const visionLimitsJs = readFileSync('src/public/js/vision-limits.js', 'utf-8');
         const nodes = {
             'guild-list': { innerHTML: '' },
             'guild-pagination': { innerHTML: '' },
@@ -444,6 +447,7 @@ describe('dashboard static assets', () => {
             [
                 utilsJs,
                 accessJs,
+                visionLimitsJs,
                 `currentConfig = {
                     allowedGuildIds: ['guild-1'],
                     lensEnabledGuildIds: ['guild-1'],

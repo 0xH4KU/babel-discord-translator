@@ -51,9 +51,11 @@ vi.mock('../src/persistence/store.js', () => {
         tokenUsage: null,
         usageHistory: [],
         guildBudgets: {},
+        guildVisionLimits: {},
         guildTokenUsage: {},
         guildUsageHistory: {},
         userBudgets: {},
+        userVisionLimits: {},
         userTokenUsage: {},
         userUsageHistory: {},
     };
@@ -201,6 +203,26 @@ vi.mock('../src/persistence/store.js', () => {
             }),
             listGuildBudgets: vi.fn(() => ({ ...(data.guildBudgets as object) })),
             listUserBudgets: vi.fn(() => ({ ...(data.userBudgets as object) })),
+            listVisionScopeLimits: vi.fn((scope: 'guild' | 'user') => ({
+                ...(data[scope === 'guild' ? 'guildVisionLimits' : 'userVisionLimits'] as object),
+            })),
+            setVisionScopeLimit: vi.fn(
+                (scope: 'guild' | 'user', scopeId: string, limit: number) => {
+                    const limits = data[
+                        scope === 'guild' ? 'guildVisionLimits' : 'userVisionLimits'
+                    ] as Record<string, number>;
+                    limits[scopeId] = limit;
+                },
+            ),
+            clearVisionScopeLimit: vi.fn((scope: 'guild' | 'user', scopeId: string) => {
+                const limits = data[
+                    scope === 'guild' ? 'guildVisionLimits' : 'userVisionLimits'
+                ] as Record<string, number>;
+                if (!(scopeId in limits)) return false;
+                delete limits[scopeId];
+                return true;
+            }),
+            listVisionMonthlyUsage: vi.fn(() => ({})),
             listUserLanguagePreferences: vi.fn(() => [
                 ...(data.userLanguagePreferenceEntries as unknown[]),
             ]),
@@ -1012,6 +1034,37 @@ describe('Dashboard API', () => {
         });
     });
 
+    it('should manage a per-guild Vision limit without changing its API budget', async () => {
+        const { store } = await import('../src/persistence/store.js');
+
+        try {
+            const saved = await request(server, 'POST', '/api/guild-budgets/guild-1', {
+                cookie: sessionCookie,
+                csrf: csrfToken,
+                body: { visionMonthlyImageLimit: 25 },
+            });
+            expect(saved.status).toBe(200);
+            expect(store.getGuildBudget('guild-1')).toBeNull();
+
+            const budgets = await request(server, 'GET', '/api/guild-budgets', {
+                cookie: sessionCookie,
+            });
+            expect(budgets.body!['guild-1']).toMatchObject({
+                vision: { images: 0, limit: 25 },
+            });
+
+            const invalid = await request(server, 'POST', '/api/guild-budgets/guild-1', {
+                cookie: sessionCookie,
+                csrf: csrfToken,
+                body: { visionMonthlyImageLimit: 1.5 },
+            });
+            expect(invalid.status).toBe(400);
+            expect(store.listVisionScopeLimits('guild')).toEqual({ 'guild-1': 25 });
+        } finally {
+            store.clearVisionScopeLimit('guild', 'guild-1');
+        }
+    });
+
     it('should show custom guild budget usage separately from the global budget pool', async () => {
         const { store } = await import('../src/persistence/store.js');
         const previousGuildBudgets = store.listGuildBudgets();
@@ -1133,12 +1186,22 @@ describe('Dashboard API', () => {
                         isCustom: true,
                         allowed: true,
                         pending: false,
+                        vision: {
+                            month: new Date().toISOString().slice(0, 7),
+                            images: 0,
+                            limit: null,
+                        },
                     },
                     'pending-owner': {
                         budget: 0.5,
                         isCustom: false,
                         allowed: false,
                         pending: true,
+                        vision: {
+                            month: new Date().toISOString().slice(0, 7),
+                            images: 0,
+                            limit: null,
+                        },
                     },
                 },
                 profiles: {
@@ -1159,6 +1222,41 @@ describe('Dashboard API', () => {
             );
             stopDashboardApp(pocketApp);
             pocketServer.close();
+        }
+    });
+
+    it('should manage a Pocket user Vision limit', async () => {
+        const { store } = await import('../src/persistence/store.js');
+        const dashboard = startProfileDashboard(BABEL_POCKET_PROFILE);
+
+        try {
+            const { cookie, csrf } = await loginDashboard(dashboard.server);
+            const saved = await request(
+                dashboard.server,
+                'POST',
+                '/api/user-budgets/pending-owner',
+                { cookie, csrf, body: { visionMonthlyImageLimit: 12 } },
+            );
+            expect(saved.status).toBe(200);
+
+            const budgets = await request(dashboard.server, 'GET', '/api/user-budgets', {
+                cookie,
+            });
+            expect(
+                (budgets.body!.budgets as Record<string, unknown>)['pending-owner'],
+            ).toMatchObject({ vision: { images: 0, limit: 12 } });
+
+            const reset = await request(
+                dashboard.server,
+                'POST',
+                '/api/user-budgets/pending-owner',
+                { cookie, csrf, body: { visionMonthlyImageLimit: null } },
+            );
+            expect(reset.status).toBe(200);
+            expect(store.listVisionScopeLimits('user')).toEqual({});
+        } finally {
+            store.clearVisionScopeLimit('user', 'pending-owner');
+            dashboard.close();
         }
     });
 

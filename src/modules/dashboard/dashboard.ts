@@ -90,6 +90,60 @@ function sanitizeUserPreferenceRef(value: unknown): { guildId: string; userId: s
     return userId ? { guildId, userId } : null;
 }
 
+function parseVisionLimit(value: unknown): number | null {
+    if (value === null) return null;
+    if (typeof value !== 'number' && typeof value !== 'string') return NaN;
+    if (typeof value === 'string' && !value.trim()) return NaN;
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : NaN;
+}
+
+function applyScopedBudgetUpdate(
+    scope: 'guild' | 'user',
+    scopeId: string,
+    input: unknown,
+):
+    | { ok: true; budget?: number | null; visionLimit?: number | null }
+    | { ok: false; error: string } {
+    const body = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
+    const hasBudget = Object.hasOwn(body, 'dailyBudgetUsd');
+    const hasVisionLimit = Object.hasOwn(body, 'visionMonthlyImageLimit');
+    if (!hasBudget && !hasVisionLimit) {
+        return { ok: false, error: 'A budget or Vision limit is required' };
+    }
+
+    const budget =
+        hasBudget && body.dailyBudgetUsd !== null && body.dailyBudgetUsd !== undefined
+            ? parseFloat(String(body.dailyBudgetUsd))
+            : null;
+    if (hasBudget && budget !== null && (isNaN(budget) || budget < 0)) {
+        return { ok: false, error: dashboardMessages.validation.dailyBudgetUsd };
+    }
+
+    const visionLimit = hasVisionLimit ? parseVisionLimit(body.visionMonthlyImageLimit) : null;
+    if (hasVisionLimit && Number.isNaN(visionLimit)) {
+        return { ok: false, error: 'Vision limit must be a non-negative integer' };
+    }
+
+    if (hasBudget) {
+        if (scope === 'guild') {
+            if (budget === null) store.clearGuildBudget(scopeId);
+            else store.setGuildBudget(scopeId, budget);
+        } else if (budget === null) store.clearUserBudget(scopeId);
+        else store.setUserBudget(scopeId, budget);
+    }
+    if (hasVisionLimit) {
+        if (visionLimit === null) store.clearVisionScopeLimit(scope, scopeId);
+        else store.setVisionScopeLimit(scope, scopeId, visionLimit);
+    }
+
+    return {
+        ok: true,
+        ...(hasBudget ? { budget } : {}),
+        ...(hasVisionLimit ? { visionLimit } : {}),
+    };
+}
+
 type UsageExportRow = ReturnType<typeof usage.getUsageExportRows>[number];
 
 function csvCell(value: string | number): string {
@@ -617,6 +671,9 @@ export function createDashboardApp({
         (_req: Request, res: Response) => {
             const scope = getScope(res);
             const guildBudgets = store.listGuildBudgets();
+            const visionMonth = new Date().toISOString().slice(0, 7);
+            const visionLimits = store.listVisionScopeLimits('guild');
+            const visionUsage = store.listVisionMonthlyUsage(visionMonth, 'guild');
             const guilds = scope.client.guilds.cache;
             const guildIds = guilds.map((guild) => guild.id);
             const usageStats = usage.getStats();
@@ -624,7 +681,12 @@ export function createDashboardApp({
                 guildIds.length > 0 ? usage.getGuildStatsForGuilds(guildIds) : {};
             const result: Record<
                 string,
-                { name: string; budget: number; usage: ReturnType<typeof usage.getGuildStats> }
+                {
+                    name: string;
+                    budget: number;
+                    usage: ReturnType<typeof usage.getGuildStats>;
+                    vision: { month: string; images: number; limit: number | null };
+                }
             > = {};
 
             for (const [id, guild] of guilds) {
@@ -633,6 +695,11 @@ export function createDashboardApp({
                     name: guild.name,
                     budget: guildBudgets[id]?.dailyBudgetUsd ?? -1,
                     usage: hasCustom ? (guildStatsById[id] ?? usage.getGuildStats(id)) : usageStats,
+                    vision: {
+                        month: visionMonth,
+                        images: visionUsage[id] ?? 0,
+                        limit: visionLimits[id] ?? null,
+                    },
                 };
             }
             res.json(result);
@@ -645,15 +712,29 @@ export function createDashboardApp({
         auth.requireAuth,
         async (_req: Request, res: Response) => {
             const userBudgets = store.listUserBudgets();
+            const visionMonth = new Date().toISOString().slice(0, 7);
+            const visionLimits = store.listVisionScopeLimits('user');
+            const visionUsage = store.listVisionMonthlyUsage(visionMonth, 'user');
             const cfg = configRepository.getDashboardConfig();
             const allowedUserIds = new Set(cfg.allowedUserIds);
             const pendingUserIds = new Set(pendingUserInstallOwnerRepository.listUserIds());
             const userIds = [
-                ...new Set([...cfg.allowedUserIds, ...pendingUserIds, ...Object.keys(userBudgets)]),
+                ...new Set([
+                    ...cfg.allowedUserIds,
+                    ...pendingUserIds,
+                    ...Object.keys(userBudgets),
+                    ...Object.keys(visionLimits),
+                ]),
             ];
             const result: Record<
                 string,
-                { budget: number; isCustom: boolean; allowed: boolean; pending: boolean }
+                {
+                    budget: number;
+                    isCustom: boolean;
+                    allowed: boolean;
+                    pending: boolean;
+                    vision: { month: string; images: number; limit: number | null };
+                }
             > = {};
 
             for (const userId of userIds) {
@@ -663,6 +744,11 @@ export function createDashboardApp({
                     isCustom: customBudget !== undefined,
                     allowed: allowedUserIds.has(userId),
                     pending: pendingUserIds.has(userId) && !allowedUserIds.has(userId),
+                    vision: {
+                        month: visionMonth,
+                        images: visionUsage[userId] ?? 0,
+                        limit: visionLimits[userId] ?? null,
+                    },
                 };
             }
 
@@ -683,27 +769,25 @@ export function createDashboardApp({
         auth.requireCsrf,
         (req: Request, res: Response) => {
             const userId = String(req.params.userId ?? '').trim();
-            const { dailyBudgetUsd } = req.body;
 
             if (!userId) {
                 res.status(400).json({ error: 'User id is required' });
                 return;
             }
 
-            if (dailyBudgetUsd === null || dailyBudgetUsd === undefined) {
-                store.clearUserBudget(userId);
-                res.json({ ok: true, mode: 'default' });
+            const result = applyScopedBudgetUpdate('user', userId, req.body);
+            if (!result.ok) {
+                res.status(400).json({ error: result.error });
                 return;
             }
-
-            const v = parseFloat(String(dailyBudgetUsd));
-            if (isNaN(v) || v < 0) {
-                res.status(400).json({ error: dashboardMessages.validation.dailyBudgetUsd });
-                return;
-            }
-
-            store.setUserBudget(userId, v);
-            res.json({ ok: true, budget: v });
+            res.json({
+                ok: true,
+                ...('budget' in result
+                    ? result.budget === null
+                        ? { mode: 'default' }
+                        : { budget: result.budget }
+                    : {}),
+            });
         },
     );
 
@@ -713,23 +797,26 @@ export function createDashboardApp({
         auth.requireAuth,
         auth.requireCsrf,
         (req: Request, res: Response) => {
-            const guildId = req.params.guildId as string;
-            const { dailyBudgetUsd } = req.body;
+            const guildId = String(req.params.guildId ?? '').trim();
 
-            if (dailyBudgetUsd === null || dailyBudgetUsd === undefined) {
-                store.clearGuildBudget(guildId);
-                res.json({ ok: true, mode: 'global' });
+            if (!guildId) {
+                res.status(400).json({ error: 'Guild id is required' });
                 return;
             }
 
-            const v = parseFloat(String(dailyBudgetUsd));
-            if (isNaN(v) || v < 0) {
-                res.status(400).json({ error: dashboardMessages.validation.dailyBudgetUsd });
+            const result = applyScopedBudgetUpdate('guild', guildId, req.body);
+            if (!result.ok) {
+                res.status(400).json({ error: result.error });
                 return;
             }
-
-            store.setGuildBudget(guildId, v);
-            res.json({ ok: true, budget: v });
+            res.json({
+                ok: true,
+                ...('budget' in result
+                    ? result.budget === null
+                        ? { mode: 'global' }
+                        : { budget: result.budget }
+                    : {}),
+            });
         },
     );
 

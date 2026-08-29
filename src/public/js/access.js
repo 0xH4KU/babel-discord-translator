@@ -311,6 +311,7 @@ function renderGuilds() {
           ${hasCustomBudget ? `<button class="btn-danger btn-xs" ${actionAttrs('resetGuildBudget', [g.id])} title="Reset to global">↺</button>` : ''}
         </div>
       </div>
+      ${renderVisionLimitControl('guild', g.id, bd)}
     </div>`;
         })
         .join('');
@@ -776,6 +777,7 @@ function renderAllowedUsers() {
           ${hasCustomBudget ? `<button class="btn-danger btn-xs" ${actionAttrs('resetUserBudget', [userId])} title="Reset to default">↺</button>` : ''}
         </div>
       </div>
+      ${renderVisionLimitControl('user', userId, budgetData)}
     </div>`;
         })
         .join('');
