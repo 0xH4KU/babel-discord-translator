@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { detectTextWithCloudVision } from '../src/infra/cloud-vision-client.js';
+import { _test, detectTextWithCloudVision } from '../src/infra/cloud-vision-client.js';
 
 describe('Cloud Vision client', () => {
     it('should group paragraphs into one numbered text block', async () => {
@@ -60,7 +60,7 @@ describe('Cloud Vision client', () => {
                 fetchImpl: fetchImpl as typeof fetch,
             }),
         ).resolves.toEqual({
-            text: 'Hello image',
+            text: 'Hello\nimage',
             imageWidth: 200,
             imageHeight: 100,
             regions: [{ text: 'Hello\nimage', x: 10, y: 20, width: 100, height: 60 }],
@@ -90,5 +90,12 @@ describe('Cloud Vision client', () => {
                 fetchImpl: fetchImpl as typeof fetch,
             }),
         ).rejects.toThrow('Cloud Vision request failed: API disabled');
+    });
+
+    it('should ignore short ASCII logo misreads without dropping short CJK text', () => {
+        expect(_test.isMeaningfulBlockText('8')).toBe(false);
+        expect(_test.isMeaningfulBlockText('tA')).toBe(false);
+        expect(_test.isMeaningfulBlockText('CODE')).toBe(true);
+        expect(_test.isMeaningfulBlockText('程式')).toBe(true);
     });
 });

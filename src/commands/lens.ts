@@ -94,7 +94,7 @@ async function detectTextWithBudget(
     }
 
     const hash = createHash('sha256').update(image).digest('hex');
-    const cacheKey = `vision:text:v2:${hash}`;
+    const cacheKey = `vision:text:v3:${hash}`;
     const cached = cache.get(cacheKey);
     if (cached !== null) return JSON.parse(cached) as VisionTextResult;
 

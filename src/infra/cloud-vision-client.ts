@@ -100,6 +100,12 @@ function blockText(block: VisionBlock): string {
     return (block.paragraphs ?? []).map(paragraphText).filter(Boolean).join('\n');
 }
 
+function isMeaningfulBlockText(text: string): boolean {
+    const compact = text.replace(/\s/gu, '');
+    // ponytail: short ASCII UI labels are skipped; use OCR confidence if they become important.
+    return compact.length > 2 || /[^\u0000-\u007f]/u.test(compact);
+}
+
 function parseVisionText(result?: VisionImageResponse): VisionTextResult {
     const annotation = result?.fullTextAnnotation;
     const page = annotation?.pages?.[0];
@@ -107,11 +113,12 @@ function parseVisionText(result?: VisionImageResponse): VisionTextResult {
     const imageHeight = page?.height ?? 0;
     const blocks =
         page?.blocks?.filter((block) => !block.blockType || block.blockType === 'TEXT') ?? [];
+    const recognizedBlocks = blocks
+        .map((block) => ({ text: blockText(block), bounds: blockBounds(block) }))
+        .filter(({ text }) => isMeaningfulBlockText(text));
     const parsedRegions =
         imageWidth > 0 && imageHeight > 0
-            ? blocks.flatMap((block) => {
-                  const text = blockText(block);
-                  const bounds = blockBounds(block);
+            ? recognizedBlocks.flatMap(({ text, bounds }) => {
                   return text && bounds ? [{ text, ...bounds }] : [];
               })
             : [];
@@ -119,9 +126,10 @@ function parseVisionText(result?: VisionImageResponse): VisionTextResult {
     // ponytail: dense OCR falls back to the existing caption instead of drawing 100+ markers.
     const regions = parsedRegions.length <= 99 ? parsedRegions : [];
     const text = (
-        annotation?.text ??
-        result?.textAnnotations?.[0]?.description ??
-        regions.map((region) => region.text).join('\n')
+        recognizedBlocks.map((block) => block.text).join('\n') ||
+        (blocks.length === 0
+            ? (annotation?.text ?? result?.textAnnotations?.[0]?.description ?? '')
+            : '')
     ).trim();
     return { text, imageWidth, imageHeight, regions };
 }
@@ -172,4 +180,9 @@ export async function detectTextWithCloudVision(
     return parseVisionText(result);
 }
 
-export const _test = { VISION_ENDPOINT, VISION_TIMEOUT_MS, parseVisionText };
+export const _test = {
+    VISION_ENDPOINT,
+    VISION_TIMEOUT_MS,
+    parseVisionText,
+    isMeaningfulBlockText,
+};
