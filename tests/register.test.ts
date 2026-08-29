@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
     BABEL_GUILD_PROFILE,
     BABEL_POCKET_PROFILE,
@@ -6,9 +6,18 @@ import {
     resolveAppProfiles,
 } from '../src/apps/app-profile.js';
 import { getCommandsForProfile } from '../src/apps/commands.js';
-import { registerCommandsForProfiles, resolveRegistrationEnv } from '../src/apps/register.js';
+import {
+    registerCommandsForProfile,
+    registerCommandsForProfiles,
+    resolveRegistrationEnv,
+} from '../src/apps/register.js';
 
 describe('Discord command registration profiles', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+        vi.unstubAllGlobals();
+    });
+
     it('resolves the default root app profile from BABEL_APP-compatible values', () => {
         expect(resolveAppProfile()).toBe(BABEL_GUILD_PROFILE);
         expect(resolveAppProfile('guild')).toBe(BABEL_GUILD_PROFILE);
@@ -51,6 +60,36 @@ describe('Discord command registration profiles', () => {
             integration_types: [1],
             contexts: [0, 1, 2],
         });
+        expect(commands.find((command) => command.name === 'Babel Lens')).toMatchObject({
+            type: 3,
+            integration_types: [1],
+            contexts: [0, 1, 2],
+        });
+    });
+
+    it('sends Pocket Lens in the actual global registration payload', async () => {
+        const fetchMock = vi.fn(async () =>
+            new Response(JSON.stringify([]), {
+                status: 200,
+                headers: { 'content-type': 'application/json' },
+            }),
+        );
+        vi.stubGlobal('fetch', fetchMock);
+        vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+        await registerCommandsForProfile(BABEL_POCKET_PROFILE, {
+            env: {
+                BABEL_POCKET_DISCORD_APP_ID: 'pocket-app',
+                BABEL_POCKET_DISCORD_TOKEN: 'pocket-token',
+            },
+        });
+
+        const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+        const commands = JSON.parse(String(request.body)) as Array<Record<string, unknown>>;
+
+        expect(fetchMock.mock.calls[0]?.[0]).toBe(
+            'https://discord.com/api/v10/applications/pocket-app/commands',
+        );
         expect(commands.find((command) => command.name === 'Babel Lens')).toMatchObject({
             type: 3,
             integration_types: [1],

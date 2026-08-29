@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => {
         clients,
         createClient,
         createTranslationService: vi.fn(() => ({ process: vi.fn() })),
+        handleBabelLens: vi.fn(async () => undefined),
         createDashboardApp: vi.fn(),
         createHealthDashboardApp: vi.fn(),
         resolveDashboardMode: vi.fn(() => 'full' as const),
@@ -115,7 +116,7 @@ vi.mock('../src/commands/babel.js', () => ({
 }));
 
 vi.mock('../src/commands/lens.js', () => ({
-    handleBabelLens: vi.fn(),
+    handleBabelLens: mocks.handleBabelLens,
 }));
 
 vi.mock('../src/commands/translate.js', () => ({
@@ -157,6 +158,38 @@ describe('startBabelApp', () => {
                 accessMode: 'user-install',
                 enableGuildGlossary: false,
             }),
+        );
+    });
+
+    it('dispatches Pocket Lens interactions with the Pocket profile and OCR cache', async () => {
+        const { startBabelApp } = await import('../src/apps/bootstrap.js');
+
+        await startBabelApp(BABEL_POCKET_PROFILE);
+        const interactionHandler = mocks.clients[0]!.on.mock.calls.find(
+            ([event]) => event === 'interactionCreate',
+        )?.[1] as (interaction: {
+            isChatInputCommand: () => boolean;
+            isMessageContextMenuCommand: () => boolean;
+            commandName: string;
+        }) => Promise<void>;
+        const interaction = {
+            isChatInputCommand: () => false,
+            isMessageContextMenuCommand: () => true,
+            commandName: 'Babel Lens',
+        };
+
+        await interactionHandler(interaction);
+
+        expect(mocks.handleBabelLens).toHaveBeenCalledWith(
+            interaction,
+            expect.objectContaining({
+                profile: BABEL_POCKET_PROFILE,
+                translationService: mocks.createTranslationService.mock.results[0]?.value,
+                ocrCache: expect.anything(),
+            }),
+        );
+        expect(mocks.handleBabelLens.mock.calls[0]?.[1].ocrCache).not.toBe(
+            mocks.createTranslationService.mock.calls[0]?.[0].cache,
         );
     });
 
