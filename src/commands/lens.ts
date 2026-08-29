@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import {
     MessageFlags,
     type Attachment,
@@ -6,12 +5,16 @@ import {
 } from 'discord.js';
 import { BABEL_GUILD_PROFILE, type AppProfile } from '../apps/app-profile.js';
 import { configRepository } from '../modules/config/config-repository.js';
+import {
+    assertVisionAvailable,
+    detectTextWithBudget,
+} from '../modules/translation/lens-ocr.js';
 import { renderLensImage } from '../modules/translation/lens-image.js';
 import { type TranslationCache } from '../modules/translation/cache.js';
 import { buildTranslationMessages } from '../shared/discord-message-format.js';
 import { appLogger, createRequestId } from '../shared/structured-logger.js';
-import { store, type VisionQuotaScope } from '../persistence/store.js';
-import { detectTextWithCloudVision, type VisionTextResult } from '../infra/cloud-vision-client.js';
+import type { VisionQuotaScope } from '../persistence/store.js';
+import type { VisionTextResult } from '../infra/cloud-vision-client.js';
 import type { CommandDeps } from '../shared/types.js';
 
 const MAX_IMAGE_BYTES = 7 * 1024 * 1024;
@@ -19,7 +22,6 @@ const MAX_IMAGE_PIXELS = 16_000_000;
 const IMAGE_DOWNLOAD_TIMEOUT_MS = 15_000;
 const ALLOWED_IMAGE_HOSTS = new Set(['cdn.discordapp.com', 'media.discordapp.net']);
 const SUPPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
-const inFlightOcr = new Map<string, Promise<VisionTextResult>>();
 
 interface BabelLensCommandDeps extends CommandDeps {
     ocrCache: TranslationCache;
@@ -79,78 +81,6 @@ async function downloadDiscordImage(attachment: Attachment): Promise<Buffer> {
         throw new Error('Babel Lens supports images up to 7 MB.');
     }
     return image;
-}
-
-async function detectTextWithBudget(
-    image: Buffer,
-    ocrCache: TranslationCache,
-    requestId: string,
-    quotaScope?: VisionQuotaScope,
-): Promise<VisionTextResult> {
-    const config = configRepository.getRuntimeConfig();
-    const limit = Math.max(Math.floor(config.visionMonthlyImageLimit), 0);
-    if (limit === 0) throw new Error('Babel Lens is disabled in Settings.');
-    if (!config.visionApiKey) {
-        throw new Error('Cloud Vision needs its API key configured in Settings.');
-    }
-
-    const hash = createHash('sha256').update(image).digest('hex');
-    const cacheKey = `vision:text:v3:${hash}`;
-    const cached = ocrCache.get(cacheKey);
-    if (cached !== null) return JSON.parse(cached) as VisionTextResult;
-
-    const pending = inFlightOcr.get(cacheKey);
-    if (pending) return pending;
-
-    const operation = (async () => {
-        const month = new Date().toISOString().slice(0, 7);
-        const logger = appLogger.child({ component: 'babel_lens', requestId });
-        const quota = store.tryConsumeVisionImage(month, limit, quotaScope);
-        if (!quota.consumed) {
-            logger.warn('lens.vision.quota_blocked', {
-                month,
-                scope: quota.blockedBy,
-                used: quota.used,
-                limit: quota.limit,
-            });
-            const owner =
-                quota.blockedBy === 'guild'
-                    ? "This server's Babel Lens"
-                    : quota.blockedBy === 'user'
-                      ? 'Your Babel Lens'
-                      : 'Babel Lens';
-            throw new Error(`${owner} monthly image limit reached (${quota.used}/${quota.limit}).`);
-        }
-
-        logger.info('lens.vision.request.started', {
-            month,
-            globalUsed: quota.globalUsed,
-            globalLimit: limit,
-            scope: quotaScope?.scope,
-            scopeId: quotaScope?.scopeId,
-            scopeUsed: quota.scopeUsed,
-        });
-        const detected = await detectTextWithCloudVision(image, { apiKey: config.visionApiKey });
-        ocrCache.set(cacheKey, JSON.stringify(detected));
-        logger.info('lens.vision.request.completed', {
-            month,
-            globalUsed: quota.globalUsed,
-            globalLimit: limit,
-            scope: quotaScope?.scope,
-            scopeId: quotaScope?.scopeId,
-            scopeUsed: quota.scopeUsed,
-            detectedCharacters: detected.text.length,
-            detectedRegions: detected.regions.length,
-        });
-        return detected;
-    })();
-
-    inFlightOcr.set(cacheKey, operation);
-    try {
-        return await operation;
-    } finally {
-        if (inFlightOcr.get(cacheKey) === operation) inFlightOcr.delete(cacheKey);
-    }
 }
 
 function formatDetectedText(detected: VisionTextResult): string {
@@ -241,6 +171,7 @@ export async function handleBabelLens(
         requestId,
         preserveNumberedMarkers: true,
         resolveText: async () => {
+            assertVisionAvailable(visionQuotaScope);
             sourceImage = await downloadDiscordImage(attachment);
             detectedText = await detectTextWithBudget(
                 sourceImage,

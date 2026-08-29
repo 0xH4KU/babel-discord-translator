@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
     tryConsumeVisionImage: vi.fn(
         (): VisionQuotaResult => ({ consumed: true, globalUsed: 1, scopeUsed: 1 }),
     ),
+    getVisionScopeLimit: vi.fn((): number | null => null),
     detectText: vi.fn(async () => ({
         text: 'Text from image',
         imageWidth: 100,
@@ -26,7 +27,10 @@ vi.mock('../src/modules/config/config-repository.js', () => ({
 }));
 
 vi.mock('../src/persistence/store.js', () => ({
-    store: { tryConsumeVisionImage: mocks.tryConsumeVisionImage },
+    store: {
+        tryConsumeVisionImage: mocks.tryConsumeVisionImage,
+        getVisionScopeLimit: mocks.getVisionScopeLimit,
+    },
 }));
 
 vi.mock('../src/infra/cloud-vision-client.js', () => ({
@@ -81,6 +85,7 @@ describe('Babel Lens command', () => {
             globalUsed: 1,
             scopeUsed: 1,
         });
+        mocks.getVisionScopeLimit.mockReturnValue(null);
         mocks.detectText.mockResolvedValue({
             text: 'Text from image',
             imageWidth: 100,
@@ -271,6 +276,50 @@ describe('Babel Lens command', () => {
         );
         expect(mocks.detectText).toHaveBeenCalledOnce();
         expect(mocks.tryConsumeVisionImage).toHaveBeenCalledOnce();
+    });
+
+    it('should enforce scoped disable before cached or in-flight OCR reuse', async () => {
+        const cache = new TranslationCache(20);
+        const cachedImage = Buffer.from('cached-scope-image');
+        await _test.detectTextWithBudget(cachedImage, cache, 'request-1', {
+            scope: 'guild',
+            scopeId: 'allowed-guild',
+        });
+        mocks.getVisionScopeLimit.mockImplementation((_scope, scopeId) =>
+            scopeId === 'disabled-guild' ? 0 : null,
+        );
+
+        await expect(
+            _test.detectTextWithBudget(cachedImage, cache, 'request-2', {
+                scope: 'guild',
+                scopeId: 'disabled-guild',
+            }),
+        ).rejects.toThrow("This server's Babel Lens is disabled.");
+
+        let finishDetection!: (value: Awaited<ReturnType<typeof mocks.detectText>>) => void;
+        mocks.detectText.mockImplementationOnce(
+            () => new Promise((resolve) => (finishDetection = resolve)),
+        );
+        const inFlightImage = Buffer.from('in-flight-scope-image');
+        const allowed = _test.detectTextWithBudget(inFlightImage, cache, 'request-3', {
+            scope: 'guild',
+            scopeId: 'allowed-guild',
+        });
+        const disabled = _test.detectTextWithBudget(inFlightImage, cache, 'request-4', {
+            scope: 'guild',
+            scopeId: 'disabled-guild',
+        });
+
+        await expect(disabled).rejects.toThrow("This server's Babel Lens is disabled.");
+        finishDetection({
+            text: 'Text from image',
+            imageWidth: 100,
+            imageHeight: 100,
+            regions: [],
+        });
+        await expect(allowed).resolves.toMatchObject({ text: 'Text from image' });
+        expect(mocks.tryConsumeVisionImage).toHaveBeenCalledTimes(2);
+        expect(mocks.detectText).toHaveBeenCalledTimes(2);
     });
 
     it('should cache OCR without changing translation cache statistics', async () => {
