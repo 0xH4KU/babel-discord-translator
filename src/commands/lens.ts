@@ -10,6 +10,10 @@ import {
     detectTextWithBudget,
 } from '../modules/translation/lens-ocr.js';
 import { renderLensImage } from '../modules/translation/lens-image.js';
+import {
+    formatDetectedText,
+    normalizeRegionTranslation,
+} from '../modules/translation/lens-regions.js';
 import { type TranslationCache } from '../modules/translation/cache.js';
 import { buildTranslationMessages } from '../shared/discord-message-format.js';
 import { appLogger, createRequestId } from '../shared/structured-logger.js';
@@ -81,17 +85,6 @@ async function downloadDiscordImage(attachment: Attachment): Promise<Buffer> {
         throw new Error('Babel Lens supports images up to 7 MB.');
     }
     return image;
-}
-
-function formatDetectedText(detected: VisionTextResult): string {
-    if (detected.regions.length === 0) return detected.text;
-    return detected.regions.map((region, index) => `[${index + 1}] ${region.text}`).join('\n\n');
-}
-
-function hasMatchingRegionMarkers(text: string, regionCount: number): boolean {
-    if (regionCount === 0) return true;
-    const markers = [...text.matchAll(/\[(\d+)\]/gu)].map((match) => Number(match[1]));
-    return markers.length === regionCount && markers.every((marker, index) => marker === index + 1);
 }
 
 async function sendLensReply(
@@ -196,32 +189,34 @@ export async function handleBabelLens(
         return;
     }
 
-    try {
-        // The resolver mutates this value inside TranslationService.process().
-        const resolvedDetectedText = detectedText as VisionTextResult | null;
-        const markersMatch = hasMatchingRegionMarkers(
-            result.translatedText,
-            resolvedDetectedText?.regions.length ?? 0,
+    // The resolver mutates this value inside TranslationService.process().
+    const resolvedDetectedText = detectedText as VisionTextResult | null;
+    const { markersMatch, displayText } = normalizeRegionTranslation(
+        result.translatedText,
+        resolvedDetectedText?.regions.length ?? 0,
+    );
+    if (!markersMatch) {
+        appLogger.child({ component: 'babel_lens', requestId }).warn(
+            'lens.translation.markers_invalid',
+            {
+                expectedMarkers: resolvedDetectedText?.regions.length ?? 0,
+                translatedLength: result.translatedText.length,
+            },
         );
-        if (!markersMatch) {
-            appLogger
-                .child({ component: 'babel_lens', requestId })
-                .warn('lens.translation.markers_invalid', {
-                    expectedMarkers: resolvedDetectedText?.regions.length ?? 0,
-                    translatedLength: result.translatedText.length,
-                });
-        }
+    }
+
+    try {
         const rendered = await renderLensImage(
             sourceImage!,
-            result.translatedText,
+            displayText,
             markersMatch ? (resolvedDetectedText ?? undefined) : undefined,
         );
-        await sendLensReply(interaction, result.translatedText, rendered);
+        await sendLensReply(interaction, displayText, rendered);
     } catch (error) {
         appLogger.child({ component: 'babel_lens', requestId }).error('lens.render.failed', {
             error: (error as Error).message,
         });
-        await sendLensReply(interaction, result.translatedText);
+        await sendLensReply(interaction, displayText);
     }
 }
 
@@ -229,8 +224,6 @@ export const _test = {
     findImageAttachment,
     downloadDiscordImage,
     detectTextWithBudget,
-    formatDetectedText,
-    hasMatchingRegionMarkers,
     MAX_IMAGE_BYTES,
     MAX_IMAGE_PIXELS,
 };

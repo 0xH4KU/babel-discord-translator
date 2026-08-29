@@ -115,12 +115,12 @@ describe('buildTargetedPrompt', () => {
     });
 
     it('should add marker rules only for Lens prompts', () => {
-        expect(DEFAULT_PROMPT).not.toContain('Preserve bracketed numeric markers');
+        expect(DEFAULT_PROMPT).not.toContain('BABEL_REGION_1');
         expect(resolveSystemPrompt('auto', 'Custom translator prompt')).not.toContain(
-            'Preserve bracketed numeric markers',
+            'BABEL_REGION_1',
         );
         expect(resolveSystemPrompt('auto', 'Custom translator prompt', true)).toContain(
-            'Preserve bracketed numeric markers',
+            '[[BABEL_REGION_1]]',
         );
     });
 });

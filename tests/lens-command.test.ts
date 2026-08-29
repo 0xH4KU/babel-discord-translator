@@ -108,11 +108,11 @@ describe('Babel Lens command', () => {
             process: vi.fn(async (request) => {
                 await request.beforeTranslate();
                 const originalText = await request.resolveText();
-                expect(originalText).toBe('[1] Text from image');
+                expect(originalText).toBe('[[BABEL_REGION_1]] Text from image');
                 return {
                     status: 'success',
                     deferred: true,
-                    translatedText: '[1] 圖片翻譯',
+                    translatedText: '[[BABEL_REGION_1]] 圖片翻譯',
                     originalText,
                     cached: false,
                     targetLanguage: 'zh-TW',
@@ -180,7 +180,7 @@ describe('Babel Lens command', () => {
                     status: 'success',
                     deferred: false,
                     translatedText: '圖片翻譯',
-                    originalText: '[1] Text from image',
+                    originalText: '[[BABEL_REGION_1]] Text from image',
                     cached: false,
                     targetLanguage: 'zh-TW',
                     langSource: 'locale',

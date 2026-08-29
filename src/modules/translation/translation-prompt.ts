@@ -38,7 +38,8 @@ export function getLanguageName(code: string | null | undefined): string | null 
     return LOCALE_MAP[code] ?? LOCALE_MAP[code.split('-')[0]!] ?? code;
 }
 
-const NUMBERED_MARKER_RULE = 'Preserve bracketed numeric markers such as [1] and [2] exactly.';
+const LENS_REGION_MARKER_RULE =
+    'Preserve Babel Lens region markers such as [[BABEL_REGION_1]] and [[BABEL_REGION_2]] exactly; do not add, remove, translate, or reorder them.';
 
 export const DEFAULT_PROMPT = `You are a translator. Detect the language of the following text and translate it.
 
@@ -50,13 +51,13 @@ Rules:
 - Output ONLY the translation. No explanations, no labels, no extra text.
 - Preserve the original formatting (line breaks, punctuation, etc.)`;
 
-function withNumberedMarkerRule(prompt: string, preserveNumberedMarkers: boolean): string {
-    return preserveNumberedMarkers ? `${prompt}\n- ${NUMBERED_MARKER_RULE}` : prompt;
+function withLensRegionMarkerRule(prompt: string, preserveNumberedMarkers: boolean): string {
+    return preserveNumberedMarkers ? `${prompt}\n- ${LENS_REGION_MARKER_RULE}` : prompt;
 }
 
 export function buildTargetedPrompt(targetLang: string, preserveNumberedMarkers = false): string {
     const langName = getLanguageName(targetLang);
-    return withNumberedMarkerRule(
+    return withLensRegionMarkerRule(
         `You are a translator. Detect the language of the following text and translate it.
 
 Rules:
@@ -75,11 +76,11 @@ export function resolveSystemPrompt(
     preserveNumberedMarkers = false,
 ): string {
     if (customPrompt?.trim()) {
-        return withNumberedMarkerRule(customPrompt.trim(), preserveNumberedMarkers);
+        return withLensRegionMarkerRule(customPrompt.trim(), preserveNumberedMarkers);
     }
     return targetLanguage && targetLanguage !== 'auto'
         ? buildTargetedPrompt(targetLanguage, preserveNumberedMarkers)
-        : withNumberedMarkerRule(DEFAULT_PROMPT, preserveNumberedMarkers);
+        : withLensRegionMarkerRule(DEFAULT_PROMPT, preserveNumberedMarkers);
 }
 
 export function buildTranslationPrompt(
