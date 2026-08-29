@@ -22,7 +22,7 @@ const SUPPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 const inFlightOcr = new Map<string, Promise<VisionTextResult>>();
 
 interface BabelLensCommandDeps extends CommandDeps {
-    cache: TranslationCache;
+    ocrCache: TranslationCache;
     profile?: AppProfile;
 }
 
@@ -83,7 +83,7 @@ async function downloadDiscordImage(attachment: Attachment): Promise<Buffer> {
 
 async function detectTextWithBudget(
     image: Buffer,
-    cache: TranslationCache,
+    ocrCache: TranslationCache,
     requestId: string,
     quotaScope?: VisionQuotaScope,
 ): Promise<VisionTextResult> {
@@ -96,7 +96,7 @@ async function detectTextWithBudget(
 
     const hash = createHash('sha256').update(image).digest('hex');
     const cacheKey = `vision:text:v3:${hash}`;
-    const cached = cache.get(cacheKey);
+    const cached = ocrCache.get(cacheKey);
     if (cached !== null) return JSON.parse(cached) as VisionTextResult;
 
     const pending = inFlightOcr.get(cacheKey);
@@ -131,7 +131,7 @@ async function detectTextWithBudget(
             scopeUsed: quota.scopeUsed,
         });
         const detected = await detectTextWithCloudVision(image, { apiKey: config.visionApiKey });
-        cache.set(cacheKey, JSON.stringify(detected));
+        ocrCache.set(cacheKey, JSON.stringify(detected));
         logger.info('lens.vision.request.completed', {
             month,
             globalUsed: quota.globalUsed,
@@ -193,7 +193,7 @@ async function sendLensReply(
 
 export async function handleBabelLens(
     interaction: MessageContextMenuCommandInteraction,
-    { translationService, cache, profile = BABEL_GUILD_PROFILE }: BabelLensCommandDeps,
+    { translationService, ocrCache, profile = BABEL_GUILD_PROFILE }: BabelLensCommandDeps,
 ): Promise<void> {
     if (
         profile.accessMode === 'guild' &&
@@ -244,7 +244,7 @@ export async function handleBabelLens(
             sourceImage = await downloadDiscordImage(attachment);
             detectedText = await detectTextWithBudget(
                 sourceImage,
-                cache,
+                ocrCache,
                 requestId,
                 visionQuotaScope,
             );

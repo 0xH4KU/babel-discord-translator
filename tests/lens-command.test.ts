@@ -120,7 +120,7 @@ describe('Babel Lens command', () => {
 
         await handleBabelLens(interaction as never, {
             translationService: translationService as never,
-            cache: new TranslationCache(20),
+            ocrCache: new TranslationCache(20),
         });
 
         expect(interaction.deferReply).toHaveBeenCalledOnce();
@@ -155,7 +155,7 @@ describe('Babel Lens command', () => {
 
         await handleBabelLens(interaction as never, {
             translationService: translationService as never,
-            cache: new TranslationCache(20),
+            ocrCache: new TranslationCache(20),
         });
 
         expect(translationService.process).not.toHaveBeenCalled();
@@ -187,7 +187,7 @@ describe('Babel Lens command', () => {
 
         await handleBabelLens(interaction as never, {
             translationService: translationService as never,
-            cache: new TranslationCache(20),
+            ocrCache: new TranslationCache(20),
         });
 
         expect(mocks.renderImage).toHaveBeenCalledWith(expect.any(Buffer), '圖片翻譯', undefined);
@@ -204,7 +204,7 @@ describe('Babel Lens command', () => {
 
         await handleBabelLens(interaction as never, {
             translationService: translationService as never,
-            cache: new TranslationCache(20),
+            ocrCache: new TranslationCache(20),
         });
 
         expect(translationService.process).not.toHaveBeenCalled();
@@ -226,7 +226,7 @@ describe('Babel Lens command', () => {
 
         await handleBabelLens(interaction as never, {
             translationService: translationService as never,
-            cache: new TranslationCache(20),
+            ocrCache: new TranslationCache(20),
             profile: BABEL_POCKET_PROFILE,
         });
 
@@ -271,5 +271,18 @@ describe('Babel Lens command', () => {
         );
         expect(mocks.detectText).toHaveBeenCalledOnce();
         expect(mocks.tryConsumeVisionImage).toHaveBeenCalledOnce();
+    });
+
+    it('should cache OCR without changing translation cache statistics', async () => {
+        const translationCache = new TranslationCache(20);
+        const ocrCache = new TranslationCache(20);
+        const image = Buffer.from('ocr-cache-image');
+
+        await _test.detectTextWithBudget(image, ocrCache, 'request-1');
+        await _test.detectTextWithBudget(image, ocrCache, 'request-2');
+
+        expect(translationCache.stats()).toMatchObject({ size: 0, hits: 0, misses: 0 });
+        expect(ocrCache.stats()).toMatchObject({ size: 1, hits: 1, misses: 1 });
+        expect(mocks.detectText).toHaveBeenCalledOnce();
     });
 });

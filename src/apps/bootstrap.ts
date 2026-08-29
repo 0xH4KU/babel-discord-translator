@@ -27,10 +27,13 @@ import type express from 'express';
 import type http from 'http';
 
 let processHandlersInstalled = false;
+// ponytail: OCR entries are larger; add a separate setting only if measured hit rates need it.
+const OCR_CACHE_MAX_SIZE = 250;
 
 interface SharedBabelRuntime {
     config: ReturnType<typeof loadConfig>;
     cache: TranslationCache;
+    ocrCache: TranslationCache;
     log: TranslationLog;
     metrics: AppMetrics;
     runtimeLimiter: TranslationRuntimeLimiter;
@@ -85,6 +88,7 @@ function createSharedRuntime(): SharedBabelRuntime {
     return {
         config,
         cache: new TranslationCache(runtimeConfig.cacheMaxSize),
+        ocrCache: new TranslationCache(OCR_CACHE_MAX_SIZE),
         log: new TranslationLog(),
         metrics: new AppMetrics(),
         runtimeLimiter: new TranslationRuntimeLimiter({
@@ -177,7 +181,7 @@ function createProfileRuntime(
         ) {
             return handleBabelLens(interaction, {
                 translationService,
-                cache: shared.cache,
+                ocrCache: shared.ocrCache,
                 profile,
             });
         }
