@@ -330,6 +330,22 @@ describe('ConfigStore', () => {
         store.close();
     });
 
+    it('should enforce and persist the monthly Cloud Vision image limit', async () => {
+        const { ConfigStore } = await importStoreModule();
+        const first = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+
+        expect(first.getVisionMonthlyUsage('2026-08')).toBe(0);
+        expect(first.tryConsumeVisionImage('2026-08', 2)).toBe(1);
+        expect(first.tryConsumeVisionImage('2026-08', 2)).toBe(2);
+        expect(first.tryConsumeVisionImage('2026-08', 2)).toBeNull();
+        first.close();
+
+        const second = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+        expect(second.getVisionMonthlyUsage('2026-08')).toBe(2);
+        expect(second.tryConsumeVisionImage('2026-09', 2)).toBe(1);
+        second.close();
+    });
+
     it('should calculate shared global usage in SQLite', async () => {
         const { ConfigStore } = await importStoreModule();
         const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });

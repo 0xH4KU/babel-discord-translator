@@ -6,23 +6,27 @@ describe('validateConfigUpdate', () => {
     it('should drop empty or masked API keys from the update', () => {
         const result = validateConfigUpdate({
             vertexAiApiKey: '••••1234',
+            visionApiKey: '••••5678',
             openaiApiKey: '',
             cooldownSeconds: 10,
         });
 
         expect(result.valid).toBe(true);
         expect(result.sanitized).not.toHaveProperty('vertexAiApiKey');
+        expect(result.sanitized).not.toHaveProperty('visionApiKey');
         expect(result.sanitized).not.toHaveProperty('openaiApiKey');
     });
 
     it('should keep real API keys in the update', () => {
         const result = validateConfigUpdate({
             vertexAiApiKey: 'real-vertex-key',
+            visionApiKey: 'real-vision-key',
             openaiApiKey: 'real-openai-key',
         });
 
         expect(result.valid).toBe(true);
         expect(result.sanitized.vertexAiApiKey).toBe('real-vertex-key');
+        expect(result.sanitized.visionApiKey).toBe('real-vision-key');
         expect(result.sanitized.openaiApiKey).toBe('real-openai-key');
     });
 
@@ -57,11 +61,13 @@ describe('validateConfigUpdate', () => {
     it('should normalize allowlist arrays and reject invalid allowlist payloads', () => {
         const valid = validateConfigUpdate({
             allowedGuildIds: [' guild-1 ', 'guild-1', 'guild-2'],
+            lensEnabledGuildIds: [' guild-2 ', 'guild-2'],
             allowedUserIds: [' user-1 ', 'user-2', 'user-2'],
         });
 
         expect(valid.valid).toBe(true);
         expect(valid.sanitized.allowedGuildIds).toEqual(['guild-1', 'guild-2']);
+        expect(valid.sanitized.lensEnabledGuildIds).toEqual(['guild-2']);
         expect(valid.sanitized.allowedUserIds).toEqual(['user-1', 'user-2']);
 
         expect(validateConfigUpdate({ allowedGuildIds: ['guild-1', 42] })).toMatchObject({
@@ -71,6 +77,10 @@ describe('validateConfigUpdate', () => {
         expect(validateConfigUpdate({ allowedUserIds: 'user-1' })).toMatchObject({
             valid: false,
             error: 'allowedUserIds must be an array of non-empty strings',
+        });
+        expect(validateConfigUpdate({ lensEnabledGuildIds: [42] })).toMatchObject({
+            valid: false,
+            error: 'lensEnabledGuildIds must be an array of non-empty strings',
         });
     });
 
@@ -124,6 +134,18 @@ describe('validateConfigUpdate', () => {
             expect(valid.sanitized[field]).toBe(1.5);
         });
     }
+
+    it('should accept non-negative integer Cloud Vision limits without a fixed ceiling', () => {
+        expect(validateConfigUpdate({ visionMonthlyImageLimit: -1 }).valid).toBe(false);
+        expect(validateConfigUpdate({ visionMonthlyImageLimit: 1.5 }).valid).toBe(false);
+        expect(
+            validateConfigUpdate({ visionMonthlyImageLimit: Number.MAX_SAFE_INTEGER + 1 }).valid,
+        ).toBe(false);
+        expect(validateConfigUpdate({ visionMonthlyImageLimit: '950' })).toMatchObject({
+            valid: true,
+            sanitized: { visionMonthlyImageLimit: 950 },
+        });
+    });
 
     it('should require positive integers for translation throughput limits', () => {
         for (const field of [

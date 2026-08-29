@@ -57,6 +57,7 @@ function createStoreMock(overrides: Partial<StoreData> = {}) {
         inputPricePerMillion: 0,
         outputPricePerMillion: 0,
         dailyBudgetUsd: 0,
+        visionMonthlyImageLimit: 900,
         defaultUserDailyBudgetUsd: 0,
         tokenUsage: null,
         usageHistory: [],
@@ -94,6 +95,7 @@ function createStoreMock(overrides: Partial<StoreData> = {}) {
             inputPricePerMillion: data.inputPricePerMillion,
             outputPricePerMillion: data.outputPricePerMillion,
             dailyBudgetUsd: data.dailyBudgetUsd,
+            visionMonthlyImageLimit: data.visionMonthlyImageLimit,
             defaultUserDailyBudgetUsd: data.defaultUserDailyBudgetUsd,
             translationPrompt: data.translationPrompt,
             maxInputLength: data.maxInputLength,
@@ -314,6 +316,46 @@ describe('TranslationService', () => {
                 }),
             ]),
         );
+    });
+
+    it('should resolve Lens text after access checks and defer only once', async () => {
+        const resolveText = vi.fn(async () => 'Text from image');
+        const beforeTranslate = vi.fn(async () => undefined);
+        const { service, translator } = createService();
+
+        const result = await service.process({
+            command: 'babel',
+            commandLabel: 'Babel Lens (context menu)',
+            guildId: 'guild-1',
+            userId: 'user1',
+            userTag: 'user#0001',
+            locale: 'en-US',
+            resolveText,
+            beforeTranslate,
+        });
+
+        expect(result.status).toBe('success');
+        expect(resolveText).toHaveBeenCalledOnce();
+        expect(beforeTranslate).toHaveBeenCalledOnce();
+        expect(translator).toHaveBeenCalledWith(
+            'Text from image',
+            expect.any(String),
+            expect.any(Object),
+        );
+
+        const blockedResolver = vi.fn(async () => 'should not run');
+        const { service: blockedService } = createService({
+            storeOverrides: { allowedGuildIds: [] },
+        });
+        await blockedService.process({
+            command: 'babel',
+            commandLabel: 'Babel Lens (context menu)',
+            guildId: 'guild-1',
+            userId: 'user1',
+            userTag: 'user#0001',
+            resolveText: blockedResolver,
+        });
+        expect(blockedResolver).not.toHaveBeenCalled();
     });
 
     it('should read runtime config once per request', async () => {

@@ -21,12 +21,12 @@
 
 Babel now ships as two product profiles on one shared core: translation providers, cache, language detection, usage accounting, metrics, logging, persistence, and dashboard foundations are implemented once and reused by both apps.
 
-| App          | Install Model        | Best For                        | Command Surface                                       |
-| ------------ | -------------------- | ------------------------------- | ----------------------------------------------------- |
-| Babel Guild  | Server/Guild Install | Communities and servers         | `Babel`, `/translate`, `/setlang`, `/mylang`, `/help` |
-| Babel Pocket | User Install         | Individuals and trusted friends | `Babel Pocket`, `/setlang`, `/mylang`, `/help`        |
+| App          | Install Model        | Best For                        | Command Surface                                                     |
+| ------------ | -------------------- | ------------------------------- | ------------------------------------------------------------------- |
+| Babel Guild  | Server/Guild Install | Communities and servers         | `Babel`, `Babel Lens`, `/translate`, `/setlang`, `/mylang`, `/help` |
+| Babel Pocket | User Install         | Individuals and trusted friends | `Babel Pocket`, `Babel Lens`, `/setlang`, `/mylang`, `/help`        |
 
-Right-click any message → **Apps** → **Babel** or **Babel Pocket** → get an ephemeral translation only you can see. Operators keep control of hosting, provider keys, access policy, and token costs instead of paying for a shared hosted bot.
+Right-click any message → **Apps** → **Babel** or **Babel Pocket** for text, or **Babel Lens** for an attached image. Results are ephemeral and only visible to you. Operators keep control of hosting, provider keys, access policy, and token costs instead of paying for a shared hosted bot.
 
 [![License: GPL-3.0-only](https://img.shields.io/badge/License-GPL--3.0--only-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-22.13%2B-green.svg)](https://nodejs.org)
@@ -96,6 +96,7 @@ Sponsorship is optional and does not unlock private features. Supporting mainten
 ### Core Translation
 
 - **Context Menu Translation** — Right-click → Apps → Babel Guild or Babel Pocket
+- **Babel Lens** — OCR a Discord image with Cloud Vision, translate the detected text, and return a captioned image
 - **`/translate` Command** — Guild-only slash command with public webhook-based output
 - **Ephemeral Messages** — Context menu translations are private, only visible to you
 - **Multi-language Support** — Auto-detects your Discord locale, or use `/setlang` to choose
@@ -145,7 +146,7 @@ Sponsorship is optional and does not unlock private features. Supporting mainten
 
 ## Quick Start
 
-**Prerequisites:** Node.js `22.13+`, npm, a Discord bot token, and either a Vertex AI project or credentials for an OpenAI-compatible endpoint.
+**Prerequisites:** Node.js `22.13+`, npm, a Discord bot token, and either a Vertex AI project or credentials for an OpenAI-compatible endpoint. Babel Lens additionally requires a Google API key with the Cloud Vision API enabled.
 
 ```bash
 git clone https://github.com/0xH4KU/babel-discord-translator.git
@@ -190,6 +191,8 @@ Babel ships two provider adapters. Either can run alone, or both can be configur
 
 The OpenAI-compatible adapter covers OpenAI, OpenRouter, and other services that expose the same chat-completions path and bearer-token authentication. A dedicated adapter is only needed when a provider uses a different request or authentication contract.
 
+Babel Lens uses one Cloud Vision `TEXT_DETECTION` feature per image and has a dedicated API key in Settings. Its shared dashboard limit defaults to 900 images per UTC month and is enforced atomically in SQLite; set any non-negative integer, or `0` to disable Lens globally. Babel Guild also requires Lens to be enabled per server in Access; enabling Lens automatically enables Translation, and new servers default to off. Supported Discord attachments are PNG, JPEG, and WebP up to 7 MB and 16 megapixels. Image bytes are sent to Google Cloud Vision for OCR and are not persisted by Babel.
+
 For production:
 
 ```bash
@@ -225,7 +228,7 @@ For Railway, Docker, VPS, PM2, and static dashboard demo notes, see the [deploym
 DISCORD_APP_ID=your_app_id DISCORD_BOT_TOKEN=your_token npm run register
 ```
 
-By default, `npm run register` follows `BABEL_APP` and falls back to Babel Guild. Babel Guild registers **Babel**, **/translate**, **/setlang**, **/mylang**, and **/help**.
+By default, `npm run register` follows `BABEL_APP` and falls back to Babel Guild. Babel Guild registers **Babel**, **Babel Lens**, **/translate**, **/setlang**, **/mylang**, and **/help**.
 
 Choose a specific app:
 
@@ -234,7 +237,7 @@ DISCORD_APP_ID=your_app_id DISCORD_BOT_TOKEN=your_token npm run register:guild
 DISCORD_APP_ID=your_app_id DISCORD_BOT_TOKEN=your_token npm run register:pocket
 ```
 
-Babel Pocket registers **Babel Pocket**, **/setlang**, **/mylang**, and **/help** for User Install contexts.
+Babel Pocket registers **Babel Pocket**, **Babel Lens**, **/setlang**, **/mylang**, and **/help** for User Install contexts.
 
 ### 3. Invite the Bot
 
@@ -252,8 +255,8 @@ After starting the bot, open `http://localhost:3000`:
 | ------------ | --------------------------------------------------------------------------- |
 | **Setup**    | Provider mode, Vertex AI and/or OpenAI-compatible credentials and models    |
 | **Config**   | Cooldown, cache size, max input length, max output tokens, custom prompt    |
-| **Pricing**  | Per-million-token prices, global daily budget (0 = unlimited)               |
-| **Access**   | Guild whitelist, user allowlist, per-server and per-user budget overrides   |
+| **Settings** | Translation providers, dedicated Vision key and monthly image limit         |
+| **Access**   | Translation/Lens server access, user allowlist, and budget overrides         |
 | **Glossary** | Babel Guild source → target term mappings                                   |
 | **Users**    | View and manage per-user language preferences                               |
 | **Monitor**  | API health, cache hit rate, failure rate, API call volume, translation test |

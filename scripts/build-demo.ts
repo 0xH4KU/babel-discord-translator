@@ -30,10 +30,13 @@ interface DemoVariant {
 interface DemoConfigFixture {
     vertexAiApiKey: string;
     hasApiKey: boolean;
+    visionApiKey: string;
+    hasVisionApiKey: boolean;
     gcpProject: string;
     gcpLocation: string;
     geminiModel: string;
     allowedGuildIds: string[];
+    lensEnabledGuildIds: string[];
     allowedUserIds: string[];
     cooldownSeconds: number;
     cacheMaxSize: number;
@@ -41,6 +44,13 @@ interface DemoConfigFixture {
     inputPricePerMillion: number;
     outputPricePerMillion: number;
     dailyBudgetUsd: number;
+    visionMonthlyImageLimit: number;
+    visionUsage: {
+        month: string;
+        images: number;
+        limit: number;
+        remaining: number;
+    };
     defaultUserDailyBudgetUsd: number;
     translationPrompt: string;
     maxInputLength: number;
@@ -296,10 +306,13 @@ const DEMO_STATS = {
 const DEMO_CONFIG: DemoConfigFixture = {
     vertexAiApiKey: '••••demo12',
     hasApiKey: true,
+    visionApiKey: '••••vision',
+    hasVisionApiKey: true,
     gcpProject: 'babel-demo-project',
     gcpLocation: 'global',
     geminiModel: 'gemini-2.5-flash-lite',
     allowedGuildIds: ['100000000000000001', '100000000000000002'],
+    lensEnabledGuildIds: ['100000000000000001'],
     allowedUserIds: [],
     cooldownSeconds: 5,
     cacheMaxSize: 2000,
@@ -307,6 +320,13 @@ const DEMO_CONFIG: DemoConfigFixture = {
     inputPricePerMillion: 0.1,
     outputPricePerMillion: 0.4,
     dailyBudgetUsd: 0.75,
+    visionMonthlyImageLimit: 900,
+    visionUsage: {
+        month: '2026-06',
+        images: 184,
+        limit: 900,
+        remaining: 716,
+    },
     defaultUserDailyBudgetUsd: 0,
     translationPrompt: '',
     maxInputLength: 2000,
@@ -804,6 +824,7 @@ function createConfigFixture(variant: DemoVariant): typeof DEMO_CONFIG {
     return {
         ...DEMO_CONFIG,
         allowedGuildIds: [],
+        lensEnabledGuildIds: [],
         allowedUserIds: ['200000000000000001', '200000000000000002'],
         dailyBudgetUsd: 0.25,
         defaultUserDailyBudgetUsd: 0.5,
@@ -1136,7 +1157,7 @@ function createDemoReadonlyJs(variant: DemoVariant): string {
 
     accessTab.querySelectorAll('.settings-section').forEach((section) => {
       const heading = section.querySelector('h3')?.textContent || '';
-      if (heading.includes('Server Whitelist') || heading.includes('Server Glossary')) {
+      if (heading.includes('Server Feature Access') || heading.includes('Server Glossary')) {
         section.style.display = 'none';
       }
     });

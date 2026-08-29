@@ -12,6 +12,7 @@ You need:
 - Node.js `22.13+` for local/VPS installs and deployment tooling, or Docker for container installs
 - A dashboard password that is not `admin`
 - At least one configured translation provider in the dashboard after startup
+- A dedicated Google API key with Cloud Vision enabled when using Babel Lens
 
 Babel does not require privileged Discord intents.
 
@@ -96,8 +97,11 @@ After deployment:
 2. Open the Railway public URL.
 3. Log in with `DASHBOARD_PASSWORD`.
 4. Complete the setup wizard and configure the provider.
-5. Register commands with `npm run register:guild` or `npm run register:pocket` locally; use the matching `register:built:*` command in a Docker or Railway shell.
-6. Check `/livez`, `/readyz`, and the dashboard Operations panel.
+5. Configure the Cloud Vision key and monthly image limit in Settings, then enable Lens for selected Guild servers in Access.
+6. Register commands with `npm run register:guild` or `npm run register:pocket` locally; use the matching `register:built:*` command in a Docker or Railway shell.
+7. Check `/livez`, `/readyz`, and the dashboard Operations panel.
+
+Re-register commands after upgrading from a release without Babel Lens. Combined deployments must register both Guild and Pocket applications with their profile-specific app IDs and bot tokens.
 
 For the one-click template checklist, persistent volume notes, and affiliate disclosure wording, see [Railway deployment](railway.md).
 

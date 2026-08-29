@@ -29,7 +29,7 @@ describe('Discord command registration profiles', () => {
         const commands = getCommandsForProfile(BABEL_GUILD_PROFILE);
         const names = commands.map((command) => command.name);
 
-        expect(names).toEqual(['Babel', 'setlang', 'translate', 'help', 'mylang']);
+        expect(names).toEqual(['Babel', 'Babel Lens', 'setlang', 'translate', 'help', 'mylang']);
         expect(commands.find((command) => command.name === 'translate')).toMatchObject({
             type: 1,
             description: 'Translate text',
@@ -42,11 +42,16 @@ describe('Discord command registration profiles', () => {
         const commands = getCommandsForProfile(BABEL_POCKET_PROFILE);
         const names = commands.map((command) => command.name);
 
-        expect(names).toEqual(['Babel Pocket', 'setlang', 'help', 'mylang']);
+        expect(names).toEqual(['Babel Pocket', 'Babel Lens', 'setlang', 'help', 'mylang']);
         expect(names).not.toContain('translate');
         expect(commands.every((command) => command.integration_types?.includes(1))).toBe(true);
         expect(commands.every((command) => command.contexts)).toBe(true);
         expect(commands.find((command) => command.name === 'Babel Pocket')).toMatchObject({
+            type: 3,
+            integration_types: [1],
+            contexts: [0, 1, 2],
+        });
+        expect(commands.find((command) => command.name === 'Babel Lens')).toMatchObject({
             type: 3,
             integration_types: [1],
             contexts: [0, 1, 2],

@@ -178,11 +178,17 @@ export function normalizeStoreData(data: Partial<StoreData> | undefined): StoreD
 
     return {
         vertexAiApiKey: normalizeString(source.vertexAiApiKey),
+        visionApiKey: normalizeString(source.visionApiKey),
         gcpProject: normalizeString(source.gcpProject),
         gcpLocation: normalizeString(source.gcpLocation, 'global'),
         geminiModel: normalizeString(source.geminiModel, 'gemini-2.5-flash-lite'),
         allowedGuildIds: Array.isArray(source.allowedGuildIds)
             ? source.allowedGuildIds.filter(
+                  (guildId): guildId is string => typeof guildId === 'string',
+              )
+            : [],
+        lensEnabledGuildIds: Array.isArray(source.lensEnabledGuildIds)
+            ? source.lensEnabledGuildIds.filter(
                   (guildId): guildId is string => typeof guildId === 'string',
               )
             : [],
@@ -195,6 +201,7 @@ export function normalizeStoreData(data: Partial<StoreData> | undefined): StoreD
         inputPricePerMillion: normalizeNumber(source.inputPricePerMillion),
         outputPricePerMillion: normalizeNumber(source.outputPricePerMillion),
         dailyBudgetUsd: normalizeNumber(source.dailyBudgetUsd),
+        visionMonthlyImageLimit: normalizeNumber(source.visionMonthlyImageLimit, 900),
         defaultUserDailyBudgetUsd: normalizeNumber(source.defaultUserDailyBudgetUsd),
         tokenUsage: cloneTokenUsage(source.tokenUsage),
         usageHistory: cloneUsageHistory(source.usageHistory),

@@ -86,7 +86,8 @@ export interface TranslationServiceRequest {
     billingUserId?: string | null;
     userTag: string;
     locale?: string;
-    text: string;
+    text?: string;
+    resolveText?: () => Promise<string>;
     targetLanguageOption?: string | null;
     requestId?: string;
     beforeTranslate?: () => Promise<unknown>;
@@ -94,7 +95,7 @@ export interface TranslationServiceRequest {
 }
 
 export type TranslationServiceResult =
-    | { status: 'blocked'; message: string }
+    | { status: 'blocked'; message: string; deferred?: boolean }
     | {
           status: 'success';
           deferred: boolean;
@@ -211,7 +212,8 @@ export function createTranslationService({
             });
             requestLogger.info('translation.request.started', {
                 locale: request.locale ?? null,
-                textLength: request.text.length,
+                textLength: request.text?.length ?? null,
+                deferredTextResolution: !!request.resolveText,
                 hasTargetLanguageOption: !!(
                     request.targetLanguageOption && request.targetLanguageOption !== 'auto'
                 ),
@@ -263,10 +265,34 @@ export function createTranslationService({
                 };
             }
 
-            const originalText = request.text;
+            let deferred = false;
+            let originalText = request.text ?? '';
+            if (request.resolveText) {
+                try {
+                    if (request.beforeTranslate) {
+                        await request.beforeTranslate();
+                        deferred = true;
+                        requestLogger.info('translation.request.deferred');
+                    }
+                    originalText = await request.resolveText();
+                } catch (error) {
+                    const caughtError = error instanceof Error ? error : new Error(String(error));
+                    const sanitizedMessage = sanitizeError(caughtError.message);
+                    profileMetrics?.recordTranslationFailure();
+                    requestLogger.error('translation.text_resolution.failed', {
+                        error: sanitizedMessage,
+                    });
+                    return {
+                        status: 'error',
+                        deferred,
+                        message: discordMessages.translationFailed(sanitizedMessage),
+                    };
+                }
+            }
+
             if (!originalText.trim()) {
                 requestLogger.warn('translation.request.blocked', { blockReason: 'empty_text' });
-                return { status: 'blocked', message: messages.emptyText };
+                return { status: 'blocked', message: messages.emptyText, deferred };
             }
 
             const maxInputLength = runtimeConfig.maxInputLength || 2000;
@@ -279,6 +305,7 @@ export function createTranslationService({
                 return {
                     status: 'blocked',
                     message: discordMessages.textTooLong(originalText.length, maxInputLength),
+                    deferred,
                 };
             }
 
@@ -307,7 +334,6 @@ export function createTranslationService({
                 glossaryVersion,
             });
 
-            let deferred = false;
             let reservation: TranslationRuntimeReservation | null = null;
             let budgetReservation: UsageBudgetReservation | null = null;
             let leaderInFlight: InFlightTranslation | null = null;
@@ -336,7 +362,7 @@ export function createTranslationService({
                         langSource,
                     });
 
-                    if (request.beforeTranslate) {
+                    if (!deferred && request.beforeTranslate) {
                         await request.beforeTranslate();
                         deferred = true;
                         requestLogger.info('translation.request.deferred');
@@ -405,7 +431,7 @@ export function createTranslationService({
                     void leaderInFlight.promise.catch(() => undefined);
                 }
 
-                if (!joinedInFlight && request.beforeTranslate) {
+                if (!deferred && !joinedInFlight && request.beforeTranslate) {
                     await request.beforeTranslate();
                     deferred = true;
                     requestLogger.info('translation.request.deferred');

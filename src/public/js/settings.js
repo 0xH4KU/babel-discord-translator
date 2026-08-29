@@ -17,6 +17,16 @@ function onProviderModeChange() {
   openaiSection.style.display = showOpenai ? '' : 'none';
 }
 
+function previewVisionLimit(value) {
+  const usage = currentConfig.visionUsage || {};
+  const parsed = Number(value);
+  const limit = Number.isSafeInteger(parsed) && parsed >= 0
+    ? parsed
+    : (usage.limit ?? currentConfig.visionMonthlyImageLimit ?? 900);
+  document.getElementById('cfg-vision-usage').textContent =
+    `${usage.images || 0} / ${limit} images used · ${usage.month || 'current UTC month'}`;
+}
+
 function renderSessions(sessions) {
   const container = document.getElementById('session-list');
   if (!container) return;
@@ -66,6 +76,9 @@ async function loadSettings() {
     document.getElementById('cfg-apikey').value = '';
     document.getElementById('cfg-apikey').placeholder =
       currentConfig.hasApiKey ? currentConfig.vertexAiApiKey + ' (leave blank to keep)' : 'Not set';
+    document.getElementById('cfg-vision-apikey').value = '';
+    document.getElementById('cfg-vision-apikey').placeholder =
+      currentConfig.hasVisionApiKey ? currentConfig.visionApiKey + ' (leave blank to keep)' : 'Not set';
     document.getElementById('cfg-project').value = currentConfig.gcpProject || '';
     document.getElementById('cfg-location').value = currentConfig.gcpLocation || 'global';
     document.getElementById('cfg-model').value = currentConfig.geminiModel || '';
@@ -81,6 +94,8 @@ async function loadSettings() {
     document.getElementById('cfg-input-price').value = currentConfig.inputPricePerMillion || 0;
     document.getElementById('cfg-output-price').value = currentConfig.outputPricePerMillion || 0;
     document.getElementById('cfg-budget').value = currentConfig.dailyBudgetUsd || 0;
+    document.getElementById('cfg-vision-limit').value = currentConfig.visionMonthlyImageLimit ?? 900;
+    previewVisionLimit(currentConfig.visionMonthlyImageLimit ?? 900);
     document.getElementById('cfg-prompt').value = currentConfig.translationPrompt || '';
 
     // Provider settings
@@ -100,6 +115,8 @@ async function saveSettings() {
 
   const newKey = document.getElementById('cfg-apikey').value.trim();
   if (newKey) updates.vertexAiApiKey = newKey;
+  const newVisionKey = document.getElementById('cfg-vision-apikey').value.trim();
+  if (newVisionKey) updates.visionApiKey = newVisionKey;
 
   updates.gcpProject = document.getElementById('cfg-project').value.trim();
   updates.gcpLocation = document.getElementById('cfg-location').value.trim() || 'global';
@@ -116,6 +133,7 @@ async function saveSettings() {
   updates.inputPricePerMillion = parseFloat(document.getElementById('cfg-input-price').value) || 0;
   updates.outputPricePerMillion = parseFloat(document.getElementById('cfg-output-price').value) || 0;
   updates.dailyBudgetUsd = parseFloat(document.getElementById('cfg-budget').value) || 0;
+  updates.visionMonthlyImageLimit = parseInt(document.getElementById('cfg-vision-limit').value) || 0;
   updates.translationPrompt = document.getElementById('cfg-prompt').value;
 
   // Provider settings

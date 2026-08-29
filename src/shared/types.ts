@@ -78,10 +78,12 @@ export interface UserLanguagePreferenceEntry {
 
 export interface StoreData {
     vertexAiApiKey: string;
+    visionApiKey: string;
     gcpProject: string;
     gcpLocation: string;
     geminiModel: string;
     allowedGuildIds: string[];
+    lensEnabledGuildIds: string[];
     allowedUserIds: string[];
     cooldownSeconds: number;
     cacheMaxSize: number;
@@ -89,6 +91,7 @@ export interface StoreData {
     inputPricePerMillion: number;
     outputPricePerMillion: number;
     dailyBudgetUsd: number;
+    visionMonthlyImageLimit: number;
     defaultUserDailyBudgetUsd: number;
     tokenUsage: TokenUsage | null;
     usageHistory: UsageHistoryEntry[];

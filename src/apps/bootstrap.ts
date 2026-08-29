@@ -11,6 +11,8 @@ import { configRepository } from '../modules/config/config-repository.js';
 import { createGracefulShutdownHandler } from '../shared/shutdown.js';
 import { createTranslationService } from '../modules/translation/translation-service.js';
 import { handleBabel } from '../commands/babel.js';
+import { handleBabelLens } from '../commands/lens.js';
+import { BABEL_LENS_COMMAND_NAME } from './commands.js';
 import { handleTranslate } from '../commands/translate.js';
 import { handleSetlang, handleMylang } from '../commands/setlang.js';
 import { handleHelp } from '../commands/help.js';
@@ -167,6 +169,17 @@ function createProfileRuntime(
             interaction.commandName === profile.commandName
         ) {
             return handleBabel(interaction, { translationService, profile });
+        }
+
+        if (
+            interaction.isMessageContextMenuCommand() &&
+            interaction.commandName === BABEL_LENS_COMMAND_NAME
+        ) {
+            return handleBabelLens(interaction, {
+                translationService,
+                cache: shared.cache,
+                profile,
+            });
         }
     });
 

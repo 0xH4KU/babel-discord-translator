@@ -2,10 +2,12 @@ import type { StoreData } from '../shared/types.js';
 
 export const DEFAULT_STORE_DATA: StoreData = {
     vertexAiApiKey: '',
+    visionApiKey: '',
     gcpProject: '',
     gcpLocation: 'global',
     geminiModel: 'gemini-2.5-flash-lite',
     allowedGuildIds: [],
+    lensEnabledGuildIds: [],
     allowedUserIds: [],
     cooldownSeconds: 5,
     cacheMaxSize: 2000,
@@ -13,6 +15,7 @@ export const DEFAULT_STORE_DATA: StoreData = {
     inputPricePerMillion: 0,
     outputPricePerMillion: 0,
     dailyBudgetUsd: 0,
+    visionMonthlyImageLimit: 900,
     defaultUserDailyBudgetUsd: 0,
     tokenUsage: null,
     usageHistory: [],
@@ -40,10 +43,12 @@ export const DEFAULT_STORE_DATA: StoreData = {
 
 export const CONFIG_VALUE_KEYS = [
     'vertexAiApiKey',
+    'visionApiKey',
     'gcpProject',
     'gcpLocation',
     'geminiModel',
     'allowedGuildIds',
+    'lensEnabledGuildIds',
     'allowedUserIds',
     'cooldownSeconds',
     'cacheMaxSize',
@@ -51,6 +56,7 @@ export const CONFIG_VALUE_KEYS = [
     'inputPricePerMillion',
     'outputPricePerMillion',
     'dailyBudgetUsd',
+    'visionMonthlyImageLimit',
     'defaultUserDailyBudgetUsd',
     'translationPrompt',
     'maxInputLength',

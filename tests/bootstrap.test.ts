@@ -114,6 +114,10 @@ vi.mock('../src/commands/babel.js', () => ({
     handleBabel: vi.fn(),
 }));
 
+vi.mock('../src/commands/lens.js', () => ({
+    handleBabelLens: vi.fn(),
+}));
+
 vi.mock('../src/commands/translate.js', () => ({
     handleTranslate: vi.fn(),
 }));

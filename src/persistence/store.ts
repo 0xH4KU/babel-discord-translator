@@ -480,6 +480,29 @@ export class ConfigStore {
         });
     }
 
+    getVisionMonthlyUsage(month: string): number {
+        const row = this.stmt('SELECT images FROM vision_monthly_usage WHERE month = ?').get(
+            month,
+        ) as { images: number } | undefined;
+        return row?.images ?? 0;
+    }
+
+    tryConsumeVisionImage(month: string, limit: number): number | null {
+        if (!Number.isSafeInteger(limit) || limit < 1) return null;
+
+        const row = this.stmt(
+            `
+                INSERT INTO vision_monthly_usage (month, images)
+                VALUES (?, 1)
+                ON CONFLICT(month) DO UPDATE SET images = images + 1
+                WHERE images < ?
+                RETURNING images
+            `,
+        ).get(month, limit) as { images: number } | undefined;
+
+        return row?.images ?? null;
+    }
+
     listUsageRows(): ScopedUsageRow[] {
         const rows = this.stmt(
             `

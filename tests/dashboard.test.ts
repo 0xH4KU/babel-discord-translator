@@ -14,6 +14,7 @@ vi.mock('../src/modules/config/config.js', () => ({
 vi.mock('../src/persistence/store.js', () => {
     const data: Record<string, unknown> = {
         vertexAiApiKey: 'sk-abcdef123456',
+        visionApiKey: 'vision-abcdef654321',
         gcpProject: 'test-project',
         gcpLocation: 'global',
         geminiModel: 'gemini-2.5-flash-lite',
@@ -22,6 +23,7 @@ vi.mock('../src/persistence/store.js', () => {
         openaiModel: '',
         translationProvider: 'vertex',
         allowedGuildIds: [],
+        lensEnabledGuildIds: [],
         allowedUserIds: [],
         cooldownSeconds: 5,
         cacheMaxSize: 2000,
@@ -29,6 +31,7 @@ vi.mock('../src/persistence/store.js', () => {
         inputPricePerMillion: 0,
         outputPricePerMillion: 0,
         dailyBudgetUsd: 0,
+        visionMonthlyImageLimit: 900,
         defaultUserDailyBudgetUsd: 0,
         translationPrompt: '',
         userLanguagePrefs: { legacyUser: 'en' },
@@ -201,6 +204,7 @@ vi.mock('../src/persistence/store.js', () => {
             listUserLanguagePreferences: vi.fn(() => [
                 ...(data.userLanguagePreferenceEntries as unknown[]),
             ]),
+            getVisionMonthlyUsage: vi.fn(() => 0),
             isSetupComplete: vi.fn(() => data.setupComplete),
         },
     };
@@ -1587,8 +1591,11 @@ describe('Dashboard API', () => {
         expect(res.status).toBe(200);
         expect(res.body!.vertexAiApiKey as string).toMatch(/^••••/);
         expect(res.body!.hasApiKey).toBe(true);
+        expect(res.body!.visionApiKey as string).toMatch(/^••••/);
+        expect(res.body!.hasVisionApiKey).toBe(true);
         // Should NOT expose the real key
         expect(res.body!.vertexAiApiKey as string).not.toContain('sk-abcdef');
+        expect(res.body!.visionApiKey as string).not.toContain('vision-abcdef');
     });
 
     // --- CSRF protection ---

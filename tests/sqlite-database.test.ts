@@ -319,7 +319,7 @@ describe('createSqliteDatabase', () => {
             const migrationIds = db
                 .prepare('SELECT id FROM schema_migrations ORDER BY id ASC')
                 .all() as Array<{ id: number }>;
-            expect(migrationIds.map((row) => row.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+            expect(migrationIds.map((row) => row.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
         } finally {
             db.close();
         }

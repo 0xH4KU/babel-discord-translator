@@ -11,12 +11,18 @@ RUN npm run build
 FROM node:22-alpine
 WORKDIR /app
 
-RUN apk add --no-cache sqlite
+RUN apk add --no-cache \
+    sqlite \
+    font-noto \
+    font-noto-cjk \
+    font-noto-arabic \
+    font-noto-devanagari \
+    font-noto-thai
 RUN addgroup -S babel && adduser -S babel -G babel
 
-COPY --from=build /app/dist ./dist
-COPY package.json package-lock.json ./
-COPY tsconfig.base.json ./tsconfig.base.json
+COPY --from=build --chown=babel:babel /app/dist ./dist
+COPY --chown=babel:babel package.json package-lock.json ./
+COPY --chown=babel:babel tsconfig.base.json ./tsconfig.base.json
 RUN npm ci --omit=dev && npm cache clean --force
 
 RUN mkdir -p data && chown babel:babel data

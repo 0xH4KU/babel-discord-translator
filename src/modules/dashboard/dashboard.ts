@@ -521,12 +521,22 @@ export function createDashboardApp({
 
     api.get('/config', auth.requireAuth, (_req: Request, res: Response) => {
         const cfg = configRepository.getDashboardConfig();
+        const visionMonth = new Date().toISOString().slice(0, 7);
+        const visionImages = store.getVisionMonthlyUsage(visionMonth);
         res.json({
             ...cfg,
             vertexAiApiKey: cfg.vertexAiApiKey ? '••••' + cfg.vertexAiApiKey.slice(-6) : '',
             hasApiKey: !!cfg.vertexAiApiKey,
+            visionApiKey: cfg.visionApiKey ? '••••' + cfg.visionApiKey.slice(-6) : '',
+            hasVisionApiKey: !!cfg.visionApiKey,
             openaiApiKey: cfg.openaiApiKey ? '••••' + cfg.openaiApiKey.slice(-6) : '',
             hasOpenaiApiKey: !!cfg.openaiApiKey,
+            visionUsage: {
+                month: visionMonth,
+                images: visionImages,
+                limit: cfg.visionMonthlyImageLimit,
+                remaining: Math.max(cfg.visionMonthlyImageLimit - visionImages, 0),
+            },
         });
     });
 

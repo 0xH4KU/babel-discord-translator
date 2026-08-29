@@ -312,6 +312,18 @@ const MIGRATIONS: Migration[] = [
             `);
         },
     },
+    {
+        id: 10,
+        name: 'vision_monthly_usage',
+        up(db) {
+            db.exec(`
+                CREATE TABLE IF NOT EXISTS vision_monthly_usage (
+                    month TEXT PRIMARY KEY,
+                    images INTEGER NOT NULL CHECK (images >= 0)
+                );
+            `);
+        },
+    },
 ];
 
 let sharedDatabase: DatabaseSync | null = null;
@@ -413,6 +425,7 @@ const STORE_TABLES = new Set([
     'user_budgets',
     'discord_user_profiles',
     'pending_user_install_owners',
+    'vision_monthly_usage',
 ]);
 
 export function isSqliteStoreEmpty(db: DatabaseSync): boolean {

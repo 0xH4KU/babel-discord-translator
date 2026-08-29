@@ -26,6 +26,7 @@ const INTEGRATION_USER_INSTALL = 1;
 const CONTEXT_GUILD = 0;
 const CONTEXT_BOT_DM = 1;
 const CONTEXT_PRIVATE_CHANNEL = 2;
+export const BABEL_LENS_COMMAND_NAME = 'Babel Lens';
 
 const USER_INSTALL_COMMAND_CONTEXT = {
     integration_types: [INTEGRATION_USER_INSTALL],
@@ -66,6 +67,11 @@ export function getCommandsForProfile(profile: AppProfile): DiscordCommand[] {
     const commands: DiscordCommand[] = [
         {
             name: profile.commandName,
+            type: 3,
+            ...context,
+        },
+        {
+            name: BABEL_LENS_COMMAND_NAME,
             type: 3,
             ...context,
         },

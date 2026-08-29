@@ -1,0 +1,177 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { TranslationCache } from '../src/modules/translation/cache.js';
+
+const mocks = vi.hoisted(() => ({
+    getRuntimeConfig: vi.fn(() => ({
+        visionApiKey: 'vision-key',
+        visionMonthlyImageLimit: 900,
+        lensEnabledGuildIds: ['guild-1'],
+    })),
+    tryConsumeVisionImage: vi.fn(() => 1),
+    detectText: vi.fn(async () => 'Text from image'),
+    renderImage: vi.fn(async () => Buffer.from('rendered-image')),
+}));
+
+vi.mock('../src/modules/config/config-repository.js', () => ({
+    configRepository: { getRuntimeConfig: mocks.getRuntimeConfig },
+}));
+
+vi.mock('../src/persistence/store.js', () => ({
+    store: { tryConsumeVisionImage: mocks.tryConsumeVisionImage },
+}));
+
+vi.mock('../src/infra/cloud-vision-client.js', () => ({
+    detectTextWithCloudVision: mocks.detectText,
+}));
+
+vi.mock('../src/modules/translation/lens-image.js', () => ({
+    renderLensImage: mocks.renderImage,
+}));
+
+import { _test, handleBabelLens } from '../src/commands/lens.js';
+
+function createInteraction(withImage = true) {
+    const attachment = {
+        contentType: 'image/png',
+        size: 5,
+        url: 'https://cdn.discordapp.com/attachments/1/2/meme.png',
+        width: 100,
+        height: 100,
+        name: 'meme.png',
+    };
+
+    return {
+        authorizingIntegrationOwners: undefined,
+        guildId: 'guild-1',
+        guild: { name: 'Test Guild' },
+        user: { id: 'user-1', tag: 'user#0001' },
+        locale: 'zh-TW',
+        targetMessage: {
+            attachments: {
+                find: (predicate: (value: unknown) => boolean) =>
+                    withImage && predicate(attachment) ? attachment : undefined,
+            },
+        },
+        reply: vi.fn(),
+        deferReply: vi.fn(async () => undefined),
+        editReply: vi.fn(async () => undefined),
+        followUp: vi.fn(async () => undefined),
+    };
+}
+
+describe('Babel Lens command', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mocks.getRuntimeConfig.mockReturnValue({
+            visionApiKey: 'vision-key',
+            visionMonthlyImageLimit: 950,
+            lensEnabledGuildIds: ['guild-1'],
+        });
+        mocks.tryConsumeVisionImage.mockReturnValue(1);
+        mocks.detectText.mockResolvedValue('Text from image');
+        vi.stubGlobal(
+            'fetch',
+            vi.fn(async () => new Response(Buffer.from('image'), { status: 200 })),
+        );
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('should OCR, translate, render, and return an ephemeral image', async () => {
+        const interaction = createInteraction();
+        const translationService = {
+            process: vi.fn(async (request) => {
+                await request.beforeTranslate();
+                const originalText = await request.resolveText();
+                return {
+                    status: 'success',
+                    deferred: true,
+                    translatedText: '圖片翻譯',
+                    originalText,
+                    cached: false,
+                    targetLanguage: 'zh-TW',
+                    langSource: 'locale',
+                    inputTokens: 10,
+                    outputTokens: 4,
+                };
+            }),
+        };
+
+        await handleBabelLens(interaction as never, {
+            translationService: translationService as never,
+            cache: new TranslationCache(20),
+        });
+
+        expect(interaction.deferReply).toHaveBeenCalledOnce();
+        expect(mocks.tryConsumeVisionImage).toHaveBeenCalledWith(
+            new Date().toISOString().slice(0, 7),
+            950,
+        );
+        expect(mocks.detectText).toHaveBeenCalledOnce();
+        expect(mocks.detectText).toHaveBeenCalledWith(expect.any(Buffer), {
+            apiKey: 'vision-key',
+        });
+        expect(mocks.renderImage).toHaveBeenCalledWith(expect.any(Buffer), '圖片翻譯');
+        expect(interaction.editReply).toHaveBeenCalledWith({
+            content: '圖片翻譯',
+            files: [{ attachment: Buffer.from('rendered-image'), name: 'babel-lens.jpg' }],
+        });
+    });
+
+    it('should reject messages without a supported image before translation', async () => {
+        const interaction = createInteraction(false);
+        const translationService = { process: vi.fn() };
+
+        await handleBabelLens(interaction as never, {
+            translationService: translationService as never,
+            cache: new TranslationCache(20),
+        });
+
+        expect(translationService.process).not.toHaveBeenCalled();
+        expect(interaction.reply).toHaveBeenCalledWith(
+            expect.objectContaining({
+                content: expect.stringContaining('PNG, JPEG, or WebP'),
+            }),
+        );
+    });
+
+    it('should reject a guild without Lens access before downloading the image', async () => {
+        mocks.getRuntimeConfig.mockReturnValueOnce({
+            visionApiKey: 'vision-key',
+            visionMonthlyImageLimit: 900,
+            lensEnabledGuildIds: [],
+        });
+        const interaction = createInteraction();
+        const translationService = { process: vi.fn() };
+
+        await handleBabelLens(interaction as never, {
+            translationService: translationService as never,
+            cache: new TranslationCache(20),
+        });
+
+        expect(translationService.process).not.toHaveBeenCalled();
+        expect(fetch).not.toHaveBeenCalled();
+        expect(interaction.reply).toHaveBeenCalledWith(
+            expect.objectContaining({ content: 'Babel Lens is not enabled for this server.' }),
+        );
+    });
+
+    it('should enforce global disable before serving a cached OCR result', async () => {
+        const cache = new TranslationCache(20);
+        const image = Buffer.from('same-image');
+        await _test.detectTextWithBudget(image, cache, 'request-1');
+        mocks.getRuntimeConfig.mockReturnValue({
+            visionApiKey: 'vision-key',
+            visionMonthlyImageLimit: 0,
+            lensEnabledGuildIds: ['guild-1'],
+        });
+
+        await expect(_test.detectTextWithBudget(image, cache, 'request-2')).rejects.toThrow(
+            'disabled in Settings',
+        );
+        expect(mocks.detectText).toHaveBeenCalledOnce();
+        expect(mocks.tryConsumeVisionImage).toHaveBeenCalledOnce();
+    });
+});

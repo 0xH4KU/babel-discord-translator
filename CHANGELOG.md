@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added Babel Lens image OCR through Google Cloud Vision, translated caption images, a dedicated Vision API key, a configurable monthly image limit, per-server Guild access, and shared Guild/Pocket context-menu support.
+
 ## 0.2.3 - 2026-08-27
 
 - Removed the Cloudflare Worker/D1 runtime and deployment tooling; Babel now ships one Node.js Gateway and SQLite runtime for Railway, Docker, VPS, and PM2 deployments.
