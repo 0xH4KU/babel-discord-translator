@@ -127,12 +127,14 @@ describe('Babel Lens command', () => {
         expect(mocks.renderImage).toHaveBeenCalledWith(
             expect.any(Buffer),
             '[1] 圖片翻譯',
-            expect.objectContaining({ regions: [expect.objectContaining({ text: 'Text from image' })] }),
+            expect.objectContaining({
+                regions: [expect.objectContaining({ text: 'Text from image' })],
+            }),
         );
         expect(interaction.editReply).toHaveBeenCalledWith({
-            content: '[1] 圖片翻譯',
             files: [{ attachment: Buffer.from('rendered-image'), name: 'babel-lens.jpg' }],
         });
+        expect(interaction.followUp).not.toHaveBeenCalled();
     });
 
     it('should reject messages without a supported image before translation', async () => {

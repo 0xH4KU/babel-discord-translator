@@ -15,7 +15,7 @@ describe('Babel Lens image rendering', () => {
             .png()
             .toBuffer();
 
-    it('should mark numbered OCR regions without changing the image layout', async () => {
+    it('should draw a numbered region box above the translated caption', async () => {
         const output = await renderLensImage(await sourceImage(), '[1] Translated text', {
             text: 'Source text',
             imageWidth: 320,
@@ -25,19 +25,16 @@ describe('Babel Lens image rendering', () => {
         const rendered = sharp(output);
         const metadata = await rendered.metadata();
         const { data, info } = await rendered.raw().toBuffer({ resolveWithObject: true });
-        const pixel = (51 * info.width + 43) * info.channels;
+        const pixel = (40 * info.width + 60) * info.channels;
 
         expect(metadata.format).toBe('jpeg');
         expect(metadata.width).toBe(320);
-        expect(metadata.height).toBe(180);
+        expect(metadata.height).toBeGreaterThan(180);
         expect([...data.subarray(pixel, pixel + 3)]).not.toEqual([216, 216, 216]);
     });
 
     it('should append the caption when Vision returns no reliable regions', async () => {
-        const output = await renderLensImage(
-            await sourceImage(),
-            'Translated text\n第二行翻譯',
-        );
+        const output = await renderLensImage(await sourceImage(), 'Translated text\n第二行翻譯');
         const metadata = await sharp(output).metadata();
 
         expect(metadata.format).toBe('jpeg');

@@ -11,10 +11,7 @@ import { type TranslationCache } from '../modules/translation/cache.js';
 import { buildTranslationMessages } from '../shared/discord-message-format.js';
 import { appLogger, createRequestId } from '../shared/structured-logger.js';
 import { store } from '../persistence/store.js';
-import {
-    detectTextWithCloudVision,
-    type VisionTextResult,
-} from '../infra/cloud-vision-client.js';
+import { detectTextWithCloudVision, type VisionTextResult } from '../infra/cloud-vision-client.js';
 import type { CommandDeps } from '../shared/types.js';
 
 const MAX_IMAGE_BYTES = 7 * 1024 * 1024;
@@ -135,9 +132,7 @@ async function detectTextWithBudget(
 
 function formatDetectedText(detected: VisionTextResult): string {
     if (detected.regions.length === 0) return detected.text;
-    return detected.regions
-        .map((region, index) => `[${index + 1}] ${region.text}`)
-        .join('\n\n');
+    return detected.regions.map((region, index) => `[${index + 1}] ${region.text}`).join('\n\n');
 }
 
 async function sendLensReply(
@@ -145,6 +140,13 @@ async function sendLensReply(
     translatedText: string,
     image?: Buffer,
 ): Promise<void> {
+    if (image) {
+        await interaction.editReply({
+            files: [{ attachment: image, name: 'babel-lens.jpg' }],
+        });
+        return;
+    }
+
     const messages = buildTranslationMessages({
         originalText: '',
         translatedText,
@@ -153,7 +155,6 @@ async function sendLensReply(
     });
     await interaction.editReply({
         content: messages[0] ?? '',
-        ...(image ? { files: [{ attachment: image, name: 'babel-lens.jpg' }] } : {}),
     });
 
     for (const message of messages.slice(1)) {

@@ -16,10 +16,16 @@ interface VisionParagraph {
     words?: Array<{ symbols?: VisionSymbol[] }>;
 }
 
+interface VisionBlock {
+    boundingBox?: { vertices?: Array<{ x?: number; y?: number }> };
+    blockType?: string;
+    paragraphs?: VisionParagraph[];
+}
+
 interface VisionPage {
     width?: number;
     height?: number;
-    blocks?: Array<{ paragraphs?: VisionParagraph[] }>;
+    blocks?: VisionBlock[];
 }
 
 interface VisionImageResponse {
@@ -74,8 +80,8 @@ function paragraphText(paragraph: VisionParagraph): string {
         .trim();
 }
 
-function paragraphBounds(paragraph: VisionParagraph): Omit<VisionTextRegion, 'text'> | null {
-    const points = (paragraph.boundingBox?.vertices ?? []).map((point) => ({
+function blockBounds(block: VisionBlock): Omit<VisionTextRegion, 'text'> | null {
+    const points = (block.boundingBox?.vertices ?? []).map((point) => ({
         x: point.x ?? 0,
         y: point.y ?? 0,
     }));
@@ -90,17 +96,22 @@ function paragraphBounds(paragraph: VisionParagraph): Omit<VisionTextRegion, 'te
     return width > 0 && height > 0 ? { x, y, width, height } : null;
 }
 
+function blockText(block: VisionBlock): string {
+    return (block.paragraphs ?? []).map(paragraphText).filter(Boolean).join('\n');
+}
+
 function parseVisionText(result?: VisionImageResponse): VisionTextResult {
     const annotation = result?.fullTextAnnotation;
     const page = annotation?.pages?.[0];
     const imageWidth = page?.width ?? 0;
     const imageHeight = page?.height ?? 0;
-    const paragraphs = page?.blocks?.flatMap((block) => block.paragraphs ?? []) ?? [];
+    const blocks =
+        page?.blocks?.filter((block) => !block.blockType || block.blockType === 'TEXT') ?? [];
     const parsedRegions =
         imageWidth > 0 && imageHeight > 0
-            ? paragraphs.flatMap((paragraph) => {
-                  const text = paragraphText(paragraph);
-                  const bounds = paragraphBounds(paragraph);
+            ? blocks.flatMap((block) => {
+                  const text = blockText(block);
+                  const bounds = blockBounds(block);
                   return text && bounds ? [{ text, ...bounds }] : [];
               })
             : [];

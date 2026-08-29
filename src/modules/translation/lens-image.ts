@@ -3,8 +3,6 @@ import type { VisionTextResult } from '../../infra/cloud-vision-client.js';
 
 const MAX_INPUT_PIXELS = 16_000_000;
 const MAX_OUTPUT_EDGE = 1600;
-const MAX_CAPTION_LINES = 60;
-const MAX_RENDERED_TEXT_CHARS = 2000;
 
 sharp.cache({ memory: 16, files: 0, items: 16 });
 sharp.concurrency(1);
@@ -54,18 +52,7 @@ function splitLongLine(text: string, maxWidth: number): string[] {
 }
 
 function wrapCaption(text: string, maxWidth: number): string[] {
-    const renderText =
-        text.length > MAX_RENDERED_TEXT_CHARS
-            ? `${text.slice(0, MAX_RENDERED_TEXT_CHARS)}...`
-            : text;
-    const lines = renderText
-        .split(/\r?\n/u)
-        .flatMap((line) => (line ? splitLongLine(line, maxWidth) : ['']));
-
-    if (lines.length <= MAX_CAPTION_LINES) return lines;
-
-    // ponytail: keep the image bounded; the Discord reply still contains the full translation.
-    return [...lines.slice(0, MAX_CAPTION_LINES - 1), '...'];
+    return text.split(/\r?\n/u).flatMap((line) => (line ? splitLongLine(line, maxWidth) : ['']));
 }
 
 function buildCaptionSvg(width: number, text: string): { image: Buffer; height: number } {
@@ -100,46 +87,40 @@ function clamp(value: number, min: number, max: number): number {
     return Math.min(Math.max(value, min), max);
 }
 
-function buildRegionMarkersSvg(
+function buildRegionBoxesSvg(
     width: number,
     height: number,
     detected: VisionTextResult,
 ): Buffer | null {
-    if (
-        detected.regions.length === 0 ||
-        detected.imageWidth <= 0 ||
-        detected.imageHeight <= 0
-    ) {
+    if (detected.regions.length === 0 || detected.imageWidth <= 0 || detected.imageHeight <= 0) {
         return null;
     }
 
     const scaleX = width / detected.imageWidth;
     const scaleY = height / detected.imageHeight;
-    const diameter = clamp(Math.round(Math.min(width, height) / 18), 22, 40);
-    const radius = diameter / 2;
-    const markers = detected.regions
+    const strokeWidth = clamp(Math.round(Math.min(width, height) / 400), 2, 4);
+    const labelHeight = clamp(Math.round(Math.min(width, height) / 20), 24, 40);
+    const boxes = detected.regions
         .map((region, index) => {
             const label = String(index + 1);
-            const left = Math.round(region.x * scaleX);
-            const top = Math.round(region.y * scaleY);
-            const hasLeftSpace = left >= diameter + 6;
-            const x = clamp(
-                hasLeftSpace ? left - radius - 6 : left + radius,
-                radius + 2,
-                width - radius - 2,
+            const x = clamp(Math.round(region.x * scaleX), 1, width - 2);
+            const y = clamp(Math.round(region.y * scaleY), 1, height - 2);
+            const boxWidth = clamp(Math.round(region.width * scaleX), 1, width - x - 1);
+            const boxHeight = clamp(Math.round(region.height * scaleY), 1, height - y - 1);
+            const labelWidth = Math.max(
+                labelHeight,
+                Math.round(labelHeight * (0.75 + label.length * 0.45)),
             );
-            const y = clamp(
-                hasLeftSpace || top < diameter + 6 ? top + radius : top - radius - 6,
-                radius + 2,
-                height - radius - 2,
-            );
-            const fontSize = Math.round(diameter * (label.length > 1 ? 0.4 : 0.52));
-            return `<circle cx="${x}" cy="${y}" r="${radius}" fill="#5865f2" stroke="#ffffff" stroke-width="2"/><text x="${x}" y="${y + Math.round(fontSize * 0.35)}" text-anchor="middle" fill="#ffffff" font-family="Noto Sans, sans-serif" font-size="${fontSize}" font-weight="700">${label}</text>`;
+            const hasLeftSpace = x >= labelWidth + 3;
+            const labelX = clamp(hasLeftSpace ? x - labelWidth : x, 1, width - labelWidth - 1);
+            const labelY = hasLeftSpace ? y : y >= labelHeight + 3 ? y - labelHeight : y;
+            const fontSize = Math.round(labelHeight * (label.length > 1 ? 0.43 : 0.55));
+            return `<rect x="${x}" y="${y}" width="${boxWidth}" height="${boxHeight}" rx="3" fill="none" stroke="#5865f2" stroke-width="${strokeWidth}"/><rect x="${labelX}" y="${labelY}" width="${labelWidth}" height="${labelHeight}" rx="3" fill="#5865f2" stroke="#ffffff" stroke-width="${strokeWidth}"/><text x="${labelX + labelWidth / 2}" y="${labelY + labelHeight / 2 + Math.round(fontSize * 0.35)}" text-anchor="middle" fill="#ffffff" font-family="Noto Sans, sans-serif" font-size="${fontSize}" font-weight="700">${label}</text>`;
         })
         .join('');
 
     return Buffer.from(
-        `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${markers}</svg>`,
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${boxes}</svg>`,
     );
 }
 
@@ -159,14 +140,7 @@ export async function renderLensImage(
         .jpeg({ quality: 88 })
         .toBuffer({ resolveWithObject: true });
     const { width, height } = normalized.info;
-    const markers = detected ? buildRegionMarkersSvg(width, height, detected) : null;
-    if (markers) {
-        return sharp(normalized.data)
-            .composite([{ input: markers, left: 0, top: 0 }])
-            .jpeg({ quality: 88 })
-            .toBuffer();
-    }
-
+    const boxes = detected ? buildRegionBoxesSvg(width, height, detected) : null;
     const caption = buildCaptionSvg(width, translatedText);
 
     return sharp({
@@ -179,10 +153,11 @@ export async function renderLensImage(
     })
         .composite([
             { input: normalized.data, left: 0, top: 0 },
+            ...(boxes ? [{ input: boxes, left: 0, top: 0 }] : []),
             { input: caption.image, left: 0, top: height },
         ])
         .jpeg({ quality: 88 })
         .toBuffer();
 }
 
-export const _test = { wrapCaption, buildCaptionSvg, buildRegionMarkersSvg };
+export const _test = { wrapCaption, buildCaptionSvg, buildRegionBoxesSvg };

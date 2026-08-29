@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { detectTextWithCloudVision } from '../src/infra/cloud-vision-client.js';
 
 describe('Cloud Vision client', () => {
-    it('should return paragraph text and bounds from one TEXT_DETECTION request', async () => {
+    it('should group paragraphs into one numbered text block', async () => {
         const word = (text: string, breakType?: string) => ({
             symbols: [...text].map((character, index, symbols) => ({
                 text: character,
@@ -11,45 +11,47 @@ describe('Cloud Vision client', () => {
                     : {}),
             })),
         });
-        const fetchImpl = vi.fn(async () =>
-            new Response(
-                JSON.stringify({
-                    responses: [
-                        {
-                            fullTextAnnotation: {
-                                text: 'Hello image\n',
-                                pages: [
-                                    {
-                                        width: 200,
-                                        height: 100,
-                                        blocks: [
-                                            {
-                                                paragraphs: [
-                                                    {
-                                                        boundingBox: {
-                                                            vertices: [
-                                                                { x: 10, y: 20 },
-                                                                { x: 110, y: 20 },
-                                                                { x: 110, y: 50 },
-                                                                { x: 10, y: 50 },
-                                                            ],
-                                                        },
-                                                        words: [
-                                                            word('Hello', 'SPACE'),
-                                                            word('image', 'LINE_BREAK'),
+        const fetchImpl = vi.fn(
+            async () =>
+                new Response(
+                    JSON.stringify({
+                        responses: [
+                            {
+                                fullTextAnnotation: {
+                                    text: 'Hello image\n',
+                                    pages: [
+                                        {
+                                            width: 200,
+                                            height: 100,
+                                            blocks: [
+                                                {
+                                                    blockType: 'TEXT',
+                                                    boundingBox: {
+                                                        vertices: [
+                                                            { x: 10, y: 20 },
+                                                            { x: 110, y: 20 },
+                                                            { x: 110, y: 80 },
+                                                            { x: 10, y: 80 },
                                                         ],
                                                     },
-                                                ],
-                                            },
-                                        ],
-                                    },
-                                ],
+                                                    paragraphs: [
+                                                        {
+                                                            words: [word('Hello', 'LINE_BREAK')],
+                                                        },
+                                                        {
+                                                            words: [word('image', 'LINE_BREAK')],
+                                                        },
+                                                    ],
+                                                },
+                                            ],
+                                        },
+                                    ],
+                                },
                             },
-                        },
-                    ],
-                }),
-                { status: 200, headers: { 'Content-Type': 'application/json' } },
-            ),
+                        ],
+                    }),
+                    { status: 200, headers: { 'Content-Type': 'application/json' } },
+                ),
         );
 
         await expect(
@@ -61,7 +63,7 @@ describe('Cloud Vision client', () => {
             text: 'Hello image',
             imageWidth: 200,
             imageHeight: 100,
-            regions: [{ text: 'Hello image', x: 10, y: 20, width: 100, height: 30 }],
+            regions: [{ text: 'Hello\nimage', x: 10, y: 20, width: 100, height: 60 }],
         });
 
         const init = fetchImpl.mock.calls[0]?.[1] as RequestInit;
@@ -72,11 +74,14 @@ describe('Cloud Vision client', () => {
     });
 
     it('should surface per-image API errors', async () => {
-        const fetchImpl = vi.fn(async () =>
-            new Response(
-                JSON.stringify({ responses: [{ error: { code: 403, message: 'API disabled' } }] }),
-                { status: 200, headers: { 'Content-Type': 'application/json' } },
-            ),
+        const fetchImpl = vi.fn(
+            async () =>
+                new Response(
+                    JSON.stringify({
+                        responses: [{ error: { code: 403, message: 'API disabled' } }],
+                    }),
+                    { status: 200, headers: { 'Content-Type': 'application/json' } },
+                ),
         );
 
         await expect(
