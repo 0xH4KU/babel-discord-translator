@@ -369,11 +369,16 @@ function switchTab(name) {
         return;
     }
 
-    document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach((b) => {
+        b.classList.remove('active');
+        b.removeAttribute('aria-current');
+    });
     document.querySelectorAll('.tab-content').forEach((c) => c.classList.remove('active'));
-    document
-        .querySelector(`.tab-btn[data-action="switchTab"][data-action-args='["${name}"]']`)
-        ?.classList.add('active');
+    const activeButton = document.querySelector(
+        `.tab-btn[data-action="switchTab"][data-action-args='["${name}"]']`,
+    );
+    activeButton?.classList.add('active');
+    activeButton?.setAttribute('aria-current', 'page');
     const target = document.getElementById('tab-' + name);
     if (!target) return;
     target.classList.add('active');
@@ -474,7 +479,7 @@ async function loadStats() {
 async function checkApiHealth() {
     const badge = document.getElementById('api-health');
     badge.className = 'health-badge checking';
-    badge.textContent = 'API';
+    badge.textContent = 'Checking';
     badge.title = 'Checking...';
     try {
         const res = await api('/health');
@@ -487,16 +492,16 @@ async function checkApiHealth() {
         const failedProvider = providerChecks.find((check) => check.status === 'fail');
         if (data.healthy) {
             badge.className = 'health-badge ok';
-            badge.textContent = 'API';
+            badge.textContent = 'Ready';
             badge.title = 'Ready · ' + (passingProvider?.latencyMs ?? '?') + 'ms';
         } else {
             badge.className = 'health-badge fail';
-            badge.textContent = 'API';
+            badge.textContent = 'Issue';
             badge.title = failedProvider?.error || checks.configuration?.detail || 'Unknown error';
         }
     } catch {
         badge.className = 'health-badge fail';
-        badge.textContent = 'API';
+        badge.textContent = 'Offline';
         badge.title = 'Connection failed';
     }
 }

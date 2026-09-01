@@ -19,8 +19,14 @@
         gap: 0.55rem 0.75rem;
     }
 
+    .sidebar-brandline,
+    .sidebar-footer-label {
+        display: none;
+    }
+
     .sidebar-identity {
         min-width: 0;
+        padding-bottom: 0;
         grid-column: 1 / -1;
         grid-row: 1;
     }
@@ -36,6 +42,10 @@
         min-height: 2.4rem;
     }
 
+    .sidebar-footer {
+        display: contents;
+    }
+
     .dashboard-sidebar .header-meta {
         display: flex;
         align-items: center;
@@ -43,18 +53,40 @@
         margin: 0;
         padding: 0;
         border: 0;
+        background: transparent;
         grid-column: 1;
         grid-row: 2;
     }
 
-    .dashboard-sidebar .version-link {
-        display: inline-flex;
-        grid-column: auto;
+    .sidebar-status-row {
+        min-height: 0;
+        gap: 0.35rem;
     }
-    .dashboard-sidebar .btn-logout {
-        display: inline-flex;
+
+    .sidebar-status-row + .sidebar-status-row {
+        margin: 0 0 0 0.75rem;
+        padding: 0;
+        border: 0;
+    }
+
+    .sidebar-status-row:first-child .sidebar-status-name {
+        display: none;
+    }
+
+    .sidebar-actions {
+        display: flex;
+        gap: 0.4rem;
         grid-column: 2;
         grid-row: 2;
+    }
+
+    .sidebar-actions .version-link {
+        display: inline-flex;
+        min-height: 2rem;
+    }
+
+    .sidebar-actions .btn-logout {
+        display: inline-flex;
         width: auto;
         min-height: 2rem;
         padding: 0.35rem 0.65rem;
