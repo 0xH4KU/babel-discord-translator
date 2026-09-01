@@ -149,8 +149,7 @@ Security:
 Return one JSON object with:
 - "has_text": whether the image contains meaningful visible text.
 - "translation": the complete translated text with useful line breaks, or an empty string when has_text is false.
-- "regions": at most 99 reading-order objects with "translation" and "box_2d".
-- Each box_2d is [ymin, xmin, ymax, xmax] in integer coordinates from 0 to 1000.
+- "regions": at most 99 reading-order [ymin, xmin, ymax, xmax] arrays in integer coordinates from 0 to 1000.
 - Do not include markdown, explanations, or keys beyond this contract.`,
         user: 'Inspect the image, translate all meaningful visible text, and return the JSON object.',
     };

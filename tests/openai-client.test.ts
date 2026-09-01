@@ -38,13 +38,20 @@ import { store } from '../src/persistence/store.js';
 
 const translationPrompt = (user: string) => ({ system: 'Translate accurately.', user });
 
-function chatResponse(content: string | null, usage?: Record<string, unknown>) {
+function chatResponse(
+    content: string | null,
+    usage?: Record<string, unknown>,
+    finishReason?: string,
+) {
     return {
         ok: true,
         status: 200,
         json: () =>
             Promise.resolve({
-                choices: content === null ? [] : [{ message: { content } }],
+                choices:
+                    content === null
+                        ? []
+                        : [{ message: { content }, finish_reason: finishReason }],
                 ...(usage !== undefined ? { usage } : {}),
             }),
         text: () => Promise.resolve(''),
@@ -143,6 +150,23 @@ describe('openai-client', () => {
         ]);
         expect(body).not.toHaveProperty('response_format');
         expect(body.messages[1].content[1].image_url).not.toHaveProperty('detail');
+    });
+
+    it('should report image output truncated by the configured token limit', async () => {
+        globalThis.fetch = vi
+            .fn()
+            .mockResolvedValue(chatResponse('{"has_text":true', undefined, 'length'));
+
+        await expect(
+            generateImageTranslationContent(
+                {
+                    image: Buffer.from('image'),
+                    mimeType: 'image/png',
+                    prompt: translationPrompt('Read it.'),
+                },
+                1000,
+            ),
+        ).rejects.toThrow('truncated by Max Output Tokens');
     });
 
     it('should reject empty completions', async () => {
@@ -303,12 +327,18 @@ describe('openai-client', () => {
         });
     });
 
-    it('should strip trailing slashes when building the completions URL', () => {
+    it('should normalize supported completions base URLs', () => {
         expect(_test.buildChatCompletionsUrl('https://host//')).toBe(
             'https://host/v1/chat/completions',
         );
         expect(_test.buildChatCompletionsUrl('https://host')).toBe(
             'https://host/v1/chat/completions',
+        );
+        expect(_test.buildChatCompletionsUrl('https://host/v1/')).toBe(
+            'https://host/v1/chat/completions',
+        );
+        expect(_test.buildChatCompletionsUrl('https://host/compat/chat/completions/')).toBe(
+            'https://host/compat/chat/completions',
         );
     });
 

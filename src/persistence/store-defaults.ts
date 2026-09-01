@@ -25,7 +25,7 @@ export const DEFAULT_STORE_DATA: StoreData = {
     userLanguagePrefs: {},
     userLanguagePreferenceEntries: [],
     maxInputLength: 2000,
-    maxOutputTokens: 1000,
+    maxOutputTokens: 4096,
     translationMaxConcurrent: 4,
     translationMaxGlobalQueue: 25,
     translationMaxGuildQueue: 5,

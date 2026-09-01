@@ -491,7 +491,7 @@ export function createTranslationService({
                 geminiModel: runtimeConfig.geminiModel,
                 providerFingerprint: buildProviderFingerprint(runtimeConfig),
                 prompt,
-                maxOutputTokens: runtimeConfig.maxOutputTokens || 1000,
+                maxOutputTokens: runtimeConfig.maxOutputTokens || 4096,
                 glossaryVersion,
             });
 
@@ -552,7 +552,7 @@ export function createTranslationService({
                 if (!cached && !joinedInFlight) {
                     budgetReservation = usageTracker.tryReserveBudget({
                         estimatedInputTokens: Math.ceil(originalText.length / 4),
-                        estimatedOutputTokens: runtimeConfig.maxOutputTokens || 1000,
+                        estimatedOutputTokens: runtimeConfig.maxOutputTokens || 4096,
                         ...usageScope,
                     });
                     if (!budgetReservation) {
@@ -904,7 +904,7 @@ export function createTranslationService({
                 providerFingerprint: buildProviderFingerprint(runtimeConfig),
                 prompt: `${imagePrompt.system}\n${imagePrompt.user}`,
                 glossaryVersion,
-                maxOutputTokens: runtimeConfig.maxOutputTokens || 1000,
+                maxOutputTokens: runtimeConfig.maxOutputTokens || 4096,
             });
 
             let reservation: TranslationRuntimeReservation | null = null;
@@ -943,7 +943,7 @@ export function createTranslationService({
                     reservation = runtime.reservation;
                     budgetReservation = usageTracker.tryReserveBudget({
                         estimatedInputTokens: 4096,
-                        estimatedOutputTokens: runtimeConfig.maxOutputTokens || 1000,
+                        estimatedOutputTokens: runtimeConfig.maxOutputTokens || 4096,
                         ...usageScope,
                     });
                     if (!budgetReservation) {

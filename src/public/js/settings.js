@@ -205,7 +205,7 @@ async function loadSettings(force = false) {
     document.getElementById('cfg-cooldown').value = currentConfig.cooldownSeconds || 5;
     document.getElementById('cfg-cache').value = currentConfig.cacheMaxSize || 2000;
     document.getElementById('cfg-max-input').value = currentConfig.maxInputLength || 2000;
-    document.getElementById('cfg-max-output').value = currentConfig.maxOutputTokens || 1000;
+    document.getElementById('cfg-max-output').value = currentConfig.maxOutputTokens || 4096;
     document.getElementById('cfg-max-concurrent').value =
       currentConfig.translationMaxConcurrent || 4;
     document.getElementById('cfg-max-global-queue').value =
@@ -259,7 +259,7 @@ async function saveSettings() {
   updates.cooldownSeconds = parseInt(document.getElementById('cfg-cooldown').value) || 5;
   updates.cacheMaxSize = parseInt(document.getElementById('cfg-cache').value) || 2000;
   updates.maxInputLength = parseInt(document.getElementById('cfg-max-input').value) || 2000;
-  updates.maxOutputTokens = parseInt(document.getElementById('cfg-max-output').value) || 1000;
+  updates.maxOutputTokens = parseInt(document.getElementById('cfg-max-output').value) || 4096;
   updates.translationMaxConcurrent =
     parseInt(document.getElementById('cfg-max-concurrent').value) || 4;
   updates.translationMaxGlobalQueue =

@@ -9,12 +9,11 @@ function unwrapJson(text: string): string {
 }
 
 function normalizeRegion(value: unknown): LensRegion | null {
-    if (!value || typeof value !== 'object') return null;
-    const region = value as Record<string, unknown>;
-    const translation = typeof region.translation === 'string' ? region.translation.trim() : '';
-    if (!translation || !Array.isArray(region.box_2d) || region.box_2d.length !== 4) return null;
+    const region = value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
+    const box2d = Array.isArray(value) ? value : region?.box_2d;
+    if (!Array.isArray(box2d) || box2d.length !== 4) return null;
 
-    const box = region.box_2d.map(Number);
+    const box = box2d.map(Number);
     if (
         box.some((coordinate) => !Number.isFinite(coordinate) || coordinate < 0 || coordinate > 1000)
     ) {
@@ -22,7 +21,10 @@ function normalizeRegion(value: unknown): LensRegion | null {
     }
     const normalized = box.map(Math.round) as [number, number, number, number];
     if (normalized[0] >= normalized[2] || normalized[1] >= normalized[3]) return null;
-    return { translation, box_2d: normalized };
+    return {
+        translation: typeof region?.translation === 'string' ? region.translation.trim() : '',
+        box_2d: normalized,
+    };
 }
 
 export function parseImageTranslationResponse(

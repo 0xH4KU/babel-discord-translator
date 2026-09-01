@@ -49,6 +49,8 @@ function getOpenAiConfig(runtimeConfig?: RuntimeConfig): OpenAiConfig {
 
 function buildChatCompletionsUrl(baseUrl: string): string {
     const base = baseUrl.replace(/\/+$/, '');
+    if (base.endsWith('/chat/completions')) return base;
+    if (base.endsWith('/v1')) return `${base}/chat/completions`;
     return `${base}/v1/chat/completions`;
 }
 
@@ -203,7 +205,13 @@ export async function generateImageTranslationContent(
         image: request,
     });
 
-    const result = data.choices?.[0]?.message?.content?.trim();
+    const choice = data.choices?.[0];
+    if (choice?.finish_reason === 'length') {
+        throw new Error(
+            'Babel Lens output was truncated by Max Output Tokens; increase it in Settings.',
+        );
+    }
+    const result = choice?.message?.content?.trim();
     if (!result) throw new Error('Empty Babel Lens response from OpenAI');
 
     const usage = data.usage || {};

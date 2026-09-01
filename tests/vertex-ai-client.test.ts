@@ -48,13 +48,18 @@ import { store } from '../src/persistence/store.js';
 
 const translationPrompt = (user: string) => ({ system: 'Translate accurately.', user });
 
-function geminiResponse(text: string, inputTokens = 10, outputTokens = 5) {
+function geminiResponse(
+    text: string,
+    inputTokens = 10,
+    outputTokens = 5,
+    finishReason?: string,
+) {
     return {
         ok: true,
         status: 200,
         json: () =>
             Promise.resolve({
-                candidates: [{ content: { parts: [{ text }] } }],
+                candidates: [{ content: { parts: [{ text }] }, finishReason }],
                 usageMetadata: {
                     promptTokenCount: inputTokens,
                     candidatesTokenCount: outputTokens,
@@ -126,7 +131,7 @@ describe('vertex-ai-client', () => {
                 JSON.stringify({
                     has_text: true,
                     translation: '你好',
-                    regions: [{ translation: '你好', box_2d: [10, 20, 30, 40] }],
+                    regions: [[10, 20, 30, 40]],
                 }),
                 120,
                 20,
@@ -156,6 +161,12 @@ describe('vertex-ai-client', () => {
             responseMimeType: 'application/json',
             responseSchema: { type: 'OBJECT', required: ['has_text', 'translation', 'regions'] },
         });
+        expect(body.generationConfig.responseSchema.properties.regions.items).toEqual({
+            type: 'ARRAY',
+            minItems: 4,
+            maxItems: 4,
+            items: { type: 'NUMBER', minimum: 0, maximum: 1000 },
+        });
 
         mockStore._setMock('geminiMediaResolution', 'default');
         await generateImageTranslationContent(
@@ -170,6 +181,23 @@ describe('vertex-ai-client', () => {
             (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[1][1].body,
         );
         expect(defaultBody.contents[0].parts[1]).not.toHaveProperty('mediaResolution');
+    });
+
+    it('should report image output truncated by the configured token limit', async () => {
+        globalThis.fetch = vi
+            .fn()
+            .mockResolvedValue(geminiResponse('{"has_text":true', 10, 1000, 'MAX_TOKENS'));
+
+        await expect(
+            generateImageTranslationContent(
+                {
+                    image: Buffer.from('image'),
+                    mimeType: 'image/png',
+                    prompt: translationPrompt('Read it.'),
+                },
+                1000,
+            ),
+        ).rejects.toThrow('truncated by Max Output Tokens');
     });
 
     it('should return healthy status for a successful health check', async () => {

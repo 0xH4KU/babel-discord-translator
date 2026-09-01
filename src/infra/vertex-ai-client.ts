@@ -42,17 +42,10 @@ const LENS_RESPONSE_SCHEMA = {
             type: 'ARRAY',
             maxItems: 99,
             items: {
-                type: 'OBJECT',
-                required: ['translation', 'box_2d'],
-                properties: {
-                    translation: { type: 'STRING' },
-                    box_2d: {
-                        type: 'ARRAY',
-                        minItems: 4,
-                        maxItems: 4,
-                        items: { type: 'NUMBER', minimum: 0, maximum: 1000 },
-                    },
-                },
+                type: 'ARRAY',
+                minItems: 4,
+                maxItems: 4,
+                items: { type: 'NUMBER', minimum: 0, maximum: 1000 },
             },
         },
     },
@@ -281,7 +274,13 @@ export async function generateImageTranslationContent(
         },
     });
 
-    const result = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    const candidate = data.candidates?.[0];
+    if (candidate?.finishReason === 'MAX_TOKENS') {
+        throw new Error(
+            'Babel Lens output was truncated by Max Output Tokens; increase it in Settings.',
+        );
+    }
+    const result = candidate?.content?.parts?.[0]?.text?.trim();
     if (!result) throw new Error('Empty Babel Lens response from Gemini');
 
     const meta = data.usageMetadata || {};

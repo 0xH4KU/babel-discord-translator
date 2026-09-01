@@ -170,6 +170,7 @@ export interface ImageTranslationRequest {
 
 export interface VertexAIResponse {
     candidates?: Array<{
+        finishReason?: string;
         content?: {
             parts?: Array<{ text?: string }>;
         };
@@ -182,6 +183,7 @@ export interface VertexAIResponse {
 
 export interface OpenAIChatResponse {
     choices?: Array<{
+        finish_reason?: string | null;
         message?: {
             content?: string;
         };

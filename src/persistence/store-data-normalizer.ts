@@ -236,7 +236,7 @@ export function normalizeStoreData(data: Partial<StoreData> | undefined): StoreD
             source.userLanguagePreferenceEntries,
         ),
         maxInputLength: normalizeNumber(source.maxInputLength, 2000),
-        maxOutputTokens: normalizeNumber(source.maxOutputTokens, 1000),
+        maxOutputTokens: normalizeNumber(source.maxOutputTokens, 4096),
         translationMaxConcurrent: normalizeNumber(source.translationMaxConcurrent, 4),
         translationMaxGlobalQueue: normalizeNumber(source.translationMaxGlobalQueue, 25),
         translationMaxGuildQueue: normalizeNumber(source.translationMaxGuildQueue, 5),

@@ -4,7 +4,7 @@ import { parseImageTranslationResponse } from '../src/modules/translation/lens-m
 describe('parseImageTranslationResponse', () => {
     it('normalizes fenced JSON and valid coordinates', () => {
         const result = parseImageTranslationResponse(
-            '```json\n{"has_text":true,"translation":" 完整翻譯 ","regions":[{"translation":"區域","box_2d":[1.2,2.6,900,999]}]}\n```',
+            '```json\n{"has_text":true,"translation":" 完整翻譯 ","regions":[[1.2,2.6,900,999]]}\n```',
             12,
             8,
         );
@@ -12,10 +12,20 @@ describe('parseImageTranslationResponse', () => {
         expect(result).toEqual({
             text: '完整翻譯',
             hasText: true,
-            regions: [{ translation: '區域', box_2d: [1, 3, 900, 999] }],
+            regions: [{ translation: '', box_2d: [1, 3, 900, 999] }],
             inputTokens: 12,
             outputTokens: 8,
         });
+    });
+
+    it('keeps accepting the previous region object format', () => {
+        const result = parseImageTranslationResponse(
+            '{"has_text":true,"translation":"caption","regions":[{"translation":"region","box_2d":[1,2,3,4]}]}',
+            1,
+            1,
+        );
+
+        expect(result.regions).toEqual([{ translation: 'region', box_2d: [1, 2, 3, 4] }]);
     });
 
     it('treats has_text false as a valid terminal result', () => {

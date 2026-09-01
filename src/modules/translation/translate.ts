@@ -100,7 +100,7 @@ export async function translate(
         options?.glossaryEntries,
         options?.preserveNumberedMarkers,
     );
-    const maxOutputTokens = config.maxOutputTokens || 1000;
+    const maxOutputTokens = config.maxOutputTokens || 4096;
     const mode = config.translationProvider || 'vertex';
 
     return getOrchestrator(mode).translate(prompt, maxOutputTokens, options);
@@ -126,7 +126,7 @@ export async function translateImage(
     );
     return getOrchestrator(config.translationProvider || 'vertex').translateImage(
         { image, mimeType, prompt, resolveVision },
-        config.maxOutputTokens || 1000,
+        config.maxOutputTokens || 4096,
         options,
     );
 }
