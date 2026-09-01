@@ -4,13 +4,13 @@ import { parseImageTranslationResponse } from '../src/modules/translation/lens-m
 describe('parseImageTranslationResponse', () => {
     it('normalizes fenced JSON and valid coordinates', () => {
         const result = parseImageTranslationResponse(
-            '```json\n{"has_text":true,"translation":" 完整翻譯 ","regions":[[1.2,2.6,900,999]]}\n```',
+            '```json\n{"has_text":true,"translation":"[[BABEL_REGION_1]] 完整翻譯","regions":[[1.2,2.6,900,999]]}\n```',
             12,
             8,
         );
 
         expect(result).toEqual({
-            text: '完整翻譯',
+            text: '[1] 完整翻譯',
             hasText: true,
             regions: [{ translation: '', box_2d: [1, 3, 900, 999] }],
             inputTokens: 12,
@@ -25,7 +25,22 @@ describe('parseImageTranslationResponse', () => {
             1,
         );
 
+        expect(result.text).toBe('[1] region');
         expect(result.regions).toEqual([{ translation: 'region', box_2d: [1, 2, 3, 4] }]);
+    });
+
+    it('drops numbered boxes when compact translations omit their matching markers', () => {
+        const result = parseImageTranslationResponse(
+            '{"has_text":true,"translation":"caption","regions":[[1,2,3,4]]}',
+            1,
+            1,
+        );
+
+        expect(result).toMatchObject({
+            text: 'caption',
+            regions: [],
+            warnings: ['invalid_regions'],
+        });
     });
 
     it('treats has_text false as a valid terminal result', () => {

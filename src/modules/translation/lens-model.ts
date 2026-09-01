@@ -1,4 +1,5 @@
 import type { ImageTranslationResult, LensRegion } from '../../shared/types.js';
+import { normalizeRegionTranslation } from './lens-regions.js';
 
 const MAX_REGIONS = 99;
 
@@ -62,14 +63,23 @@ export function parseImageTranslationResponse(
         rawRegions.length > 0 &&
         rawRegions.length <= MAX_REGIONS &&
         regions.every((region): region is LensRegion => region !== null);
+    const validRegions = regionsValid ? (regions as LensRegion[]) : [];
+    const normalizedTranslation = normalizeRegionTranslation(translation, validRegions.length);
+    const hasLegacyRegionText =
+        validRegions.length > 0 && validRegions.every((region) => region.translation);
+    const regionsAligned =
+        regionsValid && (normalizedTranslation.markersMatch || hasLegacyRegionText);
+    const displayText = hasLegacyRegionText
+        ? validRegions.map((region, index) => `[${index + 1}] ${region.translation}`).join('\n\n')
+        : normalizedTranslation.displayText;
 
     return {
-        text: translation,
+        text: displayText,
         hasText: true,
-        regions: regionsValid ? regions : [],
+        regions: regionsAligned ? validRegions : [],
         inputTokens,
         outputTokens,
-        ...(!regionsValid ? { warnings: ['invalid_regions'] } : {}),
+        ...(!regionsAligned ? { warnings: ['invalid_regions'] } : {}),
     };
 }
 

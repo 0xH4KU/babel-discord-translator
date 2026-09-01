@@ -18,11 +18,14 @@ export function normalizeRegionTranslation(
     text: string,
     regionCount: number,
 ): { markersMatch: boolean; displayText: string } {
-    if (regionCount === 0) return { markersMatch: true, displayText: text };
-
     const markers = [...text.matchAll(REGION_MARKER_PATTERN)].map((match) => Number(match[1]));
+    if (regionCount === 0 && markers.length === 0) {
+        return { markersMatch: true, displayText: text };
+    }
     const markersMatch =
-        markers.length === regionCount && markers.every((marker, index) => marker === index + 1);
+        regionCount > 0 &&
+        markers.length === regionCount &&
+        markers.every((marker, index) => marker === index + 1);
     const displayText = text
         .replace(REGION_MARKER_PATTERN, (_match, marker: string) =>
             markersMatch ? `[${marker}]` : '',

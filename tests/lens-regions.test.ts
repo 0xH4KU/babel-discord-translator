@@ -37,6 +37,9 @@ describe('Babel Lens region markers', () => {
             markersMatch: false,
             displayText: '第一 [9]',
         });
+        expect(normalizeRegionTranslation('[[BABEL_REGION_1]] orphaned', 0).displayText).toBe(
+            'orphaned',
+        );
     });
 
     it('should normalize Vision boxes and pair translated markers', () => {
