@@ -1,4 +1,3 @@
-
 /**
  * Setup wizard step navigation.
  */
@@ -15,8 +14,37 @@ function wizProviderUsesOpenai(mode) {
 
 function wizProviderChanged() {
   const mode = document.getElementById('wiz-provider').value;
-  document.getElementById('wiz-section-vertex').style.display = wizProviderUsesVertex(mode) ? '' : 'none';
-  document.getElementById('wiz-section-openai').style.display = wizProviderUsesOpenai(mode) ? '' : 'none';
+  document.getElementById('wiz-section-vertex').style.display = wizProviderUsesVertex(mode)
+    ? ''
+    : 'none';
+  document.getElementById('wiz-section-openai').style.display = wizProviderUsesOpenai(mode)
+    ? ''
+    : 'none';
+  document.getElementById('wiz-model-vertex').style.display = wizProviderUsesVertex(mode)
+    ? ''
+    : 'none';
+  document.getElementById('wiz-model-openai').style.display = wizProviderUsesOpenai(mode)
+    ? ''
+    : 'none';
+  wizCapabilityChanged();
+}
+
+function wizCapabilityChanged() {
+  const mode = document.getElementById('wiz-provider').value;
+  const needsVision =
+    (wizProviderUsesVertex(mode) && !document.getElementById('wiz-vertex-images').checked) ||
+    (wizProviderUsesOpenai(mode) && !document.getElementById('wiz-openai-images').checked);
+  document.getElementById('wiz-vision-fallback').hidden = !needsVision;
+}
+
+function wizVertexModelChanged() {
+  document.getElementById('wiz-vertex-images').checked = false;
+  wizCapabilityChanged();
+}
+
+function wizOpenaiIdentityChanged() {
+  document.getElementById('wiz-openai-images').checked = false;
+  wizCapabilityChanged();
 }
 
 function wizUpdateDots() {
@@ -65,9 +93,14 @@ async function wizFinish() {
     gcpProject: document.getElementById('wiz-project').value.trim(),
     gcpLocation: document.getElementById('wiz-location').value.trim() || 'global',
     geminiModel: document.getElementById('wiz-model').value.trim(),
+    vertexAiSupportsImages: document.getElementById('wiz-vertex-images').checked,
+    geminiMediaResolution: 'default',
     openaiApiKey: document.getElementById('wiz-openai-apikey').value.trim(),
     openaiBaseUrl: document.getElementById('wiz-openai-baseurl').value.trim(),
     openaiModel: document.getElementById('wiz-openai-model').value.trim(),
+    openaiSupportsImages: document.getElementById('wiz-openai-images').checked,
+    visionApiKey: document.getElementById('wiz-vision-apikey').value.trim(),
+    visionMonthlyImageLimit: parseInt(document.getElementById('wiz-vision-limit').value) || 0,
     cooldownSeconds: parseInt(document.getElementById('wiz-cooldown').value) || 5,
     cacheMaxSize: parseInt(document.getElementById('wiz-cache').value) || 2000,
     setupComplete: true,

@@ -46,7 +46,7 @@
 .settings-section h3 {
     font-size: 0.85rem;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0;
     color: var(--text-dim);
     margin-bottom: 1rem;
     font-weight: 600;
@@ -686,6 +686,290 @@
     font-size: 0.7rem;
     color: var(--text-dim);
     margin-top: 0.5rem;
+}
+
+/* --- Categorized settings and master-detail access --- */
+.settings-layout {
+    display: grid;
+    grid-template-columns: 168px minmax(0, 1fr);
+    gap: 1.5rem;
+    align-items: start;
+}
+
+.settings-category-nav {
+    position: sticky;
+    top: 1.75rem;
+    display: grid;
+    gap: 0.25rem;
+}
+
+.settings-category-btn {
+    min-height: 2.35rem;
+    padding: 0 0.7rem;
+    border: 0;
+    border-left: 2px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-align: left;
+    cursor: pointer;
+}
+
+.settings-category-btn:hover,
+.settings-category-btn.active {
+    color: var(--text);
+}
+
+.settings-category-btn.active {
+    border-left-color: var(--accent);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.mobile-settings-category {
+    display: none;
+}
+
+.settings-category-panel {
+    display: none;
+}
+
+.settings-category-panel.active {
+    display: block;
+}
+
+.settings-category-content .settings-section,
+.access-panel.settings-section {
+    margin: 0;
+    padding: 0 0 1.35rem;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    border-radius: 0;
+    background: transparent;
+}
+
+.settings-category-content .settings-section + .settings-section {
+    padding-top: 1.35rem;
+}
+
+.settings-save-bar {
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    align-items: center;
+    margin-top: 1rem;
+    padding: 0.75rem 0;
+    border-top: 1px solid var(--border);
+    background: var(--bg);
+}
+
+.settings-save-bar .save-status {
+    margin-right: auto;
+}
+
+.capability-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-width: min(100%, 20rem);
+    margin: 0;
+    padding: 0.7rem 0.8rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg);
+    color: var(--text);
+    cursor: pointer;
+}
+
+.capability-toggle span {
+    display: grid;
+    gap: 0.2rem;
+    min-width: 0;
+}
+
+.capability-toggle strong {
+    font-size: 0.8rem;
+}
+
+.capability-toggle small {
+    color: var(--text-dim);
+    font-size: 0.7rem;
+    line-height: 1.35;
+}
+
+.capability-toggle input {
+    width: 1.15rem;
+    height: 1.15rem;
+    flex: 0 0 auto;
+    accent-color: var(--accent);
+}
+
+.route-summary {
+    display: grid;
+    margin-bottom: 1rem;
+    border-top: 1px solid var(--border);
+}
+
+.route-summary div {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.7rem 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.82rem;
+}
+
+.route-summary span {
+    color: var(--text-dim);
+}
+.route-direct {
+    color: var(--green);
+}
+.route-vision {
+    color: var(--yellow);
+}
+
+.access-master-detail {
+    display: grid;
+    grid-template-columns: minmax(15rem, 0.75fr) minmax(22rem, 1.25fr);
+    min-height: 26rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.access-master-pane {
+    min-width: 0;
+    padding: 0.6rem;
+    border-right: 1px solid var(--border);
+}
+
+.access-master-list {
+    display: grid;
+    gap: 0.2rem;
+}
+
+.access-master-item {
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.65rem;
+    width: 100%;
+    min-height: 3rem;
+    padding: 0.45rem 0.55rem;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.access-master-item:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+.access-master-item.active {
+    border-color: var(--border-hover);
+    background: var(--surface);
+}
+.access-master-item img {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+}
+.access-master-item > span {
+    min-width: 0;
+}
+.access-master-item strong,
+.access-master-item small {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.access-master-item strong {
+    font-size: 0.82rem;
+}
+.access-master-item small,
+.access-master-status {
+    color: var(--text-dim);
+    font-size: 0.68rem;
+}
+
+.access-detail-pane {
+    min-width: 0;
+    padding: 1rem;
+}
+
+.access-selected-detail {
+    background: transparent;
+}
+
+.access-back-button {
+    display: none;
+    margin-bottom: 0.75rem;
+}
+
+.dashboard-dialog {
+    width: min(92vw, 680px);
+    max-height: 86vh;
+    margin: auto;
+    padding: 0;
+    overflow: auto;
+    border: 1px solid var(--border-hover);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text);
+}
+
+.dashboard-dialog-wide {
+    width: min(94vw, 900px);
+}
+.dashboard-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.68);
+}
+
+.dialog-heading {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+}
+
+.dialog-heading h3 {
+    margin: 0;
+    font-size: 0.9rem;
+}
+.dialog-body {
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+.icon-button {
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 1.25rem;
+    cursor: pointer;
+}
+
+[hidden] {
+    display: none !important;
 }
 
 /* --- User Prefs --- */

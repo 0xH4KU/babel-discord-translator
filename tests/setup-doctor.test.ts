@@ -10,6 +10,10 @@ const baseConfig = {
     gcpProject: 'project',
     gcpLocation: 'global',
     geminiModel: 'gemini-2.5-flash-lite',
+    vertexAiSupportsImages: false,
+    geminiMediaResolution: 'default',
+    visionApiKey: 'vision-key',
+    visionMonthlyImageLimit: 900,
     allowedGuildIds: [],
     allowedUserIds: [],
     cooldownSeconds: 5,
@@ -30,6 +34,7 @@ const baseConfig = {
     openaiApiKey: '',
     openaiBaseUrl: '',
     openaiModel: '',
+    openaiSupportsImages: false,
     translationProvider: 'vertex',
     tokenUsage: null,
     usageHistory: [],
@@ -99,6 +104,39 @@ function registeredCommandsFetch(profile = BABEL_GUILD_PROFILE) {
 }
 
 describe('runSetupDoctor', () => {
+    it('warns only when a text-only provider needs an unconfigured Vision fallback', async () => {
+        const common = {
+            profile: BABEL_GUILD_PROFILE,
+            profiles: [BABEL_GUILD_PROFILE],
+            client: client(),
+            healthCheck: vi.fn(async () => ({ healthy: true, latencyMs: 12 })),
+            openAiHealthCheck: vi.fn(async () => ({ healthy: true, latencyMs: 10 })),
+            env: { DISCORD_APP_ID: 'app-1', DISCORD_TOKEN: 'token' },
+            fetchFn: registeredCommandsFetch(),
+            sqliteProbe: vi.fn(),
+        };
+
+        const warning = await runSetupDoctor({
+            ...common,
+            configStore: configStore({ visionApiKey: '', visionMonthlyImageLimit: 0 }),
+        });
+        expect(warning.checks).toContainEqual(
+            expect.objectContaining({ id: 'lens-fallback', status: 'warn' }),
+        );
+
+        const direct = await runSetupDoctor({
+            ...common,
+            configStore: configStore({
+                vertexAiSupportsImages: true,
+                visionApiKey: '',
+                visionMonthlyImageLimit: 0,
+            }),
+        });
+        expect(direct.checks).toContainEqual(
+            expect.objectContaining({ id: 'lens-fallback', status: 'skipped' }),
+        );
+    });
+
     it('returns ok with warnings when only unlimited budgets and webhook inspection are skipped', async () => {
         const expectedCommands = getCommandsForProfile(BABEL_GUILD_PROFILE);
         const fetchFn = vi.fn(async () =>

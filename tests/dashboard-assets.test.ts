@@ -263,9 +263,7 @@ describe('dashboard static assets', () => {
         expect(nodes['budget-card'].style.display).toBe('');
         expect(nodes['budget-card-label'].textContent).toBe('Daily Budget');
         expect(nodes['budget-amount'].textContent).toBe('Total: $0.21');
-        expect(nodes['stat-saved'].textContent).toBe(
-            '0 / 2000 translations · 3 / 250 OCR (60.0%)',
-        );
+        expect(nodes['stat-saved'].textContent).toBe('0 / 2000 translations · 3 / 250 OCR (60.0%)');
         expect(nodes['guild-budget-overview'].children).toHaveLength(3);
         expect(
             createdElements.some((element) => element.textContent === 'Global Safety Budget'),
@@ -479,7 +477,9 @@ describe('dashboard static assets', () => {
         expect(state).toEqual({ allowed: ['guild-2'], lens: ['guild-2'] });
         expect(nodes['guild-list'].innerHTML).toContain('Translation');
         expect(nodes['guild-list'].innerHTML).toContain('Babel Lens');
-        expect(nodes['guild-list'].innerHTML).toContain('Enabled');
+        expect(nodes['guild-list'].innerHTML).toContain('Translation + Lens');
+        expect(nodes['guild-list'].innerHTML).toContain('access-master-item');
+        expect(nodes['guild-list'].innerHTML).toContain('access-selected-detail');
         expect(nodes['guild-list'].innerHTML).not.toMatch(
             /data-lens-guild-id="guild-1"[^>]*disabled/,
         );
@@ -569,16 +569,21 @@ describe('dashboard static assets', () => {
         );
         expect(nodes['history-chart'].innerHTML).not.toContain('onmouseover="alert(1)');
         expect(nodes['history-table-container'].innerHTML).not.toContain('<script>');
+        expect(nodes['history-table-container'].innerHTML).toContain(
+            '<details class="mobile-activity-row">',
+        );
     });
 
     it('submits all runtime settings with numeric values', async () => {
         const settingsJs = readFileSync('src/public/js/settings.js', 'utf-8');
-        const fields: Record<string, { value: string }> = {
+        const fields: Record<string, { value: string; checked?: boolean }> = {
             'cfg-apikey': { value: '' },
             'cfg-vision-apikey': { value: 'vision-key' },
             'cfg-project': { value: 'project-1' },
             'cfg-location': { value: 'global' },
             'cfg-model': { value: 'gemini-model' },
+            'cfg-vertex-images': { value: '', checked: true },
+            'cfg-media-resolution': { value: 'high' },
             'cfg-cooldown': { value: '7' },
             'cfg-cache': { value: '3000' },
             'cfg-max-input': { value: '4096' },
@@ -597,6 +602,7 @@ describe('dashboard static assets', () => {
             'cfg-openai-apikey': { value: '' },
             'cfg-openai-baseurl': { value: 'https://api.example.test/v1' },
             'cfg-openai-model': { value: 'model-1' },
+            'cfg-openai-images': { value: '', checked: false },
         };
         const requests: Array<{ path: string; options: { method?: string; body?: string } }> = [];
         const context = {
@@ -633,6 +639,9 @@ describe('dashboard static assets', () => {
             maxOutputTokens: 2048,
             visionMonthlyImageLimit: 950,
             visionApiKey: 'vision-key',
+            vertexAiSupportsImages: true,
+            openaiSupportsImages: false,
+            geminiMediaResolution: 'high',
         });
         expect(
             Object.values(payload)
@@ -660,6 +669,70 @@ describe('dashboard static assets', () => {
         );
 
         expect(usage.textContent).toBe('0 / 950 images used · 2026-08');
+    });
+
+    it('shows Vision settings only for enabled text-only providers and tracks drafts', () => {
+        const settingsJs = readFileSync('src/public/js/settings.js', 'utf-8');
+        const fallback = { hidden: true };
+        const status = {
+            textContent: '',
+            classList: { toggle() {} },
+        };
+        const button = { disabled: true };
+        const fields = {
+            'cfg-provider': { value: 'vertex' },
+            'cfg-vertex-images': { checked: false },
+            'cfg-openai-images': { checked: false },
+            'cfg-model': { value: 'gemini-new' },
+            'lens-route-vertex': { textContent: '', className: '' },
+            'lens-route-openai': { textContent: '', className: '' },
+            'settings-save-status': status,
+            'settings-save-button': button,
+        };
+        const context = {
+            document: {
+                getElementById(id: string) {
+                    return fields[id as keyof typeof fields] || null;
+                },
+                querySelectorAll(selector: string) {
+                    return selector === '.vision-fallback-only' ? [fallback] : [];
+                },
+            },
+        };
+
+        vm.createContext(context);
+        vm.runInContext(settingsJs, context);
+        vm.runInContext(
+            `currentConfig = { translationProvider: 'vertex', geminiModel: 'gemini-old' };
+             settingsLoaded = true;
+             refreshLensRoutes();`,
+            context,
+        );
+        expect(fallback.hidden).toBe(false);
+        expect(fields['lens-route-vertex'].textContent).toBe('Vision fallback');
+
+        fields['cfg-vertex-images'].checked = true;
+        vm.runInContext('onProviderCapabilityChange();', context);
+        expect(fallback.hidden).toBe(true);
+        expect(fields['lens-route-vertex'].textContent).toBe('Direct multimodal');
+        expect(button.disabled).toBe(false);
+        expect(status.textContent).toBe('Unsaved changes');
+
+        vm.runInContext('onVertexIdentityChanged();', context);
+        expect(fields['cfg-vertex-images'].checked).toBe(false);
+    });
+
+    it('partitions Access and Settings into profile-aware compact views', () => {
+        const html = readFileSync('src/public/index.html', 'utf-8');
+        const logsJs = readFileSync('src/public/js/logs.js', 'utf-8');
+
+        expect(html).toContain('id="tab-activity"');
+        expect(html).toMatch(/id="access-servers"\s+data-capability="guildAccess"/);
+        expect(html).toMatch(/id="access-users"\s+data-capability="pendingUserInstallOwners"/);
+        expect(html).toMatch(/id="access-glossary"\s+data-capability="guildGlossary"/);
+        expect(html).toContain('id="glossary-editor-dialog"');
+        expect(html).toContain('id="settings-category-select"');
+        expect(logsJs).toContain("details.className = 'mobile-activity-row'");
     });
 
     it('returns to login when an authenticated API request expires', async () => {

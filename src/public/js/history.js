@@ -1,9 +1,9 @@
-
 /**
  * History tab: usage history chart, table, and pagination.
  */
 
-let historyPage = 1, historyPageSize = 15;
+let historyPage = 1,
+  historyPageSize = 15;
 let allHistoryData = [];
 
 async function loadHistory() {
@@ -13,7 +13,7 @@ async function loadHistory() {
     allHistoryData = await res.json();
     historyPage = 1;
     renderHistory();
-  } catch { }
+  } catch {}
 }
 
 function renderHistory() {
@@ -21,7 +21,8 @@ function renderHistory() {
   const chart = document.getElementById('history-chart');
 
   if (allHistoryData.length === 0) {
-    container.innerHTML = '<div class="empty-state">No history data yet. Usage is archived daily.</div>';
+    container.innerHTML =
+      '<div class="empty-state">No history data yet. Usage is archived daily.</div>';
     chart.innerHTML = '';
     document.getElementById('history-summary').textContent = '';
     document.getElementById('history-pagination').innerHTML = '';
@@ -34,11 +35,13 @@ function renderHistory() {
     `${allHistoryData.length} days · ${totalReqs} requests · ${formatUsd(totalCost)} total`;
 
   // Bar chart (always shows all data)
-  const maxReqs = Math.max(...allHistoryData.map(d => d.requests), 1);
-  chart.innerHTML = allHistoryData.map(d => {
-    const h = Math.max((d.requests / maxReqs) * 100, 3);
-    return `<div class="bar" data-height="${h}" data-tip="${escapeHtml(d.date)}: ${escapeHtml(d.requests)} reqs · ${escapeHtml(formatUsd(d.cost))}"></div>`;
-  }).join('');
+  const maxReqs = Math.max(...allHistoryData.map((d) => d.requests), 1);
+  chart.innerHTML = allHistoryData
+    .map((d) => {
+      const h = Math.max((d.requests / maxReqs) * 100, 3);
+      return `<div class="bar" data-height="${h}" data-tip="${escapeHtml(d.date)}: ${escapeHtml(d.requests)} reqs · ${escapeHtml(formatUsd(d.cost))}"></div>`;
+    })
+    .join('');
   chart.querySelectorAll?.('.bar[data-height]').forEach((node) => {
     node.style.height = node.dataset.height + '%';
   });
@@ -63,7 +66,14 @@ function renderHistory() {
     </tr>`;
   }
 
-  html += '</tbody></table></div>';
+  html += '</tbody></table></div><div class="mobile-activity-list">';
+  for (const d of pageData) {
+    html += `<details class="mobile-activity-row">
+      <summary><span class="mono">${escapeHtml(d.date)}</span><strong>${escapeHtml(formatUsd(d.cost))}</strong></summary>
+      <dl><div><dt>Requests</dt><dd>${escapeHtml(d.requests)}</dd></div><div><dt>Input tokens</dt><dd>${escapeHtml(formatTokens(d.inputTokens))}</dd></div><div><dt>Output tokens</dt><dd>${escapeHtml(formatTokens(d.outputTokens))}</dd></div></dl>
+    </details>`;
+  }
+  html += '</div>';
   container.innerHTML = html;
 
   renderPagination('history-pagination', {
@@ -75,6 +85,15 @@ function renderHistory() {
   });
 }
 
-function setHistoryPage(p) { historyPage = p; renderHistory(); }
-function setHistoryPageSize(s) { historyPageSize = s; historyPage = 1; renderHistory(); }
-function downloadUsageExport() { window.location.href = getDashboardApiBase() + '/usage/export.csv'; }
+function setHistoryPage(p) {
+  historyPage = p;
+  renderHistory();
+}
+function setHistoryPageSize(s) {
+  historyPageSize = s;
+  historyPage = 1;
+  renderHistory();
+}
+function downloadUsageExport() {
+  window.location.href = getDashboardApiBase() + '/usage/export.csv';
+}

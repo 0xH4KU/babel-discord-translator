@@ -1,4 +1,3 @@
-
 /**
  * Login / Logout authentication logic.
  */
@@ -24,6 +23,7 @@ async function doLogin() {
 }
 
 async function doLogout() {
+  if (typeof confirmSettingsNavigation === 'function' && !confirmSettingsNavigation()) return;
   await api('/logout', { method: 'POST' });
   if (refreshTimer) clearInterval(refreshTimer);
   show('login-view');

@@ -79,6 +79,8 @@ function applyDashboardCapabilities(data) {
       ? 'Safety cap across all user-install usage. Pocket does not use server whitelist or per-server budgets.'
       : 'Default for servers without custom budgets. Set per-server budgets in Access tab.';
   }
+
+  if (typeof configureAccessNavigation === 'function') configureAccessNavigation();
 }
 
 async function loadDashboardCapabilities() {

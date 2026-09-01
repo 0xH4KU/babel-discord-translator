@@ -18,6 +18,8 @@ let accessWhitelistDirty = false;
 let accessWhitelistLoaded = false;
 let glossaryGuildId = '';
 let glossaryEntries = [];
+let selectedGuildId = '';
+let selectedAccessUserId = '';
 
 function normalizeIds(ids) {
     return [...new Set((ids || []).map((id) => String(id).trim()).filter(Boolean))];
@@ -102,9 +104,7 @@ async function loadAccess() {
         ]);
         currentConfig = await cfgRes.json();
         currentConfig.allowedGuildIds = normalizeIds(currentConfig.allowedGuildIds || []);
-        currentConfig.lensEnabledGuildIds = normalizeIds(
-            currentConfig.lensEnabledGuildIds || [],
-        );
+        currentConfig.lensEnabledGuildIds = normalizeIds(currentConfig.lensEnabledGuildIds || []);
         currentConfig.allowedUserIds = normalizeIds(currentConfig.allowedUserIds || []);
         if (guildAccess && (!accessWhitelistLoaded || !accessWhitelistDirty)) {
             accessAllowedGuildIdsDraft = [...currentConfig.allowedGuildIds];
@@ -243,6 +243,8 @@ function renderGuilds() {
         container.innerHTML =
             '<div class="no-guilds">Bot is not in any servers. Paste a Guild ID below to add manually.</div>';
         document.getElementById('guild-pagination').innerHTML = '';
+        const detail = document.getElementById('guild-detail');
+        if (detail) detail.innerHTML = '<div class="empty-state">No servers available.</div>';
         return;
     }
 
@@ -250,76 +252,70 @@ function renderGuilds() {
     guildPage = Math.min(guildPage, totalPages);
     const start = (guildPage - 1) * guildPageSize;
     const pageItems = allItems.slice(start, start + guildPageSize);
+    if (!pageItems.some((item) => item.id === selectedGuildId)) selectedGuildId = pageItems[0].id;
+    const selected = pageItems.find((item) => item.id === selectedGuildId);
 
-    const html = pageItems
-        .map((g) => {
-            const checked = allowed.includes(g.id);
-            const lensChecked = lensEnabled.includes(g.id);
-            const bd = guildBudgetData[g.id];
-            const hasCustomBudget = bd && bd.budget >= 0;
-            const effectiveBudget = hasCustomBudget ? bd.budget : globalBudget;
-            const todayCost = bd ? bd.usage.totalCost : 0;
-            const budgetLabel = hasCustomBudget
-                ? formatUsd(effectiveBudget)
-                : globalBudget > 0
-                  ? formatUsd(globalBudget) + ' (global)'
-                  : 'Unlimited';
-            const costLabel = bd ? formatUsd(todayCost) : '-';
-            const escapedId = escapeHtml(g.id);
-            const escapedName = escapeHtml(g.name || g.id);
-            const featureControls = `<div class="guild-feature-row" role="group" aria-label="Feature access for ${escapedName}">
-        <div class="guild-feature-control"><span class="guild-feature-label">Translation</span><span class="guild-feature-state${checked ? ' is-enabled' : ''}">${checked ? 'Enabled' : 'Disabled'}</span><label class="toggle"><input type="checkbox" aria-label="Enable Translation for ${escapedName}" data-guild-id="${escapedId}" ${actionAttrs('toggleGuildAllowed', [g.id], { value: 'checked' })} ${checked ? 'checked' : ''}><span class="slider"></span></label></div>
-        <div class="guild-feature-control"><span class="guild-feature-label">Babel Lens</span><span class="guild-feature-state${lensChecked ? ' is-enabled' : ''}">${lensChecked ? 'Enabled' : 'Disabled'}</span><label class="toggle"><input type="checkbox" aria-label="Enable Babel Lens for ${escapedName}" data-lens-guild-id="${escapedId}" ${actionAttrs('toggleGuildLens', [g.id], { value: 'checked' })} ${lensChecked ? 'checked' : ''}><span class="slider"></span></label></div>
+    container.innerHTML = pageItems
+        .map((guild) => {
+            const translation = allowed.includes(guild.id);
+            const lens = lensEnabled.includes(guild.id);
+            return `<button class="access-master-item${guild.id === selectedGuildId ? ' active' : ''}" ${actionAttrs('selectGuildAccess', [guild.id])}>
+          <img src="${escapeHtml(guild.icon || genAvatar(guild.name || guild.id))}" alt="">
+          <span><strong>${escapeHtml(guild.name || guild.id)}</strong><small>${guild.manual ? 'Manual ID' : escapeHtml(guild.memberCount ?? '?') + ' members'}</small></span>
+          <span class="access-master-status">${translation ? 'Translation' : 'Off'}${lens ? ' + Lens' : ''}</span>
+        </button>`;
+        })
+        .join('');
+
+    if (selected) {
+        const checked = allowed.includes(selected.id);
+        const lensChecked = lensEnabled.includes(selected.id);
+        const bd = guildBudgetData[selected.id];
+        const hasCustomBudget = bd && bd.budget >= 0;
+        const effectiveBudget = hasCustomBudget ? bd.budget : globalBudget;
+        const todayCost = bd ? bd.usage.totalCost : 0;
+        const budgetLabel = hasCustomBudget
+            ? formatUsd(effectiveBudget)
+            : globalBudget > 0
+              ? formatUsd(globalBudget) + ' (global)'
+              : 'Unlimited';
+        const escapedId = escapeHtml(selected.id);
+        const escapedName = escapeHtml(selected.name || selected.id);
+        const featureControls = `<div class="guild-feature-row" role="group" aria-label="Feature access for ${escapedName}">
+        <div class="guild-feature-control"><span class="guild-feature-label">Translation</span><span class="guild-feature-state${checked ? ' is-enabled' : ''}">${checked ? 'Enabled' : 'Disabled'}</span><label class="toggle"><input type="checkbox" aria-label="Enable Translation for ${escapedName}" data-guild-id="${escapedId}" ${actionAttrs('toggleGuildAllowed', [selected.id], { value: 'checked' })} ${checked ? 'checked' : ''}><span class="slider"></span></label></div>
+        <div class="guild-feature-control"><span class="guild-feature-label">Babel Lens</span><span class="guild-feature-state${lensChecked ? ' is-enabled' : ''}">${lensChecked ? 'Enabled' : 'Disabled'}</span><label class="toggle"><input type="checkbox" aria-label="Enable Babel Lens for ${escapedName}" data-lens-guild-id="${escapedId}" ${actionAttrs('toggleGuildLens', [selected.id], { value: 'checked' })} ${lensChecked ? 'checked' : ''}><span class="slider"></span></label></div>
       </div>`;
-
-            if (g.manual) {
-                return `<div class="guild-item guild-item-col">
+        const routeUsesVision =
+            typeof isVisionFallbackRequired !== 'function' || isVisionFallbackRequired();
+        const detailHtml = `<button class="access-back-button btn btn-secondary btn-sm" data-action="showAccessMasterList" data-action-args="[&quot;guild&quot;]">Back to servers</button>
+          <div class="guild-item guild-item-col access-selected-detail">
         <div class="guild-item-row">
-          <img src="${escapeHtml(genAvatar(g.id))}" alt="">
-          <span class="guild-name guild-name-mono">${escapedId}</span>
-          <span class="guild-members">manually added</span>
-          <button class="btn-danger" ${actionAttrs('removeManualGuild', [g.id])}>✕</button>
+          <img src="${escapeHtml(selected.icon || genAvatar(selected.name || selected.id))}" alt="">
+          <span class="guild-name${selected.manual ? ' guild-name-mono' : ''}">${escapedName}</span>
+          <span class="guild-members">${selected.manual ? 'manually added' : escapeHtml(selected.memberCount ?? '?') + ' members'}</span>
+          ${selected.manual ? `<button class="btn-danger" ${actionAttrs('removeManualGuild', [selected.id])}>Remove</button>` : ''}
         </div>
         ${featureControls}
-      </div>`;
-            }
-
-            const pct =
-                effectiveBudget > 0 ? Math.min((todayCost / effectiveBudget) * 100, 100) : 0;
-            const barClass = pct > 90 ? ' danger' : pct > 60 ? ' warning' : '';
-            const escapedIcon = escapeHtml(g.icon || genAvatar(g.name || g.id));
-
-            return `<div class="guild-item guild-item-col">
-      <div class="guild-item-row">
-        <img src="${escapedIcon}" alt="">
-        <span class="guild-name">${escapedName}</span>
-        <span class="guild-members">${escapeHtml(g.memberCount ?? '?')} members</span>
-      </div>
-      ${featureControls}
       <div class="guild-budget-row">
         <div class="guild-budget-info">
           <span class="guild-budget-label">Budget: ${budgetLabel}</span>
-          <span class="guild-budget-cost">Today: ${costLabel}${bd ? ' · ' + bd.usage.requests + ' req' : ''}</span>
+          <span class="guild-budget-cost">Today: ${bd ? formatUsd(todayCost) + ' · ' + bd.usage.requests + ' req' : '-'}</span>
         </div>
-        ${effectiveBudget > 0 ? `<div class="guild-budget-bar"><div class="fill${barClass}" data-progress="${pct}"></div></div>` : ''}
         <div class="guild-budget-actions">
           <input type="number" class="guild-budget-input" id="gb-${escapedId}" min="0" step="0.1"
             placeholder="${hasCustomBudget ? effectiveBudget : 'Global'}"
             value="${hasCustomBudget ? effectiveBudget : ''}"
             title="Set per-server budget (USD). Empty = use global.">
-          <button class="btn btn-secondary btn-xs" ${actionAttrs('saveGuildBudget', [g.id])}>Set</button>
-          ${hasCustomBudget ? `<button class="btn-danger btn-xs" ${actionAttrs('resetGuildBudget', [g.id])} title="Reset to global">↺</button>` : ''}
+          <button class="btn btn-secondary btn-xs" ${actionAttrs('saveGuildBudget', [selected.id])}>Apply</button>
+          ${hasCustomBudget ? `<button class="btn-danger btn-xs" ${actionAttrs('resetGuildBudget', [selected.id])} title="Reset to global">Reset</button>` : ''}
         </div>
       </div>
-      ${renderVisionLimitControl('guild', g.id, bd)}
+      ${routeUsesVision ? renderVisionLimitControl('guild', selected.id, bd) : ''}
     </div>`;
-        })
-        .join('');
-
-    container.innerHTML = html;
-    container.querySelectorAll?.('.guild-budget-bar .fill[data-progress]').forEach((node) => {
-        node.style.width = node.dataset.progress + '%';
-    });
+        const detail = document.getElementById('guild-detail');
+        if (detail) detail.innerHTML = detailHtml;
+        else container.innerHTML += detailHtml;
+    }
 
     renderPagination('guild-pagination', {
         total: allItems.length,
@@ -330,13 +326,26 @@ function renderGuilds() {
     });
 }
 
+function selectGuildAccess(guildId) {
+    selectedGuildId = guildId;
+    renderGuilds();
+    document.getElementById('guild-detail')?.parentElement?.classList.add('show-detail');
+}
+
+function showAccessMasterList(scope) {
+    const id = scope === 'user' ? 'user-access-detail' : 'guild-detail';
+    document.getElementById(id)?.parentElement?.classList.remove('show-detail');
+}
+
 function setGuildPage(p) {
     guildPage = p;
+    selectedGuildId = '';
     renderGuilds();
 }
 function setGuildPageSize(s) {
     guildPageSize = s;
     guildPage = 1;
+    selectedGuildId = '';
     renderGuilds();
 }
 
@@ -410,6 +419,7 @@ function addManualGuild() {
     nextAllowed.add(id);
     setAccessWhitelistDraft([...nextAllowed]);
     guildPage = Math.max(Math.ceil((allGuilds.length + nextAllowed.size) / guildPageSize), 1);
+    selectedGuildId = id;
     input.value = '';
     renderGuilds();
     showToast('Guild added — click Save to apply');
@@ -507,12 +517,14 @@ function renderGlossaryEntries() {
     if (!container) return;
 
     if (!glossaryGuildId) {
-        container.innerHTML = '<div class="empty-state">Select a server to manage glossary terms.</div>';
+        container.innerHTML =
+            '<div class="empty-state">Select a server to manage glossary terms.</div>';
         return;
     }
 
     if (glossaryEntries.length === 0) {
-        container.innerHTML = '<div class="empty-state">No glossary terms for this server yet.</div>';
+        container.innerHTML =
+            '<div class="empty-state">No glossary terms for this server yet.</div>';
         return;
     }
 
@@ -545,6 +557,27 @@ function resetGlossaryForm() {
     document.getElementById('glossary-target-language').value = 'auto';
     document.getElementById('glossary-target').value = '';
     document.getElementById('glossary-notes').value = '';
+}
+
+function openGlossaryEditor() {
+    if (!hasDashboardCapability('guildGlossary')) return;
+    resetGlossaryForm();
+    const title = document.getElementById('glossary-dialog-title');
+    if (title) title.textContent = 'Add Glossary Term';
+    document.getElementById('glossary-editor-dialog')?.showModal?.();
+}
+
+function closeGlossaryEditor() {
+    document.getElementById('glossary-editor-dialog')?.close?.();
+}
+
+function openGlossaryImport() {
+    if (!hasDashboardCapability('guildGlossary')) return;
+    document.getElementById('glossary-import-dialog')?.showModal?.();
+}
+
+function closeGlossaryImport() {
+    document.getElementById('glossary-import-dialog')?.close?.();
 }
 
 function selectedGlossaryImportMode() {
@@ -621,6 +654,9 @@ function editGlossaryEntry(entryId) {
     document.getElementById('glossary-target-language').value = entry.targetLanguage || 'auto';
     document.getElementById('glossary-target').value = entry.targetText;
     document.getElementById('glossary-notes').value = entry.notes || '';
+    const title = document.getElementById('glossary-dialog-title');
+    if (title) title.textContent = 'Edit Glossary Term';
+    document.getElementById('glossary-editor-dialog')?.showModal?.();
 }
 
 async function saveGlossaryEntry() {
@@ -655,6 +691,7 @@ async function saveGlossaryEntry() {
 
     if (res.ok) {
         resetGlossaryForm();
+        closeGlossaryEditor();
         await loadGlossaryEntries();
         showToast('Glossary term saved');
     } else {
@@ -729,6 +766,8 @@ function renderAllowedUsers() {
         container.innerHTML =
             '<div class="no-guilds">No users have requested access yet. Paste a Discord User ID below to add one.</div>';
         document.getElementById('user-access-pagination').innerHTML = '';
+        const detail = document.getElementById('user-access-detail');
+        if (detail) detail.innerHTML = '<div class="empty-state">No users available.</div>';
         return;
     }
 
@@ -736,21 +775,36 @@ function renderAllowedUsers() {
     allowedUsersPage = Math.min(allowedUsersPage, totalPages);
     const start = (allowedUsersPage - 1) * allowedUsersPageSize;
     const pageItems = allowed.slice(start, start + allowedUsersPageSize);
+    if (!pageItems.includes(selectedAccessUserId)) selectedAccessUserId = pageItems[0];
 
     container.innerHTML = pageItems
         .map((userId) => {
-            const budgetData = userBudgetData[userId];
             const enabled = enabledIds.has(userId);
-            const pending = Boolean(budgetData?.pending) && !enabled;
-            const hasCustomBudget = budgetData && budgetData.isCustom;
-            const effectiveBudget = hasCustomBudget ? budgetData.budget : defaultBudget;
-            const budgetLabel = hasCustomBudget
-                ? formatUsd(effectiveBudget)
-                : defaultBudget > 0
-                  ? formatUsd(defaultBudget) + ' (default)'
-                  : 'Unlimited';
+            const pending = Boolean(userBudgetData[userId]?.pending) && !enabled;
+            return `<button class="access-master-item${userId === selectedAccessUserId ? ' active' : ''}" ${actionAttrs('selectAccessUser', [userId])}>
+          <img src="${escapeHtml(userAvatar(userId))}" alt="">
+          <span><strong>${escapeHtml(userDisplayName(userId))}</strong><small>${escapeHtml(userId)}</small></span>
+          <span class="access-master-status">${enabled ? 'Enabled' : pending ? 'Pending' : 'Disabled'}</span>
+        </button>`;
+        })
+        .join('');
 
-            return `<div class="guild-item guild-item-col">
+    const userId = selectedAccessUserId;
+    if (userId) {
+        const budgetData = userBudgetData[userId];
+        const enabled = enabledIds.has(userId);
+        const pending = Boolean(budgetData?.pending) && !enabled;
+        const hasCustomBudget = budgetData && budgetData.isCustom;
+        const effectiveBudget = hasCustomBudget ? budgetData.budget : defaultBudget;
+        const budgetLabel = hasCustomBudget
+            ? formatUsd(effectiveBudget)
+            : defaultBudget > 0
+              ? formatUsd(defaultBudget) + ' (default)'
+              : 'Unlimited';
+        const routeUsesVision =
+            typeof isVisionFallbackRequired !== 'function' || isVisionFallbackRequired();
+        const detailHtml = `<button class="access-back-button btn btn-secondary btn-sm" data-action="showAccessMasterList" data-action-args="[&quot;user&quot;]">Back to users</button>
+          <div class="guild-item guild-item-col access-selected-detail">
       <div class="guild-item-row">
         <img src="${escapeHtml(userAvatar(userId))}" alt="">
         <span class="guild-name">${renderUserIdentity(userId)}</span>
@@ -773,14 +827,16 @@ function renderAllowedUsers() {
             placeholder="${hasCustomBudget ? effectiveBudget : 'Default'}"
             value="${hasCustomBudget ? effectiveBudget : ''}"
             title="Set per-user budget (USD). Empty = use default.">
-          <button class="btn btn-secondary btn-xs" ${actionAttrs('saveUserBudget', [userId])}>Set</button>
-          ${hasCustomBudget ? `<button class="btn-danger btn-xs" ${actionAttrs('resetUserBudget', [userId])} title="Reset to default">↺</button>` : ''}
+          <button class="btn btn-secondary btn-xs" ${actionAttrs('saveUserBudget', [userId])}>Apply</button>
+          ${hasCustomBudget ? `<button class="btn-danger btn-xs" ${actionAttrs('resetUserBudget', [userId])} title="Reset to default">Reset</button>` : ''}
         </div>
       </div>
-      ${renderVisionLimitControl('user', userId, budgetData)}
+      ${routeUsesVision ? renderVisionLimitControl('user', userId, budgetData) : ''}
     </div>`;
-        })
-        .join('');
+        const detail = document.getElementById('user-access-detail');
+        if (detail) detail.innerHTML = detailHtml;
+        else container.innerHTML += detailHtml;
+    }
 
     renderPagination('user-access-pagination', {
         total: allowed.length,
@@ -791,13 +847,21 @@ function renderAllowedUsers() {
     });
 }
 
+function selectAccessUser(userId) {
+    selectedAccessUserId = userId;
+    renderAllowedUsers();
+    document.getElementById('user-access-detail')?.parentElement?.classList.add('show-detail');
+}
+
 function setAllowedUsersPage(p) {
     allowedUsersPage = p;
+    selectedAccessUserId = '';
     renderAllowedUsers();
 }
 function setAllowedUsersPageSize(s) {
     allowedUsersPageSize = s;
     allowedUsersPage = 1;
+    selectedAccessUserId = '';
     renderAllowedUsers();
 }
 
@@ -821,6 +885,7 @@ function addAllowedUser() {
     setUserAllowlistDraft([...nextAllowed]);
     accessUserIds = normalizeIds([...accessUserIds, id]);
     allowedUsersPage = Math.max(Math.ceil(accessUserIds.length / allowedUsersPageSize), 1);
+    selectedAccessUserId = id;
     input.value = '';
     renderAllowedUsers();
     showToast('User added — click Save to apply');
@@ -1084,7 +1149,9 @@ function filteredPrefsEntries() {
         const name = LANG_NAMES[entry.language] || entry.language;
         return (
             String(entry.guildId).toLowerCase().includes(query) ||
-            String(entry.guildName || '').toLowerCase().includes(query) ||
+            String(entry.guildName || '')
+                .toLowerCase()
+                .includes(query) ||
             String(entry.userId).toLowerCase().includes(query) ||
             userSearchText(entry.userId).includes(query) ||
             String(entry.language).toLowerCase().includes(query) ||
@@ -1136,10 +1203,9 @@ function renderUserPrefs() {
     }
 
     if (entries.length === 0) {
-        container.innerHTML =
-            useGuildFilter
-                ? '<div class="empty-state">No matching user language preferences in this server.</div>'
-                : '<div class="empty-state">No matching user language preferences.</div>';
+        container.innerHTML = useGuildFilter
+            ? '<div class="empty-state">No matching user language preferences in this server.</div>'
+            : '<div class="empty-state">No matching user language preferences.</div>';
         document.getElementById('prefs-pagination').innerHTML = '';
         updatePrefBatchState();
         return;
@@ -1249,10 +1315,10 @@ async function deleteSelectedUserPrefs() {
 }
 
 async function deleteUserPref(guildId, userId) {
-    const query = userPrefsUseGuildFilter()
-        ? '?guildId=' + encodeURIComponent(guildId)
-        : '';
-    const res = await api('/user-prefs/' + encodeURIComponent(userId) + query, { method: 'DELETE' });
+    const query = userPrefsUseGuildFilter() ? '?guildId=' + encodeURIComponent(guildId) : '';
+    const res = await api('/user-prefs/' + encodeURIComponent(userId) + query, {
+        method: 'DELETE',
+    });
     if (res.ok) {
         showToast('User preference deleted');
         const key = prefSelectionKey(guildId, userId);

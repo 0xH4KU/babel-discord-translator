@@ -9,6 +9,7 @@ import { store, type ConfigStore } from '../../persistence/store.js';
 import { configRepository, type ConfigRepository } from '../config/config-repository.js';
 import { getReadinessStatus } from '../../shared/health.js';
 import type { StoreData } from '../../shared/types.js';
+import { providerModeIncludes } from './operations-summary.js';
 
 export type SetupDoctorStatus = 'pass' | 'warn' | 'fail' | 'skipped';
 
@@ -56,10 +57,52 @@ const CHECK_TITLES: Record<string, string> = {
     commands: 'Discord commands',
     'provider-vertex': 'Vertex AI provider',
     'provider-openai': 'OpenAI provider',
+    'lens-fallback': 'Babel Lens fallback',
     sqlite: 'SQLite',
     budget: 'Budget',
     webhook: 'Webhook',
 };
+
+function lensFallbackCheck(configStore: SetupDoctorConfigStore): SetupDoctorCheckDraft {
+    try {
+        const config = configStore.getDashboardConfig();
+        const needsVision =
+            (providerModeIncludes(config.translationProvider, 'vertex') &&
+                !config.vertexAiSupportsImages) ||
+            (providerModeIncludes(config.translationProvider, 'openai') &&
+                !config.openaiSupportsImages);
+
+        if (!needsVision) {
+            return {
+                id: 'lens-fallback',
+                status: 'skipped',
+                detail: 'All enabled providers use direct image translation',
+            };
+        }
+
+        if (!config.visionApiKey.trim() || config.visionMonthlyImageLimit <= 0) {
+            return {
+                id: 'lens-fallback',
+                status: 'warn',
+                detail: 'A text-only provider needs Cloud Vision, but fallback is not configured',
+                action: 'Configure a Vision key and limit, or confirm image support in Settings.',
+            };
+        }
+
+        return {
+            id: 'lens-fallback',
+            status: 'pass',
+            detail: 'Cloud Vision fallback is configured for text-only providers',
+        };
+    } catch (error) {
+        return {
+            id: 'lens-fallback',
+            status: 'warn',
+            detail: 'Babel Lens fallback configuration could not be checked',
+            error: errorMessage(error),
+        };
+    }
+}
 
 type SetupDoctorCheckDraft = Omit<SetupDoctorCheck, 'title'> & { title?: string };
 
@@ -495,6 +538,7 @@ export async function runSetupDoctor({
             requireProfileSpecificRegistrationEnv,
         }),
         ...(await providerChecks(configStore, healthCheck, openAiHealthCheck)),
+        lensFallbackCheck(configStore),
         await sqliteCheck(sqliteProbe),
         budgetCheck(configStore, resolvedBudgetStore),
         webhookCheck(profile, client),
