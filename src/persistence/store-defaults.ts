@@ -6,6 +6,8 @@ export const DEFAULT_STORE_DATA: StoreData = {
     gcpProject: '',
     gcpLocation: 'global',
     geminiModel: 'gemini-2.5-flash-lite',
+    vertexAiSupportsImages: false,
+    geminiMediaResolution: 'default',
     allowedGuildIds: [],
     lensEnabledGuildIds: [],
     allowedUserIds: [],
@@ -32,6 +34,7 @@ export const DEFAULT_STORE_DATA: StoreData = {
     openaiApiKey: '',
     openaiBaseUrl: '',
     openaiModel: '',
+    openaiSupportsImages: false,
     translationProvider: 'vertex',
     guildBudgets: {},
     guildVisionLimits: {},
@@ -49,6 +52,8 @@ export const CONFIG_VALUE_KEYS = [
     'gcpProject',
     'gcpLocation',
     'geminiModel',
+    'vertexAiSupportsImages',
+    'geminiMediaResolution',
     'allowedGuildIds',
     'lensEnabledGuildIds',
     'allowedUserIds',
@@ -71,6 +76,7 @@ export const CONFIG_VALUE_KEYS = [
     'openaiApiKey',
     'openaiBaseUrl',
     'openaiModel',
+    'openaiSupportsImages',
     'translationProvider',
 ] as const satisfies readonly (keyof StoreData)[];
 

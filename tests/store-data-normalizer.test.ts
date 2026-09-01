@@ -79,4 +79,27 @@ describe('store-data-normalizer clone helpers', () => {
             { guildId: 'guild-1', userId: 'user-1', language: 'zh-TW' },
         ]);
     });
+
+    it('defaults legacy image capabilities off and validates media resolution', () => {
+        expect(normalizeStoreData({})).toMatchObject({
+            vertexAiSupportsImages: false,
+            openaiSupportsImages: false,
+            geminiMediaResolution: 'default',
+        });
+        expect(
+            normalizeStoreData({
+                vertexAiSupportsImages: true,
+                openaiSupportsImages: true,
+                geminiMediaResolution: 'high',
+            }),
+        ).toMatchObject({
+            vertexAiSupportsImages: true,
+            openaiSupportsImages: true,
+            geminiMediaResolution: 'high',
+        });
+        expect(
+            normalizeStoreData({ geminiMediaResolution: 'ultra_high' as 'high' })
+                .geminiMediaResolution,
+        ).toBe('default');
+    });
 });

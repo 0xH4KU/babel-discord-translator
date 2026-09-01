@@ -7,16 +7,37 @@ import { AppMetrics } from '../src/shared/app-metrics.js';
 
 const TRANSLATION_PROMPT = { system: 'Translate accurately.', user: 'prompt' };
 
-function provider(name: string, behavior: 'ok' | 'fail'): TranslationProvider {
+function provider(
+    name: string,
+    behavior: 'ok' | 'fail',
+    supportsImages = false,
+): TranslationProvider {
     return {
         name,
         isConfigured: () => true,
+        supportsImageInput: () => supportsImages,
         translate: vi.fn(async () => {
             if (behavior === 'fail') throw new Error(`${name} failed`);
             return { text: `${name} result`, inputTokens: 1, outputTokens: 1 };
         }),
+        translateImage: vi.fn(async () => {
+            if (behavior === 'fail') throw new Error(`${name} failed`);
+            return {
+                text: `${name} image result`,
+                hasText: true,
+                regions: [],
+                inputTokens: 2,
+                outputTokens: 1,
+            };
+        }),
     };
 }
+
+const IMAGE_REQUEST = {
+    image: Buffer.from('image'),
+    mimeType: 'image/png' as const,
+    prompt: TRANSLATION_PROMPT,
+};
 
 describe('ProviderOrchestrator diagnostics', () => {
     it('records primary provider success', async () => {
@@ -175,5 +196,118 @@ describe('ProviderOrchestrator diagnostics', () => {
             to: 'openai',
             errorType: 'circuit_open',
         });
+    });
+
+    it('routes each image attempt by that provider image capability', async () => {
+        const vertex = provider('vertex', 'fail', true);
+        const openai = provider('openai', 'ok', false);
+        const resolveVision = vi.fn(async () => ({
+            hasText: true,
+            prompt: TRANSLATION_PROMPT,
+            boxes: [[0, 0, 100, 100] as [number, number, number, number]],
+        }));
+        vi.mocked(openai.translate).mockResolvedValueOnce({
+            text: '[[BABEL_REGION_1]] translated',
+            inputTokens: 3,
+            outputTokens: 2,
+        });
+        const orchestrator = createProviderOrchestrator(
+            'vertex+openai',
+            new Map([
+                ['vertex', vertex],
+                ['openai', openai],
+            ]),
+        );
+
+        const result = await orchestrator.translateImage(
+            { ...IMAGE_REQUEST, resolveVision },
+            100,
+        );
+
+        expect(vertex.translateImage).toHaveBeenCalledOnce();
+        expect(vertex.translate).not.toHaveBeenCalled();
+        expect(openai.translateImage).not.toHaveBeenCalled();
+        expect(openai.translate).toHaveBeenCalledOnce();
+        expect(resolveVision).toHaveBeenCalledOnce();
+        expect(result).toMatchObject({
+            text: '[1] translated',
+            provider: 'openai',
+            fallback: true,
+            route: 'vision',
+            regions: [{ translation: 'translated', box_2d: [0, 0, 100, 100] }],
+        });
+    });
+
+    it('resolves Cloud Vision only once across text-only provider fallbacks', async () => {
+        const vertex = provider('vertex', 'fail');
+        const openai = provider('openai', 'ok');
+        const resolveVision = vi.fn(async () => ({ hasText: true, prompt: TRANSLATION_PROMPT }));
+        const orchestrator = createProviderOrchestrator(
+            'vertex+openai',
+            new Map([
+                ['vertex', vertex],
+                ['openai', openai],
+            ]),
+        );
+
+        const result = await orchestrator.translateImage(
+            { ...IMAGE_REQUEST, resolveVision },
+            100,
+        );
+
+        expect(resolveVision).toHaveBeenCalledOnce();
+        expect(result).toMatchObject({ provider: 'openai', route: 'vision', fallback: true });
+    });
+
+    it('does not count Vision resolution errors as provider failures or open its circuit', async () => {
+        const metrics = new AppMetrics();
+        const vertex = provider('vertex', 'ok');
+        const openai = provider('openai', 'ok', true);
+        const orchestrator = createProviderOrchestrator(
+            'vertex+openai',
+            new Map([
+                ['vertex', vertex],
+                ['openai', openai],
+            ]),
+            { metrics, circuitBreaker: { failureThreshold: 1 } },
+        );
+        const resolveVision = vi.fn(async () => {
+            throw new Error('Vision unavailable');
+        });
+
+        await orchestrator.translateImage({ ...IMAGE_REQUEST, resolveVision }, 100);
+        await orchestrator.translateImage({ ...IMAGE_REQUEST, resolveVision }, 100);
+
+        expect(resolveVision).toHaveBeenCalledTimes(2);
+        expect(metrics.snapshot().providers.vertex.failureTotal).toBe(0);
+        expect(vertex.translate).not.toHaveBeenCalled();
+        expect(openai.translateImage).toHaveBeenCalledTimes(2);
+    });
+
+    it('returns Vision no-text without calling or failing an AI provider', async () => {
+        const metrics = new AppMetrics();
+        const vertex = provider('vertex', 'ok');
+        const orchestrator = createProviderOrchestrator(
+            'vertex',
+            new Map([['vertex', vertex]]),
+            { metrics },
+        );
+
+        const result = await orchestrator.translateImage(
+            {
+                ...IMAGE_REQUEST,
+                resolveVision: async () => ({ hasText: false }),
+            },
+            100,
+        );
+
+        expect(result).toMatchObject({
+            hasText: false,
+            route: 'vision',
+            inputTokens: 0,
+            outputTokens: 0,
+        });
+        expect(vertex.translate).not.toHaveBeenCalled();
+        expect(metrics.snapshot().providers.vertex).toBeUndefined();
     });
 });

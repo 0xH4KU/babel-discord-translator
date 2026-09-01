@@ -10,7 +10,15 @@ import {
     fetchProviderWithRetry,
     normalizeProviderTokenCount,
 } from './provider-http.js';
-import type { TranslationPrompt, TranslationResult, VertexAIResponse } from '../shared/types.js';
+import type {
+    GeminiMediaResolution,
+    ImageTranslationRequest,
+    ImageTranslationResult,
+    TranslationPrompt,
+    TranslationResult,
+    VertexAIResponse,
+} from '../shared/types.js';
+import { parseImageTranslationResponse } from '../modules/translation/lens-model.js';
 
 export { ProviderHttpError } from './provider-errors.js';
 
@@ -22,6 +30,47 @@ interface VertexAiConfig {
     project: string;
     location: string;
     model: string;
+}
+
+const LENS_RESPONSE_SCHEMA = {
+    type: 'OBJECT',
+    required: ['has_text', 'translation', 'regions'],
+    properties: {
+        has_text: { type: 'BOOLEAN' },
+        translation: { type: 'STRING' },
+        regions: {
+            type: 'ARRAY',
+            maxItems: 99,
+            items: {
+                type: 'OBJECT',
+                required: ['translation', 'box_2d'],
+                properties: {
+                    translation: { type: 'STRING' },
+                    box_2d: {
+                        type: 'ARRAY',
+                        minItems: 4,
+                        maxItems: 4,
+                        items: { type: 'NUMBER', minimum: 0, maximum: 1000 },
+                    },
+                },
+            },
+        },
+    },
+} as const;
+
+function mediaResolutionValue(
+    resolution: GeminiMediaResolution,
+): `MEDIA_RESOLUTION_${Uppercase<Exclude<GeminiMediaResolution, 'default'>>}` | undefined {
+    switch (resolution) {
+        case 'low':
+            return 'MEDIA_RESOLUTION_LOW';
+        case 'medium':
+            return 'MEDIA_RESOLUTION_MEDIUM';
+        case 'high':
+            return 'MEDIA_RESOLUTION_HIGH';
+        default:
+            return undefined;
+    }
 }
 
 export interface VertexAiHealthStatus {
@@ -73,6 +122,7 @@ async function requestGenerateContent(
         logContext,
         runtimeConfig,
         signal,
+        image,
     }: {
         maxOutputTokens: number;
         temperature?: number;
@@ -82,6 +132,11 @@ async function requestGenerateContent(
         logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'>;
         runtimeConfig?: RuntimeConfig;
         signal?: AbortSignal;
+        image?: {
+            data: Buffer;
+            mimeType: ImageTranslationRequest['mimeType'];
+            mediaResolution: GeminiMediaResolution;
+        };
     },
 ): Promise<{ data: VertexAIResponse; latencyMs: number }> {
     const logger = appLogger.child({
@@ -128,12 +183,37 @@ async function requestGenerateContent(
                     contents: [
                         {
                             role: 'user',
-                            parts: [{ text: typeof prompt === 'string' ? prompt : prompt.user }],
+                            parts: [
+                                { text: typeof prompt === 'string' ? prompt : prompt.user },
+                                ...(image
+                                    ? [
+                                          {
+                                              inlineData: {
+                                                  data: image.data.toString('base64'),
+                                                  mimeType: image.mimeType,
+                                              },
+                                              ...(mediaResolutionValue(image.mediaResolution)
+                                                  ? {
+                                                        mediaResolution: mediaResolutionValue(
+                                                            image.mediaResolution,
+                                                        ),
+                                                    }
+                                                  : {}),
+                                          },
+                                      ]
+                                    : []),
+                            ],
                         },
                     ],
                     generationConfig: {
                         maxOutputTokens,
                         temperature,
+                        ...(image
+                            ? {
+                                  responseMimeType: 'application/json',
+                                  responseSchema: LENS_RESPONSE_SCHEMA,
+                              }
+                            : {}),
                     },
                 }),
             },
@@ -180,6 +260,36 @@ async function requestGenerateContent(
         data: (await response.json()) as VertexAIResponse,
         latencyMs,
     };
+}
+
+export async function generateImageTranslationContent(
+    request: ImageTranslationRequest,
+    maxOutputTokens: number,
+    options?: TranslateOptions,
+): Promise<ImageTranslationResult> {
+    const runtimeConfig = options?.runtimeConfig ?? configRepository.getRuntimeConfig();
+    const { data } = await requestGenerateContent(request.prompt, {
+        maxOutputTokens,
+        logPrefix: 'Babel Lens',
+        logContext: options?.logContext,
+        runtimeConfig,
+        signal: options?.signal,
+        image: {
+            data: request.image,
+            mimeType: request.mimeType,
+            mediaResolution: runtimeConfig.geminiMediaResolution,
+        },
+    });
+
+    const result = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (!result) throw new Error('Empty Babel Lens response from Gemini');
+
+    const meta = data.usageMetadata || {};
+    return parseImageTranslationResponse(
+        result,
+        normalizeProviderTokenCount(meta.promptTokenCount, 4096),
+        normalizeProviderTokenCount(meta.candidatesTokenCount, estimateTokenCount(result)),
+    );
 }
 
 export async function generateTranslationContent(
@@ -254,6 +364,16 @@ export function createVertexAiProvider(): TranslationProvider {
         isConfigured(options?: TranslateOptions): boolean {
             return isVertexAiConfigured(options?.runtimeConfig);
         },
+        supportsImageInput(options?: TranslateOptions): boolean {
+            return options?.runtimeConfig?.vertexAiSupportsImages === true;
+        },
+        translateImage(
+            request: ImageTranslationRequest,
+            maxOutputTokens: number,
+            options?: TranslateOptions,
+        ): Promise<ImageTranslationResult> {
+            return generateImageTranslationContent(request, maxOutputTokens, options);
+        },
     };
 }
 
@@ -262,4 +382,6 @@ export const _test = {
     getVertexAiConfig,
     buildVertexAiError,
     classifyVertexAiFailure,
+    LENS_RESPONSE_SCHEMA,
+    mediaResolutionValue,
 };

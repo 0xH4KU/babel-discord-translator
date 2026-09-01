@@ -19,6 +19,7 @@ import type { AppProfile } from '../apps/app-profile.js';
 // --- Provider ---
 
 export type TranslationProviderMode = 'vertex' | 'openai' | 'vertex+openai' | 'openai+vertex';
+export type GeminiMediaResolution = 'default' | 'low' | 'medium' | 'high';
 
 export interface TranslationPrompt {
     system: string;
@@ -82,6 +83,8 @@ export interface StoreData {
     gcpProject: string;
     gcpLocation: string;
     geminiModel: string;
+    vertexAiSupportsImages: boolean;
+    geminiMediaResolution: GeminiMediaResolution;
     allowedGuildIds: string[];
     lensEnabledGuildIds: string[];
     allowedUserIds: string[];
@@ -109,6 +112,7 @@ export interface StoreData {
     openaiApiKey: string;
     openaiBaseUrl: string;
     openaiModel: string;
+    openaiSupportsImages: boolean;
     translationProvider: TranslationProviderMode;
     // Per-guild budget & usage
     guildBudgets: Record<string, GuildBudgetConfig>;
@@ -144,6 +148,24 @@ export interface TranslationResult {
     outputTokens: number;
     provider?: string;
     fallback?: boolean;
+}
+
+export interface LensRegion {
+    translation: string;
+    box_2d: [number, number, number, number];
+}
+
+export interface ImageTranslationResult extends TranslationResult {
+    hasText: boolean;
+    regions: LensRegion[];
+    route?: 'direct' | 'vision';
+    warnings?: string[];
+}
+
+export interface ImageTranslationRequest {
+    image: Buffer;
+    mimeType: 'image/jpeg' | 'image/png' | 'image/webp';
+    prompt: TranslationPrompt;
 }
 
 export interface VertexAIResponse {

@@ -14,7 +14,11 @@ const STRING_CONFIG_KEYS = [
     'openaiModel',
 ] as const;
 const ARRAY_CONFIG_KEYS = ['allowedGuildIds', 'lensEnabledGuildIds', 'allowedUserIds'] as const;
-const BOOLEAN_CONFIG_KEYS = ['setupComplete'] as const;
+const BOOLEAN_CONFIG_KEYS = [
+    'setupComplete',
+    'vertexAiSupportsImages',
+    'openaiSupportsImages',
+] as const;
 const NUMBER_CONFIG_KEYS = [
     'cooldownSeconds',
     'cacheMaxSize',
@@ -31,7 +35,7 @@ const NUMBER_CONFIG_KEYS = [
     'translationMaxUserOutstanding',
     'translationMaxQueueWaitMs',
 ] as const;
-const OTHER_CONFIG_KEYS = ['translationProvider'] as const;
+const OTHER_CONFIG_KEYS = ['translationProvider', 'geminiMediaResolution'] as const;
 const ALLOWED_CONFIG_KEYS = new Set<string>([
     ...STRING_CONFIG_KEYS,
     ...ARRAY_CONFIG_KEYS,
@@ -269,5 +273,42 @@ export function validateConfigUpdate(updates: Record<string, unknown>): {
         }
     }
 
+    if (sanitized.geminiMediaResolution !== undefined) {
+        const valid = ['default', 'low', 'medium', 'high'];
+        if (
+            typeof sanitized.geminiMediaResolution !== 'string' ||
+            !valid.includes(sanitized.geminiMediaResolution)
+        ) {
+            return {
+                valid: false,
+                error: 'geminiMediaResolution must be default, low, medium, or high',
+                sanitized: sanitized as Partial<StoreData>,
+            };
+        }
+    }
+
     return { valid: true, sanitized: sanitized as Partial<StoreData> };
+}
+
+export function applyProviderCapabilityResets(
+    current: StoreData,
+    updates: Partial<StoreData>,
+): Partial<StoreData> {
+    const normalized = { ...updates };
+    if (
+        updates.geminiModel !== undefined &&
+        updates.geminiModel !== current.geminiModel &&
+        updates.vertexAiSupportsImages !== true
+    ) {
+        normalized.vertexAiSupportsImages = false;
+    }
+    if (
+        ((updates.openaiModel !== undefined && updates.openaiModel !== current.openaiModel) ||
+            (updates.openaiBaseUrl !== undefined &&
+                updates.openaiBaseUrl !== current.openaiBaseUrl)) &&
+        updates.openaiSupportsImages !== true
+    ) {
+        normalized.openaiSupportsImages = false;
+    }
+    return normalized;
 }

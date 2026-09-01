@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     checkOpenAiHealth,
     createOpenAiProvider,
+    generateImageTranslationContent,
     generateTranslationContent,
     isOpenAiConfigured,
     _test,
@@ -12,6 +13,7 @@ vi.mock('../src/persistence/store.js', () => {
         openaiApiKey: 'test-openai-key',
         openaiBaseUrl: 'https://api.openai.example',
         openaiModel: 'gpt-test',
+        openaiSupportsImages: false,
         allowedGuildIds: [],
     };
 
@@ -110,6 +112,37 @@ describe('openai-client', () => {
             inputTokens: 6,
             outputTokens: 1,
         });
+    });
+
+    it('should send compatible text and image_url content parts without forcing response format', async () => {
+        globalThis.fetch = vi.fn().mockResolvedValue(
+            chatResponse(
+                JSON.stringify({ has_text: true, translation: 'hola', regions: [] }),
+                { prompt_tokens: 50, completion_tokens: 10 },
+            ),
+        );
+
+        const result = await generateImageTranslationContent(
+            {
+                image: Buffer.from('image'),
+                mimeType: 'image/webp',
+                prompt: translationPrompt('Read and translate the image.'),
+            },
+            512,
+        );
+
+        expect(result).toMatchObject({ text: 'hola', inputTokens: 50, outputTokens: 10 });
+        const request = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1];
+        const body = JSON.parse(request.body);
+        expect(body.messages[1].content).toEqual([
+            { type: 'text', text: 'Read and translate the image.' },
+            {
+                type: 'image_url',
+                image_url: { url: `data:image/webp;base64,${Buffer.from('image').toString('base64')}` },
+            },
+        ]);
+        expect(body).not.toHaveProperty('response_format');
+        expect(body.messages[1].content[1].image_url).not.toHaveProperty('detail');
     });
 
     it('should reject empty completions', async () => {

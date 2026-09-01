@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { validateConfigUpdate } from '../src/modules/dashboard/config-validation.js';
+import {
+    applyProviderCapabilityResets,
+    validateConfigUpdate,
+} from '../src/modules/dashboard/config-validation.js';
 import { dashboardMessages } from '../src/shared/messages/dashboard-messages.js';
+import { DEFAULT_STORE_DATA } from '../src/persistence/store-defaults.js';
 
 describe('validateConfigUpdate', () => {
     it('should drop empty or masked API keys from the update', () => {
@@ -210,6 +214,48 @@ describe('validateConfigUpdate', () => {
         expect(validateConfigUpdate({ translationProvider: ['vertex'] })).toMatchObject({
             valid: false,
             error: dashboardMessages.validation.translationProvider,
+        });
+    });
+
+    it('should validate image capability and Gemini media resolution fields', () => {
+        expect(
+            validateConfigUpdate({
+                vertexAiSupportsImages: true,
+                openaiSupportsImages: false,
+                geminiMediaResolution: 'medium',
+            }),
+        ).toMatchObject({ valid: true });
+        expect(validateConfigUpdate({ vertexAiSupportsImages: 'yes' })).toMatchObject({
+            valid: false,
+            error: 'vertexAiSupportsImages must be a boolean',
+        });
+        expect(validateConfigUpdate({ geminiMediaResolution: 'ultra_high' })).toMatchObject({
+            valid: false,
+        });
+    });
+
+    it('should reset image capability when its model identity changes unless reconfirmed', () => {
+        const current = {
+            ...DEFAULT_STORE_DATA,
+            geminiModel: 'gemini-old',
+            vertexAiSupportsImages: true,
+            openaiBaseUrl: 'https://old.example',
+            openaiModel: 'model-old',
+            openaiSupportsImages: true,
+        };
+
+        expect(applyProviderCapabilityResets(current, { geminiModel: 'gemini-new' })).toEqual({
+            geminiModel: 'gemini-new',
+            vertexAiSupportsImages: false,
+        });
+        expect(
+            applyProviderCapabilityResets(current, {
+                openaiBaseUrl: 'https://new.example',
+                openaiSupportsImages: true,
+            }),
+        ).toEqual({
+            openaiBaseUrl: 'https://new.example',
+            openaiSupportsImages: true,
         });
     });
 });

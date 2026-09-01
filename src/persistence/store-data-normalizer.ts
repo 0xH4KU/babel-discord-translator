@@ -1,5 +1,6 @@
 import type {
     GuildBudgetConfig,
+    GeminiMediaResolution,
     StoreData,
     TokenUsage,
     TranslationProviderMode,
@@ -27,6 +28,19 @@ function normalizeProviderMode(value: unknown): TranslationProviderMode {
     return typeof value === 'string' && VALID_PROVIDER_MODES.has(value)
         ? (value as TranslationProviderMode)
         : 'vertex';
+}
+
+const VALID_MEDIA_RESOLUTIONS: ReadonlySet<string> = new Set([
+    'default',
+    'low',
+    'medium',
+    'high',
+]);
+
+function normalizeMediaResolution(value: unknown): GeminiMediaResolution {
+    return typeof value === 'string' && VALID_MEDIA_RESOLUTIONS.has(value)
+        ? (value as GeminiMediaResolution)
+        : 'default';
 }
 
 function normalizeUsageEntry(
@@ -190,6 +204,8 @@ export function normalizeStoreData(data: Partial<StoreData> | undefined): StoreD
         gcpProject: normalizeString(source.gcpProject),
         gcpLocation: normalizeString(source.gcpLocation, 'global'),
         geminiModel: normalizeString(source.geminiModel, 'gemini-2.5-flash-lite'),
+        vertexAiSupportsImages: source.vertexAiSupportsImages === true,
+        geminiMediaResolution: normalizeMediaResolution(source.geminiMediaResolution),
         allowedGuildIds: Array.isArray(source.allowedGuildIds)
             ? source.allowedGuildIds.filter(
                   (guildId): guildId is string => typeof guildId === 'string',
@@ -229,6 +245,7 @@ export function normalizeStoreData(data: Partial<StoreData> | undefined): StoreD
         openaiApiKey: normalizeString(source.openaiApiKey),
         openaiBaseUrl: normalizeString(source.openaiBaseUrl),
         openaiModel: normalizeString(source.openaiModel),
+        openaiSupportsImages: source.openaiSupportsImages === true,
         translationProvider: normalizeProviderMode(source.translationProvider),
         guildBudgets: cloneGuildBudgets(source.guildBudgets),
         guildVisionLimits: cloneVisionLimits(source.guildVisionLimits),

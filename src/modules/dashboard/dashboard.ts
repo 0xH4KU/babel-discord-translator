@@ -32,7 +32,7 @@ import {
     type DashboardCapabilities,
 } from './capabilities.js';
 import { PendingUserInstallOwnerRepository } from './pending-user-install-owner-repository.js';
-import { validateConfigUpdate } from './config-validation.js';
+import { applyProviderCapabilityResets, validateConfigUpdate } from './config-validation.js';
 import { runSetupDoctor } from './setup-doctor.js';
 import {
     MAX_GLOSSARY_IMPORT_BYTES,
@@ -605,9 +605,10 @@ export function createDashboardApp({
         }
 
         const currentConfig = configRepository.getDashboardConfig();
-        configRepository.updateConfig(sanitized);
+        const normalizedUpdates = applyProviderCapabilityResets(currentConfig, sanitized);
+        configRepository.updateConfig(normalizedUpdates);
 
-        const effects = applyConfigUpdateEffects(currentConfig, sanitized, {
+        const effects = applyConfigUpdateEffects(currentConfig, normalizedUpdates, {
             cache,
             cooldown,
             cooldowns: cooldowns ? Object.values(cooldowns) : undefined,

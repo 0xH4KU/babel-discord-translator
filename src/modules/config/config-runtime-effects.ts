@@ -11,6 +11,8 @@ export const MANAGED_RUNTIME_CONFIG_KEYS = [
     'cooldownSeconds',
     'cacheMaxSize',
     'geminiModel',
+    'vertexAiSupportsImages',
+    'geminiMediaResolution',
     'translationPrompt',
     'maxInputLength',
     'maxOutputTokens',
@@ -19,6 +21,7 @@ export const MANAGED_RUNTIME_CONFIG_KEYS = [
     'openaiApiKey',
     'openaiBaseUrl',
     'openaiModel',
+    'openaiSupportsImages',
     'translationProvider',
     'translationMaxConcurrent',
     'translationMaxGlobalQueue',
@@ -59,6 +62,10 @@ const CONFIG_EFFECT_DESCRIPTIONS: Record<ManagedRuntimeConfigKey, string> = {
         'Update the in-memory translation cache capacity immediately and trim overflow entries.',
     geminiModel:
         'Clear translation cache and reset provider state so future requests use the new Vertex AI model.',
+    vertexAiSupportsImages:
+        'Clear translation cache so Babel Lens uses the confirmed Vertex AI image capability.',
+    geminiMediaResolution:
+        'Clear translation cache so Babel Lens uses the updated Gemini media resolution.',
     translationPrompt: 'Clear the translation cache so future requests use the new prompt.',
     maxInputLength:
         'No in-memory sync required; request validation reads the persisted value on each call.',
@@ -74,6 +81,8 @@ const CONFIG_EFFECT_DESCRIPTIONS: Record<ManagedRuntimeConfigKey, string> = {
         'Clear translation cache and reset provider state so future requests use the updated OpenAI-compatible endpoint.',
     openaiModel:
         'Clear translation cache and reset provider state so future requests use the updated OpenAI-compatible model.',
+    openaiSupportsImages:
+        'Clear translation cache so Babel Lens uses the confirmed OpenAI-compatible image capability.',
     translationProvider:
         'Clear translation cache and reset provider state so future requests use the new provider.',
     translationMaxConcurrent: 'Update the runtime translation concurrency limit immediately.',
@@ -138,6 +147,9 @@ export function applyConfigUpdateEffects(
                 break;
             case 'translationPrompt':
             case 'maxOutputTokens':
+            case 'vertexAiSupportsImages':
+            case 'geminiMediaResolution':
+            case 'openaiSupportsImages':
                 clearCache();
                 break;
             case 'maxInputLength':
