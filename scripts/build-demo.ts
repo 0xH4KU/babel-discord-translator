@@ -35,6 +35,8 @@ interface DemoConfigFixture {
     gcpProject: string;
     gcpLocation: string;
     geminiModel: string;
+    vertexAiSupportsImages: boolean;
+    geminiMediaResolution: 'default' | 'low' | 'medium' | 'high';
     allowedGuildIds: string[];
     lensEnabledGuildIds: string[];
     allowedUserIds: string[];
@@ -64,6 +66,7 @@ interface DemoConfigFixture {
     hasOpenaiApiKey: boolean;
     openaiBaseUrl: string;
     openaiModel: string;
+    openaiSupportsImages: boolean;
     translationProvider: string;
 }
 
@@ -311,6 +314,8 @@ const DEMO_CONFIG: DemoConfigFixture = {
     gcpProject: 'babel-demo-project',
     gcpLocation: 'global',
     geminiModel: 'gemini-2.5-flash-lite',
+    vertexAiSupportsImages: true,
+    geminiMediaResolution: 'default',
     allowedGuildIds: ['100000000000000001', '100000000000000002'],
     lensEnabledGuildIds: ['100000000000000001'],
     allowedUserIds: [],
@@ -340,6 +345,7 @@ const DEMO_CONFIG: DemoConfigFixture = {
     hasOpenaiApiKey: true,
     openaiBaseUrl: 'https://api.openai.com',
     openaiModel: 'gpt-4o-mini',
+    openaiSupportsImages: false,
     translationProvider: 'vertex+openai',
 };
 
@@ -463,6 +469,7 @@ const DEMO_LOGS: DemoLogFixture = [
         guildName: 'Builder Lounge',
         userId: '200000000000000001',
         userTag: 'alice#1024',
+        command: 'Babel Lens',
         contentPreview: 'Can someone translate the release notes?',
         cached: false,
         targetLanguage: 'zh-TW',
@@ -475,6 +482,7 @@ const DEMO_LOGS: DemoLogFixture = [
         guildName: 'Indie Game Dev',
         userId: '200000000000000002',
         userTag: 'kenji#2048',
+        command: 'Babel',
         contentPreview: 'The prototype build is ready for testing.',
         cached: true,
         targetLanguage: 'ja',
@@ -501,6 +509,7 @@ const DEMO_LOGS: DemoLogFixture = [
         guildName: 'Open Source Asia',
         userId: '200000000000000004',
         userTag: 'sofia#7788',
+        command: 'Babel',
         contentPreview: 'Please keep the code comments in English.',
         cached: false,
         targetLanguage: 'ko',
@@ -673,7 +682,7 @@ const DEMO_GLOSSARY = {
 };
 
 const DEMO_VERSION = {
-    version: '0.2.1',
+    version: '0.3.0',
     repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases',
 };
 
@@ -828,6 +837,7 @@ function createConfigFixture(variant: DemoVariant): typeof DEMO_CONFIG {
         allowedUserIds: ['200000000000000001', '200000000000000002'],
         dailyBudgetUsd: 0.25,
         defaultUserDailyBudgetUsd: 0.5,
+        openaiSupportsImages: true,
     };
 }
 
@@ -1101,6 +1111,8 @@ const DEMO_CSS = `
   background: rgba(15, 23, 42, 0.96);
   color: var(--text);
   box-shadow: var(--shadow-sm);
+  width: calc(100% - 248px);
+  margin-left: 248px;
 }
 
 .demo-banner strong {
@@ -1128,55 +1140,15 @@ const DEMO_CSS = `
   cursor: not-allowed !important;
 }
 
-.demo-only-section {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: rgba(15, 23, 42, 0.45);
-  padding: 1rem;
-  margin-bottom: 1rem;
-}
-
-.demo-only-section h3 {
-  margin-top: 0;
-}
-
-.demo-only-section ul {
-  margin: 0.75rem 0 0;
-  padding-left: 1.25rem;
-  color: var(--text-dim);
+@media (max-width: 768px) {
+  .demo-banner {
+    width: 100%;
+    margin-left: 0;
+  }
 }
 `;
 
 function createDemoReadonlyJs(variant: DemoVariant): string {
-    const pocketSummary =
-        variant.kind === 'pocket'
-            ? `
-  async function installPocketDemoSections() {
-    const accessTab = document.getElementById('tab-access');
-    if (!accessTab || accessTab.querySelector('[data-pocket-demo-summary]')) return;
-
-    accessTab.querySelectorAll('.settings-section').forEach((section) => {
-      const heading = section.querySelector('h3')?.textContent || '';
-      if (heading.includes('Server Feature Access') || heading.includes('Server Glossary')) {
-        section.style.display = 'none';
-      }
-    });
-    accessTab.querySelectorAll('.save-bar[data-capability="guildAccess"]').forEach((saveBar) => {
-      saveBar.style.display = 'none';
-    });
-
-    const summary = document.createElement('div');
-    summary.className = 'demo-only-section';
-    summary.dataset.pocketDemoSummary = 'true';
-    summary.innerHTML =
-      '<h3>User Install Access</h3>' +
-      '<div class="desc-text">Babel Pocket uses user allowlists and per-user budgets. The demo fixtures include approved installing users and one pending owner request.</div>' +
-      '<ul><li>Approved users: Alex Chen, Mei Lin</li><li>Pending user-install owner: Waiting Operator</li><li>Default user budget: $0.50/day</li></ul>';
-    accessTab.prepend(summary);
-  }`
-            : `
-  async function installPocketDemoSections() {}`;
-
     return `
 (function () {
   const appName = ${JSON.stringify(variant.productName)};
@@ -1191,8 +1163,6 @@ function createDemoReadonlyJs(variant: DemoVariant): string {
       '<div class="demo-badge">Read-only demo</div>';
     document.body.prepend(banner);
   }
-${pocketSummary}
-
   function disableMutations() {
     const selectors = [
       '#login-view',
@@ -1227,7 +1197,6 @@ ${pocketSummary}
 
   window.addEventListener('DOMContentLoaded', () => {
     installDemoBanner();
-    installPocketDemoSections();
     wrapToast();
     setTimeout(disableMutations, 100);
     setInterval(disableMutations, 1000);
