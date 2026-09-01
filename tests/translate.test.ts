@@ -182,6 +182,8 @@ describe('buildImageTranslationPrompt', () => {
         expect(prompt.system).toContain('[ymin, xmin, ymax, xmax]');
         expect(prompt.system).toContain('"has_text"');
         expect(prompt.system).toContain('[[BABEL_REGION_N]]');
+        expect(prompt.system).toContain('smallest rectangle');
+        expect(prompt.system).toContain('Merge adjacent lines');
         expect(prompt.system).not.toContain('objects with "translation" and "box_2d"');
     });
 });
