@@ -228,9 +228,11 @@ export function createProviderOrchestrator(
                         to: provider.name,
                         error: fallbackError.message,
                         fallbackReason:
-                            lastError instanceof ProviderRouteError
-                                ? `${lastError.route}_failed`
-                                : classifyProviderError(lastError),
+                            !lastError
+                                ? 'circuit_open'
+                                : lastError instanceof ProviderRouteError
+                                  ? `${lastError.route}_failed`
+                                  : classifyProviderError(lastError),
                         ...options?.logContext,
                     });
                 }
@@ -241,6 +243,18 @@ export function createProviderOrchestrator(
                     recordBreakerSuccess(provider.name);
                     metrics?.recordProviderSuccess(provider.name, {
                         latencyMs: Date.now() - startedAt,
+                    });
+                }
+                if (
+                    'warnings' in outcome.result &&
+                    Array.isArray(outcome.result.warnings) &&
+                    outcome.result.warnings.length > 0
+                ) {
+                    logger.warn('provider_orchestrator.image_regions_invalid', {
+                        route: outcome.route,
+                        provider: provider.name,
+                        warnings: outcome.result.warnings,
+                        ...options?.logContext,
                     });
                 }
                 if (outcome.route) {
@@ -321,14 +335,6 @@ export function createProviderOrchestrator(
                         maxOutputTokens,
                         providerOptions,
                     );
-                    if (result.warnings?.length) {
-                        logger.warn('provider_orchestrator.image_regions_invalid', {
-                            route: 'direct',
-                            provider: provider.name,
-                            warnings: result.warnings,
-                            ...options?.logContext,
-                        });
-                    }
                     return {
                         result: { ...result, route: 'direct' as const },
                         providerCalled: true,
@@ -372,7 +378,7 @@ export function createProviderOrchestrator(
                     ? extractRegionTranslations(translated.text, boxes)
                     : [];
                 const warnings =
-                    boxes.length > 0 && regions.length !== boxes.length
+                    boxes.length === 0 || regions.length !== boxes.length
                         ? ['invalid_regions']
                         : undefined;
                 return {

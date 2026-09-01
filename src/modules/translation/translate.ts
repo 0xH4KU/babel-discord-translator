@@ -1,16 +1,25 @@
 /**
  * Translate text using the configured translation provider(s).
  */
-import { createProviderOrchestrator } from '../../infra/provider-orchestrator.js';
+import {
+    createProviderOrchestrator,
+    type ProviderImageOrchestratorResult,
+    type VisionTranslationResolution,
+} from '../../infra/provider-orchestrator.js';
 import { createVertexAiProvider } from '../../infra/vertex-ai-client.js';
 import { createOpenAiProvider } from '../../infra/openai-client.js';
 import { configRepository, type RuntimeConfig } from '../config/config-repository.js';
 import type { StructuredLogFields } from '../../shared/structured-logger.js';
 import type { AppMetricsCollector } from '../../shared/app-metrics.js';
-import type { TranslationProviderMode, TranslationResult } from '../../shared/types.js';
+import type {
+    ImageTranslationRequest,
+    TranslationProviderMode,
+    TranslationResult,
+} from '../../shared/types.js';
 import type { TranslationProvider } from '../../infra/provider-orchestrator.js';
 import {
     buildGlossaryPromptSection,
+    buildImageTranslationPrompt,
     buildTargetedPrompt,
     buildTranslationPrompt,
     DEFAULT_PROMPT,
@@ -22,6 +31,7 @@ import {
 
 export {
     buildGlossaryPromptSection,
+    buildImageTranslationPrompt,
     buildTranslationPrompt,
     resolveSystemPrompt,
     type TranslationGlossaryPromptEntry,
@@ -96,6 +106,31 @@ export async function translate(
     return getOrchestrator(mode).translate(prompt, maxOutputTokens, options);
 }
 
+export async function translateImage(
+    image: Buffer,
+    mimeType: ImageTranslationRequest['mimeType'],
+    targetLanguage: string,
+    resolveVision: () => Promise<VisionTranslationResolution>,
+    options?: {
+        logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'>;
+        metrics?: AppMetricsCollector;
+        glossaryEntries?: TranslationGlossaryPromptEntry[];
+        runtimeConfig?: RuntimeConfig;
+    },
+): Promise<ProviderImageOrchestratorResult> {
+    const config = options?.runtimeConfig ?? configRepository.getRuntimeConfig();
+    const prompt = buildImageTranslationPrompt(
+        targetLanguage,
+        config.translationPrompt,
+        options?.glossaryEntries,
+    );
+    return getOrchestrator(config.translationProvider || 'vertex').translateImage(
+        { image, mimeType, prompt, resolveVision },
+        config.maxOutputTokens || 1000,
+        options,
+    );
+}
+
 export const _test = {
     getLanguageName,
     buildTargetedPrompt,
@@ -104,6 +139,7 @@ export const _test = {
     resolveSystemPrompt,
     buildGlossaryPromptSection,
     buildTranslationPrompt,
+    buildImageTranslationPrompt,
     /** Reset providers for testing. */
     resetProviders: resetTranslationProviderState,
 };

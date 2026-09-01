@@ -5,21 +5,13 @@ import {
 } from 'discord.js';
 import { BABEL_GUILD_PROFILE, type AppProfile } from '../apps/app-profile.js';
 import { configRepository } from '../modules/config/config-repository.js';
-import {
-    assertVisionAvailable,
-    detectTextWithBudget,
-} from '../modules/translation/lens-ocr.js';
-import { renderLensImage } from '../modules/translation/lens-image.js';
-import {
-    formatDetectedText,
-    normalizeRegionTranslation,
-} from '../modules/translation/lens-regions.js';
+import { detectTextWithBudget } from '../modules/translation/lens-ocr.js';
+import { normalizeLensImage, renderLensImage } from '../modules/translation/lens-image.js';
 import { type TranslationCache } from '../modules/translation/cache.js';
 import type { TranslationRuntimeLimiter } from '../modules/translation/translation-runtime-limiter.js';
 import { buildTranslationMessages } from '../shared/discord-message-format.js';
 import { appLogger, createRequestId } from '../shared/structured-logger.js';
 import type { VisionQuotaScope } from '../persistence/store.js';
-import type { VisionTextResult } from '../infra/cloud-vision-client.js';
 import type { CommandDeps } from '../shared/types.js';
 
 const MAX_IMAGE_BYTES = 7 * 1024 * 1024;
@@ -158,8 +150,7 @@ export async function handleBabelLens(
             ? { scope: 'guild', scopeId: interaction.guildId! }
             : { scope: 'user', scopeId: billingUserId! };
     let sourceImage: Buffer | null = null;
-    let detectedText: VisionTextResult | null = null;
-    const result = await translationService.process({
+    const result = await translationService.processImage({
         command: 'babel',
         commandLabel: 'Babel Lens (context menu)',
         guildId: interaction.guildId,
@@ -169,19 +160,18 @@ export async function handleBabelLens(
         userTag: interaction.user.tag,
         locale: interaction.locale,
         requestId,
-        preserveNumberedMarkers: true,
-        resolveText: async () => {
-            assertVisionAvailable(visionQuotaScope);
-            sourceImage = await downloadDiscordImage(attachment);
-            detectedText = await detectTextWithBudget(
-                sourceImage,
+        resolveImage: async () => {
+            const normalized = await normalizeLensImage(await downloadDiscordImage(attachment));
+            sourceImage = normalized.image;
+            return normalized;
+        },
+        resolveVision: (image) =>
+            detectTextWithBudget(
+                image,
                 ocrCache,
                 requestId,
                 visionQuotaScope,
-            );
-            if (!detectedText.text) throw new Error('Cloud Vision found no text in this image.');
-            return formatDetectedText(detectedText);
-        },
+            ),
         beforeTranslate: () => interaction.deferReply({ flags: MessageFlags.Ephemeral }),
     });
 
@@ -196,20 +186,9 @@ export async function handleBabelLens(
         return;
     }
 
-    // The resolver mutates this value inside TranslationService.process().
-    const resolvedDetectedText = detectedText as VisionTextResult | null;
-    const { markersMatch, displayText } = normalizeRegionTranslation(
-        result.translatedText,
-        resolvedDetectedText?.regions.length ?? 0,
-    );
-    if (!markersMatch) {
-        appLogger.child({ component: 'babel_lens', requestId }).warn(
-            'lens.translation.markers_invalid',
-            {
-                expectedMarkers: resolvedDetectedText?.regions.length ?? 0,
-                translatedLength: result.translatedText.length,
-            },
-        );
+    if (!result.hasText) {
+        await sendLensReply(interaction, 'Babel Lens found no meaningful text in this image.');
+        return;
     }
 
     const renderAdmission = renderLimiter.acquire({
@@ -223,7 +202,7 @@ export async function handleBabelLens(
                 reason: renderAdmission.reason,
                 runtime: renderAdmission.snapshot,
             });
-        await sendLensReply(interaction, displayText);
+        await sendLensReply(interaction, result.translatedText);
         return;
     }
 
@@ -231,16 +210,16 @@ export async function handleBabelLens(
         const rendered = await renderAdmission.reservation.run(() =>
             renderLensImage(
                 sourceImage!,
-                displayText,
-                markersMatch ? (resolvedDetectedText ?? undefined) : undefined,
+                result.translatedText,
+                result.regions,
             ),
         );
-        await sendLensReply(interaction, displayText, rendered);
+        await sendLensReply(interaction, result.translatedText, rendered);
     } catch (error) {
         appLogger.child({ component: 'babel_lens', requestId }).error('lens.render.failed', {
             error: (error as Error).message,
         });
-        await sendLensReply(interaction, displayText);
+        await sendLensReply(interaction, result.translatedText);
     }
 }
 
@@ -248,6 +227,7 @@ export const _test = {
     findImageAttachment,
     downloadDiscordImage,
     detectTextWithBudget,
+    normalizeLensImage,
     MAX_IMAGE_BYTES,
     MAX_IMAGE_PIXELS,
 };

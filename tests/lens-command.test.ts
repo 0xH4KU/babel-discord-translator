@@ -20,6 +20,13 @@ const mocks = vi.hoisted(() => ({
         imageHeight: 100,
         regions: [{ text: 'Text from image', x: 5, y: 10, width: 80, height: 20 }],
     })),
+    normalizeImage: vi.fn(async (image: Buffer) => ({
+        image,
+        mimeType: 'image/png' as const,
+        width: 100,
+        height: 100,
+        hash: 'normalized-image-hash',
+    })),
     renderImage: vi.fn(async () => Buffer.from('rendered-image')),
 }));
 
@@ -39,6 +46,7 @@ vi.mock('../src/infra/cloud-vision-client.js', () => ({
 }));
 
 vi.mock('../src/modules/translation/lens-image.js', () => ({
+    normalizeLensImage: mocks.normalizeImage,
     renderLensImage: mocks.renderImage,
 }));
 
@@ -101,6 +109,13 @@ describe('Babel Lens command', () => {
             imageHeight: 100,
             regions: [{ text: 'Text from image', x: 5, y: 10, width: 80, height: 20 }],
         });
+        mocks.normalizeImage.mockImplementation(async (image: Buffer) => ({
+            image,
+            mimeType: 'image/png',
+            width: 100,
+            height: 100,
+            hash: 'normalized-image-hash',
+        }));
         vi.stubGlobal(
             'fetch',
             vi.fn(async () => new Response(Buffer.from('image'), { status: 200 })),
@@ -114,15 +129,17 @@ describe('Babel Lens command', () => {
     it('should OCR, translate, render, and return an ephemeral image', async () => {
         const interaction = createInteraction();
         const translationService = {
-            process: vi.fn(async (request) => {
+            processImage: vi.fn(async (request) => {
                 await request.beforeTranslate();
-                const originalText = await request.resolveText();
-                expect(originalText).toBe('[[BABEL_REGION_1]] Text from image');
+                const normalized = await request.resolveImage();
+                await request.resolveVision(normalized.image);
                 return {
                     status: 'success',
                     deferred: true,
-                    translatedText: '[[BABEL_REGION_1]] 圖片翻譯',
-                    originalText,
+                    translatedText: '[1] 圖片翻譯',
+                    hasText: true,
+                    regions: [{ translation: '圖片翻譯', box_2d: [100, 50, 300, 850] }],
+                    route: 'vision',
                     cached: false,
                     targetLanguage: 'zh-TW',
                     langSource: 'locale',
@@ -135,8 +152,11 @@ describe('Babel Lens command', () => {
         await handleBabelLens(interaction as never, createCommandDeps(translationService));
 
         expect(interaction.deferReply).toHaveBeenCalledOnce();
-        expect(translationService.process).toHaveBeenCalledWith(
-            expect.objectContaining({ preserveNumberedMarkers: true }),
+        expect(translationService.processImage).toHaveBeenCalledWith(
+            expect.objectContaining({
+                resolveImage: expect.any(Function),
+                resolveVision: expect.any(Function),
+            }),
         );
         expect(mocks.tryConsumeVisionImage).toHaveBeenCalledWith(
             new Date().toISOString().slice(0, 7),
@@ -150,9 +170,7 @@ describe('Babel Lens command', () => {
         expect(mocks.renderImage).toHaveBeenCalledWith(
             expect.any(Buffer),
             '[1] 圖片翻譯',
-            expect.objectContaining({
-                regions: [expect.objectContaining({ text: 'Text from image' })],
-            }),
+            [{ translation: '圖片翻譯', box_2d: [100, 50, 300, 850] }],
         );
         expect(interaction.editReply).toHaveBeenCalledWith({
             files: [{ attachment: Buffer.from('rendered-image'), name: 'babel-lens.jpg' }],
@@ -160,13 +178,50 @@ describe('Babel Lens command', () => {
         expect(interaction.followUp).not.toHaveBeenCalled();
     });
 
-    it('should reject messages without a supported image before translation', async () => {
-        const interaction = createInteraction(false);
-        const translationService = { process: vi.fn() };
+    it('should allow a direct no-text route when Vision is disabled', async () => {
+        mocks.getRuntimeConfig.mockReturnValue({
+            visionApiKey: '',
+            visionMonthlyImageLimit: 0,
+            lensEnabledGuildIds: ['guild-1'],
+        });
+        const interaction = createInteraction();
+        const translationService = {
+            processImage: vi.fn(async (request) => {
+                await request.beforeTranslate();
+                await request.resolveImage();
+                return {
+                    status: 'success',
+                    deferred: true,
+                    translatedText: '',
+                    hasText: false,
+                    regions: [],
+                    route: 'direct',
+                    cached: false,
+                    targetLanguage: 'zh-TW',
+                    langSource: 'locale',
+                    inputTokens: 20,
+                    outputTokens: 2,
+                };
+            }),
+        };
 
         await handleBabelLens(interaction as never, createCommandDeps(translationService));
 
-        expect(translationService.process).not.toHaveBeenCalled();
+        expect(mocks.tryConsumeVisionImage).not.toHaveBeenCalled();
+        expect(mocks.detectText).not.toHaveBeenCalled();
+        expect(mocks.renderImage).not.toHaveBeenCalled();
+        expect(interaction.editReply).toHaveBeenCalledWith(
+            expect.objectContaining({ content: expect.stringContaining('no meaningful text') }),
+        );
+    });
+
+    it('should reject messages without a supported image before translation', async () => {
+        const interaction = createInteraction(false);
+        const translationService = { processImage: vi.fn() };
+
+        await handleBabelLens(interaction as never, createCommandDeps(translationService));
+
+        expect(translationService.processImage).not.toHaveBeenCalled();
         expect(interaction.reply).toHaveBeenCalledWith(
             expect.objectContaining({
                 content: expect.stringContaining('PNG, JPEG, or WebP'),
@@ -177,13 +232,15 @@ describe('Babel Lens command', () => {
     it('should omit region boxes when translated markers do not match', async () => {
         const interaction = createInteraction();
         const translationService = {
-            process: vi.fn(async (request) => {
-                await request.resolveText();
+            processImage: vi.fn(async (request) => {
+                await request.resolveImage();
                 return {
                     status: 'success',
                     deferred: false,
                     translatedText: '圖片翻譯',
-                    originalText: '[[BABEL_REGION_1]] Text from image',
+                    hasText: true,
+                    regions: [],
+                    route: 'direct',
                     cached: false,
                     targetLanguage: 'zh-TW',
                     langSource: 'locale',
@@ -195,19 +252,21 @@ describe('Babel Lens command', () => {
 
         await handleBabelLens(interaction as never, createCommandDeps(translationService));
 
-        expect(mocks.renderImage).toHaveBeenCalledWith(expect.any(Buffer), '圖片翻譯', undefined);
+        expect(mocks.renderImage).toHaveBeenCalledWith(expect.any(Buffer), '圖片翻譯', []);
     });
 
     it('should return translated text when render capacity is full', async () => {
         const interaction = createInteraction();
         const translationService = {
-            process: vi.fn(async (request) => {
-                await request.resolveText();
+            processImage: vi.fn(async (request) => {
+                await request.resolveImage();
                 return {
                     status: 'success',
                     deferred: true,
-                    translatedText: '[[BABEL_REGION_1]] 圖片翻譯',
-                    originalText: '[[BABEL_REGION_1]] Text from image',
+                    translatedText: '[1] 圖片翻譯',
+                    hasText: true,
+                    regions: [{ translation: '圖片翻譯', box_2d: [100, 50, 300, 850] }],
+                    route: 'direct',
                     cached: false,
                     targetLanguage: 'zh-TW',
                     langSource: 'locale',
@@ -242,11 +301,11 @@ describe('Babel Lens command', () => {
             lensEnabledGuildIds: [],
         });
         const interaction = createInteraction();
-        const translationService = { process: vi.fn() };
+        const translationService = { processImage: vi.fn() };
 
         await handleBabelLens(interaction as never, createCommandDeps(translationService));
 
-        expect(translationService.process).not.toHaveBeenCalled();
+        expect(translationService.processImage).not.toHaveBeenCalled();
         expect(fetch).not.toHaveBeenCalled();
         expect(interaction.reply).toHaveBeenCalledWith(
             expect.objectContaining({ content: 'Babel Lens is not enabled for this server.' }),
@@ -257,8 +316,9 @@ describe('Babel Lens command', () => {
         const interaction = createInteraction();
         interaction.authorizingIntegrationOwners = { '1': 'owner-1' };
         const translationService = {
-            process: vi.fn(async (request) => {
-                await request.resolveText();
+            processImage: vi.fn(async (request) => {
+                const normalized = await request.resolveImage();
+                await request.resolveVision(normalized.image);
                 return { status: 'blocked', deferred: false, message: 'stop' };
             }),
         };

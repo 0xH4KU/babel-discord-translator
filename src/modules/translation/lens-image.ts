@@ -1,8 +1,14 @@
 import sharp from 'sharp';
-import type { VisionTextResult } from '../../infra/cloud-vision-client.js';
+import { createHash } from 'node:crypto';
+import type { ImageTranslationRequest, LensRegion } from '../../shared/types.js';
 
 const MAX_INPUT_PIXELS = 16_000_000;
 const MAX_OUTPUT_EDGE = 1600;
+const MIME_BY_FORMAT = {
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    webp: 'image/webp',
+} as const;
 
 sharp.cache({ memory: 16, files: 0, items: 16 });
 sharp.concurrency(1);
@@ -87,85 +93,31 @@ function clamp(value: number, min: number, max: number): number {
     return Math.min(Math.max(value, min), max);
 }
 
-function orientDetectedText(detected: VisionTextResult, orientation = 1): VisionTextResult {
-    if (orientation < 2 || orientation > 8) return detected;
-
-    const { imageWidth: width, imageHeight: height } = detected;
-    const regions = detected.regions.map((region) => {
-        const right = region.x + region.width;
-        const bottom = region.y + region.height;
-        switch (orientation) {
-            case 2:
-                return { ...region, x: width - right };
-            case 3:
-                return { ...region, x: width - right, y: height - bottom };
-            case 4:
-                return { ...region, y: height - bottom };
-            case 5:
-                return {
-                    ...region,
-                    x: region.y,
-                    y: region.x,
-                    width: region.height,
-                    height: region.width,
-                };
-            case 6:
-                return {
-                    ...region,
-                    x: height - bottom,
-                    y: region.x,
-                    width: region.height,
-                    height: region.width,
-                };
-            case 7:
-                return {
-                    ...region,
-                    x: height - bottom,
-                    y: width - right,
-                    width: region.height,
-                    height: region.width,
-                };
-            case 8:
-                return {
-                    ...region,
-                    x: region.y,
-                    y: width - right,
-                    width: region.height,
-                    height: region.width,
-                };
-            default:
-                return region;
-        }
-    });
-
-    return {
-        ...detected,
-        imageWidth: orientation >= 5 ? height : width,
-        imageHeight: orientation >= 5 ? width : height,
-        regions,
-    };
-}
-
 function buildRegionBoxesSvg(
     width: number,
     height: number,
-    detected: VisionTextResult,
+    regions: LensRegion[],
 ): Buffer | null {
-    if (detected.regions.length === 0 || detected.imageWidth <= 0 || detected.imageHeight <= 0) {
-        return null;
-    }
+    if (regions.length === 0) return null;
 
-    const scaleX = width / detected.imageWidth;
-    const scaleY = height / detected.imageHeight;
     const strokeWidth = clamp(Math.round(Math.min(width, height) / 400), 2, 4);
     const labelHeight = clamp(Math.round(Math.min(width, height) / 20), 24, 40);
-    const boxes = detected.regions
+    const boxes = regions
         .map((region, index) => {
             const label = String(index + 1);
-            const x = clamp(Math.round(region.x * scaleX), 1, width - 2);
-            const y = clamp(Math.round(region.y * scaleY), 1, height - 2);
-            const boxWidth = clamp(Math.round(region.width * scaleX), 1, width - x - 1);
-            const boxHeight = clamp(Math.round(region.height * scaleY), 1, height - y - 1);
+            const [ymin, xmin, ymax, xmax] = region.box_2d;
+            const x = clamp(Math.round((xmin / 1000) * width), 1, width - 2);
+            const y = clamp(Math.round((ymin / 1000) * height), 1, height - 2);
+            const boxWidth = clamp(
+                Math.round(((xmax - xmin) / 1000) * width),
+                1,
+                width - x - 1,
+            );
+            const boxHeight = clamp(
+                Math.round(((ymax - ymin) / 1000) * height),
+                1,
+                height - y - 1,
+            );
             const labelWidth = Math.max(
                 labelHeight,
                 Math.round(labelHeight * (0.75 + label.length * 0.45)),
@@ -183,12 +135,44 @@ function buildRegionBoxesSvg(
     );
 }
 
+export interface NormalizedLensImage {
+    image: Buffer;
+    mimeType: ImageTranslationRequest['mimeType'];
+    width: number;
+    height: number;
+    hash: string;
+}
+
+export async function normalizeLensImage(image: Buffer): Promise<NormalizedLensImage> {
+    const source = sharp(image, { limitInputPixels: MAX_INPUT_PIXELS });
+    const metadata = await source.metadata();
+    const mimeType = MIME_BY_FORMAT[metadata.format as keyof typeof MIME_BY_FORMAT];
+    if (!mimeType) throw new Error('Babel Lens only accepts PNG, JPEG, or WebP images.');
+    if (!metadata.width || !metadata.height) throw new Error('Could not read the image dimensions.');
+    if (metadata.width * metadata.height > MAX_INPUT_PIXELS) {
+        throw new Error('Babel Lens supports images up to 16 megapixels.');
+    }
+
+    let pipeline = source.rotate();
+    if (metadata.format === 'jpeg') pipeline = pipeline.jpeg({ quality: 92 });
+    else if (metadata.format === 'png') pipeline = pipeline.png();
+    else pipeline = pipeline.webp({ quality: 92 });
+    const normalized = await pipeline.toBuffer({ resolveWithObject: true });
+
+    return {
+        image: normalized.data,
+        mimeType,
+        width: normalized.info.width,
+        height: normalized.info.height,
+        hash: createHash('sha256').update(normalized.data).digest('hex'),
+    };
+}
+
 export async function renderLensImage(
     image: Buffer,
     translatedText: string,
-    detected?: VisionTextResult,
+    regions: LensRegion[] = [],
 ): Promise<Buffer> {
-    const { orientation } = await sharp(image, { limitInputPixels: MAX_INPUT_PIXELS }).metadata();
     const normalized = await sharp(image, { limitInputPixels: MAX_INPUT_PIXELS })
         .rotate()
         .resize({
@@ -200,9 +184,7 @@ export async function renderLensImage(
         .jpeg({ quality: 88 })
         .toBuffer({ resolveWithObject: true });
     const { width, height } = normalized.info;
-    const boxes = detected
-        ? buildRegionBoxesSvg(width, height, orientDetectedText(detected, orientation))
-        : null;
+    const boxes = buildRegionBoxesSvg(width, height, regions);
     const caption = buildCaptionSvg(width, translatedText);
 
     return sharp({
@@ -222,4 +204,4 @@ export async function renderLensImage(
         .toBuffer();
 }
 
-export const _test = { wrapCaption, buildCaptionSvg, buildRegionBoxesSvg, orientDetectedText };
+export const _test = { wrapCaption, buildCaptionSvg, buildRegionBoxesSvg };

@@ -1,4 +1,4 @@
-import { buildTranslationCacheKey, type TranslationCache } from './cache.js';
+import { buildLensCacheKey, buildTranslationCacheKey, type TranslationCache } from './cache.js';
 import type { CooldownManager } from './cooldown.js';
 import type { AccessMode, AppProfile } from '../../apps/app-profile.js';
 import { ProviderOrchestratorError } from '../../infra/provider-orchestrator.js';
@@ -15,7 +15,13 @@ import type {
     TranslationRuntimeReservation,
 } from './translation-runtime-limiter.js';
 import { usage, type UsageBudgetReservation } from '../usage/usage.js';
-import { translate, resolveSystemPrompt } from './translate.js';
+import {
+    buildImageTranslationPrompt,
+    buildTranslationPrompt,
+    resolveSystemPrompt,
+    translate,
+    translateImage,
+} from './translate.js';
 import { sanitizeError } from '../../shared/errors.js';
 import {
     appLogger,
@@ -41,7 +47,16 @@ import {
     type ServiceCommand,
     type TranslatorOptions,
 } from './translation-service-helpers.js';
-import type { GuildGlossaryEntry, TranslationResult } from '../../shared/types.js';
+import type { VisionTextResult } from '../../infra/cloud-vision-client.js';
+import type {
+    GuildGlossaryEntry,
+    ImageTranslationRequest,
+    ImageTranslationResult,
+    TranslationResult,
+} from '../../shared/types.js';
+import type { NormalizedLensImage } from './lens-image.js';
+import { formatDetectedText, visionRegionsToBoxes } from './lens-regions.js';
+import type { VisionTranslationResolution } from '../../infra/provider-orchestrator.js';
 
 interface ConfigRepositoryLike {
     getRuntimeConfig(): RuntimeConfig;
@@ -73,6 +88,16 @@ interface Translator {
     ): Promise<TranslationResult>;
 }
 
+interface ImageTranslator {
+    (
+        image: Buffer,
+        mimeType: ImageTranslationRequest['mimeType'],
+        targetLanguage: string,
+        resolveVision: () => Promise<VisionTranslationResolution>,
+        options?: TranslatorOptions,
+    ): Promise<ImageTranslationResult>;
+}
+
 interface InFlightTranslation {
     promise: Promise<TranslationResult>;
 }
@@ -95,6 +120,15 @@ export interface TranslationServiceRequest {
     bypassAccessControl?: boolean;
 }
 
+export interface TranslationServiceImageRequest
+    extends Omit<
+        TranslationServiceRequest,
+        'text' | 'resolveText' | 'preserveNumberedMarkers'
+    > {
+    resolveImage: () => Promise<NormalizedLensImage>;
+    resolveVision: (image: Buffer) => Promise<VisionTextResult>;
+}
+
 export type TranslationServiceResult =
     | { status: 'blocked'; message: string; deferred?: boolean }
     | {
@@ -112,8 +146,27 @@ export type TranslationServiceResult =
       }
     | { status: 'error'; deferred: boolean; message: string };
 
+export type ImageTranslationServiceResult =
+    | Extract<TranslationServiceResult, { status: 'blocked' | 'error' }>
+    | {
+          status: 'success';
+          deferred: boolean;
+          translatedText: string;
+          hasText: boolean;
+          regions: ImageTranslationResult['regions'];
+          route: 'direct' | 'vision';
+          cached: boolean;
+          targetLanguage: string;
+          langSource: LangSource;
+          inputTokens: number;
+          outputTokens: number;
+          provider?: string;
+          fallback?: boolean;
+      };
+
 export interface TranslationService {
     process(request: TranslationServiceRequest): Promise<TranslationServiceResult>;
+    processImage(request: TranslationServiceImageRequest): Promise<ImageTranslationServiceResult>;
 }
 
 export interface TranslationServiceDeps {
@@ -126,6 +179,7 @@ export interface TranslationServiceDeps {
     glossaryRepository?: GlossaryRepositoryLike;
     usageTracker?: UsageLike;
     translator?: Translator;
+    imageTranslator?: ImageTranslator;
     metrics: AppMetricsCollector;
     runtimeLimiter?: TranslationRuntimeLimiter;
     logger?: StructuredLogger;
@@ -160,10 +214,43 @@ function buildProviderFingerprint(config: RuntimeConfig): string {
         config.gcpLocation || 'global',
         config.geminiModel,
         config.vertexAiApiKey,
+        config.vertexAiSupportsImages,
+        config.geminiMediaResolution,
     ].join('|');
-    const openai = [config.openaiBaseUrl, config.openaiModel, config.openaiApiKey].join('|');
+    const openai = [
+        config.openaiBaseUrl,
+        config.openaiModel,
+        config.openaiApiKey,
+        config.openaiSupportsImages,
+    ].join('|');
 
     return [mode, vertex, openai].join('::');
+}
+
+function parseCachedImageTranslation(value: string | null): ImageTranslationResult | null {
+    if (!value) return null;
+    try {
+        const parsed = JSON.parse(value) as Partial<ImageTranslationResult>;
+        if (
+            typeof parsed.text !== 'string' ||
+            typeof parsed.hasText !== 'boolean' ||
+            !Array.isArray(parsed.regions) ||
+            (parsed.route !== 'direct' && parsed.route !== 'vision')
+        ) {
+            return null;
+        }
+        return {
+            ...parsed,
+            text: parsed.text,
+            hasText: parsed.hasText,
+            regions: parsed.regions,
+            route: parsed.route,
+            inputTokens: 0,
+            outputTokens: 0,
+        };
+    } catch {
+        return null;
+    }
 }
 
 function createInFlightTranslation() {
@@ -190,6 +277,7 @@ export function createTranslationService({
     glossaryRepository = store,
     usageTracker = usage,
     translator = translate,
+    imageTranslator = translateImage,
     metrics,
     runtimeLimiter,
     logger = appLogger.child({ component: 'translation_service' }),
@@ -630,6 +718,417 @@ export function createTranslationService({
                     errorType: diagnostic.errorType,
                 });
 
+                return {
+                    status: 'error',
+                    deferred,
+                    message: discordMessages.translationFailed(sanitizedMessage),
+                };
+            } finally {
+                if (leaderInFlight && inFlightTranslations.get(cacheKey) === leaderInFlight) {
+                    inFlightTranslations.delete(cacheKey);
+                }
+            }
+        },
+        async processImage(
+            request: TranslationServiceImageRequest,
+        ): Promise<ImageTranslationServiceResult> {
+            const messages = getDiscordTranslationCommandMessages(request.command);
+            const requestId = request.requestId ?? createRequestId();
+            const requestLogger = logger.child({
+                requestId,
+                guildId: request.guildId ?? null,
+                userId: request.userId,
+                command: request.command,
+                commandLabel: request.commandLabel,
+            });
+            requestLogger.info('translation.request.started', {
+                locale: request.locale ?? null,
+                inputType: 'image',
+                hasTargetLanguageOption: !!(
+                    request.targetLanguageOption && request.targetLanguageOption !== 'auto'
+                ),
+            });
+
+            if (!configStore.isSetupComplete()) {
+                requestLogger.warn('translation.request.blocked', {
+                    blockReason: 'setup_incomplete',
+                });
+                return { status: 'blocked', message: messages.setupIncomplete };
+            }
+
+            const runtimeConfig = configStore.getRuntimeConfig();
+            const scope = createTranslationScope(request);
+            const accessDecision = request.bypassAccessControl
+                ? { authorized: true }
+                : decideTranslationAccess(accessMode, runtimeConfig, scope);
+            if (!accessDecision.authorized) {
+                requestLogger.warn('translation.request.blocked', {
+                    blockReason: accessDecision.blockReason,
+                });
+                if (accessDecision.pendingUserId) {
+                    pendingUserInstallOwnerRepository?.recordSeen(accessDecision.pendingUserId);
+                }
+                return {
+                    status: 'blocked',
+                    message:
+                        accessDecision.blockReason === 'user_not_allowed'
+                            ? discordMessages.unauthorizedUser()
+                            : discordMessages.unauthorizedGuild(),
+                };
+            }
+
+            const cooldownState = cooldown.check(request.userId);
+            if (!cooldownState.allowed) {
+                requestLogger.warn('translation.request.blocked', {
+                    blockReason: 'cooldown_active',
+                    cooldownRemainingSeconds: cooldownState.remaining,
+                });
+                return {
+                    status: 'blocked',
+                    message: discordMessages.cooldownRemaining(cooldownState.remaining),
+                };
+            }
+
+            const usageScope = {
+                guildId: accessMode === 'guild' ? (request.guildId ?? null) : null,
+                userId: accessMode === 'user-install' ? getEffectiveUserId(scope) : null,
+            };
+            const acquireRuntime = (
+                stage: 'image_resolution' | 'translation',
+            ): {
+                reservation: TranslationRuntimeReservation | null;
+                blocked: ImageTranslationServiceResult | null;
+            } => {
+                if (!runtimeLimiter) return { reservation: null, blocked: null };
+                const admission = runtimeLimiter.acquire({
+                    guildId: request.guildId ?? null,
+                    userId: getEffectiveUserId(scope),
+                });
+                if (!admission.accepted) {
+                    requestLogger.warn('translation.request.blocked', {
+                        blockReason: admission.reason,
+                        stage,
+                        runtime: admission.snapshot,
+                    });
+                    return {
+                        reservation: null,
+                        blocked: {
+                            status: 'blocked',
+                            message: resolveQueueBusyMessage(admission.reason, messages),
+                        },
+                    };
+                }
+                requestLogger.info(
+                    admission.reservation.queued
+                        ? 'translation.queue.enqueued'
+                        : 'translation.queue.acquired',
+                    { stage, runtime: runtimeLimiter.snapshot() },
+                );
+                return { reservation: admission.reservation, blocked: null };
+            };
+
+            let deferred = false;
+            let normalizedImage: NormalizedLensImage;
+            const imageRuntime = acquireRuntime('image_resolution');
+            if (imageRuntime.blocked) return imageRuntime.blocked;
+            try {
+                cooldown.set(request.userId);
+                if (request.beforeTranslate) {
+                    await request.beforeTranslate();
+                    deferred = true;
+                    requestLogger.info('translation.request.deferred');
+                }
+                normalizedImage = imageRuntime.reservation
+                    ? await imageRuntime.reservation.run(async (meta) => {
+                          if (meta.queued) {
+                              requestLogger.info('translation.queue.started', {
+                                  stage: 'image_resolution',
+                                  waitMs: meta.waitMs,
+                                  runtime: meta.snapshot,
+                              });
+                          }
+                          return request.resolveImage();
+                      })
+                    : await request.resolveImage();
+            } catch (error) {
+                imageRuntime.reservation?.cancel();
+                const caughtError = error instanceof Error ? error : new Error(String(error));
+                const sanitizedMessage = sanitizeError(caughtError.message);
+                const diagnostic = classifyTranslationError(caughtError.message);
+                profileMetrics?.recordTranslationFailure();
+                log.addError({
+                    appProfileId,
+                    guildId: request.guildId,
+                    guildName: request.guildName,
+                    userId: request.userId,
+                    userTag: request.userTag,
+                    error: sanitizedMessage,
+                    command: request.commandLabel,
+                    requestId,
+                    errorType: diagnostic.errorType,
+                    suggestedAction: diagnostic.suggestedAction,
+                });
+                requestLogger.error('translation.image_resolution.failed', {
+                    error: sanitizedMessage,
+                    errorType: diagnostic.errorType,
+                });
+                return {
+                    status: 'error',
+                    deferred,
+                    message: discordMessages.translationFailed(sanitizedMessage),
+                };
+            }
+
+            const { targetLanguage, langSource } = resolveTargetLanguage(
+                request,
+                userPreferenceStore,
+                { accessMode },
+            );
+            const glossaryEntries =
+                enableGuildGlossary && request.guildId
+                    ? glossaryRepository.listGuildGlossary(request.guildId)
+                    : [];
+            const selectedGlossaryEntries = selectGlossaryEntriesForTarget(
+                glossaryEntries,
+                targetLanguage,
+            );
+            const glossaryVersion = buildGlossaryVersion(selectedGlossaryEntries);
+            const imagePrompt = buildImageTranslationPrompt(
+                targetLanguage,
+                runtimeConfig.translationPrompt,
+                selectedGlossaryEntries,
+            );
+            const cacheKey = buildLensCacheKey({
+                imageHash: normalizedImage.hash,
+                targetLanguage,
+                providerFingerprint: buildProviderFingerprint(runtimeConfig),
+                prompt: `${imagePrompt.system}\n${imagePrompt.user}`,
+                glossaryVersion,
+                maxOutputTokens: runtimeConfig.maxOutputTokens || 1000,
+            });
+
+            let reservation: TranslationRuntimeReservation | null = null;
+            let budgetReservation: UsageBudgetReservation | null = null;
+            let leaderInFlight: InFlightTranslation | null = null;
+            let resolveLeaderInFlight:
+                | ((value: TranslationResult | PromiseLike<TranslationResult>) => void)
+                | null = null;
+            let rejectLeaderInFlight: ((reason?: unknown) => void) | null = null;
+
+            try {
+                let result = parseCachedImageTranslation(cache.get(cacheKey));
+                let cached = result !== null;
+                requestLogger.info(cached ? 'translation.cache.hit' : 'translation.cache.miss', {
+                    inputType: 'image',
+                    targetLanguage,
+                    langSource,
+                });
+
+                const pending = !cached ? inFlightTranslations.get(cacheKey) : undefined;
+                if (pending) {
+                    requestLogger.info('translation.inflight.joined', {
+                        inputType: 'image',
+                        targetLanguage,
+                        langSource,
+                    });
+                    result = (await pending.promise) as ImageTranslationResult;
+                    cached = true;
+                }
+
+                if (!cached && !pending) {
+                    const runtime = acquireRuntime('translation');
+                    if (runtime.blocked) {
+                        return deferred ? { ...runtime.blocked, deferred: true } : runtime.blocked;
+                    }
+                    reservation = runtime.reservation;
+                    budgetReservation = usageTracker.tryReserveBudget({
+                        estimatedInputTokens: 4096,
+                        estimatedOutputTokens: runtimeConfig.maxOutputTokens || 1000,
+                        ...usageScope,
+                    });
+                    if (!budgetReservation) {
+                        reservation?.cancel();
+                        profileMetrics?.recordBudgetExceeded();
+                        requestLogger.warn('translation.request.blocked', {
+                            blockReason: 'budget_exceeded',
+                            inputType: 'image',
+                        });
+                        return {
+                            status: 'blocked',
+                            message: messages.budgetExceeded,
+                            ...(deferred ? { deferred: true } : {}),
+                        };
+                    }
+
+                    const inFlightTranslation = createInFlightTranslation();
+                    leaderInFlight = inFlightTranslation.entry;
+                    resolveLeaderInFlight = inFlightTranslation.resolve;
+                    rejectLeaderInFlight = inFlightTranslation.reject;
+                    inFlightTranslations.set(cacheKey, leaderInFlight);
+                    void leaderInFlight.promise.catch(() => undefined);
+                }
+
+                if (!result) {
+                    const translateAndRecord = async (): Promise<ImageTranslationResult> => {
+                        const translated = await imageTranslator(
+                            normalizedImage.image,
+                            normalizedImage.mimeType,
+                            targetLanguage,
+                            async () => {
+                                const detected = await request.resolveVision(normalizedImage.image);
+                                if (!detected.text.trim()) return { hasText: false };
+                                const bounded = {
+                                    ...detected,
+                                    regions: detected.regions.slice(0, 99),
+                                };
+                                return {
+                                    hasText: true,
+                                    prompt: buildTranslationPrompt(
+                                        formatDetectedText(bounded),
+                                        targetLanguage,
+                                        runtimeConfig.translationPrompt,
+                                        selectedGlossaryEntries,
+                                        true,
+                                    ),
+                                    boxes: visionRegionsToBoxes(bounded),
+                                };
+                            },
+                            {
+                                logContext: {
+                                    requestId,
+                                    guildId: request.guildId ?? null,
+                                    userId: getEffectiveUserId(scope),
+                                    command: request.command,
+                                },
+                                metrics: profileMetrics,
+                                ...(selectedGlossaryEntries.length > 0
+                                    ? { glossaryEntries: selectedGlossaryEntries }
+                                    : {}),
+                                runtimeConfig,
+                            },
+                        );
+                        const normalizedResult: ImageTranslationResult = {
+                            ...translated,
+                            route: translated.route ?? 'direct',
+                        };
+                        if (
+                            normalizedResult.route === 'direct' ||
+                            normalizedResult.inputTokens > 0 ||
+                            normalizedResult.outputTokens > 0
+                        ) {
+                            profileMetrics?.recordTranslationApiCall();
+                            budgetReservation?.settle(
+                                normalizedResult.inputTokens,
+                                normalizedResult.outputTokens,
+                            );
+                        } else {
+                            budgetReservation?.release();
+                        }
+                        budgetReservation = null;
+                        cache.set(cacheKey, JSON.stringify(normalizedResult));
+                        resolveLeaderInFlight?.(normalizedResult);
+                        return normalizedResult;
+                    };
+
+                    if (reservation) {
+                        result = await reservation.run(async (meta) => {
+                            if (meta.queued) {
+                                requestLogger.info('translation.queue.started', {
+                                    stage: 'translation',
+                                    waitMs: meta.waitMs,
+                                    runtime: meta.snapshot,
+                                });
+                                const queuedCached = parseCachedImageTranslation(cache.get(cacheKey));
+                                if (queuedCached) {
+                                    budgetReservation?.release();
+                                    budgetReservation = null;
+                                    cached = true;
+                                    resolveLeaderInFlight?.(queuedCached);
+                                    return queuedCached;
+                                }
+                            }
+                            return translateAndRecord();
+                        });
+                    } else {
+                        result = await translateAndRecord();
+                    }
+                }
+
+                profileMetrics?.recordTranslationSuccess({ cached });
+                log.add({
+                    appProfileId,
+                    guildId: request.guildId,
+                    guildName: request.guildName,
+                    userId: request.userId,
+                    userTag: request.userTag,
+                    contentPreview: `[Babel Lens image ${normalizedImage.hash.slice(0, 12)}]`,
+                    cached,
+                    targetLanguage,
+                    langSource,
+                    command: request.commandLabel,
+                });
+                requestLogger.info('translation.request.completed', {
+                    inputType: 'image',
+                    cached,
+                    targetLanguage,
+                    langSource,
+                    route: result.route,
+                    provider: result.provider,
+                    fallback: result.fallback,
+                    regionCount: result.regions.length,
+                    hasText: result.hasText,
+                });
+
+                return {
+                    status: 'success',
+                    deferred,
+                    translatedText: result.text,
+                    hasText: result.hasText,
+                    regions: result.regions,
+                    route: result.route!,
+                    cached,
+                    targetLanguage,
+                    langSource,
+                    inputTokens: cached ? 0 : result.inputTokens,
+                    outputTokens: cached ? 0 : result.outputTokens,
+                    provider: result.provider,
+                    fallback: result.fallback,
+                };
+            } catch (error) {
+                rejectLeaderInFlight?.(error);
+                reservation?.cancel();
+                budgetReservation?.release();
+                const caughtError = error instanceof Error ? error : new Error(String(error));
+                const sanitizedMessage = sanitizeError(caughtError.message);
+                const diagnostic =
+                    caughtError instanceof ProviderOrchestratorError
+                        ? {
+                              errorType: caughtError.errorType,
+                              suggestedAction: suggestedActionForErrorType(caughtError.errorType),
+                          }
+                        : classifyTranslationError(caughtError.message);
+                profileMetrics?.recordTranslationFailure();
+                log.addError({
+                    appProfileId,
+                    guildId: request.guildId,
+                    guildName: request.guildName,
+                    userId: request.userId,
+                    userTag: request.userTag,
+                    error: sanitizedMessage,
+                    command: request.commandLabel,
+                    requestId,
+                    provider:
+                        caughtError instanceof ProviderOrchestratorError
+                            ? caughtError.provider
+                            : undefined,
+                    errorType: diagnostic.errorType,
+                    suggestedAction: diagnostic.suggestedAction,
+                });
+                requestLogger.error('translation.request.failed', {
+                    inputType: 'image',
+                    error: sanitizedMessage,
+                    errorType: diagnostic.errorType,
+                });
                 return {
                     status: 'error',
                     deferred,

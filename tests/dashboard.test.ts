@@ -283,6 +283,7 @@ vi.mock('../src/modules/translation/translate.js', () => ({
         inputTokens: 10,
         outputTokens: 5,
     })),
+    translateImage: vi.fn(),
     resetTranslationProviderState: vi.fn(),
 }));
 

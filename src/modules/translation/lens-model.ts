@@ -57,6 +57,7 @@ export function parseImageTranslationResponse(
     const regions = Array.isArray(rawRegions) ? rawRegions.map(normalizeRegion) : [];
     const regionsValid =
         Array.isArray(rawRegions) &&
+        rawRegions.length > 0 &&
         rawRegions.length <= MAX_REGIONS &&
         regions.every((region): region is LensRegion => region !== null);
 

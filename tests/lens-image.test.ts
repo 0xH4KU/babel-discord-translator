@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import sharp from 'sharp';
-import { _test, renderLensImage } from '../src/modules/translation/lens-image.js';
+import { normalizeLensImage, renderLensImage } from '../src/modules/translation/lens-image.js';
 
 describe('Babel Lens image rendering', () => {
     const sourceImage = () =>
@@ -16,12 +16,9 @@ describe('Babel Lens image rendering', () => {
             .toBuffer();
 
     it('should draw a numbered region box above the translated caption', async () => {
-        const output = await renderLensImage(await sourceImage(), '[1] Translated text', {
-            text: 'Source text',
-            imageWidth: 320,
-            imageHeight: 180,
-            regions: [{ text: 'Source text', x: 60, y: 40, width: 120, height: 30 }],
-        });
+        const output = await renderLensImage(await sourceImage(), '[1] Translated text', [
+            { translation: 'Translated text', box_2d: [222, 188, 389, 563] },
+        ]);
         const rendered = sharp(output);
         const metadata = await rendered.metadata();
         const { data, info } = await rendered.raw().toBuffer({ resolveWithObject: true });
@@ -54,20 +51,13 @@ describe('Babel Lens image rendering', () => {
             .jpeg()
             .withMetadata({ orientation: 6 })
             .toBuffer();
-        const detected = {
-            text: 'Source text',
-            imageWidth: 120,
-            imageHeight: 60,
-            regions: [{ text: 'Source text', x: 10, y: 5, width: 30, height: 15 }],
-        };
+        const normalized = await normalizeLensImage(image);
+        expect(normalized).toMatchObject({ width: 60, height: 120, mimeType: 'image/jpeg' });
+        expect((await sharp(normalized.image).metadata()).orientation).toBeUndefined();
 
-        expect(_test.orientDetectedText(detected, 6)).toMatchObject({
-            imageWidth: 60,
-            imageHeight: 120,
-            regions: [{ x: 40, y: 10, width: 15, height: 30 }],
-        });
-
-        const output = await renderLensImage(image, '[1] Translated text', detected);
+        const output = await renderLensImage(normalized.image, '[1] Translated text', [
+            { translation: 'Translated text', box_2d: [83, 667, 333, 917] },
+        ]);
         const rendered = sharp(output);
         const metadata = await rendered.metadata();
         const { data, info } = await rendered.raw().toBuffer({ resolveWithObject: true });

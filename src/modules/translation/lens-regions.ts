@@ -43,10 +43,34 @@ export function extractRegionTranslations(text: string, boxes: LensRegion['box_2
         return [];
     }
 
-    return matches.map((match, index) => ({
+    const regions = matches.map((match, index) => ({
         translation: text
             .slice((match.index ?? 0) + match[0].length, matches[index + 1]?.index ?? text.length)
             .trim(),
         box_2d: boxes[index]!,
     }));
+    return regions.every((region) => region.translation) ? regions : [];
+}
+
+export function visionRegionsToBoxes(detected: VisionTextResult): LensRegion['box_2d'][] {
+    if (detected.imageWidth <= 0 || detected.imageHeight <= 0) return [];
+    return detected.regions.slice(0, 99).map((region) => {
+        const ymin = Math.max(0, Math.min(999, Math.round((region.y / detected.imageHeight) * 1000)));
+        const xmin = Math.max(0, Math.min(999, Math.round((region.x / detected.imageWidth) * 1000)));
+        const ymax = Math.min(
+            1000,
+            Math.max(
+                ymin + 1,
+                Math.round(((region.y + region.height) / detected.imageHeight) * 1000),
+            ),
+        );
+        const xmax = Math.min(
+            1000,
+            Math.max(
+                xmin + 1,
+                Math.round(((region.x + region.width) / detected.imageWidth) * 1000),
+            ),
+        );
+        return [ymin, xmin, ymax, xmax];
+    });
 }
