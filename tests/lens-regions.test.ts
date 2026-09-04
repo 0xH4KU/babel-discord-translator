@@ -22,10 +22,7 @@ describe('Babel Lens region markers', () => {
             '[[BABEL_REGION_1]] First [2]\n\n[[BABEL_REGION_2]] Second',
         );
         expect(
-            normalizeRegionTranslation(
-                '[[BABEL_REGION_1]] 第一 [2]\n\n[[BABEL_REGION_2]] 第二',
-                2,
-            ),
+            normalizeRegionTranslation('[[BABEL_REGION_1]] 第一 [2]\n[[BABEL_REGION_2]] 第二', 2),
         ).toEqual({
             markersMatch: true,
             displayText: '[1] 第一 [2]\n\n[2] 第二',

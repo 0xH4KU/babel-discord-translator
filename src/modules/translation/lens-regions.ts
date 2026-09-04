@@ -28,7 +28,7 @@ export function normalizeRegionTranslation(
         markers.every((marker, index) => marker === index + 1);
     const displayText = text
         .replace(REGION_MARKER_PATTERN, (_match, marker: string) =>
-            markersMatch ? `[${marker}]` : '',
+            markersMatch ? `${Number(marker) > 1 ? '\n\n' : ''}[${marker}]` : '',
         )
         .replace(/^[ \t]+/gmu, '')
         .replace(/\n{3,}/gu, '\n\n')
@@ -37,7 +37,10 @@ export function normalizeRegionTranslation(
     return { markersMatch, displayText };
 }
 
-export function extractRegionTranslations(text: string, boxes: LensRegion['box_2d'][]): LensRegion[] {
+export function extractRegionTranslations(
+    text: string,
+    boxes: LensRegion['box_2d'][],
+): LensRegion[] {
     const matches = [...text.matchAll(REGION_MARKER_PATTERN)];
     if (
         matches.length !== boxes.length ||
@@ -58,8 +61,14 @@ export function extractRegionTranslations(text: string, boxes: LensRegion['box_2
 export function visionRegionsToBoxes(detected: VisionTextResult): LensRegion['box_2d'][] {
     if (detected.imageWidth <= 0 || detected.imageHeight <= 0) return [];
     return detected.regions.slice(0, 99).map((region) => {
-        const ymin = Math.max(0, Math.min(999, Math.round((region.y / detected.imageHeight) * 1000)));
-        const xmin = Math.max(0, Math.min(999, Math.round((region.x / detected.imageWidth) * 1000)));
+        const ymin = Math.max(
+            0,
+            Math.min(999, Math.round((region.y / detected.imageHeight) * 1000)),
+        );
+        const xmin = Math.max(
+            0,
+            Math.min(999, Math.round((region.x / detected.imageWidth) * 1000)),
+        );
         const ymax = Math.min(
             1000,
             Math.max(

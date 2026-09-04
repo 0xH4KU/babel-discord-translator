@@ -19,6 +19,7 @@ import type {
     VertexAIResponse,
 } from '../shared/types.js';
 import { parseImageTranslationResponse } from '../modules/translation/lens-model.js';
+import { ProviderResponseError } from './provider-errors.js';
 
 export { ProviderHttpError } from './provider-errors.js';
 
@@ -187,9 +188,11 @@ async function requestGenerateContent(
                                               },
                                               ...(mediaResolutionValue(image.mediaResolution)
                                                   ? {
-                                                        mediaResolution: mediaResolutionValue(
-                                                            image.mediaResolution,
-                                                        ),
+                                                        mediaResolution: {
+                                                            level: mediaResolutionValue(
+                                                                image.mediaResolution,
+                                                            ),
+                                                        },
                                                     }
                                                   : {}),
                                           },
@@ -275,20 +278,34 @@ export async function generateImageTranslationContent(
     });
 
     const candidate = data.candidates?.[0];
+    const result = candidate?.content?.parts?.[0]?.text?.trim() ?? '';
+    const meta = data.usageMetadata || {};
+    const inputTokens = normalizeProviderTokenCount(meta.promptTokenCount, 4096);
+    const outputTokens = normalizeProviderTokenCount(
+        meta.candidatesTokenCount,
+        result ? estimateTokenCount(result) : 0,
+    );
     if (candidate?.finishReason === 'MAX_TOKENS') {
-        throw new Error(
+        throw new ProviderResponseError(
             'Babel Lens output was truncated by Max Output Tokens; increase it in Settings.',
+            inputTokens,
+            outputTokens,
         );
     }
-    const result = candidate?.content?.parts?.[0]?.text?.trim();
-    if (!result) throw new Error('Empty Babel Lens response from Gemini');
+    if (!result) {
+        throw new ProviderResponseError(
+            'Empty Babel Lens response from Gemini',
+            inputTokens,
+            outputTokens,
+        );
+    }
 
-    const meta = data.usageMetadata || {};
-    return parseImageTranslationResponse(
-        result,
-        normalizeProviderTokenCount(meta.promptTokenCount, 4096),
-        normalizeProviderTokenCount(meta.candidatesTokenCount, estimateTokenCount(result)),
-    );
+    try {
+        return parseImageTranslationResponse(result, inputTokens, outputTokens);
+    } catch (error) {
+        const cause = error instanceof Error ? error : new Error(String(error));
+        throw new ProviderResponseError(cause.message, inputTokens, outputTokens, { cause });
+    }
 }
 
 export async function generateTranslationContent(

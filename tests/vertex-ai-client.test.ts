@@ -48,12 +48,7 @@ import { store } from '../src/persistence/store.js';
 
 const translationPrompt = (user: string) => ({ system: 'Translate accurately.', user });
 
-function geminiResponse(
-    text: string,
-    inputTokens = 10,
-    outputTokens = 5,
-    finishReason?: string,
-) {
+function geminiResponse(text: string, inputTokens = 10, outputTokens = 5, finishReason?: string) {
     return {
         ok: true,
         status: 200,
@@ -153,8 +148,11 @@ describe('vertex-ai-client', () => {
         expect(body.contents[0].parts).toEqual([
             { text: 'Read and translate the image.' },
             {
-                inlineData: { data: Buffer.from('image').toString('base64'), mimeType: 'image/png' },
-                mediaResolution: 'MEDIA_RESOLUTION_HIGH',
+                inlineData: {
+                    data: Buffer.from('image').toString('base64'),
+                    mimeType: 'image/png',
+                },
+                mediaResolution: { level: 'MEDIA_RESOLUTION_HIGH' },
             },
         ]);
         expect(body.generationConfig).toMatchObject({
@@ -197,7 +195,12 @@ describe('vertex-ai-client', () => {
                 },
                 1000,
             ),
-        ).rejects.toThrow('truncated by Max Output Tokens');
+        ).rejects.toMatchObject({
+            name: 'ProviderResponseError',
+            message: expect.stringContaining('truncated by Max Output Tokens'),
+            inputTokens: 10,
+            outputTokens: 1000,
+        });
     });
 
     it('should return healthy status for a successful health check', async () => {

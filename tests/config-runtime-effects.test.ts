@@ -84,6 +84,26 @@ describe('applyConfigUpdateEffects', () => {
         expect(result.changedKeys).toEqual(['openaiBaseUrl', 'openaiModel']);
     });
 
+    it('should reset provider state when Lens provider settings change', () => {
+        const cache = new TranslationCache(100);
+        const cooldown = new CooldownManager(5);
+        const clearSpy = vi.spyOn(cache, 'clear');
+        const resetProviderState = vi.fn();
+
+        applyConfigUpdateEffects(
+            createConfig(),
+            {
+                vertexAiSupportsImages: true,
+                geminiMediaResolution: 'high',
+                openaiSupportsImages: true,
+            },
+            { cache, cooldown, resetProviderState },
+        );
+
+        expect(clearSpy).toHaveBeenCalledOnce();
+        expect(resetProviderState).toHaveBeenCalledOnce();
+    });
+
     it('should treat input length and daily budget as read-on-demand settings', () => {
         const cache = new TranslationCache(100);
         const cooldown = new CooldownManager(5);

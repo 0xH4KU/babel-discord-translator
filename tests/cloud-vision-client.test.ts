@@ -148,4 +148,44 @@ describe('Cloud Vision client', () => {
         expect(result.text).toBe(text);
         expect(result.regions).toEqual([]);
     });
+
+    it('should use the full OCR text when any recognized block has no valid bounds', () => {
+        const result = _test.parseVisionText({
+            fullTextAnnotation: {
+                pages: [
+                    {
+                        width: 100,
+                        height: 100,
+                        blocks: [
+                            {
+                                boundingBox: {
+                                    vertices: [
+                                        { x: 1, y: 1 },
+                                        { x: 50, y: 1 },
+                                        { x: 50, y: 20 },
+                                        { x: 1, y: 20 },
+                                    ],
+                                },
+                                paragraphs: [
+                                    {
+                                        words: [{ symbols: [...'kept'].map((text) => ({ text })) }],
+                                    },
+                                ],
+                            },
+                            {
+                                paragraphs: [
+                                    {
+                                        words: [{ symbols: [...'lost'].map((text) => ({ text })) }],
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                ],
+            },
+        });
+
+        expect(result.text).toBe('kept\nlost');
+        expect(result.regions).toEqual([]);
+    });
 });

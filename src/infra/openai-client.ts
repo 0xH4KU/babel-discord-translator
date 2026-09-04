@@ -18,6 +18,7 @@ import type {
     TranslationResult,
 } from '../shared/types.js';
 import { parseImageTranslationResponse } from '../modules/translation/lens-model.js';
+import { ProviderResponseError } from './provider-errors.js';
 
 const MAX_RETRIES = DEFAULT_PROVIDER_MAX_RETRIES;
 const REQUEST_TIMEOUT_MS = DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS;
@@ -206,20 +207,34 @@ export async function generateImageTranslationContent(
     });
 
     const choice = data.choices?.[0];
+    const result = choice?.message?.content?.trim() ?? '';
+    const usage = data.usage || {};
+    const inputTokens = normalizeProviderTokenCount(usage.prompt_tokens, 4096);
+    const outputTokens = normalizeProviderTokenCount(
+        usage.completion_tokens,
+        result ? estimateTokenCount(result) : 0,
+    );
     if (choice?.finish_reason === 'length') {
-        throw new Error(
+        throw new ProviderResponseError(
             'Babel Lens output was truncated by Max Output Tokens; increase it in Settings.',
+            inputTokens,
+            outputTokens,
         );
     }
-    const result = choice?.message?.content?.trim();
-    if (!result) throw new Error('Empty Babel Lens response from OpenAI');
+    if (!result) {
+        throw new ProviderResponseError(
+            'Empty Babel Lens response from OpenAI',
+            inputTokens,
+            outputTokens,
+        );
+    }
 
-    const usage = data.usage || {};
-    return parseImageTranslationResponse(
-        result,
-        normalizeProviderTokenCount(usage.prompt_tokens, 4096),
-        normalizeProviderTokenCount(usage.completion_tokens, estimateTokenCount(result)),
-    );
+    try {
+        return parseImageTranslationResponse(result, inputTokens, outputTokens);
+    } catch (error) {
+        const cause = error instanceof Error ? error : new Error(String(error));
+        throw new ProviderResponseError(cause.message, inputTokens, outputTokens, { cause });
+    }
 }
 
 export async function generateTranslationContent(

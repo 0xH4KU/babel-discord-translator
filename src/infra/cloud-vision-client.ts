@@ -139,7 +139,9 @@ function parseVisionText(result?: VisionImageResponse): VisionTextResult {
     ).trim();
     // ponytail: dense pages get a plain caption; add layout analysis if dense-region links matter.
     const regions =
-        parsedRegions.length <= 99 && text.replace(/\s/gu, '').length <= MAX_REGION_CHARACTERS
+        parsedRegions.length === recognizedBlocks.length &&
+        parsedRegions.length <= 99 &&
+        text.replace(/\s/gu, '').length <= MAX_REGION_CHARACTERS
             ? parsedRegions
             : [];
     return { text, imageWidth, imageHeight, regions };

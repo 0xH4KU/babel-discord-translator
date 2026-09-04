@@ -120,11 +120,10 @@ export interface TranslationServiceRequest {
     bypassAccessControl?: boolean;
 }
 
-export interface TranslationServiceImageRequest
-    extends Omit<
-        TranslationServiceRequest,
-        'text' | 'resolveText' | 'preserveNumberedMarkers'
-    > {
+export interface TranslationServiceImageRequest extends Omit<
+    TranslationServiceRequest,
+    'text' | 'resolveText' | 'preserveNumberedMarkers'
+> {
     resolveImage: () => Promise<NormalizedLensImage>;
     resolveVision: (image: Buffer) => Promise<VisionTextResult>;
 }
@@ -603,7 +602,7 @@ export function createTranslationService({
                             preserveNumberedMarkers: request.preserveNumberedMarkers === true,
                             runtimeConfig,
                         });
-                        cache.set(cacheKey, result.text);
+                        if (!result.fallback) cache.set(cacheKey, result.text);
                         inputTokens = result.inputTokens;
                         outputTokens = result.outputTokens;
                         provider = result.provider;
@@ -685,8 +684,16 @@ export function createTranslationService({
             } catch (error) {
                 rejectLeaderInFlight?.(error);
                 reservation?.cancel();
-                budgetReservation?.release();
                 const caughtError = error instanceof Error ? error : new Error(String(error));
+                if (
+                    budgetReservation &&
+                    caughtError instanceof ProviderOrchestratorError &&
+                    (caughtError.inputTokens > 0 || caughtError.outputTokens > 0)
+                ) {
+                    budgetReservation.settle(caughtError.inputTokens, caughtError.outputTokens);
+                    budgetReservation = null;
+                }
+                budgetReservation?.release();
                 const message = caughtError.message;
                 const sanitizedMessage = sanitizeError(message);
                 const diagnostic =
@@ -1025,7 +1032,9 @@ export function createTranslationService({
                             budgetReservation?.release();
                         }
                         budgetReservation = null;
-                        cache.set(cacheKey, JSON.stringify(normalizedResult));
+                        if (!normalizedResult.fallback) {
+                            cache.set(cacheKey, JSON.stringify(normalizedResult));
+                        }
                         resolveLeaderInFlight?.(normalizedResult);
                         return normalizedResult;
                     };
@@ -1038,7 +1047,9 @@ export function createTranslationService({
                                     waitMs: meta.waitMs,
                                     runtime: meta.snapshot,
                                 });
-                                const queuedCached = parseCachedImageTranslation(cache.get(cacheKey));
+                                const queuedCached = parseCachedImageTranslation(
+                                    cache.get(cacheKey),
+                                );
                                 if (queuedCached) {
                                     budgetReservation?.release();
                                     budgetReservation = null;
@@ -1097,8 +1108,17 @@ export function createTranslationService({
             } catch (error) {
                 rejectLeaderInFlight?.(error);
                 reservation?.cancel();
-                budgetReservation?.release();
                 const caughtError = error instanceof Error ? error : new Error(String(error));
+                if (
+                    budgetReservation &&
+                    caughtError instanceof ProviderOrchestratorError &&
+                    (caughtError.inputTokens > 0 || caughtError.outputTokens > 0)
+                ) {
+                    profileMetrics?.recordTranslationApiCall();
+                    budgetReservation.settle(caughtError.inputTokens, caughtError.outputTokens);
+                    budgetReservation = null;
+                }
+                budgetReservation?.release();
                 const sanitizedMessage = sanitizeError(caughtError.message);
                 const diagnostic =
                     caughtError instanceof ProviderOrchestratorError

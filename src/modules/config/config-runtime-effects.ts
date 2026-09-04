@@ -63,9 +63,9 @@ const CONFIG_EFFECT_DESCRIPTIONS: Record<ManagedRuntimeConfigKey, string> = {
     geminiModel:
         'Clear translation cache and reset provider state so future requests use the new Vertex AI model.',
     vertexAiSupportsImages:
-        'Clear translation cache so Babel Lens uses the confirmed Vertex AI image capability.',
+        'Clear translation cache and reset provider state so Babel Lens uses the confirmed Vertex AI image capability.',
     geminiMediaResolution:
-        'Clear translation cache so Babel Lens uses the updated Gemini media resolution.',
+        'Clear translation cache and reset provider state so Babel Lens uses the updated Gemini media resolution.',
     translationPrompt: 'Clear the translation cache so future requests use the new prompt.',
     maxInputLength:
         'No in-memory sync required; request validation reads the persisted value on each call.',
@@ -82,7 +82,7 @@ const CONFIG_EFFECT_DESCRIPTIONS: Record<ManagedRuntimeConfigKey, string> = {
     openaiModel:
         'Clear translation cache and reset provider state so future requests use the updated OpenAI-compatible model.',
     openaiSupportsImages:
-        'Clear translation cache so Babel Lens uses the confirmed OpenAI-compatible image capability.',
+        'Clear translation cache and reset provider state so Babel Lens uses the confirmed OpenAI-compatible image capability.',
     translationProvider:
         'Clear translation cache and reset provider state so future requests use the new provider.',
     translationMaxConcurrent: 'Update the runtime translation concurrency limit immediately.',
@@ -133,6 +133,9 @@ export function applyConfigUpdateEffects(
             case 'openaiApiKey':
             case 'openaiBaseUrl':
             case 'openaiModel':
+            case 'vertexAiSupportsImages':
+            case 'geminiMediaResolution':
+            case 'openaiSupportsImages':
             case 'translationProvider':
                 clearCache();
                 resetProviders();
@@ -147,9 +150,6 @@ export function applyConfigUpdateEffects(
                 break;
             case 'translationPrompt':
             case 'maxOutputTokens':
-            case 'vertexAiSupportsImages':
-            case 'geminiMediaResolution':
-            case 'openaiSupportsImages':
                 clearCache();
                 break;
             case 'maxInputLength':

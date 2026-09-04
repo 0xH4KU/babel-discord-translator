@@ -49,9 +49,7 @@ function chatResponse(
         json: () =>
             Promise.resolve({
                 choices:
-                    content === null
-                        ? []
-                        : [{ message: { content }, finish_reason: finishReason }],
+                    content === null ? [] : [{ message: { content }, finish_reason: finishReason }],
                 ...(usage !== undefined ? { usage } : {}),
             }),
         text: () => Promise.resolve(''),
@@ -122,12 +120,14 @@ describe('openai-client', () => {
     });
 
     it('should send compatible text and image_url content parts without forcing response format', async () => {
-        globalThis.fetch = vi.fn().mockResolvedValue(
-            chatResponse(
-                JSON.stringify({ has_text: true, translation: 'hola', regions: [] }),
-                { prompt_tokens: 50, completion_tokens: 10 },
-            ),
-        );
+        globalThis.fetch = vi
+            .fn()
+            .mockResolvedValue(
+                chatResponse(JSON.stringify({ has_text: true, translation: 'hola', regions: [] }), {
+                    prompt_tokens: 50,
+                    completion_tokens: 10,
+                }),
+            );
 
         const result = await generateImageTranslationContent(
             {
@@ -145,7 +145,9 @@ describe('openai-client', () => {
             { type: 'text', text: 'Read and translate the image.' },
             {
                 type: 'image_url',
-                image_url: { url: `data:image/webp;base64,${Buffer.from('image').toString('base64')}` },
+                image_url: {
+                    url: `data:image/webp;base64,${Buffer.from('image').toString('base64')}`,
+                },
             },
         ]);
         expect(body).not.toHaveProperty('response_format');
@@ -155,7 +157,13 @@ describe('openai-client', () => {
     it('should report image output truncated by the configured token limit', async () => {
         globalThis.fetch = vi
             .fn()
-            .mockResolvedValue(chatResponse('{"has_text":true', undefined, 'length'));
+            .mockResolvedValue(
+                chatResponse(
+                    '{"has_text":true',
+                    { prompt_tokens: 10, completion_tokens: 1000 },
+                    'length',
+                ),
+            );
 
         await expect(
             generateImageTranslationContent(
@@ -166,7 +174,36 @@ describe('openai-client', () => {
                 },
                 1000,
             ),
-        ).rejects.toThrow('truncated by Max Output Tokens');
+        ).rejects.toMatchObject({
+            name: 'ProviderResponseError',
+            message: expect.stringContaining('truncated by Max Output Tokens'),
+            inputTokens: 10,
+            outputTokens: 1000,
+        });
+    });
+
+    it('should preserve usage when an image response contains invalid JSON', async () => {
+        globalThis.fetch = vi
+            .fn()
+            .mockResolvedValue(
+                chatResponse('not json', { prompt_tokens: 30, completion_tokens: 4 }),
+            );
+
+        await expect(
+            generateImageTranslationContent(
+                {
+                    image: Buffer.from('image'),
+                    mimeType: 'image/png',
+                    prompt: translationPrompt('Read it.'),
+                },
+                1000,
+            ),
+        ).rejects.toMatchObject({
+            name: 'ProviderResponseError',
+            message: 'Invalid Babel Lens JSON response',
+            inputTokens: 30,
+            outputTokens: 4,
+        });
     });
 
     it('should reject empty completions', async () => {

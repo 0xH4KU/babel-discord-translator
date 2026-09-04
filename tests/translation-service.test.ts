@@ -11,11 +11,7 @@ import {
 } from '../src/modules/translation/translation-service.js';
 import { TranslationRuntimeLimiter } from '../src/modules/translation/translation-runtime-limiter.js';
 import type { AccessMode } from '../src/apps/app-profile.js';
-import type {
-    ImageTranslationResult,
-    StoreData,
-    TranslationResult,
-} from '../src/shared/types.js';
+import type { ImageTranslationResult, StoreData, TranslationResult } from '../src/shared/types.js';
 
 function createStructuredLoggerMock(base: Record<string, unknown> = {}) {
     const entries: Array<Record<string, unknown>> = [];
@@ -432,6 +428,88 @@ describe('TranslationService', () => {
             guildId: 'guild-1',
             userId: null,
         });
+    });
+
+    it('should settle billed token usage when image translation fails', async () => {
+        const imageTranslator = vi.fn(async () => {
+            throw new ProviderOrchestratorError('Invalid Babel Lens JSON response', {
+                provider: 'vertex',
+                errorType: 'unknown',
+                inputTokens: 90,
+                outputTokens: 12,
+            });
+        });
+        const { service, usageTracker, metrics } = createService({ imageTranslator });
+
+        const result = await service.processImage(createImageRequest());
+
+        expect(result.status).toBe('error');
+        expect(usageTracker.record).toHaveBeenCalledWith(90, 12, {
+            guildId: 'guild-1',
+            userId: null,
+        });
+        const reservation = usageTracker.tryReserveBudget.mock.results[0]?.value;
+        expect(reservation.release).not.toHaveBeenCalled();
+        expect(metrics.snapshot().translationApiCallsTotal).toBe(1);
+    });
+
+    it('should not cache fallback image results', async () => {
+        const imageTranslator = vi.fn(
+            async (): Promise<ImageTranslationResult> => ({
+                text: 'fallback translation',
+                hasText: true,
+                regions: [],
+                route: 'direct',
+                provider: 'openai',
+                fallback: true,
+                inputTokens: 20,
+                outputTokens: 5,
+            }),
+        );
+        const { service } = createService({ imageTranslator });
+
+        const first = await service.processImage(createImageRequest());
+        const second = await service.processImage(
+            createImageRequest({ userId: 'user2', requestId: 'lens-request-2' }),
+        );
+
+        expect(first).toMatchObject({ status: 'success', cached: false, fallback: true });
+        expect(second).toMatchObject({ status: 'success', cached: false, fallback: true });
+        expect(imageTranslator).toHaveBeenCalledTimes(2);
+    });
+
+    it('should not cache fallback text results', async () => {
+        const translator = vi.fn(
+            async (): Promise<TranslationResult> => ({
+                text: 'fallback translation',
+                provider: 'openai',
+                fallback: true,
+                inputTokens: 8,
+                outputTokens: 3,
+            }),
+        );
+        const { service } = createService({ translator });
+        const request = {
+            command: 'translate' as const,
+            commandLabel: '/translate',
+            guildId: 'guild-1',
+            guildName: 'Test Guild',
+            userId: 'user1',
+            userTag: 'user#0001',
+            text: 'Hello',
+            targetLanguageOption: 'ja',
+        };
+
+        const first = await service.process(request);
+        const second = await service.process({
+            ...request,
+            userId: 'user2',
+            userTag: 'user#0002',
+        });
+
+        expect(first).toMatchObject({ status: 'success', cached: false, fallback: true });
+        expect(second).toMatchObject({ status: 'success', cached: false, fallback: true });
+        expect(translator).toHaveBeenCalledTimes(2);
     });
 
     it('should translate successfully and record usage through the shared service', async () => {
