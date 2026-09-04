@@ -43,8 +43,23 @@ export interface UsageBudgetReservation {
     release(): void;
 }
 
+export interface UsageBudgetRejection {
+    budgetScope: string;
+    budgetWindow: string;
+    budgetUsedUsd: number;
+    budgetPendingUsd: number;
+    budgetEstimatedUsd: number;
+    budgetLimitUsd: number;
+}
+
+export type UsageBudgetAdmission =
+    | { allowed: true; reservation: UsageBudgetReservation }
+    | { allowed: false; reason: UsageBudgetRejection };
+
 interface BudgetAdmission {
     key: string;
+    scope: string;
+    window: string;
     budget: number;
     cost: UsageCost;
 }
@@ -84,7 +99,7 @@ export class UsageTracker {
         guildId,
         userId,
         actorUserId,
-    }: UsageBudgetEstimate): UsageBudgetReservation | null {
+    }: UsageBudgetEstimate): UsageBudgetAdmission {
         const runtimeConfig = configRepository.getRuntimeConfig();
         const scope = { guildId, userId, actorUserId };
         const estimatedCost = calculateCost(
@@ -93,14 +108,22 @@ export class UsageTracker {
         );
         const { admissions, poolId } = this.getBudgetPlan(scope, runtimeConfig, new Date());
 
-        if (
-            admissions.some(
-                ({ key, budget, cost }) =>
-                    budget > 0 &&
-                    cost.totalCost + (this.pendingCosts.get(key) ?? 0) + estimatedCost >= budget,
-            )
-        ) {
-            return null;
+        const blocked = admissions.find(({ key, budget, cost }) => {
+            const pending = this.pendingCosts.get(key) ?? 0;
+            return budget > 0 && cost.totalCost + pending + estimatedCost >= budget;
+        });
+        if (blocked) {
+            return {
+                allowed: false,
+                reason: {
+                    budgetScope: blocked.scope,
+                    budgetWindow: blocked.window,
+                    budgetUsedUsd: blocked.cost.totalCost,
+                    budgetPendingUsd: this.pendingCosts.get(blocked.key) ?? 0,
+                    budgetEstimatedUsd: estimatedCost,
+                    budgetLimitUsd: blocked.budget,
+                },
+            };
         }
 
         for (const { key } of admissions) {
@@ -120,15 +143,18 @@ export class UsageTracker {
         };
 
         return {
-            settle: (inputTokens, outputTokens) => {
-                if (!active) return;
-                release();
-                this.recordInPool(inputTokens, outputTokens, scope, poolId, {
-                    inputPricePerMillion: runtimeConfig.inputPricePerMillion,
-                    outputPricePerMillion: runtimeConfig.outputPricePerMillion,
-                });
+            allowed: true,
+            reservation: {
+                settle: (inputTokens, outputTokens) => {
+                    if (!active) return;
+                    release();
+                    this.recordInPool(inputTokens, outputTokens, scope, poolId, {
+                        inputPricePerMillion: runtimeConfig.inputPricePerMillion,
+                        outputPricePerMillion: runtimeConfig.outputPricePerMillion,
+                    });
+                },
+                release,
             },
-            release,
         };
     }
 
@@ -195,6 +221,8 @@ export class UsageTracker {
         const admissions = sources.flatMap((source) =>
             windows.map((window) => ({
                 key: `${window.key}:${source.key}`,
+                scope: source.key,
+                window: window.key,
                 budget: source.budget * window.fraction,
                 cost: this.getBudgetSourceCost(source, window, runtimeConfig),
             })),
@@ -222,6 +250,8 @@ export class UsageTracker {
             admissions.push(
                 ...windows.map((window) => ({
                     key: `${window.key}:guild-user:${scope.guildId}:${scope.actorUserId}`,
+                    scope: `guild-user:${scope.guildId}:${scope.actorUserId}`,
+                    window: window.key,
                     budget: decision.budget * window.fraction * fairShare,
                     cost: withCost(
                         store.getGuildUserRollingUsage(
@@ -464,20 +494,25 @@ function budgetWindows(now: Date, settings: BudgetLimitSettings): BudgetWindow[]
     return [
         {
             key: '5h',
-            start: new Date(now.getTime() - 5 * 60 * 60 * 1000).toISOString(),
+            start: rollingWindowStart(now, 5 * 60 * 60 * 1000),
             end,
             fraction: settings.budgetFiveHourPercent / 100,
             rolling: true,
         },
         {
             key: '7d',
-            start: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+            start: rollingWindowStart(now, 7 * 24 * 60 * 60 * 1000),
             end,
             fraction: settings.budgetSevenDayPercent / 100,
             rolling: true,
         },
         { ...month, key: `month:${month.key}`, fraction: 1, rolling: false },
     ];
+}
+
+function rollingWindowStart(now: Date, durationMs: number): string {
+    const start = now.getTime() - durationMs;
+    return new Date(Math.floor(start / 60_000) * 60_000).toISOString();
 }
 
 function withHistoryCost(

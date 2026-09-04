@@ -17,6 +17,7 @@ import type {
 } from './translation-runtime-limiter.js';
 import {
     usage,
+    type UsageBudgetAdmission,
     type UsageBudgetEstimate,
     type UsageBudgetReservation,
 } from '../usage/usage.js';
@@ -80,7 +81,7 @@ interface UsageLike {
         guildId?: string | null;
         userId?: string | null;
         actorUserId?: string | null;
-    }): UsageBudgetReservation | null;
+    }): UsageBudgetAdmission;
 }
 
 interface PendingUserInstallOwnerRepositoryLike {
@@ -580,7 +581,7 @@ export function createTranslationService({
                 }
 
                 if (!cached && !joinedInFlight) {
-                    budgetReservation = usageTracker.tryReserveBudget({
+                    const budgetAdmission = usageTracker.tryReserveBudget({
                         ...estimateBudgetTokens(
                             translationPrompt,
                             runtimeConfig.maxOutputTokens || 4096,
@@ -588,11 +589,12 @@ export function createTranslationService({
                         ),
                         ...usageScope,
                     });
-                    if (!budgetReservation) {
+                    if (!budgetAdmission.allowed) {
                         reservation?.cancel();
                         profileMetrics?.recordBudgetExceeded();
                         requestLogger.warn('translation.request.blocked', {
                             blockReason: 'budget_exceeded',
+                            ...budgetAdmission.reason,
                         });
                         return {
                             status: 'blocked',
@@ -600,6 +602,7 @@ export function createTranslationService({
                             ...(deferred ? { deferred: true } : {}),
                         };
                     }
+                    budgetReservation = budgetAdmission.reservation;
 
                     const inFlightTranslation = createInFlightTranslation();
                     leaderInFlight = inFlightTranslation.entry;
@@ -983,7 +986,7 @@ export function createTranslationService({
                         return deferred ? { ...runtime.blocked, deferred: true } : runtime.blocked;
                     }
                     reservation = runtime.reservation;
-                    budgetReservation = usageTracker.tryReserveBudget({
+                    const budgetAdmission = usageTracker.tryReserveBudget({
                         ...estimateBudgetTokens(
                             imagePrompt,
                             runtimeConfig.maxOutputTokens || 4096,
@@ -992,12 +995,13 @@ export function createTranslationService({
                         ),
                         ...usageScope,
                     });
-                    if (!budgetReservation) {
+                    if (!budgetAdmission.allowed) {
                         reservation?.cancel();
                         profileMetrics?.recordBudgetExceeded();
                         requestLogger.warn('translation.request.blocked', {
                             blockReason: 'budget_exceeded',
                             inputType: 'image',
+                            ...budgetAdmission.reason,
                         });
                         return {
                             status: 'blocked',
@@ -1005,6 +1009,7 @@ export function createTranslationService({
                             ...(deferred ? { deferred: true } : {}),
                         };
                     }
+                    budgetReservation = budgetAdmission.reservation;
 
                     const inFlightTranslation = createInFlightTranslation();
                     leaderInFlight = inFlightTranslation.entry;

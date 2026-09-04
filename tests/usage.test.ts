@@ -400,6 +400,12 @@ vi.mock('../src/persistence/store.js', () => {
 import { store } from '../src/persistence/store.js';
 import { UsageTracker } from '../src/modules/usage/usage.js';
 import type { TokenUsage } from '../src/shared/types.js';
+import type { UsageBudgetAdmission } from '../src/modules/usage/usage.js';
+
+function reservationFrom(admission: UsageBudgetAdmission) {
+    if (!admission.allowed) throw new Error('Expected an allowed budget admission');
+    return admission.reservation;
+}
 
 describe('UsageTracker', () => {
     let usage: UsageTracker;
@@ -486,16 +492,16 @@ describe('UsageTracker', () => {
             estimatedOutputTokens: 0,
         });
 
-        expect(first).not.toBeNull();
-        expect(blocked).toBeNull();
+        expect(first.allowed).toBe(true);
+        expect(blocked.allowed).toBe(false);
 
-        first!.release();
+        reservationFrom(first).release();
         expect(
             usage.tryReserveBudget({
                 estimatedInputTokens: 900_000,
                 estimatedOutputTokens: 0,
-            }),
-        ).not.toBeNull();
+            }).allowed,
+        ).toBe(true);
         expect((mockData.tokenUsage as TokenUsage).requests).toBe(0);
     });
 
@@ -507,7 +513,7 @@ describe('UsageTracker', () => {
             estimatedInputTokens: 600_000,
             estimatedOutputTokens: 0,
         });
-        reservation!.settle(200_000, 0);
+        reservationFrom(reservation).settle(200_000, 0);
 
         expect(mockData.tokenUsage as TokenUsage).toMatchObject({
             inputTokens: 200_000,
@@ -518,8 +524,8 @@ describe('UsageTracker', () => {
             usage.tryReserveBudget({
                 estimatedInputTokens: 700_000,
                 estimatedOutputTokens: 0,
-            }),
-        ).not.toBeNull();
+            }).allowed,
+        ).toBe(true);
     });
 
     it('should enforce both user and shared global pending budgets', () => {
@@ -532,22 +538,22 @@ describe('UsageTracker', () => {
                 estimatedInputTokens: 600_000,
                 estimatedOutputTokens: 0,
                 userId: 'user-a',
-            }),
-        ).not.toBeNull();
+            }).allowed,
+        ).toBe(true);
         expect(
             usage.tryReserveBudget({
                 estimatedInputTokens: 200_000,
                 estimatedOutputTokens: 0,
                 userId: 'user-a',
-            }),
-        ).toBeNull();
+            }).allowed,
+        ).toBe(false);
         expect(
             usage.tryReserveBudget({
                 estimatedInputTokens: 400_000,
                 estimatedOutputTokens: 0,
                 userId: 'user-b',
-            }),
-        ).toBeNull();
+            }).allowed,
+        ).toBe(false);
     });
 
     it('should isolate Guild and Pocket shared pending budgets', () => {
@@ -567,10 +573,10 @@ describe('UsageTracker', () => {
             estimatedOutputTokens: 0,
         });
 
-        expect(guild).not.toBeNull();
-        expect(pocket).not.toBeNull();
-        guild!.release();
-        pocket!.release();
+        expect(guild.allowed).toBe(true);
+        expect(pocket.allowed).toBe(true);
+        reservationFrom(guild).release();
+        reservationFrom(pocket).release();
     });
 
     it('should keep custom guild reservations outside the shared global pool', () => {
@@ -583,22 +589,22 @@ describe('UsageTracker', () => {
                 estimatedInputTokens: 600_000,
                 estimatedOutputTokens: 0,
                 guildId: 'guild-custom',
-            }),
-        ).not.toBeNull();
+            }).allowed,
+        ).toBe(true);
         expect(
             usage.tryReserveBudget({
                 estimatedInputTokens: 400_000,
                 estimatedOutputTokens: 0,
                 guildId: 'guild-shared',
-            }),
-        ).not.toBeNull();
+            }).allowed,
+        ).toBe(true);
         expect(
             usage.tryReserveBudget({
                 estimatedInputTokens: 400_000,
                 estimatedOutputTokens: 0,
                 guildId: 'guild-custom',
-            }),
-        ).toBeNull();
+            }).allowed,
+        ).toBe(false);
     });
 
     it('should settle into the pool selected when the request was admitted', () => {
@@ -615,7 +621,7 @@ describe('UsageTracker', () => {
         mockData.guildBudgets = {};
         mockData.inputPricePerMillion = 10;
         mockData.outputPricePerMillion = 20;
-        reservation!.settle(80, 40);
+        reservationFrom(reservation).settle(80, 40);
 
         expect(store.recordUsage).toHaveBeenLastCalledWith(
             expect.any(String),
@@ -646,8 +652,48 @@ describe('UsageTracker', () => {
             usage.tryReserveBudget({
                 estimatedInputTokens: 250_000,
                 estimatedOutputTokens: 0,
-            }),
-        ).toBeNull();
+            }).allowed,
+        ).toBe(false);
+    });
+
+    it('should retain the boundary minute and report the exact blocking budget', () => {
+        vi.useFakeTimers();
+        vi.setSystemTime('2026-09-04T10:00:59.500Z');
+        try {
+            mockData.monthlyBudgetUsd = 100;
+            mockData.budgetFiveHourPercent = 5;
+            mockData.budgetSevenDayPercent = 30;
+            mockData.inputPricePerMillion = 1;
+            mockData.rollingUsage = [
+                {
+                    scope: 'global',
+                    scopeId: '',
+                    date: '2026-09-04T05:00:00.000Z',
+                    inputTokens: 4_750_000,
+                    outputTokens: 0,
+                    requests: 1,
+                },
+            ];
+
+            expect(
+                usage.tryReserveBudget({
+                    estimatedInputTokens: 250_000,
+                    estimatedOutputTokens: 0,
+                }),
+            ).toEqual({
+                allowed: false,
+                reason: {
+                    budgetScope: 'guild:shared',
+                    budgetWindow: '5h',
+                    budgetUsedUsd: 4.75,
+                    budgetPendingUsd: 0,
+                    budgetEstimatedUsd: 0.25,
+                    budgetLimitUsd: 5,
+                },
+            });
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('should enforce the rolling seven-day budget after five-hour usage expires', () => {
@@ -670,8 +716,8 @@ describe('UsageTracker', () => {
             usage.tryReserveBudget({
                 estimatedInputTokens: 250_000,
                 estimatedOutputTokens: 0,
-            }),
-        ).toBeNull();
+            }).allowed,
+        ).toBe(false);
     });
 
     it('should retain the hard monthly budget limit', () => {
@@ -690,8 +736,8 @@ describe('UsageTracker', () => {
             usage.tryReserveBudget({
                 estimatedInputTokens: 250_000,
                 estimatedOutputTokens: 0,
-            }),
-        ).toBeNull();
+            }).allowed,
+        ).toBe(false);
     });
 
     it('should apply per-guild rolling limit overrides', () => {
@@ -718,8 +764,8 @@ describe('UsageTracker', () => {
                 guildId: 'guild',
                 estimatedInputTokens: 1_000_000,
                 estimatedOutputTokens: 0,
-            }),
-        ).not.toBeNull();
+            }).allowed,
+        ).toBe(true);
     });
 
     it('should include a new requester in the guild fair-share divisor', () => {
@@ -744,8 +790,8 @@ describe('UsageTracker', () => {
                 actorUserId: 'user-a',
                 estimatedInputTokens: 2_500_000,
                 estimatedOutputTokens: 0,
-            }),
-        ).toBeNull();
+            }).allowed,
+        ).toBe(false);
     });
 
     it('should include pending requests in rolling limits', () => {
@@ -763,9 +809,9 @@ describe('UsageTracker', () => {
             estimatedOutputTokens: 0,
         });
 
-        expect(first).not.toBeNull();
-        expect(second).toBeNull();
-        first!.release();
+        expect(first.allowed).toBe(true);
+        expect(second.allowed).toBe(false);
+        reservationFrom(first).release();
     });
 
     it('should return complete stats for dashboard', () => {

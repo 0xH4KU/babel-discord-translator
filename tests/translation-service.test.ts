@@ -14,6 +14,10 @@ import {
     buildTranslationPrompt,
 } from '../src/modules/translation/translate.js';
 import { TranslationRuntimeLimiter } from '../src/modules/translation/translation-runtime-limiter.js';
+import type {
+    UsageBudgetAdmission,
+    UsageBudgetReservation,
+} from '../src/modules/usage/usage.js';
 import type { AccessMode } from '../src/apps/app-profile.js';
 import type { ImageTranslationResult, StoreData, TranslationResult } from '../src/shared/types.js';
 
@@ -164,14 +168,36 @@ function createUsageMock() {
                 guildId?: string | null;
                 userId?: string | null;
                 actorUserId?: string | null;
-            }) => ({
-                settle: vi.fn((inputTokens: number, outputTokens: number) =>
-                    record(inputTokens, outputTokens, { guildId, userId, actorUserId }),
-                ),
-                release: vi.fn(),
+            }): UsageBudgetAdmission => ({
+                allowed: true,
+                reservation: {
+                    settle: vi.fn((inputTokens: number, outputTokens: number) =>
+                        record(inputTokens, outputTokens, { guildId, userId, actorUserId }),
+                    ),
+                    release: vi.fn(),
+                },
             }),
         ),
     };
+}
+
+function rejectedBudget(): UsageBudgetAdmission {
+    return {
+        allowed: false,
+        reason: {
+            budgetScope: 'guild:shared',
+            budgetWindow: '5h',
+            budgetUsedUsd: 0.04,
+            budgetPendingUsd: 0.01,
+            budgetEstimatedUsd: 0.01,
+            budgetLimitUsd: 0.05,
+        },
+    };
+}
+
+function reservationFrom(admission: UsageBudgetAdmission | undefined): UsageBudgetReservation {
+    if (!admission?.allowed) throw new Error('Expected an allowed budget admission');
+    return admission.reservation;
 }
 
 function createGlossaryRepositoryMock(
@@ -364,7 +390,7 @@ describe('TranslationService', () => {
 
     it('should block on translation budget before resolving Vision', async () => {
         const usageTracker = createUsageMock();
-        usageTracker.tryReserveBudget.mockReturnValueOnce(null as never);
+        usageTracker.tryReserveBudget.mockReturnValueOnce(rejectedBudget());
         const resolveVision = vi.fn();
         const { service, imageTranslator } = createService({ usageTracker });
 
@@ -402,7 +428,7 @@ describe('TranslationService', () => {
         );
 
         expect(result).toMatchObject({ status: 'success', hasText: false, route: 'vision' });
-        const reservation = usageTracker.tryReserveBudget.mock.results[0]?.value;
+        const reservation = reservationFrom(usageTracker.tryReserveBudget.mock.results[0]?.value);
         expect(reservation.release).toHaveBeenCalledOnce();
         expect(reservation.settle).not.toHaveBeenCalled();
         expect(usageTracker.record).not.toHaveBeenCalled();
@@ -482,7 +508,7 @@ describe('TranslationService', () => {
             userId: null,
             actorUserId: 'user1',
         });
-        const reservation = usageTracker.tryReserveBudget.mock.results[0]?.value;
+        const reservation = reservationFrom(usageTracker.tryReserveBudget.mock.results[0]?.value);
         expect(reservation.release).not.toHaveBeenCalled();
         expect(metrics.snapshot().translationApiCallsTotal).toBe(1);
     });
@@ -709,7 +735,7 @@ describe('TranslationService', () => {
     it('should preserve deferred state when Lens translation is blocked after OCR', async () => {
         const beforeTranslate = vi.fn(async () => undefined);
         const usageTracker = createUsageMock();
-        usageTracker.tryReserveBudget.mockReturnValueOnce(null as never);
+        usageTracker.tryReserveBudget.mockReturnValueOnce(rejectedBudget());
         const { service } = createService({ usageTracker });
 
         const result = await service.process({
@@ -991,7 +1017,7 @@ describe('TranslationService', () => {
             targetLanguageOption: 'ko',
         });
         usageTracker.tryReserveBudget.mockClear();
-        usageTracker.tryReserveBudget.mockReturnValue(null);
+        usageTracker.tryReserveBudget.mockReturnValue(rejectedBudget());
         const second = await service.process({
             command: 'translate',
             commandLabel: '/translate',
@@ -1482,9 +1508,9 @@ describe('TranslationService', () => {
 
     it('should block requests when the guild budget is exceeded', async () => {
         const usageTracker = createUsageMock();
-        usageTracker.tryReserveBudget.mockReturnValue(null);
+        usageTracker.tryReserveBudget.mockReturnValue(rejectedBudget());
         const translator = vi.fn();
-        const { service, metrics } = createService({ usageTracker, translator });
+        const { service, metrics, loggerState } = createService({ usageTracker, translator });
 
         const result = await service.process({
             command: 'translate',
@@ -1503,6 +1529,18 @@ describe('TranslationService', () => {
         });
         expect(translator).not.toHaveBeenCalled();
         expect(metrics.snapshot().budgetExceededTotal).toBe(1);
+        expect(loggerState.entries).toContainEqual(
+            expect.objectContaining({
+                event: 'translation.request.blocked',
+                blockReason: 'budget_exceeded',
+                budgetScope: 'guild:shared',
+                budgetWindow: '5h',
+                budgetUsedUsd: 0.04,
+                budgetPendingUsd: 0.01,
+                budgetEstimatedUsd: 0.01,
+                budgetLimitUsd: 0.05,
+            }),
+        );
     });
 
     it('should release reserved budget when the provider fails', async () => {
@@ -1523,7 +1561,7 @@ describe('TranslationService', () => {
             text: 'Hello world',
         });
 
-        const reservation = usageTracker.tryReserveBudget.mock.results[0]?.value;
+        const reservation = reservationFrom(usageTracker.tryReserveBudget.mock.results[0]?.value);
         expect(result.status).toBe('error');
         expect(reservation?.release).toHaveBeenCalledOnce();
         expect(usageTracker.record).not.toHaveBeenCalled();

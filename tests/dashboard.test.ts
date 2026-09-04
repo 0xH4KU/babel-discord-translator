@@ -1125,6 +1125,22 @@ describe('Dashboard API', () => {
         }
     });
 
+    it('should reject partial and non-finite scoped budget values', async () => {
+        const { store } = await import('../src/persistence/store.js');
+        const before = store.getGuildBudget('guild-1');
+
+        for (const monthlyBudgetUsd of ['1oops', 'Infinity', '']) {
+            const result = await request(server, 'POST', '/api/guild-budgets/guild-1', {
+                cookie: sessionCookie,
+                csrf: csrfToken,
+                body: { monthlyBudgetUsd },
+            });
+            expect(result.status).toBe(400);
+        }
+
+        expect(store.getGuildBudget('guild-1')).toEqual(before);
+    });
+
     it('should manage per-guild budget limit overrides independently', async () => {
         const { store } = await import('../src/persistence/store.js');
 

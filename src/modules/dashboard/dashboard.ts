@@ -103,6 +103,14 @@ function parseVisionLimit(value: unknown): number | null {
     return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : NaN;
 }
 
+function parseBudget(value: unknown): number | null {
+    if (value === null || value === undefined) return null;
+    if (typeof value !== 'number' && typeof value !== 'string') return NaN;
+    if (typeof value === 'string' && !value.trim()) return NaN;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : NaN;
+}
+
 function applyScopedBudgetUpdate(
     scope: 'guild' | 'user',
     scopeId: string,
@@ -123,11 +131,8 @@ function applyScopedBudgetUpdate(
         return { ok: false, error: 'A budget, budget limit, or Vision limit is required' };
     }
 
-    const budget =
-        hasBudget && body.monthlyBudgetUsd !== null && body.monthlyBudgetUsd !== undefined
-            ? parseFloat(String(body.monthlyBudgetUsd))
-            : null;
-    if (hasBudget && budget !== null && (isNaN(budget) || budget < 0)) {
+    const budget = hasBudget ? parseBudget(body.monthlyBudgetUsd) : null;
+    if (hasBudget && Number.isNaN(budget)) {
         return { ok: false, error: dashboardMessages.validation.monthlyBudgetUsd };
     }
 
