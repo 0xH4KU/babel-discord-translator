@@ -152,9 +152,17 @@ function createUsageMock() {
     return {
         record,
         tryReserveBudget: vi.fn(
-            ({ guildId, userId }: { guildId?: string | null; userId?: string | null }) => ({
+            ({
+                guildId,
+                userId,
+                actorUserId,
+            }: {
+                guildId?: string | null;
+                userId?: string | null;
+                actorUserId?: string | null;
+            }) => ({
                 settle: vi.fn((inputTokens: number, outputTokens: number) =>
-                    record(inputTokens, outputTokens, { guildId, userId }),
+                    record(inputTokens, outputTokens, { guildId, userId, actorUserId }),
                 ),
                 release: vi.fn(),
             }),
@@ -321,10 +329,12 @@ describe('TranslationService', () => {
             estimatedOutputTokens: 1000,
             guildId: 'guild-1',
             userId: null,
+            actorUserId: 'user1',
         });
         expect(usageTracker.record).toHaveBeenCalledWith(120, 20, {
             guildId: 'guild-1',
             userId: null,
+            actorUserId: 'user1',
         });
         expect(imageTranslator).toHaveBeenCalledOnce();
         expect(resolveVision).not.toHaveBeenCalled();
@@ -427,6 +437,7 @@ describe('TranslationService', () => {
         expect(usageTracker.record).toHaveBeenCalledWith(80, 4, {
             guildId: 'guild-1',
             userId: null,
+            actorUserId: 'user1',
         });
     });
 
@@ -447,6 +458,7 @@ describe('TranslationService', () => {
         expect(usageTracker.record).toHaveBeenCalledWith(90, 12, {
             guildId: 'guild-1',
             userId: null,
+            actorUserId: 'user1',
         });
         const reservation = usageTracker.tryReserveBudget.mock.results[0]?.value;
         expect(reservation.release).not.toHaveBeenCalled();
@@ -566,6 +578,7 @@ describe('TranslationService', () => {
         expect(usageTracker.record).toHaveBeenCalledWith(12, 6, {
             guildId: 'guild-1',
             userId: null,
+            actorUserId: 'user1',
         });
         expect(log.size).toBe(1);
         expect(metrics.snapshot()).toMatchObject({
@@ -1496,6 +1509,7 @@ describe('TranslationService', () => {
         expect(usageTracker.record).toHaveBeenCalledWith(12, 6, {
             guildId: null,
             userId: 'user-owner',
+            actorUserId: 'user-owner',
         });
     });
 
@@ -1525,6 +1539,7 @@ describe('TranslationService', () => {
         expect(usageTracker.record).toHaveBeenCalledWith(12, 6, {
             guildId: null,
             userId: 'user-owner',
+            actorUserId: 'actor',
         });
     });
 
@@ -1552,6 +1567,7 @@ describe('TranslationService', () => {
         expect(usageTracker.record).toHaveBeenCalledWith(12, 6, {
             guildId: null,
             userId: 'actor',
+            actorUserId: 'actor',
         });
     });
 

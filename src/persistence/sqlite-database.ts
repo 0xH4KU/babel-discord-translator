@@ -397,6 +397,28 @@ const MIGRATIONS: Migration[] = [
             }
         },
     },
+    {
+        id: 13,
+        name: 'rolling_translation_usage',
+        up(db) {
+            db.exec(`
+                CREATE TABLE IF NOT EXISTS rolling_usage (
+                    scope TEXT NOT NULL CHECK (
+                        scope IN ('global', 'guild', 'user', 'guild_user')
+                    ),
+                    scope_id TEXT NOT NULL,
+                    bucket_start TEXT NOT NULL,
+                    input_tokens INTEGER NOT NULL,
+                    output_tokens INTEGER NOT NULL,
+                    requests INTEGER NOT NULL,
+                    PRIMARY KEY (scope, scope_id, bucket_start)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_rolling_usage_window
+                ON rolling_usage (scope, bucket_start, scope_id);
+            `);
+        },
+    },
 ];
 
 let sharedDatabase: DatabaseSync | null = null;
@@ -494,6 +516,7 @@ const STORE_TABLES = new Set([
     'user_language_preferences',
     'guild_budgets',
     'scoped_usage',
+    'rolling_usage',
     'guild_glossary',
     'user_budgets',
     'discord_user_profiles',

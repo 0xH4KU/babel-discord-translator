@@ -352,6 +352,54 @@ describe('ConfigStore', () => {
         store.close();
     });
 
+    it('should retain rolling usage and guild actor attribution', async () => {
+        const { ConfigStore } = await importStoreModule();
+        const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+
+        store.recordUsage('2026-03-27T10:01:30.000Z', 100, 50, {
+            guildId: 'guild-1',
+            actorUserId: 'user-1',
+        });
+        store.recordUsage('2026-03-27T10:01:50.000Z', 20, 10, {
+            guildId: 'guild-1',
+            actorUserId: 'user-1',
+        });
+        store.recordUsage('2026-03-27T11:00:00.000Z', 40, 20, {
+            guildId: 'guild-1',
+            actorUserId: 'user-2',
+        });
+
+        expect(
+            store.getRollingUsageBetween(
+                'guild',
+                'guild-1',
+                '2026-03-27T10:00:00.000Z',
+                '2026-03-27T11:00:00.000Z',
+            ),
+        ).toEqual({
+            date: '2026-03-27T10:00:00.000Z',
+            inputTokens: 120,
+            outputTokens: 60,
+            requests: 2,
+        });
+        expect(
+            store.getGuildUserRollingUsage(
+                'guild-1',
+                'user-1',
+                '2026-03-27T10:00:00.000Z',
+                '2026-03-27T12:00:00.000Z',
+            ),
+        ).toMatchObject({ inputTokens: 120, outputTokens: 60, requests: 2 });
+        expect(
+            store.countActiveGuildUsers(
+                'guild-1',
+                '2026-03-20T00:00:00.000Z',
+                '2026-03-28T00:00:00.000Z',
+            ),
+        ).toBe(2);
+        store.close();
+    });
+
     it('should enforce and persist the monthly Cloud Vision image limit', async () => {
         const { ConfigStore } = await importStoreModule();
         const first = new ConfigStore({ dbPath, autoImportLegacyJson: false });
@@ -440,6 +488,17 @@ describe('ConfigStore', () => {
         });
         expect(store.getSharedGlobalUsageBetween('2026-03-01', '2026-04-01')).toEqual({
             date: '2026-03-01',
+            inputTokens: 130,
+            outputTokens: 65,
+            requests: 2,
+        });
+        expect(
+            store.getSharedRollingUsageBetween(
+                '2026-03-27T00:00:00.000Z',
+                '2026-03-28T00:00:00.000Z',
+            ),
+        ).toEqual({
+            date: '2026-03-27T00:00:00.000Z',
             inputTokens: 130,
             outputTokens: 65,
             requests: 2,

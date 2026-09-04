@@ -161,8 +161,9 @@ vi.mock('../src/persistence/store.js', () => {
                 }
                 return shared;
             }),
-            recordUsage: vi.fn((date: string, input: number, output: number, scope = {}) => {
+            recordUsage: vi.fn((timestamp: string, input: number, output: number, scope = {}) => {
                 const ids = scope as { guildId?: string; userId?: string };
+                const date = timestamp.slice(0, 10);
                 const tokens = [input || 0, output || 0] as const;
                 record('global', '', date, ...tokens);
                 if (ids.guildId) record('guild', ids.guildId, date, ...tokens);

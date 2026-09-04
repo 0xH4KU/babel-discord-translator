@@ -54,7 +54,7 @@ export class UsageTracker {
 
     /** Record a translation's token usage (global + optional guild/user). */
     record(inputTokens: number, outputTokens: number, scope: UsageScope = {}): void {
-        store.recordUsage(today(), inputTokens, outputTokens, scope);
+        store.recordUsage(new Date().toISOString(), inputTokens, outputTokens, scope);
     }
 
     /** Calculate this month's cost for a specific user. */

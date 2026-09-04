@@ -29,6 +29,7 @@ interface ConfigStoreOptions {
 }
 
 export type UsageScopeKind = 'global' | 'guild' | 'user';
+export type RollingUsageScopeKind = UsageScopeKind | 'guild_user';
 export type VisionScopeKind = Exclude<UsageScopeKind, 'global'>;
 
 export interface VisionQuotaScope {
@@ -43,6 +44,24 @@ export type VisionQuotaResult =
 export interface ScopedUsageRow extends TokenUsage {
     scope: UsageScopeKind;
     scopeId: string;
+}
+
+const ROLLING_USAGE_RETENTION_MS = 32 * 24 * 60 * 60 * 1000;
+
+function rollingUsageTimes(timestamp: string): {
+    date: string;
+    bucketStart: string;
+    retentionStart: string;
+} {
+    const time = new Date(timestamp);
+    if (Number.isNaN(time.getTime())) throw new RangeError(`Invalid usage timestamp: ${timestamp}`);
+
+    const iso = time.toISOString();
+    return {
+        date: iso.slice(0, 10),
+        bucketStart: `${iso.slice(0, 16)}:00.000Z`,
+        retentionStart: new Date(time.getTime() - ROLLING_USAGE_RETENTION_MS).toISOString(),
+    };
 }
 
 function cloneConfigValue<K extends ConfigValueKey>(value: StoreData[K]): StoreData[K] {
@@ -462,6 +481,48 @@ export class ConfigStore {
         );
     }
 
+    getRollingUsageBetween(
+        scope: RollingUsageScopeKind,
+        scopeId: string,
+        start: string,
+        end: string,
+    ): TokenUsage {
+        const row = this.stmt(
+            `
+            SELECT COALESCE(SUM(input_tokens), 0) as inputTokens,
+                   COALESCE(SUM(output_tokens), 0) as outputTokens,
+                   COALESCE(SUM(requests), 0) as requests
+            FROM rolling_usage
+            WHERE scope = ? AND scope_id = ?
+              AND bucket_start >= ? AND bucket_start < ?
+        `,
+        ).get(scope, scopeId, start, end) as Omit<TokenUsage, 'date'>;
+
+        return { date: start, ...row };
+    }
+
+    getGuildUserRollingUsage(
+        guildId: string,
+        userId: string,
+        start: string,
+        end: string,
+    ): TokenUsage {
+        return this.getRollingUsageBetween('guild_user', `${guildId}:${userId}`, start, end);
+    }
+
+    countActiveGuildUsers(guildId: string, start: string, end: string): number {
+        const row = this.stmt(
+            `
+            SELECT COUNT(DISTINCT scope_id) as count
+            FROM rolling_usage
+            WHERE scope = 'guild_user' AND scope_id LIKE ?
+              AND bucket_start >= ? AND bucket_start < ?
+        `,
+        ).get(`${guildId}:%`, start, end) as { count: number };
+
+        return row.count;
+    }
+
     getUsageHistory(
         scope: UsageScopeKind,
         beforeDate: string,
@@ -547,18 +608,59 @@ export class ConfigStore {
         return { date: start, ...row };
     }
 
+    getSharedRollingUsageBetween(start: string, end: string): TokenUsage {
+        const row = this.stmt(
+            `
+            WITH total AS (
+                SELECT
+                    COALESCE(SUM(input_tokens), 0) AS inputTokens,
+                    COALESCE(SUM(output_tokens), 0) AS outputTokens,
+                    COALESCE(SUM(requests), 0) AS requests
+                FROM rolling_usage
+                WHERE scope = 'global' AND scope_id = ''
+                  AND bucket_start >= ? AND bucket_start < ?
+            ), custom AS (
+                SELECT
+                    COALESCE(SUM(input_tokens), 0) AS inputTokens,
+                    COALESCE(SUM(output_tokens), 0) AS outputTokens,
+                    COALESCE(SUM(requests), 0) AS requests
+                FROM rolling_usage
+                JOIN guild_budgets ON guild_budgets.guild_id = rolling_usage.scope_id
+                WHERE scope = 'guild'
+                  AND bucket_start >= ? AND bucket_start < ?
+            )
+            SELECT
+                MAX(total.inputTokens - custom.inputTokens, 0) AS inputTokens,
+                MAX(total.outputTokens - custom.outputTokens, 0) AS outputTokens,
+                MAX(total.requests - custom.requests, 0) AS requests
+            FROM total, custom
+        `,
+        ).get(start, end, start, end) as Omit<TokenUsage, 'date'>;
+
+        return { date: start, ...row };
+    }
+
     recordUsage(
-        date: string,
+        timestamp: string,
         inputTokens: number,
         outputTokens: number,
-        scope: { guildId?: string | null; userId?: string | null } = {},
+        scope: {
+            guildId?: string | null;
+            userId?: string | null;
+            actorUserId?: string | null;
+        } = {},
     ): void {
+        const { date, bucketStart, retentionStart } = rollingUsageTimes(timestamp);
         const rows: Array<[UsageScopeKind, string]> = [['global', '']];
         if (scope.guildId) rows.push(['guild', scope.guildId]);
         if (scope.userId) rows.push(['user', scope.userId]);
+        const rollingRows: Array<[RollingUsageScopeKind, string]> = [...rows];
+        if (scope.guildId && scope.actorUserId) {
+            rollingRows.push(['guild_user', `${scope.guildId}:${scope.actorUserId}`]);
+        }
 
         inTransaction(this.db, () => {
-            const upsert = this.stmt(`
+            const upsertDaily = this.stmt(`
                 INSERT INTO scoped_usage (
                     scope, scope_id, date, input_tokens, output_tokens, requests
                 )
@@ -570,8 +672,31 @@ export class ConfigStore {
             `);
 
             for (const [usageScope, scopeId] of rows) {
-                upsert.run(usageScope, scopeId, date, inputTokens || 0, outputTokens || 0);
+                upsertDaily.run(usageScope, scopeId, date, inputTokens || 0, outputTokens || 0);
             }
+
+            const upsertRolling = this.stmt(`
+                INSERT INTO rolling_usage (
+                    scope, scope_id, bucket_start, input_tokens, output_tokens, requests
+                )
+                VALUES (?, ?, ?, ?, ?, 1)
+                ON CONFLICT(scope, scope_id, bucket_start) DO UPDATE SET
+                    input_tokens = input_tokens + excluded.input_tokens,
+                    output_tokens = output_tokens + excluded.output_tokens,
+                    requests = requests + 1
+            `);
+
+            for (const [usageScope, scopeId] of rollingRows) {
+                upsertRolling.run(
+                    usageScope,
+                    scopeId,
+                    bucketStart,
+                    inputTokens || 0,
+                    outputTokens || 0,
+                );
+            }
+
+            this.stmt('DELETE FROM rolling_usage WHERE bucket_start < ?').run(retentionStart);
         });
     }
 
@@ -873,6 +998,7 @@ export class ConfigStore {
 
     private replaceUsageSnapshot(data: StoreData): void {
         this.db.exec('DELETE FROM scoped_usage');
+        this.db.exec('DELETE FROM rolling_usage');
         const insert = this.stmt(`
             INSERT OR REPLACE INTO scoped_usage (
                 scope, scope_id, date, input_tokens, output_tokens, requests

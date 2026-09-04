@@ -340,6 +340,7 @@ export function createTranslationService({
             const usageScope = {
                 guildId: accessMode === 'guild' ? (request.guildId ?? null) : null,
                 userId: accessMode === 'user-install' ? getEffectiveUserId(scope) : null,
+                actorUserId: scope.actorUserId,
             };
 
             const acquireRuntime = (
@@ -799,6 +800,7 @@ export function createTranslationService({
             const usageScope = {
                 guildId: accessMode === 'guild' ? (request.guildId ?? null) : null,
                 userId: accessMode === 'user-install' ? getEffectiveUserId(scope) : null,
+                actorUserId: scope.actorUserId,
             };
             const acquireRuntime = (
                 stage: 'image_resolution' | 'translation',
