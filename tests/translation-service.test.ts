@@ -9,6 +9,10 @@ import {
     type TranslationServiceImageRequest,
     _test,
 } from '../src/modules/translation/translation-service.js';
+import {
+    buildImageTranslationPrompt,
+    buildTranslationPrompt,
+} from '../src/modules/translation/translate.js';
 import { TranslationRuntimeLimiter } from '../src/modules/translation/translation-runtime-limiter.js';
 import type { AccessMode } from '../src/apps/app-profile.js';
 import type { ImageTranslationResult, StoreData, TranslationResult } from '../src/shared/types.js';
@@ -302,6 +306,20 @@ function createImageRequest(
 }
 
 describe('TranslationService', () => {
+    it('should reserve the UTF-8 prompt upper bound across retries and fallback providers', () => {
+        expect(
+            _test.estimateBudgetTokens(
+                { system: 'S系', user: '🙂' },
+                100,
+                'vertex+openai',
+                4096,
+            ),
+        ).toEqual({
+            estimatedInputTokens: (4 + 4 + 256 + 4096) * 8,
+            estimatedOutputTokens: 100 * 8,
+        });
+    });
+
     it('should reserve image budget, settle actual direct usage, and cache the result', async () => {
         const resolveVision = vi.fn(async () => {
             throw new Error('Vision must not run for a direct route');
@@ -325,8 +343,12 @@ describe('TranslationService', () => {
         expect(second).toMatchObject({ status: 'success', cached: true, inputTokens: 0 });
         expect(usageTracker.tryReserveBudget).toHaveBeenCalledOnce();
         expect(usageTracker.tryReserveBudget).toHaveBeenCalledWith({
-            estimatedInputTokens: 4096,
-            estimatedOutputTokens: 1000,
+            ..._test.estimateBudgetTokens(
+                buildImageTranslationPrompt('auto'),
+                1000,
+                'vertex',
+                4096,
+            ),
             guildId: 'guild-1',
             userId: null,
             actorUserId: 'user1',
@@ -1284,7 +1306,7 @@ describe('TranslationService', () => {
                 },
             ],
         });
-        const { service } = createService({ translator, glossaryRepository });
+        const { service, usageTracker } = createService({ translator, glossaryRepository });
 
         const first = await service.process({
             command: 'translate',
@@ -1381,6 +1403,29 @@ describe('TranslationService', () => {
                     notes: 'Preserve brand name',
                 },
             ],
+        });
+        expect(usageTracker.tryReserveBudget).toHaveBeenNthCalledWith(1, {
+            ..._test.estimateBudgetTokens(
+                buildTranslationPrompt('OpenAI raid tonight', 'zh-TW', '', [
+                    {
+                        sourceText: 'raid',
+                        targetLanguage: 'zh-TW',
+                        targetText: '團本',
+                        notes: '',
+                    },
+                    {
+                        sourceText: 'OpenAI',
+                        targetLanguage: 'auto',
+                        targetText: 'OpenAI',
+                        notes: 'Preserve brand name',
+                    },
+                ]),
+                1000,
+                'vertex',
+            ),
+            guildId: 'guild-1',
+            userId: null,
+            actorUserId: 'user1',
         });
     });
 

@@ -2,6 +2,7 @@ import { buildLensCacheKey, buildTranslationCacheKey, type TranslationCache } fr
 import type { CooldownManager } from './cooldown.js';
 import type { AccessMode, AppProfile } from '../../apps/app-profile.js';
 import { ProviderOrchestratorError } from '../../infra/provider-orchestrator.js';
+import { DEFAULT_PROVIDER_MAX_RETRIES } from '../../infra/provider-http.js';
 import type { TranslationLog } from '../../shared/log.js';
 import {
     createProfileMetricsCollector,
@@ -14,11 +15,14 @@ import type {
     TranslationRuntimeLimiter,
     TranslationRuntimeReservation,
 } from './translation-runtime-limiter.js';
-import { usage, type UsageBudgetReservation } from '../usage/usage.js';
+import {
+    usage,
+    type UsageBudgetEstimate,
+    type UsageBudgetReservation,
+} from '../usage/usage.js';
 import {
     buildImageTranslationPrompt,
     buildTranslationPrompt,
-    resolveSystemPrompt,
     translate,
     translateImage,
 } from './translate.js';
@@ -52,6 +56,8 @@ import type {
     GuildGlossaryEntry,
     ImageTranslationRequest,
     ImageTranslationResult,
+    TranslationPrompt,
+    TranslationProviderMode,
     TranslationResult,
 } from '../../shared/types.js';
 import type { NormalizedLensImage } from './lens-image.js';
@@ -101,6 +107,27 @@ interface ImageTranslator {
 
 interface InFlightTranslation {
     promise: Promise<TranslationResult>;
+}
+
+const PROMPT_TOKEN_OVERHEAD_PER_CALL = 256;
+const LENS_IMAGE_INPUT_TOKENS_PER_CALL = 4096;
+
+function estimateBudgetTokens(
+    prompt: TranslationPrompt,
+    maxOutputTokens: number,
+    mode: TranslationProviderMode,
+    extraInputTokensPerCall = 0,
+): Pick<UsageBudgetEstimate, 'estimatedInputTokens' | 'estimatedOutputTokens'> {
+    const providerCount = mode.includes('+') ? 2 : 1;
+    const maximumCalls = providerCount * (DEFAULT_PROVIDER_MAX_RETRIES + 1);
+    const promptBytes = Buffer.byteLength(prompt.system) + Buffer.byteLength(prompt.user);
+
+    return {
+        estimatedInputTokens:
+            (promptBytes + PROMPT_TOKEN_OVERHEAD_PER_CALL + extraInputTokensPerCall) *
+            maximumCalls,
+        estimatedOutputTokens: maxOutputTokens * maximumCalls,
+    };
 }
 
 export interface TranslationServiceRequest {
@@ -472,11 +499,6 @@ export function createTranslationService({
                 userPreferenceStore,
                 { accessMode },
             );
-            const prompt = resolveSystemPrompt(
-                targetLanguage,
-                runtimeConfig.translationPrompt,
-                request.preserveNumberedMarkers,
-            );
             const glossaryEntries =
                 enableGuildGlossary && request.guildId
                     ? glossaryRepository.listGuildGlossary(request.guildId)
@@ -485,13 +507,20 @@ export function createTranslationService({
                 glossaryEntries,
                 targetLanguage,
             );
+            const translationPrompt = buildTranslationPrompt(
+                originalText,
+                targetLanguage,
+                runtimeConfig.translationPrompt,
+                selectedGlossaryEntries,
+                request.preserveNumberedMarkers,
+            );
             const glossaryVersion = buildGlossaryVersion(selectedGlossaryEntries);
             const cacheKey = buildTranslationCacheKey({
                 sourceText: originalText,
                 targetLanguage,
                 geminiModel: runtimeConfig.geminiModel,
                 providerFingerprint: buildProviderFingerprint(runtimeConfig),
-                prompt,
+                prompt: translationPrompt.system,
                 maxOutputTokens: runtimeConfig.maxOutputTokens || 4096,
                 glossaryVersion,
             });
@@ -552,8 +581,11 @@ export function createTranslationService({
 
                 if (!cached && !joinedInFlight) {
                     budgetReservation = usageTracker.tryReserveBudget({
-                        estimatedInputTokens: Math.ceil(originalText.length / 4),
-                        estimatedOutputTokens: runtimeConfig.maxOutputTokens || 4096,
+                        ...estimateBudgetTokens(
+                            translationPrompt,
+                            runtimeConfig.maxOutputTokens || 4096,
+                            runtimeConfig.translationProvider || 'vertex',
+                        ),
                         ...usageScope,
                     });
                     if (!budgetReservation) {
@@ -952,8 +984,12 @@ export function createTranslationService({
                     }
                     reservation = runtime.reservation;
                     budgetReservation = usageTracker.tryReserveBudget({
-                        estimatedInputTokens: 4096,
-                        estimatedOutputTokens: runtimeConfig.maxOutputTokens || 4096,
+                        ...estimateBudgetTokens(
+                            imagePrompt,
+                            runtimeConfig.maxOutputTokens || 4096,
+                            runtimeConfig.translationProvider || 'vertex',
+                            LENS_IMAGE_INPUT_TOKENS_PER_CALL,
+                        ),
                         ...usageScope,
                     });
                     if (!budgetReservation) {
@@ -1171,4 +1207,5 @@ export const _test = {
     resolveQueueBusyMessage,
     classifyTranslationError,
     buildGlossaryVersion,
+    estimateBudgetTokens,
 };
