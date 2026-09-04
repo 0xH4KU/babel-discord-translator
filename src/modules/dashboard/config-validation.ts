@@ -1,5 +1,12 @@
 import { dashboardMessages } from '../../shared/messages/dashboard-messages.js';
 import type { StoreData } from '../../shared/types.js';
+import {
+    DEFAULT_BUDGET_LIMITS,
+    resolveBudgetLimits,
+    validateBudgetLimits,
+    type BudgetLimitSettings,
+    type BudgetLimitOverrides,
+} from '../../shared/budget-limits.js';
 
 const MAX_CACHE_SIZE = 2000;
 const STRING_CONFIG_KEYS = [
@@ -25,6 +32,9 @@ const NUMBER_CONFIG_KEYS = [
     'maxInputLength',
     'maxOutputTokens',
     'monthlyBudgetUsd',
+    'budgetFiveHourPercent',
+    'budgetSevenDayPercent',
+    'budgetFairShareMultiplier',
     'visionMonthlyImageLimit',
     'defaultUserMonthlyBudgetUsd',
     'inputPricePerMillion',
@@ -102,7 +112,10 @@ function sanitizeNonNegativeNumberField(
     return { valid: true };
 }
 
-export function validateConfigUpdate(updates: Record<string, unknown>): {
+export function validateConfigUpdate(
+    updates: Record<string, unknown>,
+    currentBudgetLimits: BudgetLimitSettings = DEFAULT_BUDGET_LIMITS,
+): {
     valid: boolean;
     error?: string;
     sanitized: Partial<StoreData>;
@@ -210,6 +223,34 @@ export function validateConfigUpdate(updates: Record<string, unknown>): {
         dashboardMessages.validation.monthlyBudgetUsd,
     );
     if (!monthlyBudget.valid) return monthlyBudget;
+    const budgetLimitOverrides: BudgetLimitOverrides = {};
+    for (const key of [
+        'budgetFiveHourPercent',
+        'budgetSevenDayPercent',
+        'budgetFairShareMultiplier',
+    ] as const) {
+        if (sanitized[key] === undefined) continue;
+        const value = toFiniteNumber(sanitized[key]);
+        if (Number.isNaN(value)) {
+            return {
+                valid: false,
+                error: `${key} must be a finite number`,
+                sanitized: sanitized as Partial<StoreData>,
+            };
+        }
+        sanitized[key] = value;
+        budgetLimitOverrides[key] = value;
+    }
+    const budgetLimitError = validateBudgetLimits(
+        resolveBudgetLimits(currentBudgetLimits, budgetLimitOverrides),
+    );
+    if (budgetLimitError) {
+        return {
+            valid: false,
+            error: budgetLimitError,
+            sanitized: sanitized as Partial<StoreData>,
+        };
+    }
     if (sanitized.visionMonthlyImageLimit !== undefined) {
         const v = toFiniteNumber(sanitized.visionMonthlyImageLimit);
         if (!Number.isSafeInteger(v) || v < 0) {

@@ -19,6 +19,7 @@ import type {
     UserBudgetConfig,
     UserLanguagePreferenceEntry,
 } from '../shared/types.js';
+import type { BudgetLimitOverrides } from '../shared/budget-limits.js';
 
 interface ConfigStoreOptions {
     db?: DatabaseSync;
@@ -62,6 +63,14 @@ function rollingUsageTimes(timestamp: string): {
         bucketStart: `${iso.slice(0, 16)}:00.000Z`,
         retentionStart: new Date(time.getTime() - ROLLING_USAGE_RETENTION_MS).toISOString(),
     };
+}
+
+function definedBudgetLimitOverrides(
+    values: Record<keyof BudgetLimitOverrides, number | null | undefined> | BudgetLimitOverrides,
+): BudgetLimitOverrides {
+    return Object.fromEntries(
+        Object.entries(values).filter(([, value]) => value !== null && value !== undefined),
+    );
 }
 
 function cloneConfigValue<K extends ConfigValueKey>(value: StoreData[K]): StoreData[K] {
@@ -194,6 +203,7 @@ export class ConfigStore {
             userLanguagePrefs: { ...this.getUserLanguagePrefs() },
             userLanguagePreferenceEntries: this.listUserLanguagePreferences(),
             guildBudgets: this.listGuildBudgets(),
+            guildBudgetLimitOverrides: this.listGuildBudgetLimitOverrides(),
             guildVisionLimits: this.listVisionScopeLimits('guild'),
             userBudgets: this.listUserBudgets(),
             userVisionLimits: this.listVisionScopeLimits('user'),
@@ -207,6 +217,7 @@ export class ConfigStore {
             this.replaceUserLanguagePrefs(data.userLanguagePrefs);
             this.replaceUserLanguagePreferenceEntries(data.userLanguagePreferenceEntries);
             this.replaceGuildBudgets(data.guildBudgets);
+            this.replaceGuildBudgetLimitOverrides(data.guildBudgetLimitOverrides);
             this.replaceUserBudgets(data.userBudgets);
             this.replaceVisionScopeLimits('guild', data.guildVisionLimits);
             this.replaceVisionScopeLimits('user', data.userVisionLimits);
@@ -242,6 +253,54 @@ export class ConfigStore {
 
     clearGuildBudget(guildId: string): boolean {
         return this.stmt('DELETE FROM guild_budgets WHERE guild_id = ?').run(guildId).changes > 0;
+    }
+
+    getGuildBudgetLimitOverrides(guildId: string): BudgetLimitOverrides {
+        const row = this.stmt(
+            `
+            SELECT
+                five_hour_percent as budgetFiveHourPercent,
+                seven_day_percent as budgetSevenDayPercent,
+                fair_share_multiplier as budgetFairShareMultiplier
+            FROM guild_budget_limit_overrides
+            WHERE guild_id = ?
+        `,
+        ).get(guildId) as Record<keyof BudgetLimitOverrides, number | null | undefined> | undefined;
+
+        return row ? definedBudgetLimitOverrides(row) : {};
+    }
+
+    setGuildBudgetLimitOverrides(guildId: string, overrides: BudgetLimitOverrides): void {
+        const values = definedBudgetLimitOverrides(overrides);
+        if (Object.keys(values).length === 0) {
+            this.clearGuildBudgetLimitOverrides(guildId);
+            return;
+        }
+
+        this.stmt(
+            `
+            INSERT INTO guild_budget_limit_overrides (
+                guild_id, five_hour_percent, seven_day_percent, fair_share_multiplier
+            )
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(guild_id) DO UPDATE SET
+                five_hour_percent = excluded.five_hour_percent,
+                seven_day_percent = excluded.seven_day_percent,
+                fair_share_multiplier = excluded.fair_share_multiplier
+        `,
+        ).run(
+            guildId,
+            values.budgetFiveHourPercent ?? null,
+            values.budgetSevenDayPercent ?? null,
+            values.budgetFairShareMultiplier ?? null,
+        );
+    }
+
+    clearGuildBudgetLimitOverrides(guildId: string): boolean {
+        return (
+            this.stmt('DELETE FROM guild_budget_limit_overrides WHERE guild_id = ?').run(guildId)
+                .changes > 0
+        );
     }
 
     getUserBudget(userId: string): UserBudgetConfig | null {
@@ -919,6 +978,26 @@ export class ConfigStore {
         );
     }
 
+    listGuildBudgetLimitOverrides(): Record<string, BudgetLimitOverrides> {
+        const rows = this.stmt(
+            `
+            SELECT
+                guild_id as guildId,
+                five_hour_percent as budgetFiveHourPercent,
+                seven_day_percent as budgetSevenDayPercent,
+                fair_share_multiplier as budgetFairShareMultiplier
+            FROM guild_budget_limit_overrides
+            ORDER BY guild_id ASC
+        `,
+        ).all() as Array<
+            { guildId: string } & Record<keyof BudgetLimitOverrides, number | null | undefined>
+        >;
+
+        return Object.fromEntries(
+            rows.map(({ guildId, ...values }) => [guildId, definedBudgetLimitOverrides(values)]),
+        );
+    }
+
     listUserBudgets(): Record<string, UserBudgetConfig> {
         const rows = this.stmt(
             `
@@ -1065,6 +1144,15 @@ export class ConfigStore {
 
         for (const [guildId, budget] of Object.entries(budgets)) {
             insert.run(guildId, budget.monthlyBudgetUsd);
+        }
+    }
+
+    private replaceGuildBudgetLimitOverrides(
+        overrides: Record<string, BudgetLimitOverrides>,
+    ): void {
+        this.db.exec('DELETE FROM guild_budget_limit_overrides');
+        for (const [guildId, values] of Object.entries(overrides)) {
+            this.setGuildBudgetLimitOverrides(guildId, values);
         }
     }
 

@@ -31,6 +31,9 @@ vi.mock('../src/persistence/store.js', () => {
         inputPricePerMillion: 0,
         outputPricePerMillion: 0,
         monthlyBudgetUsd: 0,
+        budgetFiveHourPercent: 5,
+        budgetSevenDayPercent: 30,
+        budgetFairShareMultiplier: 1.5,
         visionMonthlyImageLimit: 900,
         defaultUserMonthlyBudgetUsd: 0,
         translationPrompt: '',
@@ -51,6 +54,7 @@ vi.mock('../src/persistence/store.js', () => {
         tokenUsage: null,
         usageHistory: [],
         guildBudgets: {},
+        guildBudgetLimitOverrides: {},
         guildVisionLimits: {},
         guildTokenUsage: {},
         guildUsageHistory: {},
@@ -202,6 +206,19 @@ vi.mock('../src/persistence/store.js', () => {
                 return glossary[guildId].length < before;
             }),
             listGuildBudgets: vi.fn(() => ({ ...(data.guildBudgets as object) })),
+            listGuildBudgetLimitOverrides: vi.fn(() => ({
+                ...(data.guildBudgetLimitOverrides as object),
+            })),
+            setGuildBudgetLimitOverrides: vi.fn(
+                (guildId: string, overrides: Record<string, number>) => {
+                    const values = data.guildBudgetLimitOverrides as Record<
+                        string,
+                        Record<string, number>
+                    >;
+                    if (Object.keys(overrides).length === 0) delete values[guildId];
+                    else values[guildId] = { ...overrides };
+                },
+            ),
             listUserBudgets: vi.fn(() => ({ ...(data.userBudgets as object) })),
             listVisionScopeLimits: vi.fn((scope: 'guild' | 'user') => ({
                 ...(data[scope === 'guild' ? 'guildVisionLimits' : 'userVisionLimits'] as object),
@@ -1093,6 +1110,75 @@ describe('Dashboard API', () => {
         } finally {
             store.clearVisionScopeLimit('guild', 'guild-1');
         }
+    });
+
+    it('should manage per-guild budget limit overrides independently', async () => {
+        const { store } = await import('../src/persistence/store.js');
+
+        const saved = await request(server, 'POST', '/api/guild-budgets/guild-1', {
+            cookie: sessionCookie,
+            csrf: csrfToken,
+            body: {
+                budgetLimitOverrides: {
+                    budgetFiveHourPercent: 10,
+                    budgetFairShareMultiplier: 2,
+                },
+            },
+        });
+        expect(saved).toMatchObject({
+            status: 200,
+            body: {
+                limitOverrides: {
+                    budgetFiveHourPercent: 10,
+                    budgetFairShareMultiplier: 2,
+                },
+            },
+        });
+        expect(store.getGuildBudget('guild-1')).toBeNull();
+
+        const budgets = await request(server, 'GET', '/api/guild-budgets', {
+            cookie: sessionCookie,
+        });
+        expect(budgets.body!['guild-1']).toMatchObject({
+            limits: {
+                budgetFiveHourPercent: 10,
+                budgetSevenDayPercent: 30,
+                budgetFairShareMultiplier: 2,
+            },
+            limitOverrides: {
+                budgetFiveHourPercent: 10,
+                budgetFairShareMultiplier: 2,
+            },
+        });
+
+        const incompatibleGlobal = await request(server, 'POST', '/api/config', {
+            cookie: sessionCookie,
+            csrf: csrfToken,
+            body: { budgetSevenDayPercent: 5 },
+        });
+        expect(incompatibleGlobal).toMatchObject({
+            status: 400,
+            body: { error: expect.stringContaining('Guild guild-1') },
+        });
+
+        const invalid = await request(server, 'POST', '/api/guild-budgets/guild-1', {
+            cookie: sessionCookie,
+            csrf: csrfToken,
+            body: {
+                budgetLimitOverrides: {
+                    budgetFiveHourPercent: 40,
+                    budgetSevenDayPercent: 20,
+                },
+            },
+        });
+        expect(invalid.status).toBe(400);
+
+        const reset = await request(server, 'POST', '/api/guild-budgets/guild-1', {
+            cookie: sessionCookie,
+            csrf: csrfToken,
+            body: { budgetLimitOverrides: null },
+        });
+        expect(reset).toMatchObject({ status: 200, body: { limitOverrides: {} } });
     });
 
     it('should show custom guild budget usage separately from the global budget pool', async () => {

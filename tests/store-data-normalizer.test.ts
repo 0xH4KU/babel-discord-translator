@@ -118,4 +118,30 @@ describe('store-data-normalizer clone helpers', () => {
             userBudgets: { user: { monthlyBudgetUsd: 7.5 } },
         });
     });
+
+    it('defaults and preserves configurable budget limit settings', () => {
+        expect(normalizeStoreData({})).toMatchObject({
+            budgetFiveHourPercent: 5,
+            budgetSevenDayPercent: 30,
+            budgetFairShareMultiplier: 1.5,
+            guildBudgetLimitOverrides: {},
+        });
+        expect(
+            normalizeStoreData({
+                budgetFiveHourPercent: 8,
+                budgetSevenDayPercent: 40,
+                budgetFairShareMultiplier: 2,
+                guildBudgetLimitOverrides: {
+                    guild: { budgetFiveHourPercent: 10, budgetFairShareMultiplier: 3 },
+                },
+            }),
+        ).toMatchObject({
+            budgetFiveHourPercent: 8,
+            budgetSevenDayPercent: 40,
+            budgetFairShareMultiplier: 2,
+            guildBudgetLimitOverrides: {
+                guild: { budgetFiveHourPercent: 10, budgetFairShareMultiplier: 3 },
+            },
+        });
+    });
 });

@@ -8,6 +8,7 @@ import type {
     UserBudgetConfig,
     UserLanguagePreferenceEntry,
 } from '../shared/types.js';
+import { DEFAULT_BUDGET_LIMITS, type BudgetLimitOverrides } from '../shared/budget-limits.js';
 
 type BudgetInput = {
     monthlyBudgetUsd?: number;
@@ -177,6 +178,22 @@ function cloneVisionLimits(limits: Record<string, number> | undefined): Record<s
     );
 }
 
+export function cloneGuildBudgetLimitOverrides(
+    overrides: Record<string, BudgetLimitOverrides> | undefined,
+): Record<string, BudgetLimitOverrides> {
+    return Object.fromEntries(
+        Object.entries(overrides ?? {}).map(([guildId, values]) => {
+            const entries =
+                values && typeof values === 'object'
+                    ? Object.entries(values).filter(
+                          ([, value]) => typeof value === 'number' && Number.isFinite(value),
+                      )
+                    : [];
+            return [guildId, Object.fromEntries(entries)];
+        }),
+    );
+}
+
 export function cloneGuildDailyUsage(
     usage: Record<string, TokenUsage> | undefined,
 ): Record<string, TokenUsage> {
@@ -251,6 +268,18 @@ export function normalizeStoreData(data: StoreDataInput | undefined): StoreData 
         inputPricePerMillion: normalizeNumber(source.inputPricePerMillion),
         outputPricePerMillion: normalizeNumber(source.outputPricePerMillion),
         monthlyBudgetUsd: normalizeMonthlyBudget(source.monthlyBudgetUsd, source.dailyBudgetUsd),
+        budgetFiveHourPercent: normalizeNumber(
+            source.budgetFiveHourPercent,
+            DEFAULT_BUDGET_LIMITS.budgetFiveHourPercent,
+        ),
+        budgetSevenDayPercent: normalizeNumber(
+            source.budgetSevenDayPercent,
+            DEFAULT_BUDGET_LIMITS.budgetSevenDayPercent,
+        ),
+        budgetFairShareMultiplier: normalizeNumber(
+            source.budgetFairShareMultiplier,
+            DEFAULT_BUDGET_LIMITS.budgetFairShareMultiplier,
+        ),
         visionMonthlyImageLimit: normalizeNumber(source.visionMonthlyImageLimit, 900),
         defaultUserMonthlyBudgetUsd: normalizeMonthlyBudget(
             source.defaultUserMonthlyBudgetUsd,
@@ -277,6 +306,7 @@ export function normalizeStoreData(data: StoreDataInput | undefined): StoreData 
         openaiSupportsImages: source.openaiSupportsImages === true,
         translationProvider: normalizeProviderMode(source.translationProvider),
         guildBudgets: cloneGuildBudgets(source.guildBudgets),
+        guildBudgetLimitOverrides: cloneGuildBudgetLimitOverrides(source.guildBudgetLimitOverrides),
         guildVisionLimits: cloneVisionLimits(source.guildVisionLimits),
         guildTokenUsage: cloneGuildDailyUsage(source.guildTokenUsage),
         guildUsageHistory: cloneGuildUsageHistory(source.guildUsageHistory),

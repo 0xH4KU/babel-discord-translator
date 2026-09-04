@@ -15,6 +15,7 @@ import type { TranslationWebhookService } from '../modules/translation/webhook-s
 import type { DiscordUserProfileRepository } from '../modules/dashboard/discord-user-profile-repository.js';
 import type { PendingUserInstallOwnerRepository } from '../modules/dashboard/pending-user-install-owner-repository.js';
 import type { AppProfile } from '../apps/app-profile.js';
+import type { BudgetLimitOverrides } from './budget-limits.js';
 
 // --- Provider ---
 
@@ -94,6 +95,9 @@ export interface StoreData {
     inputPricePerMillion: number;
     outputPricePerMillion: number;
     monthlyBudgetUsd: number;
+    budgetFiveHourPercent: number;
+    budgetSevenDayPercent: number;
+    budgetFairShareMultiplier: number;
     visionMonthlyImageLimit: number;
     defaultUserMonthlyBudgetUsd: number;
     tokenUsage: TokenUsage | null;
@@ -116,6 +120,7 @@ export interface StoreData {
     translationProvider: TranslationProviderMode;
     // Per-guild budget & usage
     guildBudgets: Record<string, GuildBudgetConfig>;
+    guildBudgetLimitOverrides: Record<string, BudgetLimitOverrides>;
     guildVisionLimits: Record<string, number>;
     guildTokenUsage: Record<string, TokenUsage>;
     guildUsageHistory: Record<string, UsageHistoryEntry[]>;

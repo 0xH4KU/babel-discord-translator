@@ -274,6 +274,13 @@ function renderGuilds() {
         const hasCustomBudget = bd && bd.budget >= 0;
         const effectiveBudget = hasCustomBudget ? bd.budget : globalBudget;
         const monthlyCost = bd ? bd.usage.totalCost : 0;
+        const effectiveLimits = bd?.limits || {
+            budgetFiveHourPercent: currentConfig.budgetFiveHourPercent ?? 5,
+            budgetSevenDayPercent: currentConfig.budgetSevenDayPercent ?? 30,
+            budgetFairShareMultiplier: currentConfig.budgetFairShareMultiplier ?? 1.5,
+        };
+        const limitOverrides = bd?.limitOverrides || {};
+        const hasLimitOverrides = Object.keys(limitOverrides).length > 0;
         const budgetLabel = hasCustomBudget
             ? formatUsd(effectiveBudget)
             : globalBudget > 0
@@ -308,6 +315,19 @@ function renderGuilds() {
             title="Set per-server monthly budget (USD). Empty = use global.">
           <button class="btn btn-secondary btn-xs" ${actionAttrs('saveGuildBudget', [selected.id])}>Apply</button>
           ${hasCustomBudget ? `<button class="btn-danger btn-xs" ${actionAttrs('resetGuildBudget', [selected.id])} title="Reset to global">Reset</button>` : ''}
+        </div>
+      </div>
+      <div class="guild-budget-row">
+        <div class="guild-budget-info">
+          <span class="guild-budget-label">Fair-use limits</span>
+          <span class="guild-budget-cost">Effective: 5h ${effectiveLimits.budgetFiveHourPercent}% · 7d ${effectiveLimits.budgetSevenDayPercent}% · ${effectiveLimits.budgetFairShareMultiplier}× share</span>
+        </div>
+        <div class="guild-budget-actions guild-limit-actions">
+          <label class="guild-limit-field"><span>5h %</span><input type="number" class="guild-budget-input" id="gbl5-${escapedId}" min="0.1" max="100" step="0.1" placeholder="${effectiveLimits.budgetFiveHourPercent}" value="${limitOverrides.budgetFiveHourPercent ?? ''}" title="Leave empty to inherit the global five-hour limit."></label>
+          <label class="guild-limit-field"><span>7d %</span><input type="number" class="guild-budget-input" id="gbl7-${escapedId}" min="0.1" max="100" step="0.1" placeholder="${effectiveLimits.budgetSevenDayPercent}" value="${limitOverrides.budgetSevenDayPercent ?? ''}" title="Leave empty to inherit the global seven-day limit."></label>
+          <label class="guild-limit-field"><span>Share ×</span><input type="number" class="guild-budget-input" id="gblf-${escapedId}" min="1" step="0.1" placeholder="${effectiveLimits.budgetFairShareMultiplier}" value="${limitOverrides.budgetFairShareMultiplier ?? ''}" title="Leave empty to inherit the global fair-share multiplier."></label>
+          <button class="btn btn-secondary btn-xs" ${actionAttrs('saveGuildBudgetLimits', [selected.id])}>Apply</button>
+          ${hasLimitOverrides ? `<button class="btn-danger btn-xs" ${actionAttrs('resetGuildBudgetLimits', [selected.id])}>Reset</button>` : ''}
         </div>
       </div>
       ${routeUsesVision ? renderVisionLimitControl('guild', selected.id, bd) : ''}
@@ -373,10 +393,7 @@ async function saveGuildBudget(guildId) {
 
     if (res.ok) {
         showToast('Guild budget saved!');
-        // Refresh data
-        const budgetRes = await api('/guild-budgets');
-        guildBudgetData = await budgetRes.json();
-        renderGuilds();
+        await reloadGuildBudgetData();
     } else {
         showToast('Save failed', true);
     }
@@ -392,12 +409,64 @@ async function resetGuildBudget(guildId) {
 
     if (res.ok) {
         showToast('Reset to global budget');
-        const budgetRes = await api('/guild-budgets');
-        guildBudgetData = await budgetRes.json();
-        renderGuilds();
+        await reloadGuildBudgetData();
     } else {
         showToast('Reset failed', true);
     }
+}
+
+async function saveGuildBudgetLimits(guildId) {
+    if (!hasDashboardCapability('guildAccess')) return;
+
+    const fields = [
+        ['budgetFiveHourPercent', 'gbl5-'],
+        ['budgetSevenDayPercent', 'gbl7-'],
+        ['budgetFairShareMultiplier', 'gblf-'],
+    ];
+    const budgetLimitOverrides = {};
+    for (const [key, prefix] of fields) {
+        const value = document.getElementById(prefix + guildId).value.trim();
+        if (!value) continue;
+        const parsed = Number(value);
+        if (!Number.isFinite(parsed)) {
+            showToast('Invalid budget limit', true);
+            return;
+        }
+        budgetLimitOverrides[key] = parsed;
+    }
+
+    const res = await api('/guild-budgets/' + guildId, {
+        method: 'POST',
+        body: JSON.stringify({ budgetLimitOverrides }),
+    });
+    if (res.ok) {
+        showToast('Guild fair-use limits saved!');
+        await reloadGuildBudgetData();
+    } else {
+        const error = await res.json().catch(() => ({}));
+        showToast(error.error || 'Save failed', true);
+    }
+}
+
+async function resetGuildBudgetLimits(guildId) {
+    if (!hasDashboardCapability('guildAccess')) return;
+
+    const res = await api('/guild-budgets/' + guildId, {
+        method: 'POST',
+        body: JSON.stringify({ budgetLimitOverrides: null }),
+    });
+    if (res.ok) {
+        showToast('Reset to global fair-use limits');
+        await reloadGuildBudgetData();
+    } else {
+        showToast('Reset failed', true);
+    }
+}
+
+async function reloadGuildBudgetData() {
+    const budgetRes = await api('/guild-budgets');
+    guildBudgetData = await budgetRes.json();
+    renderGuilds();
 }
 
 function addManualGuild() {

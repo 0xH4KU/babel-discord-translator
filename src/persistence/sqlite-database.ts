@@ -419,6 +419,32 @@ const MIGRATIONS: Migration[] = [
             `);
         },
     },
+    {
+        id: 14,
+        name: 'guild_budget_limit_overrides',
+        up(db) {
+            db.exec(`
+                CREATE TABLE IF NOT EXISTS guild_budget_limit_overrides (
+                    guild_id TEXT PRIMARY KEY,
+                    five_hour_percent REAL CHECK (
+                        five_hour_percent IS NULL OR
+                        (five_hour_percent > 0 AND five_hour_percent <= 100)
+                    ),
+                    seven_day_percent REAL CHECK (
+                        seven_day_percent IS NULL OR
+                        (seven_day_percent > 0 AND seven_day_percent <= 100)
+                    ),
+                    fair_share_multiplier REAL CHECK (
+                        fair_share_multiplier IS NULL OR fair_share_multiplier >= 1
+                    ),
+                    CHECK (
+                        five_hour_percent IS NULL OR seven_day_percent IS NULL OR
+                        five_hour_percent <= seven_day_percent
+                    )
+                );
+            `);
+        },
+    },
 ];
 
 let sharedDatabase: DatabaseSync | null = null;
@@ -515,6 +541,7 @@ const STORE_TABLES = new Set([
     'app_config',
     'user_language_preferences',
     'guild_budgets',
+    'guild_budget_limit_overrides',
     'scoped_usage',
     'rolling_usage',
     'guild_glossary',

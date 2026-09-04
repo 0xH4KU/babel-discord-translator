@@ -45,7 +45,10 @@ interface DemoConfigFixture {
     setupComplete: boolean;
     inputPricePerMillion: number;
     outputPricePerMillion: number;
-    dailyBudgetUsd: number;
+    monthlyBudgetUsd: number;
+    budgetFiveHourPercent: number;
+    budgetSevenDayPercent: number;
+    budgetFairShareMultiplier: number;
     visionMonthlyImageLimit: number;
     visionUsage: {
         month: string;
@@ -53,7 +56,7 @@ interface DemoConfigFixture {
         limit: number;
         remaining: number;
     };
-    defaultUserDailyBudgetUsd: number;
+    defaultUserMonthlyBudgetUsd: number;
     translationPrompt: string;
     maxInputLength: number;
     maxOutputTokens: number;
@@ -269,8 +272,8 @@ const DEMO_STATS = {
         inputCost: 0.0918,
         outputCost: 0.122,
         totalCost: 0.2138,
-        dailyBudget: 2,
-        budgetUsedPercent: 10.69,
+        monthlyBudget: 60,
+        budgetUsedPercent: 0.36,
         budgetExceeded: false,
     },
     guildBudgets: [
@@ -324,7 +327,10 @@ const DEMO_CONFIG: DemoConfigFixture = {
     setupComplete: true,
     inputPricePerMillion: 0.1,
     outputPricePerMillion: 0.4,
-    dailyBudgetUsd: 0.75,
+    monthlyBudgetUsd: 22.5,
+    budgetFiveHourPercent: 5,
+    budgetSevenDayPercent: 30,
+    budgetFairShareMultiplier: 1.5,
     visionMonthlyImageLimit: 900,
     visionUsage: {
         month: '2026-06',
@@ -332,7 +338,7 @@ const DEMO_CONFIG: DemoConfigFixture = {
         limit: 900,
         remaining: 716,
     },
-    defaultUserDailyBudgetUsd: 0,
+    defaultUserMonthlyBudgetUsd: 0,
     translationPrompt: '',
     maxInputLength: 2000,
     maxOutputTokens: 1000,
@@ -379,7 +385,17 @@ const DEMO_GUILDS = [
 const DEMO_GUILD_BUDGETS = {
     '100000000000000001': {
         name: 'Builder Lounge',
-        budget: 1.25,
+        budget: 37.5,
+        limits: {
+            budgetFiveHourPercent: 8,
+            budgetSevenDayPercent: 35,
+            budgetFairShareMultiplier: 2,
+        },
+        limitOverrides: {
+            budgetFiveHourPercent: 8,
+            budgetSevenDayPercent: 35,
+            budgetFairShareMultiplier: 2,
+        },
         usage: {
             date: '2026-06-01',
             inputTokens: 501_200,
@@ -388,8 +404,8 @@ const DEMO_GUILD_BUDGETS = {
             inputCost: 0.0501,
             outputCost: 0.0604,
             totalCost: 1.07,
-            dailyBudget: 1.25,
-            budgetUsedPercent: 85.6,
+            monthlyBudget: 37.5,
+            budgetUsedPercent: 2.85,
             budgetExceeded: false,
         },
     },
@@ -404,8 +420,8 @@ const DEMO_GUILD_BUDGETS = {
             inputCost: 0.0222,
             outputCost: 0.0346,
             totalCost: 0.28,
-            dailyBudget: 0.75,
-            budgetUsedPercent: 37.3,
+            monthlyBudget: 22.5,
+            budgetUsedPercent: 1.24,
             budgetExceeded: false,
         },
     },
@@ -420,7 +436,7 @@ const DEMO_GUILD_BUDGETS = {
             inputCost: 0.0113,
             outputCost: 0.0193,
             totalCost: 0.15,
-            dailyBudget: 0,
+            monthlyBudget: 0,
             budgetUsedPercent: 0,
             budgetExceeded: false,
         },
@@ -436,8 +452,8 @@ const DEMO_GUILD_BUDGETS = {
             inputCost: 0.0082,
             outputCost: 0.0077,
             totalCost: 0.05,
-            dailyBudget: 0.75,
-            budgetUsedPercent: 6.6,
+            monthlyBudget: 22.5,
+            budgetUsedPercent: 0.22,
             budgetExceeded: false,
         },
     },
@@ -759,8 +775,8 @@ function createStatsFixture(variant: DemoVariant): typeof DEMO_STATS {
             inputCost: 0.0318,
             outputCost: 0.042,
             totalCost: 0.0738,
-            dailyBudget: 0.5,
-            budgetUsedPercent: 14.76,
+            monthlyBudget: 15,
+            budgetUsedPercent: 0.49,
         },
         guildBudgets: [],
         userBudgets: [
@@ -835,8 +851,8 @@ function createConfigFixture(variant: DemoVariant): typeof DEMO_CONFIG {
         allowedGuildIds: [],
         lensEnabledGuildIds: [],
         allowedUserIds: ['200000000000000001', '200000000000000002'],
-        dailyBudgetUsd: 0.25,
-        defaultUserDailyBudgetUsd: 0.5,
+        monthlyBudgetUsd: 7.5,
+        defaultUserMonthlyBudgetUsd: 15,
         openaiSupportsImages: true,
     };
 }

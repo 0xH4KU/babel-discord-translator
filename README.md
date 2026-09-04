@@ -314,7 +314,7 @@ Set `BABEL_APP=combined` to run both Babel Guild and Babel Pocket in one process
 
 ### Migration & Legacy Export
 
-Babel applies SQLite schema migrations automatically during startup. The scoped Lens quota migration preserves the existing global monthly Vision usage counter. Back up the database before upgrading; do not run `db:migrate` for normal schema upgrades.
+Babel applies SQLite schema migrations automatically during startup. The budget migration converts existing daily translation budgets to monthly values with `monthly = daily * 30`; `0` remains unlimited. The scoped Lens quota migration preserves the existing global monthly Vision usage counter. Back up the database before upgrading; do not run `db:migrate` for normal schema upgrades.
 
 Babel auto-imports `data/config.json` into SQLite on first startup. Manual scripts:
 
@@ -361,7 +361,7 @@ Babel stores runtime data through native `node:sqlite`. Before upgrading Node on
 │                              │                               │
 │  ┌───────────────────────────▼─────────────────────────────┐ │
 │  │                   SQLite (babel.sqlite)                  │ │
-│  │  app_config │ daily_usage │ guild_budgets │ sessions ... │ │
+│  │ app_config │ scoped_usage │ rolling_usage │ budgets ... │ │
 │  └─────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
 ```

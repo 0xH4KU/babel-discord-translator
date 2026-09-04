@@ -151,6 +151,38 @@ describe('validateConfigUpdate', () => {
         });
     });
 
+    it('should validate nested budget limit settings together', () => {
+        expect(
+            validateConfigUpdate({
+                budgetFiveHourPercent: '10',
+                budgetSevenDayPercent: '40',
+                budgetFairShareMultiplier: '2',
+            }),
+        ).toMatchObject({
+            valid: true,
+            sanitized: {
+                budgetFiveHourPercent: 10,
+                budgetSevenDayPercent: 40,
+                budgetFairShareMultiplier: 2,
+            },
+        });
+        expect(validateConfigUpdate({ budgetFiveHourPercent: 40 })).toMatchObject({
+            valid: false,
+        });
+        expect(
+            validateConfigUpdate(
+                { budgetFiveHourPercent: 40 },
+                {
+                    budgetFiveHourPercent: 5,
+                    budgetSevenDayPercent: 50,
+                    budgetFairShareMultiplier: 1.5,
+                },
+            ),
+        ).toMatchObject({ valid: true });
+        expect(validateConfigUpdate({ budgetSevenDayPercent: 101 }).valid).toBe(false);
+        expect(validateConfigUpdate({ budgetFairShareMultiplier: 0.9 }).valid).toBe(false);
+    });
+
     it('should require positive integers for translation throughput limits', () => {
         for (const field of [
             'translationMaxConcurrent',

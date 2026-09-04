@@ -193,6 +193,42 @@ describe('ConfigStore', () => {
         store.close();
     });
 
+    it('should persist per-guild budget limit overrides through snapshots', async () => {
+        const { ConfigStore } = await importStoreModule();
+        const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+
+        expect(store.getGuildBudgetLimitOverrides('guild-1')).toEqual({});
+        store.setGuildBudgetLimitOverrides('guild-1', {
+            budgetFiveHourPercent: 8,
+            budgetFairShareMultiplier: 2,
+        });
+        expect(store.getGuildBudgetLimitOverrides('guild-1')).toEqual({
+            budgetFiveHourPercent: 8,
+            budgetFairShareMultiplier: 2,
+        });
+        expect(store.listGuildBudgetLimitOverrides()).toEqual({
+            'guild-1': { budgetFiveHourPercent: 8, budgetFairShareMultiplier: 2 },
+        });
+
+        const snapshot = store.exportSnapshot();
+        store.clearGuildBudgetLimitOverrides('guild-1');
+        store.importSnapshot(snapshot);
+        expect(store.getGuildBudgetLimitOverrides('guild-1')).toEqual({
+            budgetFiveHourPercent: 8,
+            budgetFairShareMultiplier: 2,
+        });
+        store.close();
+
+        const reopened = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+        expect(reopened.getGuildBudgetLimitOverrides('guild-1')).toMatchObject({
+            budgetFiveHourPercent: 8,
+            budgetFairShareMultiplier: 2,
+        });
+        expect(reopened.clearGuildBudgetLimitOverrides('guild-1')).toBe(true);
+        expect(reopened.clearGuildBudgetLimitOverrides('guild-1')).toBe(false);
+        reopened.close();
+    });
+
     it('should support per-guild glossary operations', async () => {
         const { ConfigStore } = await importStoreModule();
         const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });

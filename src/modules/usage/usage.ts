@@ -13,6 +13,7 @@ import type {
     UsageHistoryDay,
     UsageHistoryEntry,
 } from '../../shared/types.js';
+import { resolveBudgetLimits, type BudgetLimitSettings } from '../../shared/budget-limits.js';
 
 export type UsageExportScope = 'global' | 'guild' | 'user';
 
@@ -47,6 +48,19 @@ interface UsagePeriod {
     key: string;
     start: string;
     end: string;
+}
+
+interface BudgetWindow extends UsagePeriod {
+    fraction: number;
+    rolling: boolean;
+}
+
+interface BudgetSource {
+    key: string;
+    budget: number;
+    scope: 'global' | 'guild' | 'user';
+    scopeId: string;
+    sharedGlobal?: boolean;
 }
 
 export class UsageTracker {
@@ -88,20 +102,15 @@ export class UsageTracker {
         estimatedOutputTokens,
         guildId,
         userId,
+        actorUserId,
     }: UsageBudgetEstimate): UsageBudgetReservation | null {
         const runtimeConfig = configRepository.getRuntimeConfig();
-        const scope = { guildId, userId };
+        const scope = { guildId, userId, actorUserId };
         const estimatedCost = calculateCost(
             { inputTokens: estimatedInputTokens, outputTokens: estimatedOutputTokens },
             runtimeConfig,
         );
-        const period = currentMonth();
-        const admissions = this.getBudgetAdmissions(scope, runtimeConfig, period).map(
-            (admission) => ({
-                ...admission,
-                key: `${period.key}:${admission.key}`,
-            }),
-        );
+        const admissions = this.getBudgetAdmissions(scope, runtimeConfig, new Date());
 
         if (
             admissions.some(
@@ -142,42 +151,120 @@ export class UsageTracker {
     private getBudgetAdmissions(
         scope: UsageScope,
         runtimeConfig: RuntimeConfig,
-        period: UsagePeriod,
+        now: Date,
     ): BudgetAdmission[] {
         const decision = resolveBudgetScope(scope, runtimeConfig);
+        const limits = resolveBudgetLimits(
+            runtimeConfig,
+            scope.guildId ? store.getGuildBudgetLimitOverrides(scope.guildId) : {},
+        );
+        const windows = budgetWindows(now, limits);
+        const sources: BudgetSource[] = [];
 
         if (decision.kind === 'user' && decision.userId) {
-            return [
+            sources.push(
                 {
                     key: `user:${decision.userId}`,
                     budget: decision.budget,
-                    cost: this.getUserCost(decision.userId, runtimeConfig, period),
+                    scope: 'user',
+                    scopeId: decision.userId,
                 },
                 {
                     key: 'global',
                     budget: runtimeConfig.monthlyBudgetUsd || 0,
-                    cost: this.getSharedGlobalBudgetCost(runtimeConfig, period),
+                    scope: 'global',
+                    scopeId: '',
+                    sharedGlobal: true,
                 },
-            ];
-        }
-
-        if (decision.kind === 'guild' && decision.guildId) {
-            return [
-                {
-                    key: `guild:${decision.guildId}`,
-                    budget: decision.budget,
-                    cost: this.getGuildCost(decision.guildId, runtimeConfig, period),
-                },
-            ];
-        }
-
-        return [
-            {
+            );
+        } else if (decision.kind === 'guild' && decision.guildId) {
+            sources.push({
+                key: `guild:${decision.guildId}`,
+                budget: decision.budget,
+                scope: 'guild',
+                scopeId: decision.guildId,
+            });
+        } else {
+            sources.push({
                 key: 'global',
                 budget: decision.budget,
-                cost: this.getSharedGlobalBudgetCost(runtimeConfig, period),
-            },
-        ];
+                scope: 'global',
+                scopeId: '',
+                sharedGlobal: true,
+            });
+        }
+
+        const admissions = sources.flatMap((source) =>
+            windows.map((window) => ({
+                key: `${window.key}:${source.key}`,
+                budget: source.budget * window.fraction,
+                cost: this.getBudgetSourceCost(source, window, runtimeConfig),
+            })),
+        );
+
+        if (scope.guildId && scope.actorUserId && decision.budget > 0) {
+            const activeWindow = windows[1]!;
+            let activeUsers = store.countActiveGuildUsers(
+                scope.guildId,
+                activeWindow.start,
+                activeWindow.end,
+            );
+            if (
+                store.getGuildUserRollingUsage(
+                    scope.guildId,
+                    scope.actorUserId,
+                    activeWindow.start,
+                    activeWindow.end,
+                ).requests === 0
+            ) {
+                activeUsers += 1;
+            }
+            const fairShare = Math.min(1, limits.budgetFairShareMultiplier / activeUsers);
+
+            admissions.push(
+                ...windows.map((window) => ({
+                    key: `${window.key}:guild-user:${scope.guildId}:${scope.actorUserId}`,
+                    budget: decision.budget * window.fraction * fairShare,
+                    cost: withCost(
+                        store.getGuildUserRollingUsage(
+                            scope.guildId!,
+                            scope.actorUserId!,
+                            window.start,
+                            window.end,
+                        ),
+                        runtimeConfig.inputPricePerMillion || 0,
+                        runtimeConfig.outputPricePerMillion || 0,
+                    ),
+                })),
+            );
+        }
+
+        return admissions;
+    }
+
+    private getBudgetSourceCost(
+        source: BudgetSource,
+        window: BudgetWindow,
+        runtimeConfig: RuntimeConfig,
+    ): UsageCost {
+        const tokens = window.rolling
+            ? source.sharedGlobal
+                ? store.getSharedRollingUsageBetween(window.start, window.end)
+                : store.getRollingUsageBetween(
+                      source.scope,
+                      source.scopeId,
+                      window.start,
+                      window.end,
+                  )
+            : source.sharedGlobal
+              ? store.getSharedGlobalUsageBetween(window.start, window.end)
+              : store.getUsageBetween(source.scope, source.scopeId, window.start, window.end);
+
+        return withCost(
+            tokens,
+            runtimeConfig.inputPricePerMillion || 0,
+            runtimeConfig.outputPricePerMillion || 0,
+        );
     }
 
     /** Get stats for dashboard display (global). */
@@ -324,6 +411,28 @@ function currentMonth(now = new Date()): UsagePeriod {
     const start = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10);
     const end = new Date(Date.UTC(year, month + 1, 1)).toISOString().slice(0, 10);
     return { key: start.slice(0, 7), start, end };
+}
+
+function budgetWindows(now: Date, settings: BudgetLimitSettings): BudgetWindow[] {
+    const end = new Date(now.getTime() + 1).toISOString();
+    const month = currentMonth(now);
+    return [
+        {
+            key: '5h',
+            start: new Date(now.getTime() - 5 * 60 * 60 * 1000).toISOString(),
+            end,
+            fraction: settings.budgetFiveHourPercent / 100,
+            rolling: true,
+        },
+        {
+            key: '7d',
+            start: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+            end,
+            fraction: settings.budgetSevenDayPercent / 100,
+            rolling: true,
+        },
+        { ...month, key: `month:${month.key}`, fraction: 1, rolling: false },
+    ];
 }
 
 function withHistoryCost(

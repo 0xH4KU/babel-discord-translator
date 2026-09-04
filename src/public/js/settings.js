@@ -229,6 +229,12 @@ async function loadSettings(force = false) {
     document.getElementById('cfg-input-price').value = currentConfig.inputPricePerMillion || 0;
     document.getElementById('cfg-output-price').value = currentConfig.outputPricePerMillion || 0;
     document.getElementById('cfg-budget').value = currentConfig.monthlyBudgetUsd || 0;
+    document.getElementById('cfg-budget-five-hour').value =
+      currentConfig.budgetFiveHourPercent ?? 5;
+    document.getElementById('cfg-budget-seven-day').value =
+      currentConfig.budgetSevenDayPercent ?? 30;
+    document.getElementById('cfg-budget-fair-share').value =
+      currentConfig.budgetFairShareMultiplier ?? 1.5;
     document.getElementById('cfg-vision-limit').value =
       currentConfig.visionMonthlyImageLimit ?? 900;
     previewVisionLimit(currentConfig.visionMonthlyImageLimit ?? 900);
@@ -288,6 +294,13 @@ async function saveSettings() {
   updates.outputPricePerMillion =
     parseFloat(document.getElementById('cfg-output-price').value) || 0;
   updates.monthlyBudgetUsd = parseFloat(document.getElementById('cfg-budget').value) || 0;
+  updates.budgetFiveHourPercent = Number(
+    document.getElementById('cfg-budget-five-hour').value,
+  );
+  updates.budgetSevenDayPercent = Number(document.getElementById('cfg-budget-seven-day').value);
+  updates.budgetFairShareMultiplier = Number(
+    document.getElementById('cfg-budget-fair-share').value,
+  );
   updates.visionMonthlyImageLimit =
     parseInt(document.getElementById('cfg-vision-limit').value) || 0;
   updates.translationPrompt = document.getElementById('cfg-prompt').value;

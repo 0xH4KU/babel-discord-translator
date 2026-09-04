@@ -73,6 +73,7 @@ interface UsageLike {
         estimatedOutputTokens: number;
         guildId?: string | null;
         userId?: string | null;
+        actorUserId?: string | null;
     }): UsageBudgetReservation | null;
 }
 

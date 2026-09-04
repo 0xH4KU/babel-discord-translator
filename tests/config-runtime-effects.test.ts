@@ -104,7 +104,7 @@ describe('applyConfigUpdateEffects', () => {
         expect(resetProviderState).toHaveBeenCalledOnce();
     });
 
-    it('should treat input length and monthly budget as read-on-demand settings', () => {
+    it('should treat input length and budget limits as read-on-demand settings', () => {
         const cache = new TranslationCache(100);
         const cooldown = new CooldownManager(5);
         const runtimeLimiter = new TranslationRuntimeLimiter({
@@ -121,6 +121,7 @@ describe('applyConfigUpdateEffects', () => {
             {
                 maxInputLength: 4000,
                 monthlyBudgetUsd: 12.5,
+                budgetFiveHourPercent: 8,
             },
             { cache, cooldown, runtimeLimiter },
         );
@@ -131,6 +132,7 @@ describe('applyConfigUpdateEffects', () => {
         expect(result.immediateEffects).toEqual([
             'No in-memory sync required; request validation reads the persisted value on each call.',
             'No in-memory sync required; budget checks read the persisted value on each call.',
+            'No in-memory sync required; budget checks read the five-hour limit on each call.',
         ]);
     });
 

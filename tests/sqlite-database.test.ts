@@ -71,6 +71,7 @@ describe('createSqliteDatabase', () => {
                     WHERE type = 'table'
                       AND name IN (
                           'user_budgets',
+                          'guild_budget_limit_overrides',
                           'scoped_usage',
                           'rolling_usage',
                           'pending_user_install_owners'
@@ -81,6 +82,7 @@ describe('createSqliteDatabase', () => {
                 .all() as Array<{ name: string }>;
 
             expect(rows.map((row) => row.name)).toEqual([
+                'guild_budget_limit_overrides',
                 'pending_user_install_owners',
                 'rolling_usage',
                 'scoped_usage',
@@ -322,7 +324,7 @@ describe('createSqliteDatabase', () => {
                 .prepare('SELECT id FROM schema_migrations ORDER BY id ASC')
                 .all() as Array<{ id: number }>;
             expect(migrationIds.map((row) => row.id)).toEqual([
-                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
             ]);
         } finally {
             db.close();

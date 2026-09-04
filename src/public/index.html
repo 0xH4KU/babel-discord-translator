@@ -1172,6 +1172,37 @@
                                             <div class="hint" id="cfg-budget-hint"></div>
                                         </div>
                                     </div>
+                                    <div class="settings-row">
+                                        <div class="input-group">
+                                            <label>5-Hour Limit (% of monthly)</label
+                                            ><input
+                                                type="number"
+                                                id="cfg-budget-five-hour"
+                                                min="0.1"
+                                                max="100"
+                                                step="0.1"
+                                            />
+                                        </div>
+                                        <div class="input-group">
+                                            <label>7-Day Limit (% of monthly)</label
+                                            ><input
+                                                type="number"
+                                                id="cfg-budget-seven-day"
+                                                min="0.1"
+                                                max="100"
+                                                step="0.1"
+                                            />
+                                        </div>
+                                        <div class="input-group" data-capability="guildAccess">
+                                            <label>Fair-Share Multiplier</label
+                                            ><input
+                                                type="number"
+                                                id="cfg-budget-fair-share"
+                                                min="1"
+                                                step="0.1"
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="settings-section">
                                     <h3>Runtime Limits</h3>
@@ -1212,7 +1243,7 @@
                                                 type="number"
                                                 id="cfg-max-queue-wait"
                                                 min="1"
-                                                step="1000"
+                                                step="1"
                                             />
                                         </div>
                                     </div>

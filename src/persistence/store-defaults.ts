@@ -1,4 +1,5 @@
 import type { StoreData } from '../shared/types.js';
+import { DEFAULT_BUDGET_LIMITS } from '../shared/budget-limits.js';
 
 export const DEFAULT_STORE_DATA: StoreData = {
     vertexAiApiKey: '',
@@ -17,6 +18,7 @@ export const DEFAULT_STORE_DATA: StoreData = {
     inputPricePerMillion: 0,
     outputPricePerMillion: 0,
     monthlyBudgetUsd: 0,
+    ...DEFAULT_BUDGET_LIMITS,
     visionMonthlyImageLimit: 900,
     defaultUserMonthlyBudgetUsd: 0,
     tokenUsage: null,
@@ -37,6 +39,7 @@ export const DEFAULT_STORE_DATA: StoreData = {
     openaiSupportsImages: false,
     translationProvider: 'vertex',
     guildBudgets: {},
+    guildBudgetLimitOverrides: {},
     guildVisionLimits: {},
     guildTokenUsage: {},
     guildUsageHistory: {},
@@ -63,6 +66,9 @@ export const CONFIG_VALUE_KEYS = [
     'inputPricePerMillion',
     'outputPricePerMillion',
     'monthlyBudgetUsd',
+    'budgetFiveHourPercent',
+    'budgetSevenDayPercent',
+    'budgetFairShareMultiplier',
     'visionMonthlyImageLimit',
     'defaultUserMonthlyBudgetUsd',
     'translationPrompt',

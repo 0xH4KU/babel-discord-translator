@@ -9,6 +9,11 @@ import { store, type ConfigStore } from '../../persistence/store.js';
 import { configRepository, type ConfigRepository } from '../config/config-repository.js';
 import { getReadinessStatus } from '../../shared/health.js';
 import type { StoreData } from '../../shared/types.js';
+import {
+    DEFAULT_BUDGET_LIMITS,
+    resolveBudgetLimits,
+    validateBudgetLimits,
+} from '../../shared/budget-limits.js';
 import { providerModeIncludes } from './operations-summary.js';
 
 export type SetupDoctorStatus = 'pass' | 'warn' | 'fail' | 'skipped';
@@ -35,7 +40,8 @@ type SetupDoctorConfigStore = Pick<
 > &
     Partial<SetupDoctorBudgetStore>;
 
-type SetupDoctorBudgetStore = Pick<ConfigStore, 'listGuildBudgets' | 'listUserBudgets'>;
+type SetupDoctorBudgetStore = Pick<ConfigStore, 'listGuildBudgets' | 'listUserBudgets'> &
+    Partial<Pick<ConfigStore, 'listGuildBudgetLimitOverrides'>>;
 
 export interface SetupDoctorDeps {
     profile: AppProfile;
@@ -387,6 +393,25 @@ function budgetCheck(
                 status: 'fail',
                 detail: `Negative or invalid price/budget values: ${invalid.map(([name]) => name).join(', ')}`,
                 action: 'Set price and budget values to 0 or higher.',
+            };
+        }
+
+        const globalLimits = resolveBudgetLimits(DEFAULT_BUDGET_LIMITS, config);
+        const globalLimitError = validateBudgetLimits(globalLimits);
+        const guildLimitError = Object.entries(budgetStore.listGuildBudgetLimitOverrides?.() ?? {})
+            .map(([guildId, overrides]) => [
+                guildId,
+                validateBudgetLimits(resolveBudgetLimits(globalLimits, overrides)),
+            ])
+            .find(([, error]) => error);
+        if (globalLimitError || guildLimitError) {
+            return {
+                id: 'budget',
+                status: 'fail',
+                detail: globalLimitError
+                    ? `Invalid budget limits: ${globalLimitError}`
+                    : `Invalid budget limits for guild ${guildLimitError![0]}: ${guildLimitError![1]}`,
+                action: 'Correct the rolling budget percentages and fair-share multiplier.',
             };
         }
 

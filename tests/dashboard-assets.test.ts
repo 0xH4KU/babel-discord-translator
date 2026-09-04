@@ -596,6 +596,9 @@ describe('dashboard static assets', () => {
             'cfg-input-price': { value: '0.25' },
             'cfg-output-price': { value: '1.5' },
             'cfg-budget': { value: '3.75' },
+            'cfg-budget-five-hour': { value: '8' },
+            'cfg-budget-seven-day': { value: '35' },
+            'cfg-budget-fair-share': { value: '2' },
             'cfg-vision-limit': { value: '950' },
             'cfg-prompt': { value: 'Translate precisely.' },
             'cfg-provider': { value: 'openai' },
@@ -638,6 +641,9 @@ describe('dashboard static assets', () => {
             translationMaxQueueWaitMs: 45000,
             maxInputLength: 4096,
             maxOutputTokens: 2048,
+            budgetFiveHourPercent: 8,
+            budgetSevenDayPercent: 35,
+            budgetFairShareMultiplier: 2,
             visionMonthlyImageLimit: 950,
             visionApiKey: 'vision-key',
             vertexAiSupportsImages: true,
@@ -650,6 +656,51 @@ describe('dashboard static assets', () => {
                 .filter((value) => typeof value === 'number')
                 .every((value) => Number.isFinite(value)),
         ).toBe(true);
+    });
+
+    it('submits per-guild budget limit overrides with blank fields inherited', async () => {
+        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const requests: Array<{ path: string; options: { method?: string; body?: string } }> = [];
+        const fields = {
+            'gbl5-guild-1': { value: '8' },
+            'gbl7-guild-1': { value: '' },
+            'gblf-guild-1': { value: '2' },
+        };
+        const context = {
+            document: {
+                getElementById(id: string) {
+                    return fields[id as keyof typeof fields] || null;
+                },
+            },
+            hasDashboardCapability(name: string) {
+                return name === 'guildAccess';
+            },
+            async api(path: string, options: { method?: string; body?: string } = {}) {
+                requests.push({ path, options });
+                if (path === '/guild-budgets' && !options.method) {
+                    return { json: async () => ({}) };
+                }
+                return { ok: true };
+            },
+            showToast() {},
+        };
+
+        vm.createContext(context);
+        vm.runInContext(accessJs, context);
+        vm.runInContext('renderGuilds = () => {};', context);
+        await vm.runInContext("saveGuildBudgetLimits('guild-1');", context);
+
+        expect(requests[0]).toMatchObject({
+            path: '/guild-budgets/guild-1',
+            options: { method: 'POST' },
+        });
+        expect(JSON.parse(requests[0].options.body!)).toEqual({
+            budgetLimitOverrides: {
+                budgetFiveHourPercent: 8,
+                budgetFairShareMultiplier: 2,
+            },
+        });
+        expect(requests[1]?.path).toBe('/guild-budgets');
     });
 
     it('previews a custom Vision limit while editing', () => {

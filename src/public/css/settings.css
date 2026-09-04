@@ -276,6 +276,21 @@
     gap: 0.35rem;
 }
 
+.guild-limit-actions {
+    flex-wrap: wrap;
+}
+
+.guild-limit-field {
+    display: grid;
+    gap: 0.2rem;
+    color: var(--text-dim);
+    font-size: 0.68rem;
+}
+
+.guild-limit-field .guild-budget-input {
+    width: 72px;
+}
+
 .guild-budget-input {
     width: 80px;
     padding: 0.3rem 0.5rem;

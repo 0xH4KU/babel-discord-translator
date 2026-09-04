@@ -6,6 +6,8 @@ const mockData: Record<string, unknown> = vi.hoisted(() => ({}));
 vi.mock('../src/persistence/store.js', () => {
     type MockUsage = { date: string; inputTokens: number; outputTokens: number; requests: number };
     type Scope = 'global' | 'guild' | 'user';
+    type RollingScope = Scope | 'guild_user';
+    type MockRollingUsage = MockUsage & { scope: RollingScope; scopeId: string };
 
     const currentUsage = (scope: Scope, id: string): MockUsage | null => {
         if (scope === 'global') return (mockData.tokenUsage as MockUsage | null) ?? null;
@@ -49,6 +51,45 @@ vi.mock('../src/persistence/store.js', () => {
             (mockData[key] as Record<string, MockUsage>)[id] = next;
         }
     };
+    const rollingUsageBetween = (
+        scope: RollingScope,
+        id: string,
+        start: string,
+        end: string,
+    ): MockUsage =>
+        ((mockData.rollingUsage as MockRollingUsage[]) ?? [])
+            .filter(
+                (entry) =>
+                    entry.scope === scope &&
+                    entry.scopeId === id &&
+                    entry.date >= start &&
+                    entry.date < end,
+            )
+            .reduce(
+                (total, entry) => ({
+                    date: start,
+                    inputTokens: total.inputTokens + entry.inputTokens,
+                    outputTokens: total.outputTokens + entry.outputTokens,
+                    requests: total.requests + entry.requests,
+                }),
+                { date: start, inputTokens: 0, outputTokens: 0, requests: 0 },
+            );
+    const recordRolling = (
+        scope: RollingScope,
+        scopeId: string,
+        date: string,
+        inputTokens: number,
+        outputTokens: number,
+    ) => {
+        (mockData.rollingUsage as MockRollingUsage[]).push({
+            scope,
+            scopeId,
+            date,
+            inputTokens,
+            outputTokens,
+            requests: 1,
+        });
+    };
 
     return {
         store: {
@@ -75,6 +116,10 @@ vi.mock('../src/persistence/store.js', () => {
                 return true;
             }),
             listGuildBudgets: vi.fn(() => mockData.guildBudgets ?? {}),
+            getGuildBudgetLimitOverrides: vi.fn(
+                (guildId: string) =>
+                    (mockData.guildBudgetLimitOverrides as Record<string, unknown>)[guildId] ?? {},
+            ),
             getUserBudget: vi.fn((userId: string) => {
                 const budgets = mockData.userBudgets as Record<string, unknown>;
                 return budgets[userId] ?? null;
@@ -105,6 +150,25 @@ vi.mock('../src/persistence/store.js', () => {
                 },
             ),
             getUsageBetween: vi.fn(usageBetween),
+            getRollingUsageBetween: vi.fn(rollingUsageBetween),
+            getGuildUserRollingUsage: vi.fn(
+                (guildId: string, userId: string, start: string, end: string) =>
+                    rollingUsageBetween('guild_user', `${guildId}:${userId}`, start, end),
+            ),
+            countActiveGuildUsers: vi.fn((guildId: string, start: string, end: string) => {
+                const users = new Set(
+                    ((mockData.rollingUsage as MockRollingUsage[]) ?? [])
+                        .filter(
+                            (entry) =>
+                                entry.scope === 'guild_user' &&
+                                entry.scopeId.startsWith(`${guildId}:`) &&
+                                entry.date >= start &&
+                                entry.date < end,
+                        )
+                        .map((entry) => entry.scopeId),
+                );
+                return users.size;
+            }),
             getUsageForIdsBetween: vi.fn(
                 (scope: Exclude<Scope, 'global'>, ids: string[], start: string, end: string) =>
                     Object.fromEntries(
@@ -161,13 +225,39 @@ vi.mock('../src/persistence/store.js', () => {
                 }
                 return shared;
             }),
+            getSharedRollingUsageBetween: vi.fn((start: string, end: string) => {
+                const shared = rollingUsageBetween('global', '', start, end);
+                const budgets = mockData.guildBudgets as Record<string, unknown>;
+                for (const guildId of Object.keys(budgets)) {
+                    const usage = rollingUsageBetween('guild', guildId, start, end);
+                    shared.inputTokens = Math.max(0, shared.inputTokens - usage.inputTokens);
+                    shared.outputTokens = Math.max(0, shared.outputTokens - usage.outputTokens);
+                    shared.requests = Math.max(0, shared.requests - usage.requests);
+                }
+                return shared;
+            }),
             recordUsage: vi.fn((timestamp: string, input: number, output: number, scope = {}) => {
-                const ids = scope as { guildId?: string; userId?: string };
+                const ids = scope as {
+                    guildId?: string;
+                    userId?: string;
+                    actorUserId?: string;
+                };
                 const date = timestamp.slice(0, 10);
                 const tokens = [input || 0, output || 0] as const;
                 record('global', '', date, ...tokens);
+                recordRolling('global', '', timestamp, ...tokens);
                 if (ids.guildId) record('guild', ids.guildId, date, ...tokens);
                 if (ids.userId) record('user', ids.userId, date, ...tokens);
+                if (ids.guildId) recordRolling('guild', ids.guildId, timestamp, ...tokens);
+                if (ids.userId) recordRolling('user', ids.userId, timestamp, ...tokens);
+                if (ids.guildId && ids.actorUserId) {
+                    recordRolling(
+                        'guild_user',
+                        `${ids.guildId}:${ids.actorUserId}`,
+                        timestamp,
+                        ...tokens,
+                    );
+                }
             }),
             listUsageRows: vi.fn(() => {
                 const rows = new Map<string, MockUsage & { scope: Scope; scopeId: string }>();
@@ -215,6 +305,9 @@ describe('UsageTracker', () => {
         mockData.outputPricePerMillion = 0;
         mockData.monthlyBudgetUsd = 0;
         mockData.defaultUserMonthlyBudgetUsd = 0;
+        mockData.budgetFiveHourPercent = 100;
+        mockData.budgetSevenDayPercent = 100;
+        mockData.budgetFairShareMultiplier = 1.5;
         mockData.allowedGuildIds = [];
         mockData.allowedUserIds = [];
         mockData.cooldownSeconds = 5;
@@ -229,6 +322,8 @@ describe('UsageTracker', () => {
         mockData.translationMaxUserOutstanding = 1;
         mockData.translationMaxQueueWaitMs = 30000;
         mockData.guildBudgets = {};
+        mockData.guildBudgetLimitOverrides = {};
+        mockData.rollingUsage = [];
         mockData.guildTokenUsage = {};
         mockData.guildUsageHistory = {};
         mockData.userBudgets = {};
@@ -368,6 +463,148 @@ describe('UsageTracker', () => {
                 guildId: 'guild-custom',
             }),
         ).toBeNull();
+    });
+
+    it('should enforce the rolling five-hour budget limit', () => {
+        mockData.monthlyBudgetUsd = 100;
+        mockData.budgetFiveHourPercent = 5;
+        mockData.budgetSevenDayPercent = 30;
+        mockData.inputPricePerMillion = 1;
+        mockData.rollingUsage = [
+            {
+                scope: 'global',
+                scopeId: '',
+                date: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+                inputTokens: 4_750_000,
+                outputTokens: 0,
+                requests: 1,
+            },
+        ];
+
+        expect(
+            usage.tryReserveBudget({
+                estimatedInputTokens: 250_000,
+                estimatedOutputTokens: 0,
+            }),
+        ).toBeNull();
+    });
+
+    it('should enforce the rolling seven-day budget after five-hour usage expires', () => {
+        mockData.monthlyBudgetUsd = 100;
+        mockData.budgetFiveHourPercent = 5;
+        mockData.budgetSevenDayPercent = 30;
+        mockData.inputPricePerMillion = 1;
+        mockData.rollingUsage = [
+            {
+                scope: 'global',
+                scopeId: '',
+                date: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
+                inputTokens: 29_750_000,
+                outputTokens: 0,
+                requests: 1,
+            },
+        ];
+
+        expect(
+            usage.tryReserveBudget({
+                estimatedInputTokens: 250_000,
+                estimatedOutputTokens: 0,
+            }),
+        ).toBeNull();
+    });
+
+    it('should retain the hard monthly budget limit', () => {
+        mockData.monthlyBudgetUsd = 100;
+        mockData.budgetFiveHourPercent = 5;
+        mockData.budgetSevenDayPercent = 30;
+        mockData.inputPricePerMillion = 1;
+        mockData.tokenUsage = {
+            date: new Date().toISOString().slice(0, 10),
+            inputTokens: 99_750_000,
+            outputTokens: 0,
+            requests: 1,
+        };
+
+        expect(
+            usage.tryReserveBudget({
+                estimatedInputTokens: 250_000,
+                estimatedOutputTokens: 0,
+            }),
+        ).toBeNull();
+    });
+
+    it('should apply per-guild rolling limit overrides', () => {
+        mockData.guildBudgets = { guild: { monthlyBudgetUsd: 100 } };
+        mockData.guildBudgetLimitOverrides = {
+            guild: { budgetFiveHourPercent: 10, budgetSevenDayPercent: 40 },
+        };
+        mockData.budgetFiveHourPercent = 5;
+        mockData.budgetSevenDayPercent = 30;
+        mockData.inputPricePerMillion = 1;
+        mockData.rollingUsage = [
+            {
+                scope: 'guild',
+                scopeId: 'guild',
+                date: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+                inputTokens: 8_000_000,
+                outputTokens: 0,
+                requests: 1,
+            },
+        ];
+
+        expect(
+            usage.tryReserveBudget({
+                guildId: 'guild',
+                estimatedInputTokens: 1_000_000,
+                estimatedOutputTokens: 0,
+            }),
+        ).not.toBeNull();
+    });
+
+    it('should include a new requester in the guild fair-share divisor', () => {
+        mockData.guildBudgets = { guild: { monthlyBudgetUsd: 100 } };
+        mockData.budgetFiveHourPercent = 5;
+        mockData.budgetSevenDayPercent = 30;
+        mockData.budgetFairShareMultiplier = 1.5;
+        mockData.inputPricePerMillion = 1;
+        const recent = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+        mockData.rollingUsage = ['user-b', 'user-c'].map((userId) => ({
+            scope: 'guild_user',
+            scopeId: `guild:${userId}`,
+            date: recent,
+            inputTokens: 1,
+            outputTokens: 0,
+            requests: 1,
+        }));
+
+        expect(
+            usage.tryReserveBudget({
+                guildId: 'guild',
+                actorUserId: 'user-a',
+                estimatedInputTokens: 2_500_000,
+                estimatedOutputTokens: 0,
+            }),
+        ).toBeNull();
+    });
+
+    it('should include pending requests in rolling limits', () => {
+        mockData.monthlyBudgetUsd = 100;
+        mockData.budgetFiveHourPercent = 5;
+        mockData.budgetSevenDayPercent = 30;
+        mockData.inputPricePerMillion = 1;
+
+        const first = usage.tryReserveBudget({
+            estimatedInputTokens: 2_600_000,
+            estimatedOutputTokens: 0,
+        });
+        const second = usage.tryReserveBudget({
+            estimatedInputTokens: 2_400_000,
+            estimatedOutputTokens: 0,
+        });
+
+        expect(first).not.toBeNull();
+        expect(second).toBeNull();
+        first!.release();
     });
 
     it('should return complete stats for dashboard', () => {

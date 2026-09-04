@@ -17,6 +17,9 @@ export const MANAGED_RUNTIME_CONFIG_KEYS = [
     'maxInputLength',
     'maxOutputTokens',
     'monthlyBudgetUsd',
+    'budgetFiveHourPercent',
+    'budgetSevenDayPercent',
+    'budgetFairShareMultiplier',
     'visionMonthlyImageLimit',
     'openaiApiKey',
     'openaiBaseUrl',
@@ -73,6 +76,12 @@ const CONFIG_EFFECT_DESCRIPTIONS: Record<ManagedRuntimeConfigKey, string> = {
         'Clear the translation cache so future requests use the new output token limit.',
     monthlyBudgetUsd:
         'No in-memory sync required; budget checks read the persisted value on each call.',
+    budgetFiveHourPercent:
+        'No in-memory sync required; budget checks read the five-hour limit on each call.',
+    budgetSevenDayPercent:
+        'No in-memory sync required; budget checks read the seven-day limit on each call.',
+    budgetFairShareMultiplier:
+        'No in-memory sync required; budget checks read the fair-share multiplier on each call.',
     visionMonthlyImageLimit:
         'No in-memory sync required; Babel Lens reads the persisted monthly limit on each call.',
     openaiApiKey:
@@ -154,6 +163,9 @@ export function applyConfigUpdateEffects(
                 break;
             case 'maxInputLength':
             case 'monthlyBudgetUsd':
+            case 'budgetFiveHourPercent':
+            case 'budgetSevenDayPercent':
+            case 'budgetFairShareMultiplier':
             case 'visionApiKey':
             case 'visionMonthlyImageLimit':
                 break;
