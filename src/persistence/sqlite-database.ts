@@ -25,33 +25,48 @@ export function rebuildTranslationBudgetPools(db: DatabaseSync): void {
         DELETE FROM budget_usage;
         DELETE FROM rolling_budget_usage;
 
-        INSERT INTO budget_usage (pool_id, date, input_tokens, output_tokens, requests)
-        SELECT 'pocket:shared', date, SUM(input_tokens), SUM(output_tokens), SUM(requests)
+        INSERT INTO budget_usage (
+            pool_id, date, input_tokens, output_tokens, requests,
+            input_cost_usd, output_cost_usd
+        )
+        SELECT 'pocket:shared', date, SUM(input_tokens), SUM(output_tokens), SUM(requests),
+               SUM(input_cost_usd), SUM(output_cost_usd)
         FROM scoped_usage
         WHERE scope = 'user'
         GROUP BY date;
 
-        INSERT INTO budget_usage (pool_id, date, input_tokens, output_tokens, requests)
-        SELECT 'guild:' || scoped_usage.scope_id, date, input_tokens, output_tokens, requests
+        INSERT INTO budget_usage (
+            pool_id, date, input_tokens, output_tokens, requests,
+            input_cost_usd, output_cost_usd
+        )
+        SELECT 'guild:' || scoped_usage.scope_id, date, input_tokens, output_tokens, requests,
+               input_cost_usd, output_cost_usd
         FROM scoped_usage
         JOIN guild_budgets ON guild_budgets.guild_id = scoped_usage.scope_id
         WHERE scope = 'guild';
 
         WITH pocket AS (
             SELECT date, SUM(input_tokens) AS input_tokens,
-                   SUM(output_tokens) AS output_tokens, SUM(requests) AS requests
+                   SUM(output_tokens) AS output_tokens, SUM(requests) AS requests,
+                   SUM(input_cost_usd) AS input_cost_usd,
+                   SUM(output_cost_usd) AS output_cost_usd
             FROM scoped_usage
             WHERE scope = 'user'
             GROUP BY date
         ), custom AS (
             SELECT date, SUM(input_tokens) AS input_tokens,
-                   SUM(output_tokens) AS output_tokens, SUM(requests) AS requests
+                   SUM(output_tokens) AS output_tokens, SUM(requests) AS requests,
+                   SUM(input_cost_usd) AS input_cost_usd,
+                   SUM(output_cost_usd) AS output_cost_usd
             FROM scoped_usage
             JOIN guild_budgets ON guild_budgets.guild_id = scoped_usage.scope_id
             WHERE scope = 'guild'
             GROUP BY date
         )
-        INSERT INTO budget_usage (pool_id, date, input_tokens, output_tokens, requests)
+        INSERT INTO budget_usage (
+            pool_id, date, input_tokens, output_tokens, requests,
+            input_cost_usd, output_cost_usd
+        )
         SELECT
             'guild:shared',
             total.date,
@@ -60,50 +75,64 @@ export function rebuildTranslationBudgetPools(db: DatabaseSync): void {
             MAX(total.output_tokens - COALESCE(pocket.output_tokens, 0) -
                 COALESCE(custom.output_tokens, 0), 0),
             MAX(total.requests - COALESCE(pocket.requests, 0) -
-                COALESCE(custom.requests, 0), 0)
+                COALESCE(custom.requests, 0), 0),
+            MAX(total.input_cost_usd - COALESCE(pocket.input_cost_usd, 0) -
+                COALESCE(custom.input_cost_usd, 0), 0),
+            MAX(total.output_cost_usd - COALESCE(pocket.output_cost_usd, 0) -
+                COALESCE(custom.output_cost_usd, 0), 0)
         FROM scoped_usage AS total
         LEFT JOIN pocket ON pocket.date = total.date
         LEFT JOIN custom ON custom.date = total.date
         WHERE total.scope = 'global' AND total.scope_id = '';
 
         INSERT INTO rolling_budget_usage (
-            pool_id, bucket_start, input_tokens, output_tokens, requests
+            pool_id, bucket_start, input_tokens, output_tokens, requests,
+            input_cost_usd, output_cost_usd
         )
         SELECT
-            'pocket:shared', bucket_start, SUM(input_tokens), SUM(output_tokens), SUM(requests)
+            'pocket:shared', bucket_start, SUM(input_tokens), SUM(output_tokens), SUM(requests),
+            SUM(input_cost_usd), SUM(output_cost_usd)
         FROM rolling_usage
         WHERE scope = 'user'
         GROUP BY bucket_start;
 
         INSERT INTO rolling_budget_usage (
-            pool_id, bucket_start, input_tokens, output_tokens, requests
+            pool_id, bucket_start, input_tokens, output_tokens, requests,
+            input_cost_usd, output_cost_usd
         )
         SELECT
             'guild:' || rolling_usage.scope_id,
             bucket_start,
             input_tokens,
             output_tokens,
-            requests
+            requests,
+            input_cost_usd,
+            output_cost_usd
         FROM rolling_usage
         JOIN guild_budgets ON guild_budgets.guild_id = rolling_usage.scope_id
         WHERE scope = 'guild';
 
         WITH pocket AS (
             SELECT bucket_start, SUM(input_tokens) AS input_tokens,
-                   SUM(output_tokens) AS output_tokens, SUM(requests) AS requests
+                   SUM(output_tokens) AS output_tokens, SUM(requests) AS requests,
+                   SUM(input_cost_usd) AS input_cost_usd,
+                   SUM(output_cost_usd) AS output_cost_usd
             FROM rolling_usage
             WHERE scope = 'user'
             GROUP BY bucket_start
         ), custom AS (
             SELECT bucket_start, SUM(input_tokens) AS input_tokens,
-                   SUM(output_tokens) AS output_tokens, SUM(requests) AS requests
+                   SUM(output_tokens) AS output_tokens, SUM(requests) AS requests,
+                   SUM(input_cost_usd) AS input_cost_usd,
+                   SUM(output_cost_usd) AS output_cost_usd
             FROM rolling_usage
             JOIN guild_budgets ON guild_budgets.guild_id = rolling_usage.scope_id
             WHERE scope = 'guild'
             GROUP BY bucket_start
         )
         INSERT INTO rolling_budget_usage (
-            pool_id, bucket_start, input_tokens, output_tokens, requests
+            pool_id, bucket_start, input_tokens, output_tokens, requests,
+            input_cost_usd, output_cost_usd
         )
         SELECT
             'guild:shared',
@@ -113,12 +142,56 @@ export function rebuildTranslationBudgetPools(db: DatabaseSync): void {
             MAX(total.output_tokens - COALESCE(pocket.output_tokens, 0) -
                 COALESCE(custom.output_tokens, 0), 0),
             MAX(total.requests - COALESCE(pocket.requests, 0) -
-                COALESCE(custom.requests, 0), 0)
+                COALESCE(custom.requests, 0), 0),
+            MAX(total.input_cost_usd - COALESCE(pocket.input_cost_usd, 0) -
+                COALESCE(custom.input_cost_usd, 0), 0),
+            MAX(total.output_cost_usd - COALESCE(pocket.output_cost_usd, 0) -
+                COALESCE(custom.output_cost_usd, 0), 0)
         FROM rolling_usage AS total
         LEFT JOIN pocket ON pocket.bucket_start = total.bucket_start
         LEFT JOIN custom ON custom.bucket_start = total.bucket_start
         WHERE total.scope = 'global' AND total.scope_id = '';
     `);
+}
+
+function backfillSettledUsageCosts(db: DatabaseSync): void {
+    for (const table of [
+        'scoped_usage',
+        'rolling_usage',
+        'budget_usage',
+        'rolling_budget_usage',
+    ]) {
+        if (!tableHasColumn(db, table, 'input_cost_usd')) {
+            db.exec(`ALTER TABLE ${table} ADD COLUMN input_cost_usd REAL NOT NULL DEFAULT 0;`);
+        }
+        if (!tableHasColumn(db, table, 'output_cost_usd')) {
+            db.exec(`ALTER TABLE ${table} ADD COLUMN output_cost_usd REAL NOT NULL DEFAULT 0;`);
+        }
+    }
+
+    const readPrice = (key: string): number => {
+        const row = db
+            .prepare('SELECT value_json AS valueJson FROM app_config WHERE key = ?')
+            .get(key) as { valueJson: string } | undefined;
+        if (!row) return 0;
+
+        try {
+            const value = JSON.parse(row.valueJson) as unknown;
+            return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
+        } catch {
+            return 0;
+        }
+    };
+    const inputPrice = readPrice('inputPricePerMillion');
+    const outputPrice = readPrice('outputPricePerMillion');
+
+    for (const table of ['scoped_usage', 'rolling_usage']) {
+        db.prepare(
+            `UPDATE ${table}
+             SET input_cost_usd = input_tokens / 1000000.0 * ?,
+                 output_cost_usd = output_tokens / 1000000.0 * ?`,
+        ).run(inputPrice, outputPrice);
+    }
 }
 
 function tablePrimaryKeyColumns(db: DatabaseSync, table: string): string[] {
@@ -607,6 +680,15 @@ const MIGRATIONS: Migration[] = [
                 FROM app_config
                 WHERE key = 'monthlyBudgetUsd';
             `);
+            backfillSettledUsageCosts(db);
+            rebuildTranslationBudgetPools(db);
+        },
+    },
+    {
+        id: 16,
+        name: 'persist_settled_translation_costs',
+        up(db) {
+            backfillSettledUsageCosts(db);
             rebuildTranslationBudgetPools(db);
         },
     },

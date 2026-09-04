@@ -324,7 +324,7 @@ describe('createSqliteDatabase', () => {
                 .prepare('SELECT id FROM schema_migrations ORDER BY id ASC')
                 .all() as Array<{ id: number }>;
             expect(migrationIds.map((row) => row.id)).toEqual([
-                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
             ]);
         } finally {
             db.close();
@@ -460,6 +460,103 @@ describe('createSqliteDatabase', () => {
                     )
                     .get(),
             ).toEqual({ value: '7' });
+        } finally {
+            db.close();
+        }
+    });
+
+    it('should backfill settled costs for databases already on budget-pool migration 15', async () => {
+        const { DatabaseSync } = await import('node:sqlite');
+        const { runMigrations } = await import('../src/persistence/sqlite-database.js');
+        const db = new DatabaseSync(':memory:');
+
+        try {
+            db.exec(`
+                CREATE TABLE schema_migrations (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    applied_at TEXT NOT NULL
+                );
+                WITH RECURSIVE ids(id) AS (SELECT 1 UNION ALL SELECT id + 1 FROM ids WHERE id < 15)
+                INSERT INTO schema_migrations (id, name, applied_at)
+                SELECT id, 'existing', '2026-01-01' FROM ids;
+
+                CREATE TABLE app_config (key TEXT PRIMARY KEY, value_json TEXT NOT NULL);
+                INSERT INTO app_config VALUES
+                    ('inputPricePerMillion', '2'),
+                    ('outputPricePerMillion', '4');
+                CREATE TABLE guild_budgets (
+                    guild_id TEXT PRIMARY KEY,
+                    monthly_budget_usd REAL NOT NULL
+                );
+                CREATE TABLE scoped_usage (
+                    scope TEXT NOT NULL,
+                    scope_id TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    input_tokens INTEGER NOT NULL,
+                    output_tokens INTEGER NOT NULL,
+                    requests INTEGER NOT NULL,
+                    PRIMARY KEY (scope, scope_id, date)
+                );
+                INSERT INTO scoped_usage VALUES
+                    ('global', '', '2026-03-27', 500000, 250000, 1),
+                    ('guild', 'shared', '2026-03-27', 500000, 250000, 1);
+                CREATE TABLE rolling_usage (
+                    scope TEXT NOT NULL,
+                    scope_id TEXT NOT NULL,
+                    bucket_start TEXT NOT NULL,
+                    input_tokens INTEGER NOT NULL,
+                    output_tokens INTEGER NOT NULL,
+                    requests INTEGER NOT NULL,
+                    PRIMARY KEY (scope, scope_id, bucket_start)
+                );
+                INSERT INTO rolling_usage VALUES
+                    ('global', '', '2026-03-27T10:00:00.000Z', 500000, 250000, 1),
+                    ('guild', 'shared', '2026-03-27T10:00:00.000Z', 500000, 250000, 1);
+                CREATE TABLE budget_usage (
+                    pool_id TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    input_tokens INTEGER NOT NULL,
+                    output_tokens INTEGER NOT NULL,
+                    requests INTEGER NOT NULL,
+                    PRIMARY KEY (pool_id, date)
+                );
+                CREATE TABLE rolling_budget_usage (
+                    pool_id TEXT NOT NULL,
+                    bucket_start TEXT NOT NULL,
+                    input_tokens INTEGER NOT NULL,
+                    output_tokens INTEGER NOT NULL,
+                    requests INTEGER NOT NULL,
+                    PRIMARY KEY (pool_id, bucket_start)
+                );
+            `);
+
+            runMigrations(db);
+
+            expect(
+                db
+                    .prepare(
+                        `SELECT input_cost_usd AS inputCost, output_cost_usd AS outputCost
+                         FROM scoped_usage WHERE scope = 'global'`,
+                    )
+                    .get(),
+            ).toEqual({ inputCost: 1, outputCost: 1 });
+            expect(
+                db
+                    .prepare(
+                        `SELECT input_cost_usd AS inputCost, output_cost_usd AS outputCost
+                         FROM budget_usage WHERE pool_id = 'guild:shared'`,
+                    )
+                    .get(),
+            ).toEqual({ inputCost: 1, outputCost: 1 });
+            expect(
+                db
+                    .prepare(
+                        `SELECT input_cost_usd AS inputCost, output_cost_usd AS outputCost
+                         FROM rolling_budget_usage WHERE pool_id = 'guild:shared'`,
+                    )
+                    .get(),
+            ).toEqual({ inputCost: 1, outputCost: 1 });
         } finally {
             db.close();
         }

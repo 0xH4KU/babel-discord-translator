@@ -16,11 +16,14 @@ describe('store-data-normalizer clone helpers', () => {
             inputTokens: 10,
             outputTokens: 5,
             requests: 1,
+            inputCost: 0.01,
+            outputCost: 0.02,
         };
         const tokenCopy = cloneTokenUsage(tokenUsage)!;
         tokenCopy.inputTokens = 999;
 
         expect(tokenUsage.inputTokens).toBe(10);
+        expect(tokenCopy).toMatchObject({ inputCost: 0.01, outputCost: 0.02 });
 
         const history = [tokenUsage];
         const historyCopy = cloneUsageHistory(history);

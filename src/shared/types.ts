@@ -137,6 +137,8 @@ export interface TokenUsage {
     inputTokens: number;
     outputTokens: number;
     requests: number;
+    inputCost?: number;
+    outputCost?: number;
 }
 
 export interface UsageHistoryEntry {
@@ -144,6 +146,8 @@ export interface UsageHistoryEntry {
     inputTokens: number;
     outputTokens: number;
     requests: number;
+    inputCost?: number;
+    outputCost?: number;
 }
 
 // --- Translation ---

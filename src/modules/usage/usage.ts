@@ -123,7 +123,10 @@ export class UsageTracker {
             settle: (inputTokens, outputTokens) => {
                 if (!active) return;
                 release();
-                this.recordInPool(inputTokens, outputTokens, scope, poolId);
+                this.recordInPool(inputTokens, outputTokens, scope, poolId, {
+                    inputPricePerMillion: runtimeConfig.inputPricePerMillion,
+                    outputPricePerMillion: runtimeConfig.outputPricePerMillion,
+                });
             },
             release,
         };
@@ -134,11 +137,18 @@ export class UsageTracker {
         outputTokens: number,
         scope: UsageScope,
         budgetPoolId: TranslationBudgetPoolId,
+        prices: Pick<RuntimeConfig, 'inputPricePerMillion' | 'outputPricePerMillion'>,
     ): void {
-        store.recordUsage(new Date().toISOString(), inputTokens, outputTokens, {
-            ...scope,
-            budgetPoolId,
-        });
+        store.recordUsage(
+            new Date().toISOString(),
+            inputTokens,
+            outputTokens,
+            {
+                ...scope,
+                budgetPoolId,
+            },
+            prices,
+        );
     }
 
     private getBudgetPlan(scope: UsageScope, runtimeConfig: RuntimeConfig, now: Date): BudgetPlan {
@@ -474,10 +484,10 @@ function withHistoryCost(
     history: UsageHistoryEntry[],
     runtimeConfig: RuntimeConfig,
 ): UsageHistoryDay[] {
-    return history.map((day) => ({
+    return history.map(({ inputCost, outputCost, ...day }) => ({
         ...day,
         totalTokens: day.inputTokens + day.outputTokens,
-        cost: calculateCost(day, runtimeConfig),
+        cost: calculateCost({ ...day, inputCost, outputCost }, runtimeConfig),
     }));
 }
 

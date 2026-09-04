@@ -66,6 +66,8 @@ describe('ConfigStore', () => {
             inputTokens: 100,
             outputTokens: 50,
             requests: 1,
+            inputCost: 0,
+            outputCost: 0,
         });
         second.close();
     });
@@ -346,6 +348,8 @@ describe('ConfigStore', () => {
             inputTokens: 100,
             outputTokens: 50,
             requests: 1,
+            inputCost: 0,
+            outputCost: 0,
         });
         expect(store.getUsageHistory('guild', '2026-03-27', ['guild-1'])).toEqual([
             {
@@ -353,6 +357,8 @@ describe('ConfigStore', () => {
                 inputTokens: 80,
                 outputTokens: 40,
                 requests: 1,
+                inputCost: 0,
+                outputCost: 0,
             },
         ]);
         expect(store.getUsage('guild', 'guild-2', '2026-03-27')).toBeNull();
@@ -362,6 +368,8 @@ describe('ConfigStore', () => {
                 inputTokens: 100,
                 outputTokens: 50,
                 requests: 1,
+                inputCost: 0,
+                outputCost: 0,
             },
         });
         expect(store.getUsageBetween('guild', 'guild-1', '2026-03-01', '2026-04-01')).toEqual({
@@ -369,6 +377,8 @@ describe('ConfigStore', () => {
             inputTokens: 180,
             outputTokens: 90,
             requests: 2,
+            inputCost: 0,
+            outputCost: 0,
         });
         expect(
             store.getUsageForIdsBetween(
@@ -383,8 +393,40 @@ describe('ConfigStore', () => {
                 inputTokens: 180,
                 outputTokens: 90,
                 requests: 2,
+                inputCost: 0,
+                outputCost: 0,
             },
         });
+        store.close();
+    });
+
+    it('should preserve settled costs when token prices change', async () => {
+        const { ConfigStore } = await importStoreModule();
+        const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+        store.updateConfigValues({ inputPricePerMillion: 1, outputPricePerMillion: 2 });
+
+        store.recordUsage('2026-03-27T10:01:00.000Z', 1_000_000, 500_000, {
+            guildId: 'guild-1',
+        });
+        store.updateConfigValues({ inputPricePerMillion: 10, outputPricePerMillion: 20 });
+        store.recordUsage('2026-03-27T10:01:30.000Z', 1_000_000, 500_000, {
+            guildId: 'guild-1',
+        });
+        store.updateConfigValues({ inputPricePerMillion: 100, outputPricePerMillion: 200 });
+
+        expect(store.getUsage('guild', 'guild-1', '2026-03-27')).toMatchObject({
+            inputTokens: 2_000_000,
+            outputTokens: 1_000_000,
+            inputCost: 11,
+            outputCost: 11,
+        });
+        expect(
+            store.getRollingBudgetPoolUsageBetween(
+                'guild:shared',
+                '2026-03-27T10:00:00.000Z',
+                '2026-03-27T11:00:00.000Z',
+            ),
+        ).toMatchObject({ inputCost: 11, outputCost: 11 });
         store.close();
     });
 
@@ -417,6 +459,8 @@ describe('ConfigStore', () => {
             inputTokens: 120,
             outputTokens: 60,
             requests: 2,
+            inputCost: 0,
+            outputCost: 0,
         });
         expect(
             store.getGuildUserRollingUsage(
@@ -522,24 +566,32 @@ describe('ConfigStore', () => {
             inputTokens: 130,
             outputTokens: 65,
             requests: 2,
+            inputCost: 0,
+            outputCost: 0,
         });
         expect(store.getSharedGlobalUsageBetween('2026-03-01', '2026-04-01')).toEqual({
             date: '2026-03-01',
             inputTokens: 130,
             outputTokens: 65,
             requests: 2,
+            inputCost: 0,
+            outputCost: 0,
         });
         expect(store.getBudgetPoolUsage('pocket:shared', '2026-03-27')).toEqual({
             date: '2026-03-27',
             inputTokens: 25,
             outputTokens: 10,
             requests: 1,
+            inputCost: 0,
+            outputCost: 0,
         });
         expect(store.getBudgetPoolUsage('guild:custom', '2026-03-27')).toEqual({
             date: '2026-03-27',
             inputTokens: 40,
             outputTokens: 20,
             requests: 1,
+            inputCost: 0,
+            outputCost: 0,
         });
         expect(
             store.getSharedRollingUsageBetween(
@@ -551,6 +603,8 @@ describe('ConfigStore', () => {
             inputTokens: 130,
             outputTokens: 65,
             requests: 2,
+            inputCost: 0,
+            outputCost: 0,
         });
 
         store.clearGuildBudget('custom');
@@ -584,6 +638,8 @@ describe('ConfigStore', () => {
             inputTokens: 100,
             outputTokens: 50,
             requests: 1,
+            inputCost: 0,
+            outputCost: 0,
         });
         expect(store.getUsageHistory('user', '2026-03-27', ['user-1'])).toEqual([
             {
@@ -591,6 +647,8 @@ describe('ConfigStore', () => {
                 inputTokens: 80,
                 outputTokens: 40,
                 requests: 1,
+                inputCost: 0,
+                outputCost: 0,
             },
         ]);
         expect(store.listUserBudgets()).toEqual({ 'user-1': { monthlyBudgetUsd: 1.5 } });
@@ -600,6 +658,8 @@ describe('ConfigStore', () => {
                 inputTokens: 100,
                 outputTokens: 50,
                 requests: 1,
+                inputCost: 0,
+                outputCost: 0,
             },
         });
         expect(store.clearUserBudget('user-1')).toBe(true);

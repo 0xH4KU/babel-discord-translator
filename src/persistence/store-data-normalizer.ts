@@ -73,6 +73,7 @@ function normalizeUsageEntry(
         inputTokens: normalizeNumber(entry?.inputTokens),
         outputTokens: normalizeNumber(entry?.outputTokens),
         requests: normalizeNumber(entry?.requests),
+        ...normalizeSettledCosts(entry),
     };
 }
 
@@ -82,6 +83,18 @@ function normalizeTokenUsageEntry(entry: Partial<TokenUsage> | null | undefined)
         inputTokens: normalizeNumber(entry?.inputTokens),
         outputTokens: normalizeNumber(entry?.outputTokens),
         requests: normalizeNumber(entry?.requests),
+        ...normalizeSettledCosts(entry),
+    };
+}
+
+function normalizeSettledCosts(entry: Partial<TokenUsage> | null | undefined) {
+    return {
+        ...(typeof entry?.inputCost === 'number' && Number.isFinite(entry.inputCost)
+            ? { inputCost: entry.inputCost }
+            : {}),
+        ...(typeof entry?.outputCost === 'number' && Number.isFinite(entry.outputCost)
+            ? { outputCost: entry.outputCost }
+            : {}),
     };
 }
 

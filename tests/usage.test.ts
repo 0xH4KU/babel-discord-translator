@@ -603,6 +603,8 @@ describe('UsageTracker', () => {
 
     it('should settle into the pool selected when the request was admitted', () => {
         mockData.guildBudgets = { guild: { monthlyBudgetUsd: 1 } };
+        mockData.inputPricePerMillion = 1;
+        mockData.outputPricePerMillion = 2;
 
         const reservation = usage.tryReserveBudget({
             guildId: 'guild',
@@ -611,6 +613,8 @@ describe('UsageTracker', () => {
             estimatedOutputTokens: 50,
         });
         mockData.guildBudgets = {};
+        mockData.inputPricePerMillion = 10;
+        mockData.outputPricePerMillion = 20;
         reservation!.settle(80, 40);
 
         expect(store.recordUsage).toHaveBeenLastCalledWith(
@@ -618,6 +622,7 @@ describe('UsageTracker', () => {
             80,
             40,
             expect.objectContaining({ budgetPoolId: 'guild:guild' }),
+            { inputPricePerMillion: 1, outputPricePerMillion: 2 },
         );
     });
 
@@ -779,6 +784,26 @@ describe('UsageTracker', () => {
         expect(stats).toHaveProperty('monthlyBudget', 5.0);
         expect(stats).toHaveProperty('budgetUsedPercent');
         expect(stats).toHaveProperty('budgetExceeded');
+    });
+
+    it('should prefer settled costs over current prices', () => {
+        mockData.monthlyBudgetUsd = 5;
+        mockData.inputPricePerMillion = 100;
+        mockData.outputPricePerMillion = 200;
+        vi.mocked(store.getBudgetPoolUsageBetween).mockReturnValueOnce({
+            date: new Date().toISOString().slice(0, 7),
+            inputTokens: 1_000_000,
+            outputTokens: 500_000,
+            requests: 1,
+            inputCost: 1,
+            outputCost: 1,
+        });
+
+        expect(usage.getStats()).toMatchObject({
+            inputCost: 1,
+            outputCost: 1,
+            totalCost: 2,
+        });
     });
 
     it('should aggregate the current UTC month without charging prior months', () => {

@@ -40,6 +40,11 @@ export type TranslationBudgetPoolId =
     | typeof POCKET_SHARED_BUDGET_POOL
     | `guild:${string}`;
 
+export interface UsagePrices {
+    inputPricePerMillion: number;
+    outputPricePerMillion: number;
+}
+
 export interface VisionQuotaScope {
     scope: VisionScopeKind;
     scopeId: string;
@@ -468,7 +473,8 @@ export class ConfigStore {
     getUsage(scope: UsageScopeKind, scopeId: string, date: string): TokenUsage | null {
         const row = this.stmt(
             `
-            SELECT date, input_tokens as inputTokens, output_tokens as outputTokens, requests
+            SELECT date, input_tokens as inputTokens, output_tokens as outputTokens, requests,
+                   input_cost_usd as inputCost, output_cost_usd as outputCost
             FROM scoped_usage
             WHERE scope = ? AND scope_id = ? AND date = ?
         `,
@@ -488,7 +494,8 @@ export class ConfigStore {
         const rows = this.stmt(
             `
             SELECT scope_id as scopeId, date,
-                   input_tokens as inputTokens, output_tokens as outputTokens, requests
+                   input_tokens as inputTokens, output_tokens as outputTokens, requests,
+                   input_cost_usd as inputCost, output_cost_usd as outputCost
             FROM scoped_usage
             WHERE scope = ? AND date = ? AND scope_id IN (${placeholders})
             ORDER BY scope_id ASC
@@ -508,7 +515,9 @@ export class ConfigStore {
             `
             SELECT COALESCE(SUM(input_tokens), 0) as inputTokens,
                    COALESCE(SUM(output_tokens), 0) as outputTokens,
-                   COALESCE(SUM(requests), 0) as requests
+                   COALESCE(SUM(requests), 0) as requests,
+                   COALESCE(SUM(input_cost_usd), 0) as inputCost,
+                   COALESCE(SUM(output_cost_usd), 0) as outputCost
             FROM scoped_usage
             WHERE scope = ? AND scope_id = ? AND date >= ? AND date < ?
         `,
@@ -531,7 +540,9 @@ export class ConfigStore {
             SELECT scope_id as scopeId,
                    SUM(input_tokens) as inputTokens,
                    SUM(output_tokens) as outputTokens,
-                   SUM(requests) as requests
+                   SUM(requests) as requests,
+                   SUM(input_cost_usd) as inputCost,
+                   SUM(output_cost_usd) as outputCost
             FROM scoped_usage
             WHERE scope = ? AND date >= ? AND date < ?
               AND scope_id IN (${placeholders})
@@ -557,7 +568,9 @@ export class ConfigStore {
             `
             SELECT COALESCE(SUM(input_tokens), 0) as inputTokens,
                    COALESCE(SUM(output_tokens), 0) as outputTokens,
-                   COALESCE(SUM(requests), 0) as requests
+                   COALESCE(SUM(requests), 0) as requests,
+                   COALESCE(SUM(input_cost_usd), 0) as inputCost,
+                   COALESCE(SUM(output_cost_usd), 0) as outputCost
             FROM rolling_usage
             WHERE scope = ? AND scope_id = ?
               AND bucket_start >= ? AND bucket_start < ?
@@ -602,7 +615,9 @@ export class ConfigStore {
             SELECT date,
                    SUM(input_tokens) as inputTokens,
                    SUM(output_tokens) as outputTokens,
-                   SUM(requests) as requests
+                   SUM(requests) as requests,
+                   SUM(input_cost_usd) as inputCost,
+                   SUM(output_cost_usd) as outputCost
             FROM scoped_usage
             WHERE scope = ? AND date < ? ${idFilter}
             GROUP BY date
@@ -631,7 +646,9 @@ export class ConfigStore {
             `
             SELECT COALESCE(SUM(input_tokens), 0) AS inputTokens,
                    COALESCE(SUM(output_tokens), 0) AS outputTokens,
-                   COALESCE(SUM(requests), 0) AS requests
+                   COALESCE(SUM(requests), 0) AS requests,
+                   COALESCE(SUM(input_cost_usd), 0) AS inputCost,
+                   COALESCE(SUM(output_cost_usd), 0) AS outputCost
             FROM budget_usage
             WHERE pool_id = ? AND date = ?
         `,
@@ -649,7 +666,9 @@ export class ConfigStore {
             `
             SELECT COALESCE(SUM(input_tokens), 0) AS inputTokens,
                    COALESCE(SUM(output_tokens), 0) AS outputTokens,
-                   COALESCE(SUM(requests), 0) AS requests
+                   COALESCE(SUM(requests), 0) AS requests,
+                   COALESCE(SUM(input_cost_usd), 0) AS inputCost,
+                   COALESCE(SUM(output_cost_usd), 0) AS outputCost
             FROM budget_usage
             WHERE pool_id = ? AND date >= ? AND date < ?
         `,
@@ -671,7 +690,9 @@ export class ConfigStore {
             SELECT pool_id AS poolId,
                    SUM(input_tokens) AS inputTokens,
                    SUM(output_tokens) AS outputTokens,
-                   SUM(requests) AS requests
+                   SUM(requests) AS requests,
+                   SUM(input_cost_usd) AS inputCost,
+                   SUM(output_cost_usd) AS outputCost
             FROM budget_usage
             WHERE date >= ? AND date < ? AND pool_id IN (${placeholders})
             GROUP BY pool_id
@@ -695,7 +716,9 @@ export class ConfigStore {
             `
             SELECT COALESCE(SUM(input_tokens), 0) AS inputTokens,
                    COALESCE(SUM(output_tokens), 0) AS outputTokens,
-                   COALESCE(SUM(requests), 0) AS requests
+                   COALESCE(SUM(requests), 0) AS requests,
+                   COALESCE(SUM(input_cost_usd), 0) AS inputCost,
+                   COALESCE(SUM(output_cost_usd), 0) AS outputCost
             FROM rolling_budget_usage
             WHERE pool_id = ? AND bucket_start >= ? AND bucket_start < ?
         `,
@@ -714,8 +737,17 @@ export class ConfigStore {
             actorUserId?: string | null;
             budgetPoolId?: TranslationBudgetPoolId;
         } = {},
+        prices: UsagePrices = {
+            inputPricePerMillion: this.getConfigValue('inputPricePerMillion'),
+            outputPricePerMillion: this.getConfigValue('outputPricePerMillion'),
+        },
     ): void {
         const { date, bucketStart, retentionStart } = rollingUsageTimes(timestamp);
+        const recordedInputTokens = inputTokens || 0;
+        const recordedOutputTokens = outputTokens || 0;
+        const inputCost = (recordedInputTokens / 1_000_000) * (prices.inputPricePerMillion || 0);
+        const outputCost =
+            (recordedOutputTokens / 1_000_000) * (prices.outputPricePerMillion || 0);
         const budgetPoolId =
             scope.budgetPoolId ??
             (scope.userId
@@ -734,41 +766,65 @@ export class ConfigStore {
         inTransaction(this.db, () => {
             const upsertDaily = this.stmt(`
                 INSERT INTO scoped_usage (
-                    scope, scope_id, date, input_tokens, output_tokens, requests
+                    scope, scope_id, date, input_tokens, output_tokens, requests,
+                    input_cost_usd, output_cost_usd
                 )
-                VALUES (?, ?, ?, ?, ?, 1)
+                VALUES (?, ?, ?, ?, ?, 1, ?, ?)
                 ON CONFLICT(scope, scope_id, date) DO UPDATE SET
                     input_tokens = input_tokens + excluded.input_tokens,
                     output_tokens = output_tokens + excluded.output_tokens,
-                    requests = requests + 1
+                    requests = requests + 1,
+                    input_cost_usd = input_cost_usd + excluded.input_cost_usd,
+                    output_cost_usd = output_cost_usd + excluded.output_cost_usd
             `);
 
             for (const [usageScope, scopeId] of rows) {
-                upsertDaily.run(usageScope, scopeId, date, inputTokens || 0, outputTokens || 0);
+                upsertDaily.run(
+                    usageScope,
+                    scopeId,
+                    date,
+                    recordedInputTokens,
+                    recordedOutputTokens,
+                    inputCost,
+                    outputCost,
+                );
             }
 
             this.stmt(
                 `
                 INSERT INTO budget_usage (
-                    pool_id, date, input_tokens, output_tokens, requests
+                    pool_id, date, input_tokens, output_tokens, requests,
+                    input_cost_usd, output_cost_usd
                 )
-                VALUES (?, ?, ?, ?, 1)
+                VALUES (?, ?, ?, ?, 1, ?, ?)
                 ON CONFLICT(pool_id, date) DO UPDATE SET
                     input_tokens = input_tokens + excluded.input_tokens,
                     output_tokens = output_tokens + excluded.output_tokens,
-                    requests = requests + 1
+                    requests = requests + 1,
+                    input_cost_usd = input_cost_usd + excluded.input_cost_usd,
+                    output_cost_usd = output_cost_usd + excluded.output_cost_usd
             `,
-            ).run(budgetPoolId, date, inputTokens || 0, outputTokens || 0);
+            ).run(
+                budgetPoolId,
+                date,
+                recordedInputTokens,
+                recordedOutputTokens,
+                inputCost,
+                outputCost,
+            );
 
             const upsertRolling = this.stmt(`
                 INSERT INTO rolling_usage (
-                    scope, scope_id, bucket_start, input_tokens, output_tokens, requests
+                    scope, scope_id, bucket_start, input_tokens, output_tokens, requests,
+                    input_cost_usd, output_cost_usd
                 )
-                VALUES (?, ?, ?, ?, ?, 1)
+                VALUES (?, ?, ?, ?, ?, 1, ?, ?)
                 ON CONFLICT(scope, scope_id, bucket_start) DO UPDATE SET
                     input_tokens = input_tokens + excluded.input_tokens,
                     output_tokens = output_tokens + excluded.output_tokens,
-                    requests = requests + 1
+                    requests = requests + 1,
+                    input_cost_usd = input_cost_usd + excluded.input_cost_usd,
+                    output_cost_usd = output_cost_usd + excluded.output_cost_usd
             `);
 
             for (const [usageScope, scopeId] of rollingRows) {
@@ -776,23 +832,35 @@ export class ConfigStore {
                     usageScope,
                     scopeId,
                     bucketStart,
-                    inputTokens || 0,
-                    outputTokens || 0,
+                    recordedInputTokens,
+                    recordedOutputTokens,
+                    inputCost,
+                    outputCost,
                 );
             }
 
             this.stmt(
                 `
                 INSERT INTO rolling_budget_usage (
-                    pool_id, bucket_start, input_tokens, output_tokens, requests
+                    pool_id, bucket_start, input_tokens, output_tokens, requests,
+                    input_cost_usd, output_cost_usd
                 )
-                VALUES (?, ?, ?, ?, 1)
+                VALUES (?, ?, ?, ?, 1, ?, ?)
                 ON CONFLICT(pool_id, bucket_start) DO UPDATE SET
                     input_tokens = input_tokens + excluded.input_tokens,
                     output_tokens = output_tokens + excluded.output_tokens,
-                    requests = requests + 1
+                    requests = requests + 1,
+                    input_cost_usd = input_cost_usd + excluded.input_cost_usd,
+                    output_cost_usd = output_cost_usd + excluded.output_cost_usd
             `,
-            ).run(budgetPoolId, bucketStart, inputTokens || 0, outputTokens || 0);
+            ).run(
+                budgetPoolId,
+                bucketStart,
+                recordedInputTokens,
+                recordedOutputTokens,
+                inputCost,
+                outputCost,
+            );
 
             this.stmt('DELETE FROM rolling_usage WHERE bucket_start < ?').run(retentionStart);
             this.stmt('DELETE FROM rolling_budget_usage WHERE bucket_start < ?').run(
@@ -922,7 +990,8 @@ export class ConfigStore {
         const rows = this.stmt(
             `
             SELECT scope, scope_id as scopeId, date,
-                   input_tokens as inputTokens, output_tokens as outputTokens, requests
+                   input_tokens as inputTokens, output_tokens as outputTokens, requests,
+                   input_cost_usd as inputCost, output_cost_usd as outputCost
             FROM scoped_usage
             ORDER BY scope ASC, scope_id ASC, date ASC
         `,
@@ -1077,12 +1146,16 @@ export class ConfigStore {
     > {
         const rows = this.listUsageRows();
         const split = (entries: ScopedUsageRow[]) => {
-            const usage = entries.map(({ date, inputTokens, outputTokens, requests }) => ({
-                date,
-                inputTokens,
-                outputTokens,
-                requests,
-            }));
+            const usage = entries.map(
+                ({ date, inputTokens, outputTokens, requests, inputCost, outputCost }) => ({
+                    date,
+                    inputTokens,
+                    outputTokens,
+                    requests,
+                    inputCost,
+                    outputCost,
+                }),
+            );
             return { current: usage.at(-1) ?? null, history: usage.slice(0, -1) };
         };
         const scoped = (scope: Exclude<UsageScopeKind, 'global'>) => {
@@ -1122,10 +1195,13 @@ export class ConfigStore {
         this.db.exec('DELETE FROM rolling_usage');
         const insert = this.stmt(`
             INSERT OR REPLACE INTO scoped_usage (
-                scope, scope_id, date, input_tokens, output_tokens, requests
+                scope, scope_id, date, input_tokens, output_tokens, requests,
+                input_cost_usd, output_cost_usd
             )
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
+        const inputPrice = this.getConfigValue('inputPricePerMillion');
+        const outputPrice = this.getConfigValue('outputPricePerMillion');
         const write = (scope: UsageScopeKind, scopeId: string, entry: TokenUsage) => {
             insert.run(
                 scope,
@@ -1134,6 +1210,8 @@ export class ConfigStore {
                 entry.inputTokens,
                 entry.outputTokens,
                 entry.requests,
+                entry.inputCost ?? (entry.inputTokens / 1_000_000) * inputPrice,
+                entry.outputCost ?? (entry.outputTokens / 1_000_000) * outputPrice,
             );
         };
 
