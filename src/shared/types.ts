@@ -29,11 +29,11 @@ export interface TranslationPrompt {
 // --- Store ---
 
 export interface GuildBudgetConfig {
-    dailyBudgetUsd: number;
+    monthlyBudgetUsd: number;
 }
 
 export interface UserBudgetConfig {
-    dailyBudgetUsd: number;
+    monthlyBudgetUsd: number;
 }
 
 export interface TranslationScope {
@@ -93,9 +93,9 @@ export interface StoreData {
     setupComplete: boolean;
     inputPricePerMillion: number;
     outputPricePerMillion: number;
-    dailyBudgetUsd: number;
+    monthlyBudgetUsd: number;
     visionMonthlyImageLimit: number;
-    defaultUserDailyBudgetUsd: number;
+    defaultUserMonthlyBudgetUsd: number;
     tokenUsage: TokenUsage | null;
     usageHistory: UsageHistoryEntry[];
     translationPrompt: string;
@@ -282,7 +282,7 @@ export interface UsageCost {
 }
 
 export interface UsageStats extends UsageCost {
-    dailyBudget: number;
+    monthlyBudget: number;
     budgetUsedPercent: number;
     budgetExceeded: boolean;
 }

@@ -108,7 +108,7 @@ describe('dashboard static assets', () => {
         expect(nodes['prefs-count'].textContent).toBe('1 shown / 1 total');
     });
 
-    it('renders the overview budget card for Babel Pocket daily budget usage', async () => {
+    it('renders the overview budget card for Babel Pocket monthly budget usage', async () => {
         const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
         const appJs = readFileSync('src/public/js/app.js', 'utf-8');
         const dashboardJs = readFileSync('src/public/js/dashboard.js', 'utf-8');
@@ -195,7 +195,7 @@ describe('dashboard static assets', () => {
                     operations: {},
                     usage: {
                         totalCost: 0.21,
-                        dailyBudget: 1.25,
+                        monthlyBudget: 1.25,
                         inputTokens: 1000,
                         outputTokens: 2000,
                         requests: 89,
@@ -261,7 +261,7 @@ describe('dashboard static assets', () => {
 
         expect(nodes['budget-card'].hidden).toBe(false);
         expect(nodes['budget-card'].style.display).toBe('');
-        expect(nodes['budget-card-label'].textContent).toBe('Daily Budget');
+        expect(nodes['budget-card-label'].textContent).toBe('Monthly Budget');
         expect(nodes['budget-amount'].textContent).toBe('Total: $0.21');
         expect(nodes['stat-saved'].textContent).toBe('0 / 2000 translations · 3 / 250 OCR (60.0%)');
         expect(nodes['guild-budget-overview'].children).toHaveLength(3);
@@ -395,7 +395,7 @@ describe('dashboard static assets', () => {
                 visionLimitsJs,
                 `currentConfig = {
                     allowedGuildIds: ["guild');alert(1)//"],
-                    dailyBudgetUsd: 0
+                    monthlyBudgetUsd: 0
                 };`,
                 `accessAllowedGuildIdsDraft = ["guild');alert(1)//"];`,
                 `allGuilds = [{
@@ -453,7 +453,7 @@ describe('dashboard static assets', () => {
                 `currentConfig = {
                     allowedGuildIds: ['guild-1'],
                     lensEnabledGuildIds: ['guild-1'],
-                    dailyBudgetUsd: 0
+                    monthlyBudgetUsd: 0
                 };`,
                 `accessAllowedGuildIdsDraft = ['guild-1'];`,
                 `accessLensEnabledGuildIdsDraft = ['guild-1'];`,

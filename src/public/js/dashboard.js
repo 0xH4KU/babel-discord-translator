@@ -117,10 +117,10 @@ function renderGuildBudgetOverview(container, guilds) {
     });
 }
 
-function renderDailyBudgetOverview(container, usage, users = []) {
+function renderMonthlyBudgetOverview(container, usage, users = []) {
     container.replaceChildren();
 
-    const budget = Number(usage?.dailyBudget || 0);
+    const budget = Number(usage?.monthlyBudget || 0);
     const totalCost = Number(usage?.totalCost || 0);
     const requests = Number(usage?.requests || 0);
 
@@ -414,7 +414,7 @@ async function loadStats() {
         if (d.usage.inputTokens > 0) parts.push(formatTokens(d.usage.inputTokens) + ' in');
         if (d.usage.outputTokens > 0) parts.push(formatTokens(d.usage.outputTokens) + ' out');
         document.getElementById('stat-cost-breakdown').textContent =
-            parts.join(' / ') || 'No usage today';
+            parts.join(' / ') || 'No usage this month';
 
         // Budget overview — per-server
         const budgetCard = document.getElementById('budget-card');
@@ -422,13 +422,13 @@ async function loadStats() {
         const hasGuildBudgetCapability = hasDashboardCapability('guildAccess');
         const hasUserBudgetCapability = hasDashboardCapability('userAccess');
         const hasAnyBudget = guilds.some((g) => g.budget > 0);
-        const hasDailyBudget = Number(d.usage.dailyBudget || 0) > 0;
+        const hasMonthlyBudget = Number(d.usage.monthlyBudget || 0) > 0;
         const hasBudgetUsage =
             Number(d.usage.totalCost || 0) > 0 || Number(d.usage.requests || 0) > 0;
 
         if (
-            (hasGuildBudgetCapability && (hasAnyBudget || hasDailyBudget)) ||
-            (hasUserBudgetCapability && (hasDailyBudget || hasBudgetUsage))
+            (hasGuildBudgetCapability && (hasAnyBudget || hasMonthlyBudget)) ||
+            (hasUserBudgetCapability && (hasMonthlyBudget || hasBudgetUsage))
         ) {
             budgetCard.style.display = '';
             document.getElementById('budget-amount').textContent =
@@ -438,7 +438,7 @@ async function loadStats() {
             if (hasGuildBudgetCapability && guilds.length > 0) {
                 renderGuildBudgetOverview(container, guilds);
             } else if (hasUserBudgetCapability) {
-                renderDailyBudgetOverview(container, d.usage, d.userBudgets || []);
+                renderMonthlyBudgetOverview(container, d.usage, d.userBudgets || []);
             } else {
                 container.replaceChildren();
             }

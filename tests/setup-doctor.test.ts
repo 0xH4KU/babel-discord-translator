@@ -21,8 +21,8 @@ const baseConfig = {
     setupComplete: true,
     inputPricePerMillion: 0.1,
     outputPricePerMillion: 0.2,
-    dailyBudgetUsd: 1,
-    defaultUserDailyBudgetUsd: 1,
+    monthlyBudgetUsd: 1,
+    defaultUserMonthlyBudgetUsd: 1,
     translationPrompt: '',
     maxInputLength: 2000,
     maxOutputTokens: 1000,
@@ -152,7 +152,7 @@ describe('runSetupDoctor', () => {
             profile: BABEL_GUILD_PROFILE,
             profiles: [BABEL_GUILD_PROFILE],
             client: client(),
-            configStore: configStore({ dailyBudgetUsd: 0 }),
+            configStore: configStore({ monthlyBudgetUsd: 0 }),
             healthCheck: vi.fn(async () => ({ healthy: true, latencyMs: 12 })),
             openAiHealthCheck: vi.fn(async () => ({ healthy: true, latencyMs: 10 })),
             env: { DISCORD_APP_ID: 'app-1', DISCORD_TOKEN: 'token' },
@@ -180,7 +180,7 @@ describe('runSetupDoctor', () => {
             profile: BABEL_GUILD_PROFILE,
             profiles: [BABEL_GUILD_PROFILE],
             client: client(),
-            configStore: configStore({ dailyBudgetUsd: 0 }),
+            configStore: configStore({ monthlyBudgetUsd: 0 }),
             healthCheck: vi.fn(async () => ({ healthy: true, latencyMs: 12 })),
             openAiHealthCheck: vi.fn(async () => ({ healthy: true, latencyMs: 10 })),
             env: { DISCORD_APP_ID: 'app-1', DISCORD_TOKEN: 'token' },
@@ -337,8 +337,8 @@ describe('runSetupDoctor', () => {
             client: client(),
             configStore: configStore(),
             budgetStore: {
-                listGuildBudgets: () => ({ 'guild-bad': { dailyBudgetUsd: -1 } }),
-                listUserBudgets: () => ({ 'user-ok': { dailyBudgetUsd: 1 } }),
+                listGuildBudgets: () => ({ 'guild-bad': { monthlyBudgetUsd: -1 } }),
+                listUserBudgets: () => ({ 'user-ok': { monthlyBudgetUsd: 1 } }),
             },
             healthCheck: vi.fn(async () => ({ healthy: true, latencyMs: 12 })),
             openAiHealthCheck: vi.fn(async () => ({ healthy: true, latencyMs: 10 })),
@@ -352,7 +352,7 @@ describe('runSetupDoctor', () => {
             expect.objectContaining({
                 id: 'budget',
                 status: 'fail',
-                detail: expect.stringContaining('guild guild-bad daily budget'),
+                detail: expect.stringContaining('guild guild-bad monthly budget'),
             }),
         );
     });

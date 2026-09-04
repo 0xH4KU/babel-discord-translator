@@ -9,12 +9,33 @@ import type {
     UserLanguagePreferenceEntry,
 } from '../shared/types.js';
 
+type BudgetInput = {
+    monthlyBudgetUsd?: number;
+    dailyBudgetUsd?: number;
+};
+
+export type StoreDataInput = Omit<
+    Partial<StoreData>,
+    'monthlyBudgetUsd' | 'defaultUserMonthlyBudgetUsd' | 'guildBudgets' | 'userBudgets'
+> & {
+    monthlyBudgetUsd?: number;
+    defaultUserMonthlyBudgetUsd?: number;
+    dailyBudgetUsd?: number;
+    defaultUserDailyBudgetUsd?: number;
+    guildBudgets?: Record<string, BudgetInput>;
+    userBudgets?: Record<string, BudgetInput>;
+};
+
 function normalizeNumber(value: unknown, fallback = 0): number {
     return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
 function normalizeString(value: unknown, fallback = ''): string {
     return typeof value === 'string' ? value : fallback;
+}
+
+function normalizeMonthlyBudget(monthly: unknown, daily: unknown): number {
+    return monthly === undefined ? normalizeNumber(daily) * 30 : normalizeNumber(monthly);
 }
 
 const VALID_PROVIDER_MODES: ReadonlySet<string> = new Set([
@@ -30,12 +51,7 @@ function normalizeProviderMode(value: unknown): TranslationProviderMode {
         : 'vertex';
 }
 
-const VALID_MEDIA_RESOLUTIONS: ReadonlySet<string> = new Set([
-    'default',
-    'low',
-    'medium',
-    'high',
-]);
+const VALID_MEDIA_RESOLUTIONS: ReadonlySet<string> = new Set(['default', 'low', 'medium', 'high']);
 
 function normalizeMediaResolution(value: unknown): GeminiMediaResolution {
     return typeof value === 'string' && VALID_MEDIA_RESOLUTIONS.has(value)
@@ -122,23 +138,33 @@ function normalizeUserLanguagePreferenceEntries(
 }
 
 export function cloneGuildBudgets(
-    budgets: Record<string, GuildBudgetConfig> | undefined,
+    budgets: Record<string, BudgetInput> | undefined,
 ): Record<string, GuildBudgetConfig> {
     return Object.fromEntries(
         Object.entries(budgets ?? {}).map(([guildId, budget]) => [
             guildId,
-            { dailyBudgetUsd: normalizeNumber(budget?.dailyBudgetUsd) },
+            {
+                monthlyBudgetUsd: normalizeMonthlyBudget(
+                    budget?.monthlyBudgetUsd,
+                    budget?.dailyBudgetUsd,
+                ),
+            },
         ]),
     );
 }
 
 export function cloneUserBudgets(
-    budgets: Record<string, UserBudgetConfig> | undefined,
+    budgets: Record<string, BudgetInput> | undefined,
 ): Record<string, UserBudgetConfig> {
     return Object.fromEntries(
         Object.entries(budgets ?? {}).map(([userId, budget]) => [
             userId,
-            { dailyBudgetUsd: normalizeNumber(budget?.dailyBudgetUsd) },
+            {
+                monthlyBudgetUsd: normalizeMonthlyBudget(
+                    budget?.monthlyBudgetUsd,
+                    budget?.dailyBudgetUsd,
+                ),
+            },
         ]),
     );
 }
@@ -195,7 +221,7 @@ export function cloneUserUsageHistory(
     );
 }
 
-export function normalizeStoreData(data: Partial<StoreData> | undefined): StoreData {
+export function normalizeStoreData(data: StoreDataInput | undefined): StoreData {
     const source = data ?? {};
 
     return {
@@ -224,9 +250,12 @@ export function normalizeStoreData(data: Partial<StoreData> | undefined): StoreD
         setupComplete: source.setupComplete === true,
         inputPricePerMillion: normalizeNumber(source.inputPricePerMillion),
         outputPricePerMillion: normalizeNumber(source.outputPricePerMillion),
-        dailyBudgetUsd: normalizeNumber(source.dailyBudgetUsd),
+        monthlyBudgetUsd: normalizeMonthlyBudget(source.monthlyBudgetUsd, source.dailyBudgetUsd),
         visionMonthlyImageLimit: normalizeNumber(source.visionMonthlyImageLimit, 900),
-        defaultUserDailyBudgetUsd: normalizeNumber(source.defaultUserDailyBudgetUsd),
+        defaultUserMonthlyBudgetUsd: normalizeMonthlyBudget(
+            source.defaultUserMonthlyBudgetUsd,
+            source.defaultUserDailyBudgetUsd,
+        ),
         tokenUsage: cloneTokenUsage(source.tokenUsage),
         usageHistory: cloneUsageHistory(source.usageHistory),
         translationPrompt: normalizeString(source.translationPrompt),

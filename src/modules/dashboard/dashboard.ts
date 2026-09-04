@@ -106,18 +106,18 @@ function applyScopedBudgetUpdate(
     | { ok: true; budget?: number | null; visionLimit?: number | null }
     | { ok: false; error: string } {
     const body = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
-    const hasBudget = Object.hasOwn(body, 'dailyBudgetUsd');
+    const hasBudget = Object.hasOwn(body, 'monthlyBudgetUsd');
     const hasVisionLimit = Object.hasOwn(body, 'visionMonthlyImageLimit');
     if (!hasBudget && !hasVisionLimit) {
         return { ok: false, error: 'A budget or Vision limit is required' };
     }
 
     const budget =
-        hasBudget && body.dailyBudgetUsd !== null && body.dailyBudgetUsd !== undefined
-            ? parseFloat(String(body.dailyBudgetUsd))
+        hasBudget && body.monthlyBudgetUsd !== null && body.monthlyBudgetUsd !== undefined
+            ? parseFloat(String(body.monthlyBudgetUsd))
             : null;
     if (hasBudget && budget !== null && (isNaN(budget) || budget < 0)) {
-        return { ok: false, error: dashboardMessages.validation.dailyBudgetUsd };
+        return { ok: false, error: dashboardMessages.validation.monthlyBudgetUsd };
     }
 
     const visionLimit = hasVisionLimit ? parseVisionLimit(body.visionMonthlyImageLimit) : null;
@@ -435,12 +435,12 @@ export function createDashboardApp({
         const guildBudgetList = scope.capabilities.guildAccess
             ? scopedClient.guilds.cache.map((guild) => {
                   const guildCfg = guildBudgetConfigs[guild.id];
-                  const hasCustom = Boolean(guildCfg && guildCfg.dailyBudgetUsd !== undefined);
+                  const hasCustom = Boolean(guildCfg && guildCfg.monthlyBudgetUsd !== undefined);
                   const guildStats = guildStatsById[guild.id];
                   const scopedStats = hasCustom ? guildStats : usageStats;
                   const budget = hasCustom
-                      ? (guildCfg?.dailyBudgetUsd ?? 0)
-                      : (scopedStats?.dailyBudget ?? usageStats.dailyBudget);
+                      ? (guildCfg?.monthlyBudgetUsd ?? 0)
+                      : (scopedStats?.monthlyBudget ?? usageStats.monthlyBudget);
                   const totalCost = scopedStats?.totalCost ?? 0;
                   const requests = scopedStats?.requests ?? 0;
                   return {
@@ -482,7 +482,7 @@ export function createDashboardApp({
                   const customBudget = userBudgetConfigs[userId];
                   const userStats = userStatsById[userId]!;
                   const budget =
-                      customBudget?.dailyBudgetUsd ?? runtimeConfig.defaultUserDailyBudgetUsd;
+                      customBudget?.monthlyBudgetUsd ?? runtimeConfig.defaultUserMonthlyBudgetUsd;
                   const totalCost = userStats.totalCost ?? 0;
                   return {
                       id: userId,
@@ -694,10 +694,10 @@ export function createDashboardApp({
             > = {};
 
             for (const [id, guild] of guilds) {
-                const hasCustom = guildBudgets[id]?.dailyBudgetUsd !== undefined;
+                const hasCustom = guildBudgets[id]?.monthlyBudgetUsd !== undefined;
                 result[id] = {
                     name: guild.name,
-                    budget: guildBudgets[id]?.dailyBudgetUsd ?? -1,
+                    budget: guildBudgets[id]?.monthlyBudgetUsd ?? -1,
                     usage: hasCustom ? (guildStatsById[id] ?? usage.getGuildStats(id)) : usageStats,
                     vision: {
                         month: visionMonth,
@@ -744,7 +744,7 @@ export function createDashboardApp({
             for (const userId of userIds) {
                 const customBudget = userBudgets[userId];
                 result[userId] = {
-                    budget: customBudget?.dailyBudgetUsd ?? cfg.defaultUserDailyBudgetUsd,
+                    budget: customBudget?.monthlyBudgetUsd ?? cfg.defaultUserMonthlyBudgetUsd,
                     isCustom: customBudget !== undefined,
                     allowed: allowedUserIds.has(userId),
                     pending: pendingUserIds.has(userId) && !allowedUserIds.has(userId),

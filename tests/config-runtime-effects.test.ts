@@ -104,7 +104,7 @@ describe('applyConfigUpdateEffects', () => {
         expect(resetProviderState).toHaveBeenCalledOnce();
     });
 
-    it('should treat input length and daily budget as read-on-demand settings', () => {
+    it('should treat input length and monthly budget as read-on-demand settings', () => {
         const cache = new TranslationCache(100);
         const cooldown = new CooldownManager(5);
         const runtimeLimiter = new TranslationRuntimeLimiter({
@@ -120,7 +120,7 @@ describe('applyConfigUpdateEffects', () => {
             createConfig(),
             {
                 maxInputLength: 4000,
-                dailyBudgetUsd: 12.5,
+                monthlyBudgetUsd: 12.5,
             },
             { cache, cooldown, runtimeLimiter },
         );

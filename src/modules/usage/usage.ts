@@ -1,5 +1,5 @@
 /**
- * Daily token usage tracker with cost calculation, budget enforcement,
+ * Token usage tracker with monthly cost calculation, budget enforcement,
  * and 30-day history reporting. Supports global, per-guild, and per-user tracking.
  */
 import { configRepository, type RuntimeConfig } from '../config/config-repository.js';
@@ -11,7 +11,6 @@ import type {
     UsageCost,
     UsageStats,
     UsageHistoryDay,
-    TokenUsage,
     UsageHistoryEntry,
 } from '../../shared/types.js';
 
@@ -44,6 +43,12 @@ interface BudgetAdmission {
     cost: UsageCost;
 }
 
+interface UsagePeriod {
+    key: string;
+    start: string;
+    end: string;
+}
+
 export class UsageTracker {
     private readonly pendingCosts = new Map<string, number>();
 
@@ -52,20 +57,30 @@ export class UsageTracker {
         store.recordUsage(today(), inputTokens, outputTokens, scope);
     }
 
-    /** Calculate today's cost for a specific user. */
+    /** Calculate this month's cost for a specific user. */
     private getUserCost(
         userId: string,
         runtimeConfig = configRepository.getRuntimeConfig(),
+        period = currentMonth(),
     ): UsageCost {
-        return currentCost(store.getUsage('user', userId, today()), runtimeConfig);
+        return withCost(
+            store.getUsageBetween('user', userId, period.start, period.end),
+            runtimeConfig.inputPricePerMillion || 0,
+            runtimeConfig.outputPricePerMillion || 0,
+        );
     }
 
-    /** Calculate today's cost for a specific guild. */
+    /** Calculate this month's cost for a specific guild. */
     private getGuildCost(
         guildId: string,
         runtimeConfig = configRepository.getRuntimeConfig(),
+        period = currentMonth(),
     ): UsageCost {
-        return currentCost(store.getUsage('guild', guildId, today()), runtimeConfig);
+        return withCost(
+            store.getUsageBetween('guild', guildId, period.start, period.end),
+            runtimeConfig.inputPricePerMillion || 0,
+            runtimeConfig.outputPricePerMillion || 0,
+        );
     }
 
     tryReserveBudget({
@@ -80,11 +95,13 @@ export class UsageTracker {
             { inputTokens: estimatedInputTokens, outputTokens: estimatedOutputTokens },
             runtimeConfig,
         );
-        const reservationDate = today();
-        const admissions = this.getBudgetAdmissions(scope, runtimeConfig).map((admission) => ({
-            ...admission,
-            key: `${reservationDate}:${admission.key}`,
-        }));
+        const period = currentMonth();
+        const admissions = this.getBudgetAdmissions(scope, runtimeConfig, period).map(
+            (admission) => ({
+                ...admission,
+                key: `${period.key}:${admission.key}`,
+            }),
+        );
 
         if (
             admissions.some(
@@ -125,6 +142,7 @@ export class UsageTracker {
     private getBudgetAdmissions(
         scope: UsageScope,
         runtimeConfig: RuntimeConfig,
+        period: UsagePeriod,
     ): BudgetAdmission[] {
         const decision = resolveBudgetScope(scope, runtimeConfig);
 
@@ -133,12 +151,12 @@ export class UsageTracker {
                 {
                     key: `user:${decision.userId}`,
                     budget: decision.budget,
-                    cost: this.getUserCost(decision.userId, runtimeConfig),
+                    cost: this.getUserCost(decision.userId, runtimeConfig, period),
                 },
                 {
                     key: 'global',
-                    budget: runtimeConfig.dailyBudgetUsd || 0,
-                    cost: this.getSharedGlobalBudgetCost(runtimeConfig),
+                    budget: runtimeConfig.monthlyBudgetUsd || 0,
+                    cost: this.getSharedGlobalBudgetCost(runtimeConfig, period),
                 },
             ];
         }
@@ -148,7 +166,7 @@ export class UsageTracker {
                 {
                     key: `guild:${decision.guildId}`,
                     budget: decision.budget,
-                    cost: this.getGuildCost(decision.guildId, runtimeConfig),
+                    cost: this.getGuildCost(decision.guildId, runtimeConfig, period),
                 },
             ];
         }
@@ -157,15 +175,15 @@ export class UsageTracker {
             {
                 key: 'global',
                 budget: decision.budget,
-                cost: this.getSharedGlobalBudgetCost(runtimeConfig),
+                cost: this.getSharedGlobalBudgetCost(runtimeConfig, period),
             },
         ];
     }
 
     /** Get stats for dashboard display (global). */
     getStats(runtimeConfig = configRepository.getRuntimeConfig()): UsageStats {
-        const cost = this.getSharedGlobalBudgetCost(runtimeConfig);
-        const budget = runtimeConfig.dailyBudgetUsd || 0;
+        const cost = this.getSharedGlobalBudgetCost(runtimeConfig, currentMonth());
+        const budget = runtimeConfig.monthlyBudgetUsd || 0;
 
         return toUsageStats(cost, budget);
     }
@@ -173,9 +191,10 @@ export class UsageTracker {
     /** Get stats for a specific guild. */
     getGuildStats(guildId: string): UsageStats {
         const runtimeConfig = configRepository.getRuntimeConfig();
-        const cost = this.getGuildCost(guildId, runtimeConfig);
+        const cost = this.getGuildCost(guildId, runtimeConfig, currentMonth());
         const budget =
-            store.getGuildBudget(guildId)?.dailyBudgetUsd ?? (runtimeConfig.dailyBudgetUsd || 0);
+            store.getGuildBudget(guildId)?.monthlyBudgetUsd ??
+            (runtimeConfig.monthlyBudgetUsd || 0);
 
         return toUsageStats(cost, budget);
     }
@@ -190,7 +209,7 @@ export class UsageTracker {
             'guild',
             guildIds,
             budgets,
-            runtimeConfig.dailyBudgetUsd || 0,
+            runtimeConfig.monthlyBudgetUsd || 0,
             runtimeConfig,
         );
     }
@@ -205,7 +224,7 @@ export class UsageTracker {
             'user',
             userIds,
             budgets,
-            runtimeConfig.defaultUserDailyBudgetUsd || 0,
+            runtimeConfig.defaultUserMonthlyBudgetUsd || 0,
             runtimeConfig,
         );
     }
@@ -213,22 +232,22 @@ export class UsageTracker {
     private getScopedStatsForIds(
         scope: 'guild' | 'user',
         ids: readonly string[],
-        budgets: Record<string, { dailyBudgetUsd: number }>,
+        budgets: Record<string, { monthlyBudgetUsd: number }>,
         defaultBudget: number,
         runtimeConfig: RuntimeConfig,
     ): Record<string, UsageStats> {
-        const todayValue = today();
-        const scopedUsage = store.getUsageForIds(scope, ids, todayValue);
+        const period = currentMonth();
+        const scopedUsage = store.getUsageForIdsBetween(scope, ids, period.start, period.end);
 
         return Object.fromEntries(
             ids.map((id) => {
-                const usage = scopedUsage[id] ?? createEmptyUsage(todayValue);
+                const usage = scopedUsage[id] ?? createEmptyUsage(period.start);
                 const cost = withCost(
                     usage,
                     runtimeConfig.inputPricePerMillion || 0,
                     runtimeConfig.outputPricePerMillion || 0,
                 );
-                const budget = budgets[id]?.dailyBudgetUsd ?? defaultBudget;
+                const budget = budgets[id]?.monthlyBudgetUsd ?? defaultBudget;
 
                 return [id, toUsageStats(cost, budget)];
             }),
@@ -283,9 +302,12 @@ export class UsageTracker {
         return rows.sort(compareUsageExportRows);
     }
 
-    private getSharedGlobalBudgetCost(runtimeConfig: RuntimeConfig): UsageCost {
+    private getSharedGlobalBudgetCost(
+        runtimeConfig: RuntimeConfig,
+        period = currentMonth(),
+    ): UsageCost {
         return withCost(
-            store.getSharedGlobalUsage(today()),
+            store.getSharedGlobalUsageBetween(period.start, period.end),
             runtimeConfig.inputPricePerMillion || 0,
             runtimeConfig.outputPricePerMillion || 0,
         );
@@ -296,13 +318,12 @@ function today(): string {
     return new Date().toISOString().slice(0, 10);
 }
 
-function currentCost(usage: TokenUsage | null, runtimeConfig: RuntimeConfig): UsageCost {
-    const date = today();
-    return withCost(
-        usage?.date === date ? usage : createEmptyUsage(date),
-        runtimeConfig.inputPricePerMillion || 0,
-        runtimeConfig.outputPricePerMillion || 0,
-    );
+function currentMonth(now = new Date()): UsagePeriod {
+    const year = now.getUTCFullYear();
+    const month = now.getUTCMonth();
+    const start = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10);
+    const end = new Date(Date.UTC(year, month + 1, 1)).toISOString().slice(0, 10);
+    return { key: start.slice(0, 7), start, end };
 }
 
 function withHistoryCost(

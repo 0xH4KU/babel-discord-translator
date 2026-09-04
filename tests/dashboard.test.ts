@@ -30,9 +30,9 @@ vi.mock('../src/persistence/store.js', () => {
         setupComplete: true,
         inputPricePerMillion: 0,
         outputPricePerMillion: 0,
-        dailyBudgetUsd: 0,
+        monthlyBudgetUsd: 0,
         visionMonthlyImageLimit: 900,
-        defaultUserDailyBudgetUsd: 0,
+        defaultUserMonthlyBudgetUsd: 0,
         translationPrompt: '',
         userLanguagePrefs: { legacyUser: 'en' },
         userLanguagePreferenceEntries: [
@@ -166,9 +166,9 @@ vi.mock('../src/persistence/store.js', () => {
                 const budgets = data.guildBudgets as Record<string, unknown>;
                 return budgets[guildId] ?? null;
             }),
-            setGuildBudget: vi.fn((guildId: string, dailyBudgetUsd: number) => {
+            setGuildBudget: vi.fn((guildId: string, monthlyBudgetUsd: number) => {
                 const budgets = data.guildBudgets as Record<string, unknown>;
-                budgets[guildId] = { dailyBudgetUsd };
+                budgets[guildId] = { monthlyBudgetUsd };
             }),
             clearGuildBudget: vi.fn((guildId: string) => {
                 const budgets = data.guildBudgets as Record<string, unknown>;
@@ -180,9 +180,9 @@ vi.mock('../src/persistence/store.js', () => {
                 const budgets = data.userBudgets as Record<string, unknown>;
                 return budgets[userId] ?? null;
             }),
-            setUserBudget: vi.fn((userId: string, dailyBudgetUsd: number) => {
+            setUserBudget: vi.fn((userId: string, monthlyBudgetUsd: number) => {
                 const budgets = data.userBudgets as Record<string, unknown>;
-                budgets[userId] = { dailyBudgetUsd };
+                budgets[userId] = { monthlyBudgetUsd };
             }),
             clearUserBudget: vi.fn((userId: string) => {
                 const budgets = data.userBudgets as Record<string, unknown>;
@@ -241,7 +241,7 @@ const usageMock = vi.hoisted(() => ({
         inputCost: 0.001,
         outputCost: 0.001,
         totalCost: 0.002,
-        dailyBudget: 1.0,
+        monthlyBudget: 1.0,
         budgetUsedPercent: 0.2,
         budgetExceeded: false,
     })),
@@ -264,7 +264,7 @@ const usageMock = vi.hoisted(() => ({
                     inputCost: userId === 'user-1' ? 0.01 : 0,
                     outputCost: 0,
                     totalCost: userId === 'user-1' ? 0.01 : 0,
-                    dailyBudget: 0.5,
+                    monthlyBudget: 0.5,
                     budgetUsedPercent: userId === 'user-1' ? 2 : 0,
                     budgetExceeded: false,
                 },
@@ -437,16 +437,16 @@ function createMinimalClient(): Client {
     } as unknown as Client;
 }
 
-type BudgetMap = Record<string, { dailyBudgetUsd: number }>;
+type BudgetMap = Record<string, { monthlyBudgetUsd: number }>;
 
 function replaceBudgets(
     current: BudgetMap,
     next: BudgetMap,
     clear: (id: string) => unknown,
-    set: (id: string, dailyBudgetUsd: number) => unknown,
+    set: (id: string, monthlyBudgetUsd: number) => unknown,
 ): void {
     for (const id of Object.keys(current)) clear(id);
-    for (const [id, budget] of Object.entries(next)) set(id, budget.dailyBudgetUsd);
+    for (const [id, budget] of Object.entries(next)) set(id, budget.monthlyBudgetUsd);
 }
 
 describe('dashboard mode parsing', () => {
@@ -963,7 +963,7 @@ describe('Dashboard API', () => {
             inputCost: 1,
             outputCost: 0,
             totalCost: 1,
-            dailyBudget: 1,
+            monthlyBudget: 1,
             budgetUsedPercent: 100,
             budgetExceeded: true,
         });
@@ -976,7 +976,7 @@ describe('Dashboard API', () => {
                 inputCost: 0.6,
                 outputCost: 0,
                 totalCost: 0.6,
-                dailyBudget: 1,
+                monthlyBudget: 1,
                 budgetUsedPercent: 60,
                 budgetExceeded: false,
             },
@@ -988,7 +988,7 @@ describe('Dashboard API', () => {
                 inputCost: 0.4,
                 outputCost: 0,
                 totalCost: 0.4,
-                dailyBudget: 1,
+                monthlyBudget: 1,
                 budgetUsedPercent: 40,
                 budgetExceeded: false,
             },
@@ -1028,7 +1028,7 @@ describe('Dashboard API', () => {
             inputCost: 1,
             outputCost: 0,
             totalCost: 1,
-            dailyBudget: 1,
+            monthlyBudget: 1,
             budgetUsedPercent: 100,
             budgetExceeded: true,
         });
@@ -1041,7 +1041,7 @@ describe('Dashboard API', () => {
                 inputCost: 0.6,
                 outputCost: 0,
                 totalCost: 0.6,
-                dailyBudget: 1,
+                monthlyBudget: 1,
                 budgetUsedPercent: 60,
                 budgetExceeded: false,
             },
@@ -1107,7 +1107,7 @@ describe('Dashboard API', () => {
             inputCost: 0.8,
             outputCost: 0,
             totalCost: 0.8,
-            dailyBudget: 1,
+            monthlyBudget: 1,
             budgetUsedPercent: 80,
             budgetExceeded: false,
         });
@@ -1120,7 +1120,7 @@ describe('Dashboard API', () => {
                 inputCost: 0.2,
                 outputCost: 0,
                 totalCost: 0.2,
-                dailyBudget: 2,
+                monthlyBudget: 2,
                 budgetUsedPercent: 10,
                 budgetExceeded: false,
             },
@@ -1129,7 +1129,7 @@ describe('Dashboard API', () => {
         try {
             replaceBudgets(
                 store.listGuildBudgets(),
-                { 'guild-1': { dailyBudgetUsd: 2 } },
+                { 'guild-1': { monthlyBudgetUsd: 2 } },
                 (id) => store.clearGuildBudget(id),
                 (id, budget) => store.setGuildBudget(id, budget),
             );
@@ -1171,7 +1171,7 @@ describe('Dashboard API', () => {
         const { store } = await import('../src/persistence/store.js');
         const previousConfig = store.getConfigValues([
             'allowedUserIds',
-            'defaultUserDailyBudgetUsd',
+            'defaultUserMonthlyBudgetUsd',
         ]);
         const previousUserBudgets = store.listUserBudgets();
         const pocketApp = createDashboardApp({
@@ -1192,11 +1192,11 @@ describe('Dashboard API', () => {
         try {
             store.updateConfigValues({
                 allowedUserIds: ['user-1'],
-                defaultUserDailyBudgetUsd: 0.5,
+                defaultUserMonthlyBudgetUsd: 0.5,
             });
             replaceBudgets(
                 store.listUserBudgets(),
-                { 'user-1': { dailyBudgetUsd: 1.25 } },
+                { 'user-1': { monthlyBudgetUsd: 1.25 } },
                 (id) => store.clearUserBudget(id),
                 (id, budget) => store.setUserBudget(id, budget),
             );
@@ -1295,7 +1295,7 @@ describe('Dashboard API', () => {
         const { store } = await import('../src/persistence/store.js');
         const previousConfig = store.getConfigValues([
             'allowedUserIds',
-            'defaultUserDailyBudgetUsd',
+            'defaultUserMonthlyBudgetUsd',
         ]);
         const previousUserBudgets = store.listUserBudgets();
         const pocketApp = createDashboardApp({
@@ -1316,11 +1316,11 @@ describe('Dashboard API', () => {
         try {
             store.updateConfigValues({
                 allowedUserIds: ['user-1', 'user-2'],
-                defaultUserDailyBudgetUsd: 0.5,
+                defaultUserMonthlyBudgetUsd: 0.5,
             });
             replaceBudgets(
                 store.listUserBudgets(),
-                { 'user-1': { dailyBudgetUsd: 1.25 } },
+                { 'user-1': { monthlyBudgetUsd: 1.25 } },
                 (id) => store.clearUserBudget(id),
                 (id, budget) => store.setUserBudget(id, budget),
             );
@@ -1368,8 +1368,8 @@ describe('Dashboard API', () => {
             expect(usageMock.getUserStatsForUsers).toHaveBeenCalledOnce();
             expect(usageMock.getUserStatsForUsers).toHaveBeenCalledWith(
                 ['user-1', 'user-2', 'pending-owner'],
-                { 'user-1': { dailyBudgetUsd: 1.25 } },
-                expect.objectContaining({ defaultUserDailyBudgetUsd: 0.5 }),
+                { 'user-1': { monthlyBudgetUsd: 1.25 } },
+                expect.objectContaining({ defaultUserMonthlyBudgetUsd: 0.5 }),
             );
         } finally {
             store.updateConfigValues(previousConfig);
@@ -1388,7 +1388,7 @@ describe('Dashboard API', () => {
         const { store } = await import('../src/persistence/store.js');
         const previousConfig = store.getConfigValues([
             'allowedUserIds',
-            'defaultUserDailyBudgetUsd',
+            'defaultUserMonthlyBudgetUsd',
         ]);
         const previousUserBudgets = store.listUserBudgets();
         const emptyProfileDb = createSqliteDatabase(':memory:');
@@ -1433,7 +1433,7 @@ describe('Dashboard API', () => {
         try {
             store.updateConfigValues({
                 allowedUserIds: [],
-                defaultUserDailyBudgetUsd: 0.5,
+                defaultUserMonthlyBudgetUsd: 0.5,
             });
             replaceBudgets(
                 store.listUserBudgets(),

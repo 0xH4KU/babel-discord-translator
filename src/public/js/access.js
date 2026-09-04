@@ -229,7 +229,7 @@ function renderGuilds() {
     if (!container) return;
     const allowed = accessAllowedGuildIdsDraft;
     const lensEnabled = accessLensEnabledGuildIdsDraft;
-    const globalBudget = currentConfig.dailyBudgetUsd || 0;
+    const globalBudget = currentConfig.monthlyBudgetUsd || 0;
 
     const knownIds = new Set(allGuilds.map((g) => g.id));
     manualGuildIds = normalizeIds([...allowed, ...lensEnabled]).filter((id) => !knownIds.has(id));
@@ -273,7 +273,7 @@ function renderGuilds() {
         const bd = guildBudgetData[selected.id];
         const hasCustomBudget = bd && bd.budget >= 0;
         const effectiveBudget = hasCustomBudget ? bd.budget : globalBudget;
-        const todayCost = bd ? bd.usage.totalCost : 0;
+        const monthlyCost = bd ? bd.usage.totalCost : 0;
         const budgetLabel = hasCustomBudget
             ? formatUsd(effectiveBudget)
             : globalBudget > 0
@@ -299,13 +299,13 @@ function renderGuilds() {
       <div class="guild-budget-row">
         <div class="guild-budget-info">
           <span class="guild-budget-label">Budget: ${budgetLabel}</span>
-          <span class="guild-budget-cost">Today: ${bd ? formatUsd(todayCost) + ' · ' + bd.usage.requests + ' req' : '-'}</span>
+          <span class="guild-budget-cost">This month: ${bd ? formatUsd(monthlyCost) + ' · ' + bd.usage.requests + ' req' : '-'}</span>
         </div>
         <div class="guild-budget-actions">
           <input type="number" class="guild-budget-input" id="gb-${escapedId}" min="0" step="0.1"
             placeholder="${hasCustomBudget ? effectiveBudget : 'Global'}"
             value="${hasCustomBudget ? effectiveBudget : ''}"
-            title="Set per-server budget (USD). Empty = use global.">
+            title="Set per-server monthly budget (USD). Empty = use global.">
           <button class="btn btn-secondary btn-xs" ${actionAttrs('saveGuildBudget', [selected.id])}>Apply</button>
           ${hasCustomBudget ? `<button class="btn-danger btn-xs" ${actionAttrs('resetGuildBudget', [selected.id])} title="Reset to global">Reset</button>` : ''}
         </div>
@@ -368,7 +368,7 @@ async function saveGuildBudget(guildId) {
 
     const res = await api('/guild-budgets/' + guildId, {
         method: 'POST',
-        body: JSON.stringify({ dailyBudgetUsd: budget }),
+        body: JSON.stringify({ monthlyBudgetUsd: budget }),
     });
 
     if (res.ok) {
@@ -387,7 +387,7 @@ async function resetGuildBudget(guildId) {
 
     const res = await api('/guild-budgets/' + guildId, {
         method: 'POST',
-        body: JSON.stringify({ dailyBudgetUsd: null }),
+        body: JSON.stringify({ monthlyBudgetUsd: null }),
     });
 
     if (res.ok) {
@@ -760,7 +760,7 @@ function renderAllowedUsers() {
 
     const allowed = accessUserIds;
     const enabledIds = new Set(accessAllowedUserIdsDraft);
-    const defaultBudget = currentConfig.defaultUserDailyBudgetUsd || 0;
+    const defaultBudget = currentConfig.defaultUserMonthlyBudgetUsd || 0;
 
     if (allowed.length === 0) {
         container.innerHTML =
@@ -826,7 +826,7 @@ function renderAllowedUsers() {
           <input type="number" class="guild-budget-input" id="ub-${escapeHtml(userId)}" min="0" step="0.1"
             placeholder="${hasCustomBudget ? effectiveBudget : 'Default'}"
             value="${hasCustomBudget ? effectiveBudget : ''}"
-            title="Set per-user budget (USD). Empty = use default.">
+            title="Set per-user monthly budget (USD). Empty = use default.">
           <button class="btn btn-secondary btn-xs" ${actionAttrs('saveUserBudget', [userId])}>Apply</button>
           ${hasCustomBudget ? `<button class="btn-danger btn-xs" ${actionAttrs('resetUserBudget', [userId])} title="Reset to default">Reset</button>` : ''}
         </div>
@@ -925,7 +925,7 @@ async function saveUserBudget(userId) {
 
     const res = await api('/user-budgets/' + userId, {
         method: 'POST',
-        body: JSON.stringify({ dailyBudgetUsd: budget }),
+        body: JSON.stringify({ monthlyBudgetUsd: budget }),
     });
 
     if (res.ok) {
@@ -945,7 +945,7 @@ async function resetUserBudget(userId) {
 
     const res = await api('/user-budgets/' + userId, {
         method: 'POST',
-        body: JSON.stringify({ dailyBudgetUsd: null }),
+        body: JSON.stringify({ monthlyBudgetUsd: null }),
     });
 
     if (res.ok) {

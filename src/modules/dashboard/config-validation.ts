@@ -24,9 +24,9 @@ const NUMBER_CONFIG_KEYS = [
     'cacheMaxSize',
     'maxInputLength',
     'maxOutputTokens',
-    'dailyBudgetUsd',
+    'monthlyBudgetUsd',
     'visionMonthlyImageLimit',
-    'defaultUserDailyBudgetUsd',
+    'defaultUserMonthlyBudgetUsd',
     'inputPricePerMillion',
     'outputPricePerMillion',
     'translationMaxConcurrent',
@@ -204,12 +204,12 @@ export function validateConfigUpdate(updates: Record<string, unknown>): {
         }
         sanitized.maxOutputTokens = v;
     }
-    const dailyBudget = sanitizeNonNegativeNumberField(
+    const monthlyBudget = sanitizeNonNegativeNumberField(
         sanitized,
-        'dailyBudgetUsd',
-        dashboardMessages.validation.dailyBudgetUsd,
+        'monthlyBudgetUsd',
+        dashboardMessages.validation.monthlyBudgetUsd,
     );
-    if (!dailyBudget.valid) return dailyBudget;
+    if (!monthlyBudget.valid) return monthlyBudget;
     if (sanitized.visionMonthlyImageLimit !== undefined) {
         const v = toFiniteNumber(sanitized.visionMonthlyImageLimit);
         if (!Number.isSafeInteger(v) || v < 0) {
@@ -221,12 +221,12 @@ export function validateConfigUpdate(updates: Record<string, unknown>): {
         }
         sanitized.visionMonthlyImageLimit = v;
     }
-    const defaultUserDailyBudget = sanitizeNonNegativeNumberField(
+    const defaultUserMonthlyBudget = sanitizeNonNegativeNumberField(
         sanitized,
-        'defaultUserDailyBudgetUsd',
-        dashboardMessages.validation.dailyBudgetUsd,
+        'defaultUserMonthlyBudgetUsd',
+        dashboardMessages.validation.monthlyBudgetUsd,
     );
-    if (!defaultUserDailyBudget.valid) return defaultUserDailyBudget;
+    if (!defaultUserMonthlyBudget.valid) return defaultUserMonthlyBudget;
     for (const key of [
         'translationMaxConcurrent',
         'translationMaxGlobalQueue',

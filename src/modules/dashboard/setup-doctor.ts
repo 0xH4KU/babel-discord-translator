@@ -374,8 +374,8 @@ function budgetCheck(
         const values = [
             ['input price', config.inputPricePerMillion],
             ['output price', config.outputPricePerMillion],
-            ['daily budget', config.dailyBudgetUsd],
-            ['default user daily budget', config.defaultUserDailyBudgetUsd],
+            ['monthly budget', config.monthlyBudgetUsd],
+            ['default user monthly budget', config.defaultUserMonthlyBudgetUsd],
             ...budgetEntries('guild', budgetStore.listGuildBudgets()),
             ...budgetEntries('user', budgetStore.listUserBudgets()),
         ] as const;
@@ -421,8 +421,8 @@ function budgetEntries(
     budgets: StoreData['guildBudgets'] | StoreData['userBudgets'],
 ): Array<[string, number]> {
     return Object.entries(budgets).map(([id, budget]) => [
-        `${scope} ${id} daily budget`,
-        budget.dailyBudgetUsd,
+        `${scope} ${id} monthly budget`,
+        budget.monthlyBudgetUsd,
     ]);
 }
 

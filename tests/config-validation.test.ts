@@ -40,7 +40,7 @@ describe('validateConfigUpdate', () => {
             usageHistory: [],
             userLanguagePrefs: { u: 'ja' },
             userLanguagePreferenceEntries: [{ guildId: 'g', userId: 'u', language: 'ja' }],
-            guildBudgets: { g: { dailyBudgetUsd: 1 } },
+            guildBudgets: { g: { monthlyBudgetUsd: 1 } },
             guildTokenUsage: {},
             guildUsageHistory: {},
         });
@@ -117,7 +117,7 @@ describe('validateConfigUpdate', () => {
     }
 
     const nonNegativeCases = [
-        ['dailyBudgetUsd', dashboardMessages.validation.dailyBudgetUsd],
+        ['monthlyBudgetUsd', dashboardMessages.validation.monthlyBudgetUsd],
         ['inputPricePerMillion', dashboardMessages.validation.inputPricePerMillion],
         ['outputPricePerMillion', dashboardMessages.validation.outputPricePerMillion],
     ] as const;
@@ -199,9 +199,9 @@ describe('validateConfigUpdate', () => {
             valid: false,
             error: 'setupComplete must be a boolean',
         });
-        expect(validateConfigUpdate({ dailyBudgetUsd: '1oops' })).toMatchObject({
+        expect(validateConfigUpdate({ monthlyBudgetUsd: '1oops' })).toMatchObject({
             valid: false,
-            error: dashboardMessages.validation.dailyBudgetUsd,
+            error: dashboardMessages.validation.monthlyBudgetUsd,
         });
         expect(validateConfigUpdate({ translationMaxConcurrent: '3.5' })).toMatchObject({
             valid: false,

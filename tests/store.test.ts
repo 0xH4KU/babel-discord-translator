@@ -184,8 +184,8 @@ describe('ConfigStore', () => {
         expect(store.getGuildBudget('guild-1')).toBeNull();
 
         store.setGuildBudget('guild-1', 2.5);
-        expect(store.getGuildBudget('guild-1')).toEqual({ dailyBudgetUsd: 2.5 });
-        expect(store.listGuildBudgets()).toEqual({ 'guild-1': { dailyBudgetUsd: 2.5 } });
+        expect(store.getGuildBudget('guild-1')).toEqual({ monthlyBudgetUsd: 2.5 });
+        expect(store.listGuildBudgets()).toEqual({ 'guild-1': { monthlyBudgetUsd: 2.5 } });
 
         expect(store.clearGuildBudget('guild-1')).toBe(true);
         expect(store.getGuildBudget('guild-1')).toBeNull();
@@ -328,6 +328,27 @@ describe('ConfigStore', () => {
                 requests: 1,
             },
         });
+        expect(store.getUsageBetween('guild', 'guild-1', '2026-03-01', '2026-04-01')).toEqual({
+            date: '2026-03-01',
+            inputTokens: 180,
+            outputTokens: 90,
+            requests: 2,
+        });
+        expect(
+            store.getUsageForIdsBetween(
+                'guild',
+                ['guild-1', 'guild-2'],
+                '2026-03-01',
+                '2026-04-01',
+            ),
+        ).toEqual({
+            'guild-1': {
+                date: '2026-03-01',
+                inputTokens: 180,
+                outputTokens: 90,
+                requests: 2,
+            },
+        });
         store.close();
     });
 
@@ -417,6 +438,12 @@ describe('ConfigStore', () => {
             outputTokens: 65,
             requests: 2,
         });
+        expect(store.getSharedGlobalUsageBetween('2026-03-01', '2026-04-01')).toEqual({
+            date: '2026-03-01',
+            inputTokens: 130,
+            outputTokens: 65,
+            requests: 2,
+        });
         store.close();
     });
 
@@ -430,7 +457,7 @@ describe('ConfigStore', () => {
         store.recordUsage('2026-03-26', 80, 40, { userId: 'user-1' });
         store.recordUsage('2026-03-27', 100, 50, { userId: 'user-1' });
 
-        expect(store.getUserBudget('user-1')).toEqual({ dailyBudgetUsd: 1.5 });
+        expect(store.getUserBudget('user-1')).toEqual({ monthlyBudgetUsd: 1.5 });
         expect(store.getUsage('user', 'user-1', '2026-03-27')).toEqual({
             date: '2026-03-27',
             inputTokens: 100,
@@ -445,7 +472,7 @@ describe('ConfigStore', () => {
                 requests: 1,
             },
         ]);
-        expect(store.listUserBudgets()).toEqual({ 'user-1': { dailyBudgetUsd: 1.5 } });
+        expect(store.listUserBudgets()).toEqual({ 'user-1': { monthlyBudgetUsd: 1.5 } });
         expect(store.getUsageForIds('user', ['user-1'], '2026-03-27')).toEqual({
             'user-1': {
                 date: '2026-03-27',

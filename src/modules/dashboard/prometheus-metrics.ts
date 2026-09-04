@@ -94,7 +94,7 @@ export function renderPrometheusMetrics({
         '# HELP babel_translation_failures_total Failed translation count.',
         '# TYPE babel_translation_failures_total counter',
         metricLine('babel_translation_failures_total', metricsSnapshot.translationFailuresTotal),
-        '# HELP babel_budget_blocks_total Requests blocked by daily budget guard.',
+        '# HELP babel_budget_blocks_total Requests blocked by translation budget guards.',
         '# TYPE babel_budget_blocks_total counter',
         metricLine('babel_budget_blocks_total', metricsSnapshot.budgetExceededTotal),
         '# HELP babel_webhook_recreate_total Webhook recovery count.',

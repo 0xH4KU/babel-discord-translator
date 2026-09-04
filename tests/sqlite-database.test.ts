@@ -320,7 +320,64 @@ describe('createSqliteDatabase', () => {
                 .prepare('SELECT id FROM schema_migrations ORDER BY id ASC')
                 .all() as Array<{ id: number }>;
             expect(migrationIds.map((row) => row.id)).toEqual([
-                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+            ]);
+        } finally {
+            db.close();
+        }
+    });
+
+    it('should convert legacy daily budgets to monthly budgets', async () => {
+        const { DatabaseSync } = await import('node:sqlite');
+        const { runMigrations } = await import('../src/persistence/sqlite-database.js');
+        const db = new DatabaseSync(':memory:');
+
+        try {
+            db.exec(`
+                CREATE TABLE schema_migrations (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    applied_at TEXT NOT NULL
+                );
+                INSERT INTO schema_migrations (id, name, applied_at)
+                VALUES
+                    (1, 'one', '2026-01-01'), (2, 'two', '2026-01-01'),
+                    (3, 'three', '2026-01-01'), (4, 'four', '2026-01-01'),
+                    (5, 'five', '2026-01-01'), (6, 'six', '2026-01-01'),
+                    (7, 'seven', '2026-01-01'), (8, 'eight', '2026-01-01'),
+                    (9, 'nine', '2026-01-01'), (10, 'ten', '2026-01-01'),
+                    (11, 'eleven', '2026-01-01');
+
+                CREATE TABLE app_config (key TEXT PRIMARY KEY, value_json TEXT NOT NULL);
+                INSERT INTO app_config (key, value_json) VALUES
+                    ('dailyBudgetUsd', '2'),
+                    ('defaultUserDailyBudgetUsd', '0.5');
+
+                CREATE TABLE guild_budgets (
+                    guild_id TEXT PRIMARY KEY,
+                    daily_budget_usd REAL NOT NULL
+                );
+                CREATE TABLE user_budgets (
+                    user_id TEXT PRIMARY KEY,
+                    daily_budget_usd REAL NOT NULL
+                );
+                INSERT INTO guild_budgets VALUES ('guild-1', 3);
+                INSERT INTO user_budgets VALUES ('user-1', 0.25);
+            `);
+
+            runMigrations(db);
+
+            expect(
+                db.prepare('SELECT monthly_budget_usd as budget FROM guild_budgets').get(),
+            ).toEqual({ budget: 90 });
+            expect(
+                db.prepare('SELECT monthly_budget_usd as budget FROM user_budgets').get(),
+            ).toEqual({ budget: 7.5 });
+            expect(
+                db.prepare(`SELECT key, value_json as value FROM app_config ORDER BY key`).all(),
+            ).toEqual([
+                { key: 'defaultUserMonthlyBudgetUsd', value: '15' },
+                { key: 'monthlyBudgetUsd', value: '60' },
             ]);
         } finally {
             db.close();
@@ -357,12 +414,14 @@ describe('createSqliteDatabase', () => {
             runMigrations(db);
 
             expect(
-                db.prepare(
-                    `
+                db
+                    .prepare(
+                        `
                         SELECT scope, scope_id as scopeId, month, images
                         FROM vision_monthly_usage
                     `,
-                ).get(),
+                    )
+                    .get(),
             ).toEqual({ scope: 'global', scopeId: '', month: '2026-08', images: 7 });
         } finally {
             db.close();

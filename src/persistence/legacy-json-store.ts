@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { normalizeStoreData } from './store-data-normalizer.js';
+import { normalizeStoreData, type StoreDataInput } from './store-data-normalizer.js';
 import type { StoreData } from '../shared/types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -18,7 +18,7 @@ export function readLegacyStoreData(path: string = resolveLegacyConfigPath()): S
     }
 
     const raw = readFileSync(path, 'utf-8');
-    return normalizeStoreData(JSON.parse(raw) as Partial<StoreData>);
+    return normalizeStoreData(JSON.parse(raw) as StoreDataInput);
 }
 
 export function writeLegacyStoreData(

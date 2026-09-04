@@ -25,7 +25,7 @@ export function withCost(usage: TokenUsage, inputPrice: number, outputPrice: num
 export function toUsageStats(cost: UsageCost, budget: number): UsageStats {
     return {
         ...cost,
-        dailyBudget: budget,
+        monthlyBudget: budget,
         budgetUsedPercent: budget > 0 ? Math.min((cost.totalCost / budget) * 100, 100) : 0,
         budgetExceeded: budget > 0 && cost.totalCost >= budget,
     };

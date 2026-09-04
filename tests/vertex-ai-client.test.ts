@@ -21,7 +21,7 @@ vi.mock('../src/persistence/store.js', () => {
         setupComplete: true,
         inputPricePerMillion: 0,
         outputPricePerMillion: 0,
-        dailyBudgetUsd: 0,
+        monthlyBudgetUsd: 0,
         translationPrompt: '',
         maxInputLength: 2000,
         maxOutputTokens: 1000,

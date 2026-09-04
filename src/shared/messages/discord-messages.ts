@@ -33,7 +33,7 @@ const TRANSLATION_COMMAND_MESSAGES: Record<TranslationCommand, TranslationComman
     babel: {
         setupIncomplete: 'Bot not configured yet. Please complete setup in the dashboard.',
         emptyText: 'No text content',
-        budgetExceeded: 'Daily budget exceeded, try again tomorrow!',
+        budgetExceeded: 'Translation budget limit reached. Please try again later.',
         userBusy: 'You already have a translation in progress. Please wait a moment.',
         guildBusy:
             'This server is handling too many translations right now. Please try again shortly.',
@@ -42,7 +42,7 @@ const TRANSLATION_COMMAND_MESSAGES: Record<TranslationCommand, TranslationComman
     translate: {
         setupIncomplete: 'Bot not configured yet.',
         emptyText: 'Text is required',
-        budgetExceeded: 'Daily budget exceeded',
+        budgetExceeded: 'Translation budget limit reached',
         userBusy: 'You already have a translation in progress. Please wait a moment.',
         guildBusy:
             'This server is handling too many translations right now. Please try again shortly.',

@@ -47,9 +47,7 @@ function confirmSettingsNavigation() {
 }
 
 function isVisionFallbackRequired() {
-  const mode = settingsLoaded
-    ? selectedProviderMode()
-    : currentConfig.translationProvider;
+  const mode = settingsLoaded ? selectedProviderMode() : currentConfig.translationProvider;
   const vertexImages = settingsLoaded
     ? Boolean(configElement('cfg-vertex-images')?.checked)
     : Boolean(currentConfig.vertexAiSupportsImages);
@@ -230,7 +228,7 @@ async function loadSettings(force = false) {
       currentConfig.translationMaxQueueWaitMs || 30000;
     document.getElementById('cfg-input-price').value = currentConfig.inputPricePerMillion || 0;
     document.getElementById('cfg-output-price').value = currentConfig.outputPricePerMillion || 0;
-    document.getElementById('cfg-budget').value = currentConfig.dailyBudgetUsd || 0;
+    document.getElementById('cfg-budget').value = currentConfig.monthlyBudgetUsd || 0;
     document.getElementById('cfg-vision-limit').value =
       currentConfig.visionMonthlyImageLimit ?? 900;
     previewVisionLimit(currentConfig.visionMonthlyImageLimit ?? 900);
@@ -289,7 +287,7 @@ async function saveSettings() {
   updates.inputPricePerMillion = parseFloat(document.getElementById('cfg-input-price').value) || 0;
   updates.outputPricePerMillion =
     parseFloat(document.getElementById('cfg-output-price').value) || 0;
-  updates.dailyBudgetUsd = parseFloat(document.getElementById('cfg-budget').value) || 0;
+  updates.monthlyBudgetUsd = parseFloat(document.getElementById('cfg-budget').value) || 0;
   updates.visionMonthlyImageLimit =
     parseInt(document.getElementById('cfg-vision-limit').value) || 0;
   updates.translationPrompt = document.getElementById('cfg-prompt').value;

@@ -64,9 +64,9 @@ function createStoreMock(overrides: Partial<StoreData> = {}) {
         setupComplete: true,
         inputPricePerMillion: 0,
         outputPricePerMillion: 0,
-        dailyBudgetUsd: 0,
+        monthlyBudgetUsd: 0,
         visionMonthlyImageLimit: 900,
-        defaultUserDailyBudgetUsd: 0,
+        defaultUserMonthlyBudgetUsd: 0,
         tokenUsage: null,
         usageHistory: [],
         translationPrompt: '',
@@ -113,9 +113,9 @@ function createStoreMock(overrides: Partial<StoreData> = {}) {
             setupComplete: data.setupComplete,
             inputPricePerMillion: data.inputPricePerMillion,
             outputPricePerMillion: data.outputPricePerMillion,
-            dailyBudgetUsd: data.dailyBudgetUsd,
+            monthlyBudgetUsd: data.monthlyBudgetUsd,
             visionMonthlyImageLimit: data.visionMonthlyImageLimit,
-            defaultUserDailyBudgetUsd: data.defaultUserDailyBudgetUsd,
+            defaultUserMonthlyBudgetUsd: data.defaultUserMonthlyBudgetUsd,
             translationPrompt: data.translationPrompt,
             maxInputLength: data.maxInputLength,
             maxOutputTokens: data.maxOutputTokens,
@@ -690,7 +690,7 @@ describe('TranslationService', () => {
         expect(beforeTranslate).toHaveBeenCalledOnce();
         expect(result).toEqual({
             status: 'blocked',
-            message: 'Daily budget exceeded, try again tomorrow!',
+            message: 'Translation budget limit reached. Please try again later.',
             deferred: true,
         });
     });
@@ -1441,7 +1441,7 @@ describe('TranslationService', () => {
 
         expect(result).toEqual({
             status: 'blocked',
-            message: 'Daily budget exceeded',
+            message: 'Translation budget limit reached',
         });
         expect(translator).not.toHaveBeenCalled();
         expect(metrics.snapshot().budgetExceededTotal).toBe(1);

@@ -1,8 +1,9 @@
 # Babel Budget Model
 
-This document explains how Babel Guild and Babel Pocket enforce daily translation
+This document explains how Babel Guild and Babel Pocket enforce monthly translation
 spending limits and monthly Babel Lens image quotas. Translation budgets are expressed
-in USD per day and are calculated from the configured input and output token prices.
+in USD per UTC calendar month and are calculated from the configured input and output
+token prices.
 
 ## Shared Rules
 
@@ -11,7 +12,7 @@ in USD per day and are calculated from the configured input and output token pri
   limit.
 - Before a translation runs, Babel estimates the request cost. If current cost plus
   the estimate is greater than or equal to the relevant limit, the request is blocked.
-- Daily counters reset when Babel detects a new UTC calendar day.
+- Monthly counters reset when Babel detects a new UTC calendar month.
 
 Because Babel blocks at `>= limit`, a user or server may be stopped slightly before the
 dashboard appears to land exactly on the configured number.
@@ -20,22 +21,22 @@ dashboard appears to land exactly on the configured number.
 
 Babel Pocket uses user-install access. Its budget model has two layers:
 
-1. Per-user daily budget
+1. Per-user monthly budget
 2. Global Safety Budget
 
-### Per-User Daily Budget
+### Per-User Monthly Budget
 
 Each user in the User Whitelist can have a custom budget. This is the maximum that
-specific user can spend in one day.
+specific user can spend in one month.
 
-If a user does not have a custom budget, Babel uses the default user daily budget from
+If a user does not have a custom budget, Babel uses the default user monthly budget from
 configuration. If that default is `0`, the user has no individual cap, but the Global
 Safety Budget can still stop them.
 
 ### Global Safety Budget
 
 The Global Safety Budget is a shared safety cap across all Pocket user-install usage.
-It is not a per-user default. It is the maximum total Pocket spend for the day.
+It is not a per-user default. It is the maximum total Pocket spend for the month.
 
 For example:
 
@@ -56,13 +57,13 @@ The result is intentionally conservative:
 - A user can also be blocked by the shared Global Safety Budget.
 - The sum of all user budgets may be higher than the Global Safety Budget. This is
   allowed and works like overbooking, because not every allowed user is expected to
-  spend their full personal budget every day.
+  spend their full personal budget every month.
 
 ### Pocket Dashboard Labels
 
 - Settings: `Global Safety Budget`
 - Access tab: per-user budget controls in `User Whitelist`
-- Overview: `Daily Budget` shows shared Pocket usage against the Global Safety Budget
+- Overview: `Monthly Budget` shows shared Pocket usage against the Global Safety Budget
 
 ## Babel Guild
 
@@ -75,13 +76,13 @@ There are two kinds of guild/server budget behavior:
 
 ### Servers With Custom Budgets
 
-When a server has a custom daily budget, that server uses its own independent budget
+When a server has a custom monthly budget, that server uses its own independent budget
 and usage counter.
 
 Example:
 
-| Server | Budget |
-| ------ | ------ |
+| Server | Budget  |
+| ------ | ------- |
 | A      | `$0.20` |
 | B      | `$0.75` |
 
@@ -92,19 +93,19 @@ If a server custom budget is set to `0`, that server is unlimited.
 
 ### Servers Without Custom Budgets
 
-Servers without custom budgets use the Global Daily Budget. This is a shared pool for
+Servers without custom budgets use the Global Monthly Budget. This is a shared pool for
 all non-custom-budget servers.
 
 Example:
 
-| Server | Budget mode |
-| ------ | ----------- |
-| A      | Global      |
-| B      | Global      |
-| C      | `$0.20` custom |
+| Server | Budget mode          |
+| ------ | -------------------- |
+| A      | Global               |
+| B      | Global               |
+| C      | `$0.20` custom       |
 | D      | `0` custom unlimited |
 
-If the Global Daily Budget is `$0.50`:
+If the Global Monthly Budget is `$0.50`:
 
 - A and B share the same `$0.50` pool.
 - C has its own `$0.20` pool.
@@ -116,16 +117,16 @@ global default.
 
 ### Guild Dashboard Labels
 
-- Settings: `Global Daily Budget`
+- Settings: `Global Monthly Budget`
 - Access tab: per-server budget controls in the server whitelist
 - Overview: `Server Budgets` shows custom server budgets and global-budget servers
 
 ## Quick Comparison
 
-| Product | Individual cap | Shared cap | What shares the cap |
-| ------- | -------------- | ---------- | ------------------- |
-| Pocket  | User budget    | Global Safety Budget | All Pocket users |
-| Guild   | Custom server budget | Global Daily Budget | Servers without custom budgets |
+| Product | Individual cap       | Shared cap            | What shares the cap            |
+| ------- | -------------------- | --------------------- | ------------------------------ |
+| Pocket  | User budget          | Global Safety Budget  | All Pocket users               |
+| Guild   | Custom server budget | Global Monthly Budget | Servers without custom budgets |
 
 In short:
 

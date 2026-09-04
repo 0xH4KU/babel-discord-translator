@@ -42,11 +42,11 @@ describe('store-data-normalizer clone helpers', () => {
     });
 
     it('returns defensive copies for nested budgets and histories', () => {
-        const userBudgets = { 'user-1': { dailyBudgetUsd: 1.5 } };
+        const userBudgets = { 'user-1': { monthlyBudgetUsd: 1.5 } };
         const userBudgetCopy = cloneUserBudgets(userBudgets);
-        userBudgetCopy['user-1']!.dailyBudgetUsd = 9;
+        userBudgetCopy['user-1']!.monthlyBudgetUsd = 9;
 
-        expect(userBudgets['user-1']!.dailyBudgetUsd).toBe(1.5);
+        expect(userBudgets['user-1']!.monthlyBudgetUsd).toBe(1.5);
 
         const guildHistory = {
             'guild-1': [
@@ -101,5 +101,21 @@ describe('store-data-normalizer clone helpers', () => {
             normalizeStoreData({ geminiMediaResolution: 'ultra_high' as 'high' })
                 .geminiMediaResolution,
         ).toBe('default');
+    });
+
+    it('converts legacy daily budget fields to monthly values', () => {
+        expect(
+            normalizeStoreData({
+                dailyBudgetUsd: 2,
+                defaultUserDailyBudgetUsd: 0.5,
+                guildBudgets: { guild: { dailyBudgetUsd: 3 } },
+                userBudgets: { user: { dailyBudgetUsd: 0.25 } },
+            }),
+        ).toMatchObject({
+            monthlyBudgetUsd: 60,
+            defaultUserMonthlyBudgetUsd: 15,
+            guildBudgets: { guild: { monthlyBudgetUsd: 90 } },
+            userBudgets: { user: { monthlyBudgetUsd: 7.5 } },
+        });
     });
 });

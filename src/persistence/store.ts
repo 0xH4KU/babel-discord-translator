@@ -201,7 +201,7 @@ export class ConfigStore {
     getGuildBudget(guildId: string): GuildBudgetConfig | null {
         const row = this.stmt(
             `
-            SELECT daily_budget_usd as dailyBudgetUsd
+            SELECT monthly_budget_usd as monthlyBudgetUsd
             FROM guild_budgets
             WHERE guild_id = ?
         `,
@@ -210,14 +210,15 @@ export class ConfigStore {
         return row ? { ...row } : null;
     }
 
-    setGuildBudget(guildId: string, dailyBudgetUsd: number): void {
+    setGuildBudget(guildId: string, monthlyBudgetUsd: number): void {
         this.stmt(
             `
-            INSERT INTO guild_budgets (guild_id, daily_budget_usd)
+            INSERT INTO guild_budgets (guild_id, monthly_budget_usd)
             VALUES (?, ?)
-            ON CONFLICT(guild_id) DO UPDATE SET daily_budget_usd = excluded.daily_budget_usd
+            ON CONFLICT(guild_id) DO UPDATE SET
+                monthly_budget_usd = excluded.monthly_budget_usd
         `,
-        ).run(guildId, dailyBudgetUsd);
+        ).run(guildId, monthlyBudgetUsd);
     }
 
     clearGuildBudget(guildId: string): boolean {
@@ -227,7 +228,7 @@ export class ConfigStore {
     getUserBudget(userId: string): UserBudgetConfig | null {
         const row = this.stmt(
             `
-            SELECT daily_budget_usd as dailyBudgetUsd
+            SELECT monthly_budget_usd as monthlyBudgetUsd
             FROM user_budgets
             WHERE user_id = ?
         `,
@@ -236,14 +237,15 @@ export class ConfigStore {
         return row ? { ...row } : null;
     }
 
-    setUserBudget(userId: string, dailyBudgetUsd: number): void {
+    setUserBudget(userId: string, monthlyBudgetUsd: number): void {
         this.stmt(
             `
-            INSERT INTO user_budgets (user_id, daily_budget_usd)
+            INSERT INTO user_budgets (user_id, monthly_budget_usd)
             VALUES (?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET daily_budget_usd = excluded.daily_budget_usd
+            ON CONFLICT(user_id) DO UPDATE SET
+                monthly_budget_usd = excluded.monthly_budget_usd
         `,
-        ).run(userId, dailyBudgetUsd);
+        ).run(userId, monthlyBudgetUsd);
     }
 
     clearUserBudget(userId: string): boolean {
@@ -411,6 +413,55 @@ export class ConfigStore {
         return Object.fromEntries(rows.map(({ scopeId, ...usage }) => [scopeId, { ...usage }]));
     }
 
+    getUsageBetween(
+        scope: UsageScopeKind,
+        scopeId: string,
+        start: string,
+        end: string,
+    ): TokenUsage {
+        const row = this.stmt(
+            `
+            SELECT COALESCE(SUM(input_tokens), 0) as inputTokens,
+                   COALESCE(SUM(output_tokens), 0) as outputTokens,
+                   COALESCE(SUM(requests), 0) as requests
+            FROM scoped_usage
+            WHERE scope = ? AND scope_id = ? AND date >= ? AND date < ?
+        `,
+        ).get(scope, scopeId, start, end) as Omit<TokenUsage, 'date'>;
+
+        return { date: start, ...row };
+    }
+
+    getUsageForIdsBetween(
+        scope: Exclude<UsageScopeKind, 'global'>,
+        scopeIds: readonly string[],
+        start: string,
+        end: string,
+    ): Record<string, TokenUsage> {
+        if (scopeIds.length === 0) return {};
+
+        const placeholders = scopeIds.map(() => '?').join(', ');
+        const rows = this.stmt(
+            `
+            SELECT scope_id as scopeId,
+                   SUM(input_tokens) as inputTokens,
+                   SUM(output_tokens) as outputTokens,
+                   SUM(requests) as requests
+            FROM scoped_usage
+            WHERE scope = ? AND date >= ? AND date < ?
+              AND scope_id IN (${placeholders})
+            GROUP BY scope_id
+            ORDER BY scope_id ASC
+        `,
+        ).all(scope, start, end, ...scopeIds) as unknown as Array<
+            { scopeId: string } & Omit<TokenUsage, 'date'>
+        >;
+
+        return Object.fromEntries(
+            rows.map(({ scopeId, ...usage }) => [scopeId, { date: start, ...usage }]),
+        );
+    }
+
     getUsageHistory(
         scope: UsageScopeKind,
         beforeDate: string,
@@ -466,6 +517,36 @@ export class ConfigStore {
         return { date, ...row };
     }
 
+    getSharedGlobalUsageBetween(start: string, end: string): TokenUsage {
+        const row = this.stmt(
+            `
+            WITH total AS (
+                SELECT
+                    COALESCE(SUM(input_tokens), 0) AS inputTokens,
+                    COALESCE(SUM(output_tokens), 0) AS outputTokens,
+                    COALESCE(SUM(requests), 0) AS requests
+                FROM scoped_usage
+                WHERE scope = 'global' AND scope_id = '' AND date >= ? AND date < ?
+            ), custom AS (
+                SELECT
+                    COALESCE(SUM(input_tokens), 0) AS inputTokens,
+                    COALESCE(SUM(output_tokens), 0) AS outputTokens,
+                    COALESCE(SUM(requests), 0) AS requests
+                FROM scoped_usage
+                JOIN guild_budgets ON guild_budgets.guild_id = scoped_usage.scope_id
+                WHERE scope = 'guild' AND date >= ? AND date < ?
+            )
+            SELECT
+                MAX(total.inputTokens - custom.inputTokens, 0) AS inputTokens,
+                MAX(total.outputTokens - custom.outputTokens, 0) AS outputTokens,
+                MAX(total.requests - custom.requests, 0) AS requests
+            FROM total, custom
+        `,
+        ).get(start, end, start, end) as Omit<TokenUsage, 'date'>;
+
+        return { date: start, ...row };
+    }
+
     recordUsage(
         date: string,
         inputTokens: number,
@@ -494,11 +575,7 @@ export class ConfigStore {
         });
     }
 
-    getVisionMonthlyUsage(
-        month: string,
-        scope: UsageScopeKind = 'global',
-        scopeId = '',
-    ): number {
+    getVisionMonthlyUsage(month: string, scope: UsageScopeKind = 'global', scopeId = ''): number {
         const row = this.stmt(
             `
                 SELECT images
@@ -571,8 +648,17 @@ export class ConfigStore {
     ): VisionQuotaResult {
         return inTransaction(this.db, () => {
             const globalUsed = this.getVisionMonthlyUsage(month);
-            if (!Number.isSafeInteger(globalLimit) || globalLimit < 1 || globalUsed >= globalLimit) {
-                return { consumed: false, blockedBy: 'global', used: globalUsed, limit: globalLimit };
+            if (
+                !Number.isSafeInteger(globalLimit) ||
+                globalLimit < 1 ||
+                globalUsed >= globalLimit
+            ) {
+                return {
+                    consumed: false,
+                    blockedBy: 'global',
+                    used: globalUsed,
+                    limit: globalLimit,
+                };
             }
 
             const scopeUsed = quotaScope
@@ -697,28 +783,28 @@ export class ConfigStore {
     listGuildBudgets(): Record<string, GuildBudgetConfig> {
         const rows = this.stmt(
             `
-            SELECT guild_id as guildId, daily_budget_usd as dailyBudgetUsd
+            SELECT guild_id as guildId, monthly_budget_usd as monthlyBudgetUsd
             FROM guild_budgets
             ORDER BY guild_id ASC
         `,
-        ).all() as Array<{ guildId: string; dailyBudgetUsd: number }>;
+        ).all() as Array<{ guildId: string; monthlyBudgetUsd: number }>;
 
         return Object.fromEntries(
-            rows.map((row) => [row.guildId, { dailyBudgetUsd: row.dailyBudgetUsd }]),
+            rows.map((row) => [row.guildId, { monthlyBudgetUsd: row.monthlyBudgetUsd }]),
         );
     }
 
     listUserBudgets(): Record<string, UserBudgetConfig> {
         const rows = this.stmt(
             `
-            SELECT user_id as userId, daily_budget_usd as dailyBudgetUsd
+            SELECT user_id as userId, monthly_budget_usd as monthlyBudgetUsd
             FROM user_budgets
             ORDER BY user_id ASC
         `,
-        ).all() as Array<{ userId: string; dailyBudgetUsd: number }>;
+        ).all() as Array<{ userId: string; monthlyBudgetUsd: number }>;
 
         return Object.fromEntries(
-            rows.map((row) => [row.userId, { dailyBudgetUsd: row.dailyBudgetUsd }]),
+            rows.map((row) => [row.userId, { monthlyBudgetUsd: row.monthlyBudgetUsd }]),
         );
     }
 
@@ -847,31 +933,28 @@ export class ConfigStore {
     private replaceGuildBudgets(budgets: Record<string, GuildBudgetConfig>): void {
         this.db.exec('DELETE FROM guild_budgets');
         const insert = this.stmt(`
-            INSERT INTO guild_budgets (guild_id, daily_budget_usd)
+            INSERT INTO guild_budgets (guild_id, monthly_budget_usd)
             VALUES (?, ?)
         `);
 
         for (const [guildId, budget] of Object.entries(budgets)) {
-            insert.run(guildId, budget.dailyBudgetUsd);
+            insert.run(guildId, budget.monthlyBudgetUsd);
         }
     }
 
     private replaceUserBudgets(budgets: Record<string, UserBudgetConfig>): void {
         this.db.exec('DELETE FROM user_budgets');
         const insert = this.stmt(`
-            INSERT INTO user_budgets (user_id, daily_budget_usd)
+            INSERT INTO user_budgets (user_id, monthly_budget_usd)
             VALUES (?, ?)
         `);
 
         for (const [userId, budget] of Object.entries(budgets)) {
-            insert.run(userId, budget.dailyBudgetUsd);
+            insert.run(userId, budget.monthlyBudgetUsd);
         }
     }
 
-    private replaceVisionScopeLimits(
-        scope: VisionScopeKind,
-        limits: Record<string, number>,
-    ): void {
+    private replaceVisionScopeLimits(scope: VisionScopeKind, limits: Record<string, number>): void {
         this.stmt('DELETE FROM vision_scope_limits WHERE scope = ?').run(scope);
         for (const [scopeId, limit] of Object.entries(limits)) {
             this.setVisionScopeLimit(scope, scopeId, limit);

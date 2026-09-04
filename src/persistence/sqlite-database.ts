@@ -353,6 +353,50 @@ const MIGRATIONS: Migration[] = [
             `);
         },
     },
+    {
+        id: 12,
+        name: 'monthly_translation_budgets',
+        up(db) {
+            for (const table of ['guild_budgets', 'user_budgets']) {
+                if (!tableExists(db, table) || !tableHasColumn(db, table, 'daily_budget_usd')) {
+                    continue;
+                }
+
+                db.exec(`
+                    ALTER TABLE ${table}
+                    RENAME COLUMN daily_budget_usd TO monthly_budget_usd;
+
+                    UPDATE ${table}
+                    SET monthly_budget_usd = monthly_budget_usd * 30;
+                `);
+            }
+
+            if (!tableExists(db, 'app_config')) return;
+
+            for (const [dailyKey, monthlyKey] of [
+                ['dailyBudgetUsd', 'monthlyBudgetUsd'],
+                ['defaultUserDailyBudgetUsd', 'defaultUserMonthlyBudgetUsd'],
+            ] as const) {
+                const monthly = db
+                    .prepare('SELECT 1 FROM app_config WHERE key = ?')
+                    .get(monthlyKey);
+                const daily = db
+                    .prepare('SELECT value_json as valueJson FROM app_config WHERE key = ?')
+                    .get(dailyKey) as { valueJson: string } | undefined;
+
+                if (!monthly && daily) {
+                    const value = JSON.parse(daily.valueJson) as unknown;
+                    const converted = typeof value === 'number' ? value * 30 : value;
+                    db.prepare('INSERT INTO app_config (key, value_json) VALUES (?, ?)').run(
+                        monthlyKey,
+                        JSON.stringify(converted),
+                    );
+                }
+
+                db.prepare('DELETE FROM app_config WHERE key = ?').run(dailyKey);
+            }
+        },
+    },
 ];
 
 let sharedDatabase: DatabaseSync | null = null;
