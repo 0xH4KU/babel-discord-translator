@@ -12,6 +12,11 @@ token prices.
   limit.
 - Before a translation runs, Babel estimates the request cost. If current cost plus
   the estimate is greater than or equal to the relevant limit, the request is blocked.
+- The estimate covers the complete system, glossary, and user prompt, the configured
+  maximum output, provider fallback, and HTTP retries. This is intentionally more
+  conservative than the usage normally settled after a successful request.
+- Token prices are captured when a request is admitted. Changing a configured price
+  affects future requests only; previously settled USD costs are not recalculated.
 - The monthly counter resets at the start of each UTC calendar month. Short windows are
   rolling and do not reset at a fixed clock time.
 
@@ -43,12 +48,15 @@ budget window:
 user window limit = server window limit * min(1, fair-share multiplier / active users)
 ```
 
-The default multiplier is `1.5`. Active users are distinct users with a successful
-translation in that server during the previous rolling 7 days; the current requester is
-included even when this is their first request. Failed translations do not consume
-usage. For example, with three active users the default individual ceiling is 50% of
-each server window. This is a ceiling, not a reservation: unused shares remain available
-to other users subject to their own ceiling and the server ceiling.
+The default multiplier is `1.5`. Active users are distinct users with recorded
+translation usage in that server during the previous rolling 7 days; the current
+requester is included even when this is their first request. Failures before any
+billable provider usage do not consume the translation budget. A provider failure that
+returns billable input or output tokens does consume budget, because that provider work
+has already occurred. For example, with three active users the default individual
+ceiling is 50% of each server window. This is a ceiling, not a reservation: unused
+shares remain available to other users subject to their own ceiling and the server
+ceiling.
 
 Deployment defaults are configured in Settings. Each Guild can override any of the
 three configurable values in Access; an empty value inherits the deployment default.
@@ -169,15 +177,23 @@ In short:
 
 - Pocket is `per-user cap + shared safety cap`.
 - Guild is `custom server caps + shared global pool for non-custom servers`.
+- Guild's Global Monthly Budget and Pocket's Global Safety Budget are separate settings
+  backed by separate usage pools. Updating either one does not change the other.
 
 ## Upgrade From Daily Budgets
 
-The SQLite migration converts existing daily translation budgets to monthly budgets as
+The SQLite migrations convert existing daily translation budgets to monthly budgets as
 `monthly = daily * 30`, including global, default-user, per-server, and per-user values.
-An existing `0` remains unlimited. The schema migration runs automatically at startup;
-back up the SQLite database before upgrading. Existing monthly usage remains the hard
-ceiling immediately after upgrade, while rolling windows begin with newly recorded
-minute-level usage.
+An existing `0` remains unlimited. Existing usage is assigned once to the separate
+Guild and Pocket pools during upgrade. Because legacy rows did not store their pool,
+that one-time assignment uses the custom Guild budgets present during migration.
+
+Legacy token history is also assigned a settled USD cost once, using the input and
+output prices configured during migration. Later price changes do not alter that
+history. The schema migrations run automatically at startup; back up the SQLite
+database before upgrading. Existing monthly usage remains the hard ceiling immediately
+after upgrade, while rolling windows begin with the minute-level usage available in the
+database.
 
 ## Babel Lens Image Quotas
 
