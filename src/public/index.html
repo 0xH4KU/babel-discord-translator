@@ -891,9 +891,12 @@
                 <!-- Settings Tab -->
                 <div class="tab-content" id="tab-settings">
                     <div class="settings-layout">
-                        <aside class="settings-category-nav" aria-label="Settings categories">
+                        <nav
+                            class="secondary-nav settings-category-nav"
+                            aria-label="Settings categories"
+                        >
                             <button
-                                class="settings-category-btn active"
+                                class="secondary-nav-btn settings-category-btn active"
                                 data-settings-category="providers"
                                 data-action="switchSettingsCategory"
                                 data-action-args='["providers"]'
@@ -901,7 +904,7 @@
                                 Providers
                             </button>
                             <button
-                                class="settings-category-btn"
+                                class="secondary-nav-btn settings-category-btn"
                                 data-settings-category="lens"
                                 data-action="switchSettingsCategory"
                                 data-action-args='["lens"]'
@@ -909,7 +912,7 @@
                                 Babel Lens
                             </button>
                             <button
-                                class="settings-category-btn"
+                                class="secondary-nav-btn settings-category-btn"
                                 data-settings-category="cost"
                                 data-action="switchSettingsCategory"
                                 data-action-args='["cost"]'
@@ -917,7 +920,7 @@
                                 Cost &amp; Limits
                             </button>
                             <button
-                                class="settings-category-btn"
+                                class="secondary-nav-btn settings-category-btn"
                                 data-settings-category="translation"
                                 data-action="switchSettingsCategory"
                                 data-action-args='["translation"]'
@@ -925,14 +928,14 @@
                                 Translation
                             </button>
                             <button
-                                class="settings-category-btn"
+                                class="secondary-nav-btn settings-category-btn"
                                 data-settings-category="security"
                                 data-action="switchSettingsCategory"
                                 data-action-args='["security"]'
                             >
                                 Security
                             </button>
-                        </aside>
+                        </nav>
                         <select
                             id="settings-category-select"
                             class="settings-select mobile-settings-category"

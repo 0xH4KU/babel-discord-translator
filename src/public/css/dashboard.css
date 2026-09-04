@@ -1102,8 +1102,11 @@
 }
 
 .dashboard-main {
+  display: flex;
+  flex-direction: column;
   width: calc(100% - 248px);
   max-width: 1440px;
+  min-height: 100vh;
   min-width: 0;
   margin-left: 248px;
   padding: 1.75rem 2rem 3rem;

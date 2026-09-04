@@ -704,42 +704,22 @@
 }
 
 /* --- Categorized settings and master-detail access --- */
+#tab-settings.active,
+#tab-access.active {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+}
+
 .settings-layout {
-    display: grid;
-    grid-template-columns: 168px minmax(0, 1fr);
-    gap: 1.5rem;
-    align-items: start;
+    flex: 1;
 }
 
 .settings-category-nav {
     position: sticky;
-    top: 1.75rem;
-    display: grid;
-    gap: 0.25rem;
-}
-
-.settings-category-btn {
-    min-height: 2.35rem;
-    padding: 0 0.7rem;
-    border: 0;
-    border-left: 2px solid transparent;
-    background: transparent;
-    color: var(--text-dim);
-    font: inherit;
-    font-size: 0.8rem;
-    font-weight: 700;
-    text-align: left;
-    cursor: pointer;
-}
-
-.settings-category-btn:hover,
-.settings-category-btn.active {
-    color: var(--text);
-}
-
-.settings-category-btn.active {
-    border-left-color: var(--accent);
-    background: rgba(255, 255, 255, 0.03);
+    top: 0;
+    z-index: 5;
+    background: var(--bg);
 }
 
 .mobile-settings-category {
@@ -752,6 +732,10 @@
 
 .settings-category-panel.active {
     display: block;
+}
+
+.settings-category-content {
+    width: min(100%, 60rem);
 }
 
 .settings-category-content .settings-section,
@@ -768,19 +752,28 @@
     padding-top: 1.35rem;
 }
 
-.settings-save-bar {
+.settings-save-bar,
+.access-panel > .save-bar-inline {
     position: sticky;
     bottom: 0;
     z-index: 10;
     align-items: center;
-    margin-top: 1rem;
+    margin-top: auto;
+    margin-bottom: 0;
     padding: 0.75rem 0;
     border-top: 1px solid var(--border);
     background: var(--bg);
 }
 
-.settings-save-bar .save-status {
+.settings-save-bar .save-status,
+.access-panel > .save-bar-inline .save-status {
     margin-right: auto;
+}
+
+#tab-access > .access-panel.active {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
 }
 
 .capability-toggle {

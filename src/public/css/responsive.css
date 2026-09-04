@@ -93,7 +93,9 @@
     }
 
     .dashboard-main {
+        flex: 1;
         width: 100%;
+        min-height: 0;
         margin-left: 0;
         padding: 1rem 0.85rem 2.5rem;
     }
@@ -206,10 +208,6 @@
         flex-direction: column;
         align-items: flex-start;
     }
-
-    .settings-save-bar {
-        position: static;
-    }
 }
 
 @media (max-width: 480px) {
@@ -270,6 +268,19 @@
     .budget-header {
         flex-direction: column;
         gap: 0.25rem;
+    }
+
+    .session-item {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .session-title {
+        flex-wrap: wrap;
+    }
+
+    .session-badge {
+        white-space: nowrap;
     }
 
     .table-card .table-header {
