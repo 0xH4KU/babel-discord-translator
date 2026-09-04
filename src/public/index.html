@@ -953,22 +953,26 @@
                                     <h3>Provider Order</h3>
                                     <div class="settings-row">
                                         <div class="input-group">
-                                            <label>Provider Mode</label>
+                                            <label for="cfg-provider">Primary</label>
                                             <select
                                                 id="cfg-provider"
                                                 class="settings-select"
                                                 data-action="onProviderModeChange"
                                             >
-                                                <option value="vertex">Vertex AI only</option>
-                                                <option value="openai">
-                                                    OpenAI-compatible only
-                                                </option>
-                                                <option value="vertex+openai">
-                                                    Vertex AI primary + OpenAI backup
-                                                </option>
-                                                <option value="openai+vertex">
-                                                    OpenAI primary + Vertex AI backup
-                                                </option>
+                                                <option value="vertex">Vertex AI</option>
+                                                <option value="openai">OpenAI-compatible</option>
+                                            </select>
+                                        </div>
+                                        <div class="input-group">
+                                            <label for="cfg-provider-fallback">Fallback</label>
+                                            <select
+                                                id="cfg-provider-fallback"
+                                                class="settings-select"
+                                                data-action="onProviderModeChange"
+                                            >
+                                                <option value="">None</option>
+                                                <option value="vertex">Vertex AI</option>
+                                                <option value="openai">OpenAI-compatible</option>
                                             </select>
                                         </div>
                                     </div>

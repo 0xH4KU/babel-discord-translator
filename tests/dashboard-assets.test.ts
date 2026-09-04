@@ -599,6 +599,7 @@ describe('dashboard static assets', () => {
             'cfg-vision-limit': { value: '950' },
             'cfg-prompt': { value: 'Translate precisely.' },
             'cfg-provider': { value: 'openai' },
+            'cfg-provider-fallback': { value: 'vertex' },
             'cfg-openai-apikey': { value: '' },
             'cfg-openai-baseurl': { value: 'https://api.example.test/v1' },
             'cfg-openai-model': { value: 'model-1' },
@@ -642,6 +643,7 @@ describe('dashboard static assets', () => {
             vertexAiSupportsImages: true,
             openaiSupportsImages: false,
             geminiMediaResolution: 'high',
+            translationProvider: 'openai+vertex',
         });
         expect(
             Object.values(payload)
@@ -674,6 +676,11 @@ describe('dashboard static assets', () => {
     it('shows Vision settings only for enabled text-only providers and tracks drafts', () => {
         const settingsJs = readFileSync('src/public/js/settings.js', 'utf-8');
         const fallback = { hidden: true };
+        const fallbackOptions = [
+            { value: '', disabled: false },
+            { value: 'vertex', disabled: false },
+            { value: 'openai', disabled: false },
+        ];
         const status = {
             textContent: '',
             classList: { toggle() {} },
@@ -681,6 +688,7 @@ describe('dashboard static assets', () => {
         const button = { disabled: true };
         const fields = {
             'cfg-provider': { value: 'vertex' },
+            'cfg-provider-fallback': { value: '', options: fallbackOptions },
             'cfg-vertex-images': { checked: false },
             'cfg-openai-images': { checked: false },
             'cfg-model': { value: 'gemini-new' },
@@ -720,6 +728,11 @@ describe('dashboard static assets', () => {
 
         vm.runInContext('onVertexIdentityChanged();', context);
         expect(fields['cfg-vertex-images'].checked).toBe(false);
+
+        fields['cfg-provider-fallback'].value = 'vertex';
+        vm.runInContext('onProviderModeChange();', context);
+        expect(fields['cfg-provider-fallback'].value).toBe('');
+        expect(fallbackOptions.find((option) => option.value === 'vertex')?.disabled).toBe(true);
     });
 
     it('partitions Access and Settings into profile-aware compact views', () => {

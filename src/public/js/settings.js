@@ -12,6 +12,12 @@ function providerUses(mode, provider) {
     .includes(provider);
 }
 
+function selectedProviderMode() {
+  const primary = configElement('cfg-provider')?.value || 'vertex';
+  const fallback = configElement('cfg-provider-fallback')?.value || '';
+  return fallback && fallback !== primary ? `${primary}+${fallback}` : primary;
+}
+
 function configElement(id) {
   return document.getElementById(id);
 }
@@ -42,7 +48,7 @@ function confirmSettingsNavigation() {
 
 function isVisionFallbackRequired() {
   const mode = settingsLoaded
-    ? configElement('cfg-provider')?.value
+    ? selectedProviderMode()
     : currentConfig.translationProvider;
   const vertexImages = settingsLoaded
     ? Boolean(configElement('cfg-vertex-images')?.checked)
@@ -57,8 +63,9 @@ function isVisionFallbackRequired() {
 }
 
 function refreshLensRoutes() {
-  const mode =
-    configElement('cfg-provider')?.value || currentConfig.translationProvider || 'vertex';
+  const mode = settingsLoaded
+    ? selectedProviderMode()
+    : currentConfig.translationProvider || 'vertex';
   const routes = [
     ['vertex', 'lens-route-vertex', configElement('cfg-vertex-images')?.checked],
     ['openai', 'lens-route-openai', configElement('cfg-openai-images')?.checked],
@@ -83,7 +90,12 @@ function refreshLensRoutes() {
 }
 
 function onProviderModeChange() {
-  const mode = configElement('cfg-provider').value;
+  const primary = configElement('cfg-provider').value;
+  const fallback = configElement('cfg-provider-fallback');
+  if (fallback.value === primary) fallback.value = '';
+  for (const option of fallback.options) option.disabled = option.value === primary;
+
+  const mode = selectedProviderMode();
   const vertexSection = configElement('section-vertex');
   const openaiSection = configElement('section-openai');
 
@@ -225,7 +237,11 @@ async function loadSettings(force = false) {
     document.getElementById('cfg-prompt').value = currentConfig.translationPrompt || '';
 
     // Provider settings
-    document.getElementById('cfg-provider').value = currentConfig.translationProvider || 'vertex';
+    const [primaryProvider, fallbackProvider = ''] = (
+      currentConfig.translationProvider || 'vertex'
+    ).split('+');
+    document.getElementById('cfg-provider').value = primaryProvider;
+    document.getElementById('cfg-provider-fallback').value = fallbackProvider;
     document.getElementById('cfg-openai-apikey').value = '';
     document.getElementById('cfg-openai-apikey').placeholder = currentConfig.hasOpenaiApiKey
       ? currentConfig.openaiApiKey + ' (leave blank to keep)'
@@ -279,7 +295,7 @@ async function saveSettings() {
   updates.translationPrompt = document.getElementById('cfg-prompt').value;
 
   // Provider settings
-  updates.translationProvider = document.getElementById('cfg-provider').value;
+  updates.translationProvider = selectedProviderMode();
   const newOpenaiKey = document.getElementById('cfg-openai-apikey').value.trim();
   if (newOpenaiKey) updates.openaiApiKey = newOpenaiKey;
   updates.openaiBaseUrl = document.getElementById('cfg-openai-baseurl').value.trim();
