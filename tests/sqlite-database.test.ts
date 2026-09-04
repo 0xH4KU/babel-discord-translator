@@ -324,7 +324,7 @@ describe('createSqliteDatabase', () => {
                 .prepare('SELECT id FROM schema_migrations ORDER BY id ASC')
                 .all() as Array<{ id: number }>;
             expect(migrationIds.map((row) => row.id)).toEqual([
-                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
             ]);
         } finally {
             db.close();
@@ -382,7 +382,84 @@ describe('createSqliteDatabase', () => {
             ).toEqual([
                 { key: 'defaultUserMonthlyBudgetUsd', value: '15' },
                 { key: 'monthlyBudgetUsd', value: '60' },
+                { key: 'pocketGlobalMonthlyBudgetUsd', value: '60' },
             ]);
+        } finally {
+            db.close();
+        }
+    });
+
+    it('should snapshot existing usage into stable product budget pools', async () => {
+        const { DatabaseSync } = await import('node:sqlite');
+        const { runMigrations } = await import('../src/persistence/sqlite-database.js');
+        const db = new DatabaseSync(':memory:');
+
+        try {
+            db.exec(`
+                CREATE TABLE schema_migrations (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    applied_at TEXT NOT NULL
+                );
+                WITH RECURSIVE ids(id) AS (SELECT 1 UNION ALL SELECT id + 1 FROM ids WHERE id < 14)
+                INSERT INTO schema_migrations (id, name, applied_at)
+                SELECT id, 'existing', '2026-01-01' FROM ids;
+
+                CREATE TABLE app_config (key TEXT PRIMARY KEY, value_json TEXT NOT NULL);
+                INSERT INTO app_config VALUES ('monthlyBudgetUsd', '7');
+                CREATE TABLE guild_budgets (
+                    guild_id TEXT PRIMARY KEY,
+                    monthly_budget_usd REAL NOT NULL
+                );
+                INSERT INTO guild_budgets VALUES ('custom', 2);
+                CREATE TABLE scoped_usage (
+                    scope TEXT NOT NULL,
+                    scope_id TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    input_tokens INTEGER NOT NULL,
+                    output_tokens INTEGER NOT NULL,
+                    requests INTEGER NOT NULL,
+                    PRIMARY KEY (scope, scope_id, date)
+                );
+                INSERT INTO scoped_usage VALUES
+                    ('global', '', '2026-03-27', 195, 95, 4),
+                    ('guild', 'custom', '2026-03-27', 40, 20, 1),
+                    ('guild', 'shared', '2026-03-27', 30, 15, 1),
+                    ('user', 'pocket', '2026-03-27', 25, 10, 1);
+                CREATE TABLE rolling_usage (
+                    scope TEXT NOT NULL,
+                    scope_id TEXT NOT NULL,
+                    bucket_start TEXT NOT NULL,
+                    input_tokens INTEGER NOT NULL,
+                    output_tokens INTEGER NOT NULL,
+                    requests INTEGER NOT NULL,
+                    PRIMARY KEY (scope, scope_id, bucket_start)
+                );
+            `);
+
+            runMigrations(db);
+
+            expect(
+                db
+                    .prepare(
+                        `SELECT pool_id AS poolId, input_tokens AS inputTokens,
+                                output_tokens AS outputTokens, requests
+                         FROM budget_usage ORDER BY pool_id`,
+                    )
+                    .all(),
+            ).toEqual([
+                { poolId: 'guild:custom', inputTokens: 40, outputTokens: 20, requests: 1 },
+                { poolId: 'guild:shared', inputTokens: 130, outputTokens: 65, requests: 2 },
+                { poolId: 'pocket:shared', inputTokens: 25, outputTokens: 10, requests: 1 },
+            ]);
+            expect(
+                db
+                    .prepare(
+                        `SELECT value_json AS value FROM app_config
+                         WHERE key = 'pocketGlobalMonthlyBudgetUsd'`,
+                    )
+                    .get(),
+            ).toEqual({ value: '7' });
         } finally {
             db.close();
         }

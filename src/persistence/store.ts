@@ -5,6 +5,7 @@ import {
     getSqliteDatabase,
     inTransaction,
     isSqliteStoreEmpty,
+    rebuildTranslationBudgetPools,
 } from './sqlite-database.js';
 import { readLegacyStoreData, resolveLegacyConfigPath } from './legacy-json-store.js';
 import { CONFIG_VALUE_KEYS, DEFAULT_STORE_DATA, type ConfigValueKey } from './store-defaults.js';
@@ -32,6 +33,12 @@ interface ConfigStoreOptions {
 export type UsageScopeKind = 'global' | 'guild' | 'user';
 export type RollingUsageScopeKind = UsageScopeKind | 'guild_user';
 export type VisionScopeKind = Exclude<UsageScopeKind, 'global'>;
+export const GUILD_SHARED_BUDGET_POOL = 'guild:shared' as const;
+export const POCKET_SHARED_BUDGET_POOL = 'pocket:shared' as const;
+export type TranslationBudgetPoolId =
+    | typeof GUILD_SHARED_BUDGET_POOL
+    | typeof POCKET_SHARED_BUDGET_POOL
+    | `guild:${string}`;
 
 export interface VisionQuotaScope {
     scope: VisionScopeKind;
@@ -213,12 +220,12 @@ export class ConfigStore {
     importSnapshot(data: StoreData): void {
         inTransaction(this.db, () => {
             for (const key of CONFIG_VALUE_KEYS) this.setConfigValue(key, data[key]);
+            this.replaceGuildBudgets(data.guildBudgets);
+            this.replaceUserBudgets(data.userBudgets);
             this.replaceUsageSnapshot(data);
             this.replaceUserLanguagePrefs(data.userLanguagePrefs);
             this.replaceUserLanguagePreferenceEntries(data.userLanguagePreferenceEntries);
-            this.replaceGuildBudgets(data.guildBudgets);
             this.replaceGuildBudgetLimitOverrides(data.guildBudgetLimitOverrides);
-            this.replaceUserBudgets(data.userBudgets);
             this.replaceVisionScopeLimits('guild', data.guildVisionLimits);
             this.replaceVisionScopeLimits('user', data.userVisionLimits);
         });
@@ -608,93 +615,91 @@ export class ConfigStore {
     }
 
     getSharedGlobalUsage(date: string): TokenUsage {
+        return this.getBudgetPoolUsage(GUILD_SHARED_BUDGET_POOL, date);
+    }
+
+    getSharedGlobalUsageBetween(start: string, end: string): TokenUsage {
+        return this.getBudgetPoolUsageBetween(GUILD_SHARED_BUDGET_POOL, start, end);
+    }
+
+    getSharedRollingUsageBetween(start: string, end: string): TokenUsage {
+        return this.getRollingBudgetPoolUsageBetween(GUILD_SHARED_BUDGET_POOL, start, end);
+    }
+
+    getBudgetPoolUsage(poolId: TranslationBudgetPoolId, date: string): TokenUsage {
         const row = this.stmt(
             `
-            WITH total AS (
-                SELECT
-                    COALESCE(SUM(input_tokens), 0) AS inputTokens,
-                    COALESCE(SUM(output_tokens), 0) AS outputTokens,
-                    COALESCE(SUM(requests), 0) AS requests
-                FROM scoped_usage
-                WHERE scope = 'global' AND scope_id = '' AND date = ?
-            ), custom AS (
-                SELECT
-                    COALESCE(SUM(input_tokens), 0) AS inputTokens,
-                    COALESCE(SUM(output_tokens), 0) AS outputTokens,
-                    COALESCE(SUM(requests), 0) AS requests
-                FROM scoped_usage
-                JOIN guild_budgets ON guild_budgets.guild_id = scoped_usage.scope_id
-                WHERE scope = 'guild' AND date = ?
-            )
-            SELECT
-                MAX(total.inputTokens - custom.inputTokens, 0) AS inputTokens,
-                MAX(total.outputTokens - custom.outputTokens, 0) AS outputTokens,
-                MAX(total.requests - custom.requests, 0) AS requests
-            FROM total, custom
+            SELECT COALESCE(SUM(input_tokens), 0) AS inputTokens,
+                   COALESCE(SUM(output_tokens), 0) AS outputTokens,
+                   COALESCE(SUM(requests), 0) AS requests
+            FROM budget_usage
+            WHERE pool_id = ? AND date = ?
         `,
-        ).get(date, date) as Omit<TokenUsage, 'date'>;
+        ).get(poolId, date) as Omit<TokenUsage, 'date'>;
 
         return { date, ...row };
     }
 
-    getSharedGlobalUsageBetween(start: string, end: string): TokenUsage {
+    getBudgetPoolUsageBetween(
+        poolId: TranslationBudgetPoolId,
+        start: string,
+        end: string,
+    ): TokenUsage {
         const row = this.stmt(
             `
-            WITH total AS (
-                SELECT
-                    COALESCE(SUM(input_tokens), 0) AS inputTokens,
-                    COALESCE(SUM(output_tokens), 0) AS outputTokens,
-                    COALESCE(SUM(requests), 0) AS requests
-                FROM scoped_usage
-                WHERE scope = 'global' AND scope_id = '' AND date >= ? AND date < ?
-            ), custom AS (
-                SELECT
-                    COALESCE(SUM(input_tokens), 0) AS inputTokens,
-                    COALESCE(SUM(output_tokens), 0) AS outputTokens,
-                    COALESCE(SUM(requests), 0) AS requests
-                FROM scoped_usage
-                JOIN guild_budgets ON guild_budgets.guild_id = scoped_usage.scope_id
-                WHERE scope = 'guild' AND date >= ? AND date < ?
-            )
-            SELECT
-                MAX(total.inputTokens - custom.inputTokens, 0) AS inputTokens,
-                MAX(total.outputTokens - custom.outputTokens, 0) AS outputTokens,
-                MAX(total.requests - custom.requests, 0) AS requests
-            FROM total, custom
+            SELECT COALESCE(SUM(input_tokens), 0) AS inputTokens,
+                   COALESCE(SUM(output_tokens), 0) AS outputTokens,
+                   COALESCE(SUM(requests), 0) AS requests
+            FROM budget_usage
+            WHERE pool_id = ? AND date >= ? AND date < ?
         `,
-        ).get(start, end, start, end) as Omit<TokenUsage, 'date'>;
+        ).get(poolId, start, end) as Omit<TokenUsage, 'date'>;
 
         return { date: start, ...row };
     }
 
-    getSharedRollingUsageBetween(start: string, end: string): TokenUsage {
+    getBudgetPoolUsageForIdsBetween(
+        poolIds: readonly TranslationBudgetPoolId[],
+        start: string,
+        end: string,
+    ): Record<string, TokenUsage> {
+        if (poolIds.length === 0) return {};
+
+        const placeholders = poolIds.map(() => '?').join(', ');
+        const rows = this.stmt(
+            `
+            SELECT pool_id AS poolId,
+                   SUM(input_tokens) AS inputTokens,
+                   SUM(output_tokens) AS outputTokens,
+                   SUM(requests) AS requests
+            FROM budget_usage
+            WHERE date >= ? AND date < ? AND pool_id IN (${placeholders})
+            GROUP BY pool_id
+            ORDER BY pool_id ASC
+        `,
+        ).all(start, end, ...poolIds) as unknown as Array<
+            { poolId: string } & Omit<TokenUsage, 'date'>
+        >;
+
+        return Object.fromEntries(
+            rows.map(({ poolId, ...usage }) => [poolId, { date: start, ...usage }]),
+        );
+    }
+
+    getRollingBudgetPoolUsageBetween(
+        poolId: TranslationBudgetPoolId,
+        start: string,
+        end: string,
+    ): TokenUsage {
         const row = this.stmt(
             `
-            WITH total AS (
-                SELECT
-                    COALESCE(SUM(input_tokens), 0) AS inputTokens,
-                    COALESCE(SUM(output_tokens), 0) AS outputTokens,
-                    COALESCE(SUM(requests), 0) AS requests
-                FROM rolling_usage
-                WHERE scope = 'global' AND scope_id = ''
-                  AND bucket_start >= ? AND bucket_start < ?
-            ), custom AS (
-                SELECT
-                    COALESCE(SUM(input_tokens), 0) AS inputTokens,
-                    COALESCE(SUM(output_tokens), 0) AS outputTokens,
-                    COALESCE(SUM(requests), 0) AS requests
-                FROM rolling_usage
-                JOIN guild_budgets ON guild_budgets.guild_id = rolling_usage.scope_id
-                WHERE scope = 'guild'
-                  AND bucket_start >= ? AND bucket_start < ?
-            )
-            SELECT
-                MAX(total.inputTokens - custom.inputTokens, 0) AS inputTokens,
-                MAX(total.outputTokens - custom.outputTokens, 0) AS outputTokens,
-                MAX(total.requests - custom.requests, 0) AS requests
-            FROM total, custom
+            SELECT COALESCE(SUM(input_tokens), 0) AS inputTokens,
+                   COALESCE(SUM(output_tokens), 0) AS outputTokens,
+                   COALESCE(SUM(requests), 0) AS requests
+            FROM rolling_budget_usage
+            WHERE pool_id = ? AND bucket_start >= ? AND bucket_start < ?
         `,
-        ).get(start, end, start, end) as Omit<TokenUsage, 'date'>;
+        ).get(poolId, start, end) as Omit<TokenUsage, 'date'>;
 
         return { date: start, ...row };
     }
@@ -707,9 +712,17 @@ export class ConfigStore {
             guildId?: string | null;
             userId?: string | null;
             actorUserId?: string | null;
+            budgetPoolId?: TranslationBudgetPoolId;
         } = {},
     ): void {
         const { date, bucketStart, retentionStart } = rollingUsageTimes(timestamp);
+        const budgetPoolId =
+            scope.budgetPoolId ??
+            (scope.userId
+                ? POCKET_SHARED_BUDGET_POOL
+                : scope.guildId && this.getGuildBudget(scope.guildId)
+                  ? `guild:${scope.guildId}`
+                  : GUILD_SHARED_BUDGET_POOL);
         const rows: Array<[UsageScopeKind, string]> = [['global', '']];
         if (scope.guildId) rows.push(['guild', scope.guildId]);
         if (scope.userId) rows.push(['user', scope.userId]);
@@ -734,6 +747,19 @@ export class ConfigStore {
                 upsertDaily.run(usageScope, scopeId, date, inputTokens || 0, outputTokens || 0);
             }
 
+            this.stmt(
+                `
+                INSERT INTO budget_usage (
+                    pool_id, date, input_tokens, output_tokens, requests
+                )
+                VALUES (?, ?, ?, ?, 1)
+                ON CONFLICT(pool_id, date) DO UPDATE SET
+                    input_tokens = input_tokens + excluded.input_tokens,
+                    output_tokens = output_tokens + excluded.output_tokens,
+                    requests = requests + 1
+            `,
+            ).run(budgetPoolId, date, inputTokens || 0, outputTokens || 0);
+
             const upsertRolling = this.stmt(`
                 INSERT INTO rolling_usage (
                     scope, scope_id, bucket_start, input_tokens, output_tokens, requests
@@ -755,7 +781,23 @@ export class ConfigStore {
                 );
             }
 
+            this.stmt(
+                `
+                INSERT INTO rolling_budget_usage (
+                    pool_id, bucket_start, input_tokens, output_tokens, requests
+                )
+                VALUES (?, ?, ?, ?, 1)
+                ON CONFLICT(pool_id, bucket_start) DO UPDATE SET
+                    input_tokens = input_tokens + excluded.input_tokens,
+                    output_tokens = output_tokens + excluded.output_tokens,
+                    requests = requests + 1
+            `,
+            ).run(budgetPoolId, bucketStart, inputTokens || 0, outputTokens || 0);
+
             this.stmt('DELETE FROM rolling_usage WHERE bucket_start < ?').run(retentionStart);
+            this.stmt('DELETE FROM rolling_budget_usage WHERE bucket_start < ?').run(
+                retentionStart,
+            );
         });
     }
 
@@ -1109,6 +1151,7 @@ export class ConfigStore {
         for (const [userId, entry] of Object.entries(data.userTokenUsage)) {
             write('user', userId, entry);
         }
+        rebuildTranslationBudgetPools(this.db);
     }
 
     private replaceUserLanguagePrefs(prefs: Record<string, string>): void {

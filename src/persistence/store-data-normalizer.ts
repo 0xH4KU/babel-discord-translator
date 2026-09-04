@@ -17,9 +17,14 @@ type BudgetInput = {
 
 export type StoreDataInput = Omit<
     Partial<StoreData>,
-    'monthlyBudgetUsd' | 'defaultUserMonthlyBudgetUsd' | 'guildBudgets' | 'userBudgets'
+    | 'monthlyBudgetUsd'
+    | 'pocketGlobalMonthlyBudgetUsd'
+    | 'defaultUserMonthlyBudgetUsd'
+    | 'guildBudgets'
+    | 'userBudgets'
 > & {
     monthlyBudgetUsd?: number;
+    pocketGlobalMonthlyBudgetUsd?: number;
     defaultUserMonthlyBudgetUsd?: number;
     dailyBudgetUsd?: number;
     defaultUserDailyBudgetUsd?: number;
@@ -268,6 +273,10 @@ export function normalizeStoreData(data: StoreDataInput | undefined): StoreData 
         inputPricePerMillion: normalizeNumber(source.inputPricePerMillion),
         outputPricePerMillion: normalizeNumber(source.outputPricePerMillion),
         monthlyBudgetUsd: normalizeMonthlyBudget(source.monthlyBudgetUsd, source.dailyBudgetUsd),
+        pocketGlobalMonthlyBudgetUsd: normalizeNumber(
+            source.pocketGlobalMonthlyBudgetUsd,
+            normalizeMonthlyBudget(source.monthlyBudgetUsd, source.dailyBudgetUsd),
+        ),
         budgetFiveHourPercent: normalizeNumber(
             source.budgetFiveHourPercent,
             DEFAULT_BUDGET_LIMITS.budgetFiveHourPercent,

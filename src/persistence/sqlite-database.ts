@@ -20,6 +20,107 @@ function tableExists(db: DatabaseSync, table: string): boolean {
     return !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table);
 }
 
+export function rebuildTranslationBudgetPools(db: DatabaseSync): void {
+    db.exec(`
+        DELETE FROM budget_usage;
+        DELETE FROM rolling_budget_usage;
+
+        INSERT INTO budget_usage (pool_id, date, input_tokens, output_tokens, requests)
+        SELECT 'pocket:shared', date, SUM(input_tokens), SUM(output_tokens), SUM(requests)
+        FROM scoped_usage
+        WHERE scope = 'user'
+        GROUP BY date;
+
+        INSERT INTO budget_usage (pool_id, date, input_tokens, output_tokens, requests)
+        SELECT 'guild:' || scoped_usage.scope_id, date, input_tokens, output_tokens, requests
+        FROM scoped_usage
+        JOIN guild_budgets ON guild_budgets.guild_id = scoped_usage.scope_id
+        WHERE scope = 'guild';
+
+        WITH pocket AS (
+            SELECT date, SUM(input_tokens) AS input_tokens,
+                   SUM(output_tokens) AS output_tokens, SUM(requests) AS requests
+            FROM scoped_usage
+            WHERE scope = 'user'
+            GROUP BY date
+        ), custom AS (
+            SELECT date, SUM(input_tokens) AS input_tokens,
+                   SUM(output_tokens) AS output_tokens, SUM(requests) AS requests
+            FROM scoped_usage
+            JOIN guild_budgets ON guild_budgets.guild_id = scoped_usage.scope_id
+            WHERE scope = 'guild'
+            GROUP BY date
+        )
+        INSERT INTO budget_usage (pool_id, date, input_tokens, output_tokens, requests)
+        SELECT
+            'guild:shared',
+            total.date,
+            MAX(total.input_tokens - COALESCE(pocket.input_tokens, 0) -
+                COALESCE(custom.input_tokens, 0), 0),
+            MAX(total.output_tokens - COALESCE(pocket.output_tokens, 0) -
+                COALESCE(custom.output_tokens, 0), 0),
+            MAX(total.requests - COALESCE(pocket.requests, 0) -
+                COALESCE(custom.requests, 0), 0)
+        FROM scoped_usage AS total
+        LEFT JOIN pocket ON pocket.date = total.date
+        LEFT JOIN custom ON custom.date = total.date
+        WHERE total.scope = 'global' AND total.scope_id = '';
+
+        INSERT INTO rolling_budget_usage (
+            pool_id, bucket_start, input_tokens, output_tokens, requests
+        )
+        SELECT
+            'pocket:shared', bucket_start, SUM(input_tokens), SUM(output_tokens), SUM(requests)
+        FROM rolling_usage
+        WHERE scope = 'user'
+        GROUP BY bucket_start;
+
+        INSERT INTO rolling_budget_usage (
+            pool_id, bucket_start, input_tokens, output_tokens, requests
+        )
+        SELECT
+            'guild:' || rolling_usage.scope_id,
+            bucket_start,
+            input_tokens,
+            output_tokens,
+            requests
+        FROM rolling_usage
+        JOIN guild_budgets ON guild_budgets.guild_id = rolling_usage.scope_id
+        WHERE scope = 'guild';
+
+        WITH pocket AS (
+            SELECT bucket_start, SUM(input_tokens) AS input_tokens,
+                   SUM(output_tokens) AS output_tokens, SUM(requests) AS requests
+            FROM rolling_usage
+            WHERE scope = 'user'
+            GROUP BY bucket_start
+        ), custom AS (
+            SELECT bucket_start, SUM(input_tokens) AS input_tokens,
+                   SUM(output_tokens) AS output_tokens, SUM(requests) AS requests
+            FROM rolling_usage
+            JOIN guild_budgets ON guild_budgets.guild_id = rolling_usage.scope_id
+            WHERE scope = 'guild'
+            GROUP BY bucket_start
+        )
+        INSERT INTO rolling_budget_usage (
+            pool_id, bucket_start, input_tokens, output_tokens, requests
+        )
+        SELECT
+            'guild:shared',
+            total.bucket_start,
+            MAX(total.input_tokens - COALESCE(pocket.input_tokens, 0) -
+                COALESCE(custom.input_tokens, 0), 0),
+            MAX(total.output_tokens - COALESCE(pocket.output_tokens, 0) -
+                COALESCE(custom.output_tokens, 0), 0),
+            MAX(total.requests - COALESCE(pocket.requests, 0) -
+                COALESCE(custom.requests, 0), 0)
+        FROM rolling_usage AS total
+        LEFT JOIN pocket ON pocket.bucket_start = total.bucket_start
+        LEFT JOIN custom ON custom.bucket_start = total.bucket_start
+        WHERE total.scope = 'global' AND total.scope_id = '';
+    `);
+}
+
 function tablePrimaryKeyColumns(db: DatabaseSync, table: string): string[] {
     const columns = db.prepare(`PRAGMA table_info("${table}")`).all() as Array<{
         name: string;
@@ -445,6 +546,70 @@ const MIGRATIONS: Migration[] = [
             `);
         },
     },
+    {
+        id: 15,
+        name: 'persist_translation_budget_pools',
+        up(db) {
+            db.exec(`
+                CREATE TABLE IF NOT EXISTS app_config (
+                    key TEXT PRIMARY KEY,
+                    value_json TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS guild_budgets (
+                    guild_id TEXT PRIMARY KEY,
+                    monthly_budget_usd REAL NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS scoped_usage (
+                    scope TEXT NOT NULL CHECK (scope IN ('global', 'guild', 'user')),
+                    scope_id TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    input_tokens INTEGER NOT NULL,
+                    output_tokens INTEGER NOT NULL,
+                    requests INTEGER NOT NULL,
+                    PRIMARY KEY (scope, scope_id, date)
+                );
+                CREATE TABLE IF NOT EXISTS rolling_usage (
+                    scope TEXT NOT NULL CHECK (
+                        scope IN ('global', 'guild', 'user', 'guild_user')
+                    ),
+                    scope_id TEXT NOT NULL,
+                    bucket_start TEXT NOT NULL,
+                    input_tokens INTEGER NOT NULL,
+                    output_tokens INTEGER NOT NULL,
+                    requests INTEGER NOT NULL,
+                    PRIMARY KEY (scope, scope_id, bucket_start)
+                );
+                CREATE TABLE IF NOT EXISTS budget_usage (
+                    pool_id TEXT NOT NULL CHECK (pool_id <> ''),
+                    date TEXT NOT NULL,
+                    input_tokens INTEGER NOT NULL,
+                    output_tokens INTEGER NOT NULL,
+                    requests INTEGER NOT NULL,
+                    PRIMARY KEY (pool_id, date)
+                );
+
+                CREATE TABLE IF NOT EXISTS rolling_budget_usage (
+                    pool_id TEXT NOT NULL CHECK (pool_id <> ''),
+                    bucket_start TEXT NOT NULL,
+                    input_tokens INTEGER NOT NULL,
+                    output_tokens INTEGER NOT NULL,
+                    requests INTEGER NOT NULL,
+                    PRIMARY KEY (pool_id, bucket_start)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_budget_usage_date
+                    ON budget_usage (date, pool_id);
+                CREATE INDEX IF NOT EXISTS idx_rolling_budget_usage_window
+                    ON rolling_budget_usage (bucket_start, pool_id);
+
+                INSERT OR IGNORE INTO app_config (key, value_json)
+                SELECT 'pocketGlobalMonthlyBudgetUsd', value_json
+                FROM app_config
+                WHERE key = 'monthlyBudgetUsd';
+            `);
+            rebuildTranslationBudgetPools(db);
+        },
+    },
 ];
 
 let sharedDatabase: DatabaseSync | null = null;
@@ -544,6 +709,8 @@ const STORE_TABLES = new Set([
     'guild_budget_limit_overrides',
     'scoped_usage',
     'rolling_usage',
+    'budget_usage',
+    'rolling_budget_usage',
     'guild_glossary',
     'user_budgets',
     'discord_user_profiles',

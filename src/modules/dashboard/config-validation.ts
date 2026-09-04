@@ -32,6 +32,7 @@ const NUMBER_CONFIG_KEYS = [
     'maxInputLength',
     'maxOutputTokens',
     'monthlyBudgetUsd',
+    'pocketGlobalMonthlyBudgetUsd',
     'budgetFiveHourPercent',
     'budgetSevenDayPercent',
     'budgetFairShareMultiplier',
@@ -223,6 +224,12 @@ export function validateConfigUpdate(
         dashboardMessages.validation.monthlyBudgetUsd,
     );
     if (!monthlyBudget.valid) return monthlyBudget;
+    const pocketGlobalMonthlyBudget = sanitizeNonNegativeNumberField(
+        sanitized,
+        'pocketGlobalMonthlyBudgetUsd',
+        dashboardMessages.validation.monthlyBudgetUsd,
+    );
+    if (!pocketGlobalMonthlyBudget.valid) return pocketGlobalMonthlyBudget;
     const budgetLimitOverrides: BudgetLimitOverrides = {};
     for (const key of [
         'budgetFiveHourPercent',

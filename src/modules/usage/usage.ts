@@ -3,7 +3,12 @@
  * and 30-day history reporting. Supports global, per-guild, and per-user tracking.
  */
 import { configRepository, type RuntimeConfig } from '../config/config-repository.js';
-import { store } from '../../persistence/store.js';
+import {
+    GUILD_SHARED_BUDGET_POOL,
+    POCKET_SHARED_BUDGET_POOL,
+    store,
+    type TranslationBudgetPoolId,
+} from '../../persistence/store.js';
 import { resolveBudgetScope } from './budget-scope.js';
 import type { UsageScope } from './usage-scope.js';
 import { calculateCost, createEmptyUsage, toUsageStats, withCost } from './usage-cost.js';
@@ -55,12 +60,14 @@ interface BudgetWindow extends UsagePeriod {
     rolling: boolean;
 }
 
-interface BudgetSource {
+type BudgetSource = {
     key: string;
     budget: number;
-    scope: 'global' | 'guild' | 'user';
-    scopeId: string;
-    sharedGlobal?: boolean;
+} & ({ kind: 'pool'; poolId: TranslationBudgetPoolId } | { kind: 'user'; userId: string });
+
+interface BudgetPlan {
+    admissions: BudgetAdmission[];
+    poolId: TranslationBudgetPoolId;
 }
 
 export class UsageTracker {
@@ -69,32 +76,6 @@ export class UsageTracker {
     /** Record a translation's token usage (global + optional guild/user). */
     record(inputTokens: number, outputTokens: number, scope: UsageScope = {}): void {
         store.recordUsage(new Date().toISOString(), inputTokens, outputTokens, scope);
-    }
-
-    /** Calculate this month's cost for a specific user. */
-    private getUserCost(
-        userId: string,
-        runtimeConfig = configRepository.getRuntimeConfig(),
-        period = currentMonth(),
-    ): UsageCost {
-        return withCost(
-            store.getUsageBetween('user', userId, period.start, period.end),
-            runtimeConfig.inputPricePerMillion || 0,
-            runtimeConfig.outputPricePerMillion || 0,
-        );
-    }
-
-    /** Calculate this month's cost for a specific guild. */
-    private getGuildCost(
-        guildId: string,
-        runtimeConfig = configRepository.getRuntimeConfig(),
-        period = currentMonth(),
-    ): UsageCost {
-        return withCost(
-            store.getUsageBetween('guild', guildId, period.start, period.end),
-            runtimeConfig.inputPricePerMillion || 0,
-            runtimeConfig.outputPricePerMillion || 0,
-        );
     }
 
     tryReserveBudget({
@@ -110,7 +91,7 @@ export class UsageTracker {
             { inputTokens: estimatedInputTokens, outputTokens: estimatedOutputTokens },
             runtimeConfig,
         );
-        const admissions = this.getBudgetAdmissions(scope, runtimeConfig, new Date());
+        const { admissions, poolId } = this.getBudgetPlan(scope, runtimeConfig, new Date());
 
         if (
             admissions.some(
@@ -142,17 +123,25 @@ export class UsageTracker {
             settle: (inputTokens, outputTokens) => {
                 if (!active) return;
                 release();
-                this.record(inputTokens, outputTokens, scope);
+                this.recordInPool(inputTokens, outputTokens, scope, poolId);
             },
             release,
         };
     }
 
-    private getBudgetAdmissions(
+    private recordInPool(
+        inputTokens: number,
+        outputTokens: number,
         scope: UsageScope,
-        runtimeConfig: RuntimeConfig,
-        now: Date,
-    ): BudgetAdmission[] {
+        budgetPoolId: TranslationBudgetPoolId,
+    ): void {
+        store.recordUsage(new Date().toISOString(), inputTokens, outputTokens, {
+            ...scope,
+            budgetPoolId,
+        });
+    }
+
+    private getBudgetPlan(scope: UsageScope, runtimeConfig: RuntimeConfig, now: Date): BudgetPlan {
         const decision = resolveBudgetScope(scope, runtimeConfig);
         const limits = resolveBudgetLimits(
             runtimeConfig,
@@ -160,37 +149,36 @@ export class UsageTracker {
         );
         const windows = budgetWindows(now, limits);
         const sources: BudgetSource[] = [];
+        const poolId = budgetPoolForDecision(decision);
 
         if (decision.kind === 'user' && decision.userId) {
             sources.push(
                 {
                     key: `user:${decision.userId}`,
                     budget: decision.budget,
-                    scope: 'user',
-                    scopeId: decision.userId,
+                    kind: 'user',
+                    userId: decision.userId,
                 },
                 {
-                    key: 'global',
-                    budget: runtimeConfig.monthlyBudgetUsd || 0,
-                    scope: 'global',
-                    scopeId: '',
-                    sharedGlobal: true,
+                    key: POCKET_SHARED_BUDGET_POOL,
+                    budget: runtimeConfig.pocketGlobalMonthlyBudgetUsd || 0,
+                    kind: 'pool',
+                    poolId,
                 },
             );
         } else if (decision.kind === 'guild' && decision.guildId) {
             sources.push({
                 key: `guild:${decision.guildId}`,
                 budget: decision.budget,
-                scope: 'guild',
-                scopeId: decision.guildId,
+                kind: 'pool',
+                poolId,
             });
         } else {
             sources.push({
-                key: 'global',
+                key: GUILD_SHARED_BUDGET_POOL,
                 budget: decision.budget,
-                scope: 'global',
-                scopeId: '',
-                sharedGlobal: true,
+                kind: 'pool',
+                poolId,
             });
         }
 
@@ -239,7 +227,7 @@ export class UsageTracker {
             );
         }
 
-        return admissions;
+        return { admissions, poolId };
     }
 
     private getBudgetSourceCost(
@@ -247,18 +235,18 @@ export class UsageTracker {
         window: BudgetWindow,
         runtimeConfig: RuntimeConfig,
     ): UsageCost {
-        const tokens = window.rolling
-            ? source.sharedGlobal
-                ? store.getSharedRollingUsageBetween(window.start, window.end)
-                : store.getRollingUsageBetween(
-                      source.scope,
-                      source.scopeId,
-                      window.start,
-                      window.end,
-                  )
-            : source.sharedGlobal
-              ? store.getSharedGlobalUsageBetween(window.start, window.end)
-              : store.getUsageBetween(source.scope, source.scopeId, window.start, window.end);
+        const tokens =
+            source.kind === 'pool'
+                ? window.rolling
+                    ? store.getRollingBudgetPoolUsageBetween(
+                          source.poolId,
+                          window.start,
+                          window.end,
+                      )
+                    : store.getBudgetPoolUsageBetween(source.poolId, window.start, window.end)
+                : window.rolling
+                  ? store.getRollingUsageBetween('user', source.userId, window.start, window.end)
+                  : store.getUsageBetween('user', source.userId, window.start, window.end);
 
         return withCost(
             tokens,
@@ -269,19 +257,34 @@ export class UsageTracker {
 
     /** Get stats for dashboard display (global). */
     getStats(runtimeConfig = configRepository.getRuntimeConfig()): UsageStats {
-        const cost = this.getSharedGlobalBudgetCost(runtimeConfig, currentMonth());
+        const cost = this.getBudgetPoolCost(
+            GUILD_SHARED_BUDGET_POOL,
+            runtimeConfig,
+            currentMonth(),
+        );
         const budget = runtimeConfig.monthlyBudgetUsd || 0;
 
         return toUsageStats(cost, budget);
     }
 
+    /** Get Babel Pocket's shared safety-budget stats. */
+    getPocketStats(runtimeConfig = configRepository.getRuntimeConfig()): UsageStats {
+        const cost = this.getBudgetPoolCost(
+            POCKET_SHARED_BUDGET_POOL,
+            runtimeConfig,
+            currentMonth(),
+        );
+        return toUsageStats(cost, runtimeConfig.pocketGlobalMonthlyBudgetUsd || 0);
+    }
+
     /** Get stats for a specific guild. */
     getGuildStats(guildId: string): UsageStats {
         const runtimeConfig = configRepository.getRuntimeConfig();
-        const cost = this.getGuildCost(guildId, runtimeConfig, currentMonth());
-        const budget =
-            store.getGuildBudget(guildId)?.monthlyBudgetUsd ??
-            (runtimeConfig.monthlyBudgetUsd || 0);
+        const customBudget = store.getGuildBudget(guildId);
+        if (!customBudget) return this.getStats(runtimeConfig);
+
+        const cost = this.getBudgetPoolCost(`guild:${guildId}`, runtimeConfig, currentMonth());
+        const budget = customBudget.monthlyBudgetUsd;
 
         return toUsageStats(cost, budget);
     }
@@ -292,12 +295,35 @@ export class UsageTracker {
         budgets = store.listGuildBudgets(),
         runtimeConfig = configRepository.getRuntimeConfig(),
     ): Record<string, UsageStats> {
-        return this.getScopedStatsForIds(
+        const period = currentMonth();
+        const scopedUsage = store.getUsageForIdsBetween(
             'guild',
             guildIds,
-            budgets,
-            runtimeConfig.monthlyBudgetUsd || 0,
-            runtimeConfig,
+            period.start,
+            period.end,
+        );
+        const customPoolIds = guildIds.flatMap((guildId) =>
+            budgets[guildId] ? ([`guild:${guildId}`] as const) : [],
+        );
+        const customUsage = store.getBudgetPoolUsageForIdsBetween(
+            customPoolIds,
+            period.start,
+            period.end,
+        );
+
+        return Object.fromEntries(
+            guildIds.map((guildId) => {
+                const customBudget = budgets[guildId];
+                const usage = customBudget ? customUsage[`guild:${guildId}`] : scopedUsage[guildId];
+                const cost = withCost(
+                    usage ?? createEmptyUsage(period.start),
+                    runtimeConfig.inputPricePerMillion || 0,
+                    runtimeConfig.outputPricePerMillion || 0,
+                );
+                const budget =
+                    customBudget?.monthlyBudgetUsd ?? (runtimeConfig.monthlyBudgetUsd || 0);
+                return [guildId, toUsageStats(cost, budget)];
+            }),
         );
     }
 
@@ -389,16 +415,25 @@ export class UsageTracker {
         return rows.sort(compareUsageExportRows);
     }
 
-    private getSharedGlobalBudgetCost(
+    private getBudgetPoolCost(
+        poolId: TranslationBudgetPoolId,
         runtimeConfig: RuntimeConfig,
         period = currentMonth(),
     ): UsageCost {
         return withCost(
-            store.getSharedGlobalUsageBetween(period.start, period.end),
+            store.getBudgetPoolUsageBetween(poolId, period.start, period.end),
             runtimeConfig.inputPricePerMillion || 0,
             runtimeConfig.outputPricePerMillion || 0,
         );
     }
+}
+
+function budgetPoolForDecision(
+    decision: ReturnType<typeof resolveBudgetScope>,
+): TranslationBudgetPoolId {
+    if (decision.kind === 'user') return POCKET_SHARED_BUDGET_POOL;
+    if (decision.kind === 'guild') return `guild:${decision.guildId}`;
+    return GUILD_SHARED_BUDGET_POOL;
 }
 
 function today(): string {

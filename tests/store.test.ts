@@ -507,7 +507,7 @@ describe('ConfigStore', () => {
         second.close();
     });
 
-    it('should calculate shared global usage in SQLite', async () => {
+    it('should persist Guild and Pocket usage in independent budget pools', async () => {
         const { ConfigStore } = await importStoreModule();
         const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
 
@@ -515,6 +515,7 @@ describe('ConfigStore', () => {
         store.recordUsage('2026-03-27', 100, 50);
         store.recordUsage('2026-03-27', 40, 20, { guildId: 'custom' });
         store.recordUsage('2026-03-27', 30, 15, { guildId: 'shared' });
+        store.recordUsage('2026-03-27', 25, 10, { userId: 'pocket-user' });
 
         expect(store.getSharedGlobalUsage('2026-03-27')).toEqual({
             date: '2026-03-27',
@@ -528,6 +529,18 @@ describe('ConfigStore', () => {
             outputTokens: 65,
             requests: 2,
         });
+        expect(store.getBudgetPoolUsage('pocket:shared', '2026-03-27')).toEqual({
+            date: '2026-03-27',
+            inputTokens: 25,
+            outputTokens: 10,
+            requests: 1,
+        });
+        expect(store.getBudgetPoolUsage('guild:custom', '2026-03-27')).toEqual({
+            date: '2026-03-27',
+            inputTokens: 40,
+            outputTokens: 20,
+            requests: 1,
+        });
         expect(
             store.getSharedRollingUsageBetween(
                 '2026-03-27T00:00:00.000Z',
@@ -538,6 +551,19 @@ describe('ConfigStore', () => {
             inputTokens: 130,
             outputTokens: 65,
             requests: 2,
+        });
+
+        store.clearGuildBudget('custom');
+        store.setGuildBudget('shared', 2);
+        expect(store.getSharedGlobalUsageBetween('2026-03-01', '2026-04-01')).toMatchObject({
+            inputTokens: 130,
+            outputTokens: 65,
+            requests: 2,
+        });
+        expect(store.getBudgetPoolUsage('guild:custom', '2026-03-27')).toMatchObject({
+            inputTokens: 40,
+            outputTokens: 20,
+            requests: 1,
         });
         store.close();
     });

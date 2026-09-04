@@ -462,7 +462,10 @@ export function createDashboardApp({
         const cacheStats = cache.stats();
         const ocrCacheStats = ocrCache.stats();
         const runtimeConfig = configRepository.getRuntimeConfig();
-        const usageStats = usage.getStats(runtimeConfig);
+        const usageStats =
+            scope.profile.id === 'babel-pocket'
+                ? usage.getPocketStats(runtimeConfig)
+                : usage.getStats(runtimeConfig);
         const scopeProfileId = isCombinedDashboard ? scope.appProfileIdForLogs : undefined;
         const metricsSnapshot = metrics.snapshot({ appProfileId: scopeProfileId });
         const memoryUsage = process.memoryUsage();
@@ -629,11 +632,16 @@ export function createDashboardApp({
     });
 
     api.get('/config', auth.requireAuth, (_req: Request, res: Response) => {
+        const scope = getScope(res);
         const cfg = configRepository.getDashboardConfig();
         const visionMonth = new Date().toISOString().slice(0, 7);
         const visionImages = store.getVisionMonthlyUsage(visionMonth);
         res.json({
             ...cfg,
+            monthlyBudgetUsd:
+                scope.profile.id === 'babel-pocket'
+                    ? cfg.pocketGlobalMonthlyBudgetUsd
+                    : cfg.monthlyBudgetUsd,
             vertexAiApiKey: cfg.vertexAiApiKey ? '••••' + cfg.vertexAiApiKey.slice(-6) : '',
             hasApiKey: !!cfg.vertexAiApiKey,
             visionApiKey: cfg.visionApiKey ? '••••' + cfg.visionApiKey.slice(-6) : '',
@@ -650,8 +658,17 @@ export function createDashboardApp({
     });
 
     api.post('/config', auth.requireAuth, auth.requireCsrf, (req: Request, res: Response) => {
+        const scope = getScope(res);
         const currentConfig = configRepository.getDashboardConfig();
-        const { valid, error, sanitized } = validateConfigUpdate(req.body, currentConfig);
+        const submittedConfig = { ...req.body } as Record<string, unknown>;
+        if (
+            scope.profile.id === 'babel-pocket' &&
+            Object.hasOwn(submittedConfig, 'monthlyBudgetUsd')
+        ) {
+            submittedConfig.pocketGlobalMonthlyBudgetUsd = submittedConfig.monthlyBudgetUsd;
+            delete submittedConfig.monthlyBudgetUsd;
+        }
+        const { valid, error, sanitized } = validateConfigUpdate(submittedConfig, currentConfig);
         if (!valid) {
             res.status(400).json({ error });
             return;
@@ -724,10 +741,10 @@ export function createDashboardApp({
             }
 
             res.json(usage.getGuildHistory(guildId));
-        } else if (isCombinedDashboard && scope.appProfileIdForLogs === 'babel-guild') {
+        } else if (scope.profile.id === 'babel-guild') {
             const guildIds = scope.client.guilds.cache.map((guild) => guild.id);
             res.json(usage.getGuildHistoryForGuilds(guildIds));
-        } else if (isCombinedDashboard && scope.appProfileIdForLogs === 'babel-pocket') {
+        } else if (scope.profile.id === 'babel-pocket') {
             res.json(usage.getAllUserHistory());
         } else {
             res.json(usage.getHistory());

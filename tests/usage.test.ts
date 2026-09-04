@@ -36,6 +36,61 @@ vi.mock('../src/persistence/store.js', () => {
                 { date: start, inputTokens: 0, outputTokens: 0, requests: 0 },
             );
     };
+    const allUsageBetween = (
+        scope: Exclude<Scope, 'global'>,
+        start: string,
+        end: string,
+    ): MockUsage =>
+        [
+            ...Object.keys(histories(scope)),
+            ...Object.keys(
+                (mockData[scope === 'guild' ? 'guildTokenUsage' : 'userTokenUsage'] as Record<
+                    string,
+                    MockUsage
+                >) ?? {},
+            ),
+        ]
+            .filter((id, index, ids) => ids.indexOf(id) === index)
+            .map((id) => usageBetween(scope, id, start, end))
+            .reduce(
+                (total, entry) => ({
+                    date: start,
+                    inputTokens: total.inputTokens + entry.inputTokens,
+                    outputTokens: total.outputTokens + entry.outputTokens,
+                    requests: total.requests + entry.requests,
+                }),
+                { date: start, inputTokens: 0, outputTokens: 0, requests: 0 },
+            );
+    const subtractUsage = (total: MockUsage, ...deductions: MockUsage[]): MockUsage => ({
+        date: total.date,
+        inputTokens: Math.max(
+            0,
+            total.inputTokens - deductions.reduce((sum, entry) => sum + entry.inputTokens, 0),
+        ),
+        outputTokens: Math.max(
+            0,
+            total.outputTokens - deductions.reduce((sum, entry) => sum + entry.outputTokens, 0),
+        ),
+        requests: Math.max(
+            0,
+            total.requests - deductions.reduce((sum, entry) => sum + entry.requests, 0),
+        ),
+    });
+    const budgetPoolUsageBetween = (poolId: string, start: string, end: string): MockUsage => {
+        if (poolId === 'pocket:shared') return allUsageBetween('user', start, end);
+        if (poolId !== 'guild:shared') {
+            return usageBetween('guild', poolId.slice('guild:'.length), start, end);
+        }
+
+        const customUsage = Object.keys(mockData.guildBudgets as Record<string, unknown>).map(
+            (guildId) => usageBetween('guild', guildId, start, end),
+        );
+        return subtractUsage(
+            usageBetween('global', '', start, end),
+            allUsageBetween('user', start, end),
+            ...customUsage,
+        );
+    };
     const record = (scope: Scope, id: string, date: string, input: number, output: number) => {
         const next =
             currentUsage(scope, id)?.date === date
@@ -90,8 +145,51 @@ vi.mock('../src/persistence/store.js', () => {
             requests: 1,
         });
     };
+    const allRollingUsageBetween = (
+        scope: Exclude<Scope, 'global'>,
+        start: string,
+        end: string,
+    ): MockUsage => {
+        const ids = new Set(
+            ((mockData.rollingUsage as MockRollingUsage[]) ?? [])
+                .filter((entry) => entry.scope === scope)
+                .map((entry) => entry.scopeId),
+        );
+        return [...ids]
+            .map((id) => rollingUsageBetween(scope, id, start, end))
+            .reduce(
+                (total, entry) => ({
+                    date: start,
+                    inputTokens: total.inputTokens + entry.inputTokens,
+                    outputTokens: total.outputTokens + entry.outputTokens,
+                    requests: total.requests + entry.requests,
+                }),
+                { date: start, inputTokens: 0, outputTokens: 0, requests: 0 },
+            );
+    };
+    const rollingBudgetPoolUsageBetween = (
+        poolId: string,
+        start: string,
+        end: string,
+    ): MockUsage => {
+        if (poolId === 'pocket:shared') return allRollingUsageBetween('user', start, end);
+        if (poolId !== 'guild:shared') {
+            return rollingUsageBetween('guild', poolId.slice('guild:'.length), start, end);
+        }
+
+        const customUsage = Object.keys(mockData.guildBudgets as Record<string, unknown>).map(
+            (guildId) => rollingUsageBetween('guild', guildId, start, end),
+        );
+        return subtractUsage(
+            rollingUsageBetween('global', '', start, end),
+            allRollingUsageBetween('user', start, end),
+            ...customUsage,
+        );
+    };
 
     return {
+        GUILD_SHARED_BUDGET_POOL: 'guild:shared',
+        POCKET_SHARED_BUDGET_POOL: 'pocket:shared',
         store: {
             getConfigValues: vi.fn((keys: readonly string[]) =>
                 Object.fromEntries(
@@ -150,7 +248,21 @@ vi.mock('../src/persistence/store.js', () => {
                 },
             ),
             getUsageBetween: vi.fn(usageBetween),
+            getBudgetPoolUsage: vi.fn((poolId: string, date: string) =>
+                budgetPoolUsageBetween(poolId, date, `${date}~`),
+            ),
+            getBudgetPoolUsageBetween: vi.fn(budgetPoolUsageBetween),
+            getBudgetPoolUsageForIdsBetween: vi.fn(
+                (poolIds: string[], start: string, end: string) =>
+                    Object.fromEntries(
+                        poolIds.map((poolId) => [
+                            poolId,
+                            budgetPoolUsageBetween(poolId, start, end),
+                        ]),
+                    ),
+            ),
             getRollingUsageBetween: vi.fn(rollingUsageBetween),
+            getRollingBudgetPoolUsageBetween: vi.fn(rollingBudgetPoolUsageBetween),
             getGuildUserRollingUsage: vi.fn(
                 (guildId: string, userId: string, start: string, end: string) =>
                     rollingUsageBetween('guild_user', `${guildId}:${userId}`, start, end),
@@ -304,6 +416,7 @@ describe('UsageTracker', () => {
         mockData.inputPricePerMillion = 0;
         mockData.outputPricePerMillion = 0;
         mockData.monthlyBudgetUsd = 0;
+        mockData.pocketGlobalMonthlyBudgetUsd = 0;
         mockData.defaultUserMonthlyBudgetUsd = 0;
         mockData.budgetFiveHourPercent = 100;
         mockData.budgetSevenDayPercent = 100;
@@ -410,7 +523,7 @@ describe('UsageTracker', () => {
     });
 
     it('should enforce both user and shared global pending budgets', () => {
-        mockData.monthlyBudgetUsd = 1.0;
+        mockData.pocketGlobalMonthlyBudgetUsd = 1.0;
         mockData.defaultUserMonthlyBudgetUsd = 0.8;
         mockData.inputPricePerMillion = 1.0;
 
@@ -435,6 +548,29 @@ describe('UsageTracker', () => {
                 userId: 'user-b',
             }),
         ).toBeNull();
+    });
+
+    it('should isolate Guild and Pocket shared pending budgets', () => {
+        mockData.monthlyBudgetUsd = 1;
+        mockData.pocketGlobalMonthlyBudgetUsd = 1;
+        mockData.inputPricePerMillion = 1;
+
+        const guild = usage.tryReserveBudget({
+            guildId: 'guild-shared',
+            actorUserId: 'guild-user',
+            estimatedInputTokens: 600_000,
+            estimatedOutputTokens: 0,
+        });
+        const pocket = usage.tryReserveBudget({
+            userId: 'pocket-user',
+            estimatedInputTokens: 600_000,
+            estimatedOutputTokens: 0,
+        });
+
+        expect(guild).not.toBeNull();
+        expect(pocket).not.toBeNull();
+        guild!.release();
+        pocket!.release();
     });
 
     it('should keep custom guild reservations outside the shared global pool', () => {
@@ -463,6 +599,26 @@ describe('UsageTracker', () => {
                 guildId: 'guild-custom',
             }),
         ).toBeNull();
+    });
+
+    it('should settle into the pool selected when the request was admitted', () => {
+        mockData.guildBudgets = { guild: { monthlyBudgetUsd: 1 } };
+
+        const reservation = usage.tryReserveBudget({
+            guildId: 'guild',
+            actorUserId: 'user',
+            estimatedInputTokens: 100,
+            estimatedOutputTokens: 50,
+        });
+        mockData.guildBudgets = {};
+        reservation!.settle(80, 40);
+
+        expect(store.recordUsage).toHaveBeenLastCalledWith(
+            expect.any(String),
+            80,
+            40,
+            expect.objectContaining({ budgetPoolId: 'guild:guild' }),
+        );
     });
 
     it('should enforce the rolling five-hour budget limit', () => {

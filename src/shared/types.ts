@@ -95,6 +95,7 @@ export interface StoreData {
     inputPricePerMillion: number;
     outputPricePerMillion: number;
     monthlyBudgetUsd: number;
+    pocketGlobalMonthlyBudgetUsd: number;
     budgetFiveHourPercent: number;
     budgetSevenDayPercent: number;
     budgetFairShareMultiplier: number;

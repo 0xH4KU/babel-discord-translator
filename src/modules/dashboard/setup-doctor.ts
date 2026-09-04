@@ -381,6 +381,10 @@ function budgetCheck(
             ['input price', config.inputPricePerMillion],
             ['output price', config.outputPricePerMillion],
             ['monthly budget', config.monthlyBudgetUsd],
+            [
+                'Pocket global monthly budget',
+                config.pocketGlobalMonthlyBudgetUsd ?? config.monthlyBudgetUsd,
+            ],
             ['default user monthly budget', config.defaultUserMonthlyBudgetUsd],
             ...budgetEntries('guild', budgetStore.listGuildBudgets()),
             ...budgetEntries('user', budgetStore.listUserBudgets()),

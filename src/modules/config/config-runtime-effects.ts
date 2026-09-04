@@ -17,6 +17,7 @@ export const MANAGED_RUNTIME_CONFIG_KEYS = [
     'maxInputLength',
     'maxOutputTokens',
     'monthlyBudgetUsd',
+    'pocketGlobalMonthlyBudgetUsd',
     'budgetFiveHourPercent',
     'budgetSevenDayPercent',
     'budgetFairShareMultiplier',
@@ -76,6 +77,8 @@ const CONFIG_EFFECT_DESCRIPTIONS: Record<ManagedRuntimeConfigKey, string> = {
         'Clear the translation cache so future requests use the new output token limit.',
     monthlyBudgetUsd:
         'No in-memory sync required; budget checks read the persisted value on each call.',
+    pocketGlobalMonthlyBudgetUsd:
+        'No in-memory sync required; Pocket budget checks read the persisted value on each call.',
     budgetFiveHourPercent:
         'No in-memory sync required; budget checks read the five-hour limit on each call.',
     budgetSevenDayPercent:
@@ -163,6 +166,7 @@ export function applyConfigUpdateEffects(
                 break;
             case 'maxInputLength':
             case 'monthlyBudgetUsd':
+            case 'pocketGlobalMonthlyBudgetUsd':
             case 'budgetFiveHourPercent':
             case 'budgetSevenDayPercent':
             case 'budgetFairShareMultiplier':

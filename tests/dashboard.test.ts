@@ -31,6 +31,7 @@ vi.mock('../src/persistence/store.js', () => {
         inputPricePerMillion: 0,
         outputPricePerMillion: 0,
         monthlyBudgetUsd: 0,
+        pocketGlobalMonthlyBudgetUsd: 0,
         budgetFiveHourPercent: 5,
         budgetSevenDayPercent: 30,
         budgetFairShareMultiplier: 1.5,
@@ -260,6 +261,18 @@ const usageMock = vi.hoisted(() => ({
         totalCost: 0.002,
         monthlyBudget: 1.0,
         budgetUsedPercent: 0.2,
+        budgetExceeded: false,
+    })),
+    getPocketStats: vi.fn(() => ({
+        date: '2025-03-01',
+        inputTokens: 400,
+        outputTokens: 200,
+        requests: 4,
+        inputCost: 0.0004,
+        outputCost: 0.0004,
+        totalCost: 0.0008,
+        monthlyBudget: 2.0,
+        budgetUsedPercent: 0.04,
         budgetExceeded: false,
     })),
     getGuildStatsForGuilds: vi.fn(() => ({})),
@@ -1411,6 +1424,7 @@ describe('Dashboard API', () => {
                 (id, budget) => store.setUserBudget(id, budget),
             );
             usageMock.getUserStatsForUsers.mockClear();
+            usageMock.getPocketStats.mockClear();
 
             const login = await request(pocketServer, 'POST', '/api/login', {
                 body: { password: 'test-pass-123' },
@@ -1452,6 +1466,7 @@ describe('Dashboard API', () => {
                 }),
             ]);
             expect(usageMock.getUserStatsForUsers).toHaveBeenCalledOnce();
+            expect(usageMock.getPocketStats).toHaveBeenCalledOnce();
             expect(usageMock.getUserStatsForUsers).toHaveBeenCalledWith(
                 ['user-1', 'user-2', 'pending-owner'],
                 { 'user-1': { monthlyBudgetUsd: 1.25 } },
@@ -1813,6 +1828,42 @@ describe('Dashboard API', () => {
         // Should NOT expose the real key
         expect(res.body!.vertexAiApiKey as string).not.toContain('sk-abcdef');
         expect(res.body!.visionApiKey as string).not.toContain('vision-abcdef');
+    });
+
+    it('should keep Pocket and Guild global budget settings independent', async () => {
+        const { store } = await import('../src/persistence/store.js');
+        const previous = store.getConfigValues([
+            'monthlyBudgetUsd',
+            'pocketGlobalMonthlyBudgetUsd',
+        ]);
+        const dashboard = startProfileDashboard(BABEL_POCKET_PROFILE);
+
+        try {
+            store.updateConfigValues({
+                monthlyBudgetUsd: 4,
+                pocketGlobalMonthlyBudgetUsd: 9,
+            });
+            const { cookie, csrf } = await loginDashboard(dashboard.server);
+
+            const before = await request(dashboard.server, 'GET', '/api/config', { cookie });
+            expect(before.body!.monthlyBudgetUsd).toBe(9);
+
+            const update = await request(dashboard.server, 'POST', '/api/config', {
+                cookie,
+                csrf,
+                body: { monthlyBudgetUsd: 11 },
+            });
+            expect(update.status).toBe(200);
+            expect(
+                store.getConfigValues(['monthlyBudgetUsd', 'pocketGlobalMonthlyBudgetUsd']),
+            ).toEqual({
+                monthlyBudgetUsd: 4,
+                pocketGlobalMonthlyBudgetUsd: 11,
+            });
+        } finally {
+            store.updateConfigValues(previous);
+            dashboard.close();
+        }
     });
 
     // --- CSRF protection ---
@@ -3118,7 +3169,7 @@ describe('Dashboard API', () => {
             expect(rootRes.status).toBe(200);
             expect(guildRes.status).toBe(200);
             expect(pocketRes.status).toBe(200);
-            expect(rootRes.body).toEqual(globalHistory);
+            expect(rootRes.body).toEqual(guildHistory);
             expect(guildRes.body).toEqual(guildHistory);
             expect(pocketRes.body).toEqual(pocketHistory);
             expect(usageMock.getGuildHistoryForGuilds).toHaveBeenCalledWith(['guild-1']);
