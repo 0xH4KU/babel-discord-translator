@@ -1,5 +1,12 @@
 import { dashboardMessages } from '../../shared/messages/dashboard-messages.js';
 import type { StoreData } from '../../shared/types.js';
+import {
+    DEFAULT_BUDGET_LIMITS,
+    resolveBudgetLimits,
+    validateBudgetLimits,
+    type BudgetLimitSettings,
+    type BudgetLimitOverrides,
+} from '../../shared/budget-limits.js';
 
 const MAX_CACHE_SIZE = 2000;
 const STRING_CONFIG_KEYS = [
@@ -14,15 +21,23 @@ const STRING_CONFIG_KEYS = [
     'openaiModel',
 ] as const;
 const ARRAY_CONFIG_KEYS = ['allowedGuildIds', 'lensEnabledGuildIds', 'allowedUserIds'] as const;
-const BOOLEAN_CONFIG_KEYS = ['setupComplete'] as const;
+const BOOLEAN_CONFIG_KEYS = [
+    'setupComplete',
+    'vertexAiSupportsImages',
+    'openaiSupportsImages',
+] as const;
 const NUMBER_CONFIG_KEYS = [
     'cooldownSeconds',
     'cacheMaxSize',
     'maxInputLength',
     'maxOutputTokens',
-    'dailyBudgetUsd',
+    'monthlyBudgetUsd',
+    'pocketGlobalMonthlyBudgetUsd',
+    'budgetFiveHourPercent',
+    'budgetSevenDayPercent',
+    'budgetFairShareMultiplier',
     'visionMonthlyImageLimit',
-    'defaultUserDailyBudgetUsd',
+    'defaultUserMonthlyBudgetUsd',
     'inputPricePerMillion',
     'outputPricePerMillion',
     'translationMaxConcurrent',
@@ -31,7 +46,7 @@ const NUMBER_CONFIG_KEYS = [
     'translationMaxUserOutstanding',
     'translationMaxQueueWaitMs',
 ] as const;
-const OTHER_CONFIG_KEYS = ['translationProvider'] as const;
+const OTHER_CONFIG_KEYS = ['translationProvider', 'geminiMediaResolution'] as const;
 const ALLOWED_CONFIG_KEYS = new Set<string>([
     ...STRING_CONFIG_KEYS,
     ...ARRAY_CONFIG_KEYS,
@@ -98,7 +113,10 @@ function sanitizeNonNegativeNumberField(
     return { valid: true };
 }
 
-export function validateConfigUpdate(updates: Record<string, unknown>): {
+export function validateConfigUpdate(
+    updates: Record<string, unknown>,
+    currentBudgetLimits: BudgetLimitSettings = DEFAULT_BUDGET_LIMITS,
+): {
     valid: boolean;
     error?: string;
     sanitized: Partial<StoreData>;
@@ -200,12 +218,46 @@ export function validateConfigUpdate(updates: Record<string, unknown>): {
         }
         sanitized.maxOutputTokens = v;
     }
-    const dailyBudget = sanitizeNonNegativeNumberField(
+    const monthlyBudget = sanitizeNonNegativeNumberField(
         sanitized,
-        'dailyBudgetUsd',
-        dashboardMessages.validation.dailyBudgetUsd,
+        'monthlyBudgetUsd',
+        dashboardMessages.validation.monthlyBudgetUsd,
     );
-    if (!dailyBudget.valid) return dailyBudget;
+    if (!monthlyBudget.valid) return monthlyBudget;
+    const pocketGlobalMonthlyBudget = sanitizeNonNegativeNumberField(
+        sanitized,
+        'pocketGlobalMonthlyBudgetUsd',
+        dashboardMessages.validation.monthlyBudgetUsd,
+    );
+    if (!pocketGlobalMonthlyBudget.valid) return pocketGlobalMonthlyBudget;
+    const budgetLimitOverrides: BudgetLimitOverrides = {};
+    for (const key of [
+        'budgetFiveHourPercent',
+        'budgetSevenDayPercent',
+        'budgetFairShareMultiplier',
+    ] as const) {
+        if (sanitized[key] === undefined) continue;
+        const value = toFiniteNumber(sanitized[key]);
+        if (Number.isNaN(value)) {
+            return {
+                valid: false,
+                error: `${key} must be a finite number`,
+                sanitized: sanitized as Partial<StoreData>,
+            };
+        }
+        sanitized[key] = value;
+        budgetLimitOverrides[key] = value;
+    }
+    const budgetLimitError = validateBudgetLimits(
+        resolveBudgetLimits(currentBudgetLimits, budgetLimitOverrides),
+    );
+    if (budgetLimitError) {
+        return {
+            valid: false,
+            error: budgetLimitError,
+            sanitized: sanitized as Partial<StoreData>,
+        };
+    }
     if (sanitized.visionMonthlyImageLimit !== undefined) {
         const v = toFiniteNumber(sanitized.visionMonthlyImageLimit);
         if (!Number.isSafeInteger(v) || v < 0) {
@@ -217,12 +269,12 @@ export function validateConfigUpdate(updates: Record<string, unknown>): {
         }
         sanitized.visionMonthlyImageLimit = v;
     }
-    const defaultUserDailyBudget = sanitizeNonNegativeNumberField(
+    const defaultUserMonthlyBudget = sanitizeNonNegativeNumberField(
         sanitized,
-        'defaultUserDailyBudgetUsd',
-        dashboardMessages.validation.dailyBudgetUsd,
+        'defaultUserMonthlyBudgetUsd',
+        dashboardMessages.validation.monthlyBudgetUsd,
     );
-    if (!defaultUserDailyBudget.valid) return defaultUserDailyBudget;
+    if (!defaultUserMonthlyBudget.valid) return defaultUserMonthlyBudget;
     for (const key of [
         'translationMaxConcurrent',
         'translationMaxGlobalQueue',
@@ -269,5 +321,42 @@ export function validateConfigUpdate(updates: Record<string, unknown>): {
         }
     }
 
+    if (sanitized.geminiMediaResolution !== undefined) {
+        const valid = ['default', 'low', 'medium', 'high'];
+        if (
+            typeof sanitized.geminiMediaResolution !== 'string' ||
+            !valid.includes(sanitized.geminiMediaResolution)
+        ) {
+            return {
+                valid: false,
+                error: 'geminiMediaResolution must be default, low, medium, or high',
+                sanitized: sanitized as Partial<StoreData>,
+            };
+        }
+    }
+
     return { valid: true, sanitized: sanitized as Partial<StoreData> };
+}
+
+export function applyProviderCapabilityResets(
+    current: StoreData,
+    updates: Partial<StoreData>,
+): Partial<StoreData> {
+    const normalized = { ...updates };
+    if (
+        updates.geminiModel !== undefined &&
+        updates.geminiModel !== current.geminiModel &&
+        updates.vertexAiSupportsImages !== true
+    ) {
+        normalized.vertexAiSupportsImages = false;
+    }
+    if (
+        ((updates.openaiModel !== undefined && updates.openaiModel !== current.openaiModel) ||
+            (updates.openaiBaseUrl !== undefined &&
+                updates.openaiBaseUrl !== current.openaiBaseUrl)) &&
+        updates.openaiSupportsImages !== true
+    ) {
+        normalized.openaiSupportsImages = false;
+    }
+    return normalized;
 }

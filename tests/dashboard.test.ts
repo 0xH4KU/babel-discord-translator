@@ -30,9 +30,13 @@ vi.mock('../src/persistence/store.js', () => {
         setupComplete: true,
         inputPricePerMillion: 0,
         outputPricePerMillion: 0,
-        dailyBudgetUsd: 0,
+        monthlyBudgetUsd: 0,
+        pocketGlobalMonthlyBudgetUsd: 0,
+        budgetFiveHourPercent: 5,
+        budgetSevenDayPercent: 30,
+        budgetFairShareMultiplier: 1.5,
         visionMonthlyImageLimit: 900,
-        defaultUserDailyBudgetUsd: 0,
+        defaultUserMonthlyBudgetUsd: 0,
         translationPrompt: '',
         userLanguagePrefs: { legacyUser: 'en' },
         userLanguagePreferenceEntries: [
@@ -51,6 +55,7 @@ vi.mock('../src/persistence/store.js', () => {
         tokenUsage: null,
         usageHistory: [],
         guildBudgets: {},
+        guildBudgetLimitOverrides: {},
         guildVisionLimits: {},
         guildTokenUsage: {},
         guildUsageHistory: {},
@@ -166,9 +171,9 @@ vi.mock('../src/persistence/store.js', () => {
                 const budgets = data.guildBudgets as Record<string, unknown>;
                 return budgets[guildId] ?? null;
             }),
-            setGuildBudget: vi.fn((guildId: string, dailyBudgetUsd: number) => {
+            setGuildBudget: vi.fn((guildId: string, monthlyBudgetUsd: number) => {
                 const budgets = data.guildBudgets as Record<string, unknown>;
-                budgets[guildId] = { dailyBudgetUsd };
+                budgets[guildId] = { monthlyBudgetUsd };
             }),
             clearGuildBudget: vi.fn((guildId: string) => {
                 const budgets = data.guildBudgets as Record<string, unknown>;
@@ -180,9 +185,9 @@ vi.mock('../src/persistence/store.js', () => {
                 const budgets = data.userBudgets as Record<string, unknown>;
                 return budgets[userId] ?? null;
             }),
-            setUserBudget: vi.fn((userId: string, dailyBudgetUsd: number) => {
+            setUserBudget: vi.fn((userId: string, monthlyBudgetUsd: number) => {
                 const budgets = data.userBudgets as Record<string, unknown>;
-                budgets[userId] = { dailyBudgetUsd };
+                budgets[userId] = { monthlyBudgetUsd };
             }),
             clearUserBudget: vi.fn((userId: string) => {
                 const budgets = data.userBudgets as Record<string, unknown>;
@@ -202,6 +207,19 @@ vi.mock('../src/persistence/store.js', () => {
                 return glossary[guildId].length < before;
             }),
             listGuildBudgets: vi.fn(() => ({ ...(data.guildBudgets as object) })),
+            listGuildBudgetLimitOverrides: vi.fn(() => ({
+                ...(data.guildBudgetLimitOverrides as object),
+            })),
+            setGuildBudgetLimitOverrides: vi.fn(
+                (guildId: string, overrides: Record<string, number>) => {
+                    const values = data.guildBudgetLimitOverrides as Record<
+                        string,
+                        Record<string, number>
+                    >;
+                    if (Object.keys(overrides).length === 0) delete values[guildId];
+                    else values[guildId] = { ...overrides };
+                },
+            ),
             listUserBudgets: vi.fn(() => ({ ...(data.userBudgets as object) })),
             listVisionScopeLimits: vi.fn((scope: 'guild' | 'user') => ({
                 ...(data[scope === 'guild' ? 'guildVisionLimits' : 'userVisionLimits'] as object),
@@ -241,8 +259,20 @@ const usageMock = vi.hoisted(() => ({
         inputCost: 0.001,
         outputCost: 0.001,
         totalCost: 0.002,
-        dailyBudget: 1.0,
+        monthlyBudget: 1.0,
         budgetUsedPercent: 0.2,
+        budgetExceeded: false,
+    })),
+    getPocketStats: vi.fn(() => ({
+        date: '2025-03-01',
+        inputTokens: 400,
+        outputTokens: 200,
+        requests: 4,
+        inputCost: 0.0004,
+        outputCost: 0.0004,
+        totalCost: 0.0008,
+        monthlyBudget: 2.0,
+        budgetUsedPercent: 0.04,
         budgetExceeded: false,
     })),
     getGuildStatsForGuilds: vi.fn(() => ({})),
@@ -264,7 +294,7 @@ const usageMock = vi.hoisted(() => ({
                     inputCost: userId === 'user-1' ? 0.01 : 0,
                     outputCost: 0,
                     totalCost: userId === 'user-1' ? 0.01 : 0,
-                    dailyBudget: 0.5,
+                    monthlyBudget: 0.5,
                     budgetUsedPercent: userId === 'user-1' ? 2 : 0,
                     budgetExceeded: false,
                 },
@@ -283,6 +313,7 @@ vi.mock('../src/modules/translation/translate.js', () => ({
         inputTokens: 10,
         outputTokens: 5,
     })),
+    translateImage: vi.fn(),
     resetTranslationProviderState: vi.fn(),
 }));
 
@@ -436,16 +467,16 @@ function createMinimalClient(): Client {
     } as unknown as Client;
 }
 
-type BudgetMap = Record<string, { dailyBudgetUsd: number }>;
+type BudgetMap = Record<string, { monthlyBudgetUsd: number }>;
 
 function replaceBudgets(
     current: BudgetMap,
     next: BudgetMap,
     clear: (id: string) => unknown,
-    set: (id: string, dailyBudgetUsd: number) => unknown,
+    set: (id: string, monthlyBudgetUsd: number) => unknown,
 ): void {
     for (const id of Object.keys(current)) clear(id);
-    for (const [id, budget] of Object.entries(next)) set(id, budget.dailyBudgetUsd);
+    for (const [id, budget] of Object.entries(next)) set(id, budget.monthlyBudgetUsd);
 }
 
 describe('dashboard mode parsing', () => {
@@ -962,7 +993,7 @@ describe('Dashboard API', () => {
             inputCost: 1,
             outputCost: 0,
             totalCost: 1,
-            dailyBudget: 1,
+            monthlyBudget: 1,
             budgetUsedPercent: 100,
             budgetExceeded: true,
         });
@@ -975,7 +1006,7 @@ describe('Dashboard API', () => {
                 inputCost: 0.6,
                 outputCost: 0,
                 totalCost: 0.6,
-                dailyBudget: 1,
+                monthlyBudget: 1,
                 budgetUsedPercent: 60,
                 budgetExceeded: false,
             },
@@ -987,7 +1018,7 @@ describe('Dashboard API', () => {
                 inputCost: 0.4,
                 outputCost: 0,
                 totalCost: 0.4,
-                dailyBudget: 1,
+                monthlyBudget: 1,
                 budgetUsedPercent: 40,
                 budgetExceeded: false,
             },
@@ -1027,7 +1058,7 @@ describe('Dashboard API', () => {
             inputCost: 1,
             outputCost: 0,
             totalCost: 1,
-            dailyBudget: 1,
+            monthlyBudget: 1,
             budgetUsedPercent: 100,
             budgetExceeded: true,
         });
@@ -1040,7 +1071,7 @@ describe('Dashboard API', () => {
                 inputCost: 0.6,
                 outputCost: 0,
                 totalCost: 0.6,
-                dailyBudget: 1,
+                monthlyBudget: 1,
                 budgetUsedPercent: 60,
                 budgetExceeded: false,
             },
@@ -1094,6 +1125,91 @@ describe('Dashboard API', () => {
         }
     });
 
+    it('should reject partial and non-finite scoped budget values', async () => {
+        const { store } = await import('../src/persistence/store.js');
+        const before = store.getGuildBudget('guild-1');
+
+        for (const monthlyBudgetUsd of ['1oops', 'Infinity', '']) {
+            const result = await request(server, 'POST', '/api/guild-budgets/guild-1', {
+                cookie: sessionCookie,
+                csrf: csrfToken,
+                body: { monthlyBudgetUsd },
+            });
+            expect(result.status).toBe(400);
+        }
+
+        expect(store.getGuildBudget('guild-1')).toEqual(before);
+    });
+
+    it('should manage per-guild budget limit overrides independently', async () => {
+        const { store } = await import('../src/persistence/store.js');
+
+        const saved = await request(server, 'POST', '/api/guild-budgets/guild-1', {
+            cookie: sessionCookie,
+            csrf: csrfToken,
+            body: {
+                budgetLimitOverrides: {
+                    budgetFiveHourPercent: 10,
+                    budgetFairShareMultiplier: 2,
+                },
+            },
+        });
+        expect(saved).toMatchObject({
+            status: 200,
+            body: {
+                limitOverrides: {
+                    budgetFiveHourPercent: 10,
+                    budgetFairShareMultiplier: 2,
+                },
+            },
+        });
+        expect(store.getGuildBudget('guild-1')).toBeNull();
+
+        const budgets = await request(server, 'GET', '/api/guild-budgets', {
+            cookie: sessionCookie,
+        });
+        expect(budgets.body!['guild-1']).toMatchObject({
+            limits: {
+                budgetFiveHourPercent: 10,
+                budgetSevenDayPercent: 30,
+                budgetFairShareMultiplier: 2,
+            },
+            limitOverrides: {
+                budgetFiveHourPercent: 10,
+                budgetFairShareMultiplier: 2,
+            },
+        });
+
+        const incompatibleGlobal = await request(server, 'POST', '/api/config', {
+            cookie: sessionCookie,
+            csrf: csrfToken,
+            body: { budgetSevenDayPercent: 5 },
+        });
+        expect(incompatibleGlobal).toMatchObject({
+            status: 400,
+            body: { error: expect.stringContaining('Guild guild-1') },
+        });
+
+        const invalid = await request(server, 'POST', '/api/guild-budgets/guild-1', {
+            cookie: sessionCookie,
+            csrf: csrfToken,
+            body: {
+                budgetLimitOverrides: {
+                    budgetFiveHourPercent: 40,
+                    budgetSevenDayPercent: 20,
+                },
+            },
+        });
+        expect(invalid.status).toBe(400);
+
+        const reset = await request(server, 'POST', '/api/guild-budgets/guild-1', {
+            cookie: sessionCookie,
+            csrf: csrfToken,
+            body: { budgetLimitOverrides: null },
+        });
+        expect(reset).toMatchObject({ status: 200, body: { limitOverrides: {} } });
+    });
+
     it('should show custom guild budget usage separately from the global budget pool', async () => {
         const { store } = await import('../src/persistence/store.js');
         const previousGuildBudgets = store.listGuildBudgets();
@@ -1106,7 +1222,7 @@ describe('Dashboard API', () => {
             inputCost: 0.8,
             outputCost: 0,
             totalCost: 0.8,
-            dailyBudget: 1,
+            monthlyBudget: 1,
             budgetUsedPercent: 80,
             budgetExceeded: false,
         });
@@ -1119,7 +1235,7 @@ describe('Dashboard API', () => {
                 inputCost: 0.2,
                 outputCost: 0,
                 totalCost: 0.2,
-                dailyBudget: 2,
+                monthlyBudget: 2,
                 budgetUsedPercent: 10,
                 budgetExceeded: false,
             },
@@ -1128,7 +1244,7 @@ describe('Dashboard API', () => {
         try {
             replaceBudgets(
                 store.listGuildBudgets(),
-                { 'guild-1': { dailyBudgetUsd: 2 } },
+                { 'guild-1': { monthlyBudgetUsd: 2 } },
                 (id) => store.clearGuildBudget(id),
                 (id, budget) => store.setGuildBudget(id, budget),
             );
@@ -1170,7 +1286,7 @@ describe('Dashboard API', () => {
         const { store } = await import('../src/persistence/store.js');
         const previousConfig = store.getConfigValues([
             'allowedUserIds',
-            'defaultUserDailyBudgetUsd',
+            'defaultUserMonthlyBudgetUsd',
         ]);
         const previousUserBudgets = store.listUserBudgets();
         const pocketApp = createDashboardApp({
@@ -1191,11 +1307,11 @@ describe('Dashboard API', () => {
         try {
             store.updateConfigValues({
                 allowedUserIds: ['user-1'],
-                defaultUserDailyBudgetUsd: 0.5,
+                defaultUserMonthlyBudgetUsd: 0.5,
             });
             replaceBudgets(
                 store.listUserBudgets(),
-                { 'user-1': { dailyBudgetUsd: 1.25 } },
+                { 'user-1': { monthlyBudgetUsd: 1.25 } },
                 (id) => store.clearUserBudget(id),
                 (id, budget) => store.setUserBudget(id, budget),
             );
@@ -1294,7 +1410,7 @@ describe('Dashboard API', () => {
         const { store } = await import('../src/persistence/store.js');
         const previousConfig = store.getConfigValues([
             'allowedUserIds',
-            'defaultUserDailyBudgetUsd',
+            'defaultUserMonthlyBudgetUsd',
         ]);
         const previousUserBudgets = store.listUserBudgets();
         const pocketApp = createDashboardApp({
@@ -1315,15 +1431,16 @@ describe('Dashboard API', () => {
         try {
             store.updateConfigValues({
                 allowedUserIds: ['user-1', 'user-2'],
-                defaultUserDailyBudgetUsd: 0.5,
+                defaultUserMonthlyBudgetUsd: 0.5,
             });
             replaceBudgets(
                 store.listUserBudgets(),
-                { 'user-1': { dailyBudgetUsd: 1.25 } },
+                { 'user-1': { monthlyBudgetUsd: 1.25 } },
                 (id) => store.clearUserBudget(id),
                 (id, budget) => store.setUserBudget(id, budget),
             );
             usageMock.getUserStatsForUsers.mockClear();
+            usageMock.getPocketStats.mockClear();
 
             const login = await request(pocketServer, 'POST', '/api/login', {
                 body: { password: 'test-pass-123' },
@@ -1365,10 +1482,11 @@ describe('Dashboard API', () => {
                 }),
             ]);
             expect(usageMock.getUserStatsForUsers).toHaveBeenCalledOnce();
+            expect(usageMock.getPocketStats).toHaveBeenCalledOnce();
             expect(usageMock.getUserStatsForUsers).toHaveBeenCalledWith(
                 ['user-1', 'user-2', 'pending-owner'],
-                { 'user-1': { dailyBudgetUsd: 1.25 } },
-                expect.objectContaining({ defaultUserDailyBudgetUsd: 0.5 }),
+                { 'user-1': { monthlyBudgetUsd: 1.25 } },
+                expect.objectContaining({ defaultUserMonthlyBudgetUsd: 0.5 }),
             );
         } finally {
             store.updateConfigValues(previousConfig);
@@ -1387,7 +1505,7 @@ describe('Dashboard API', () => {
         const { store } = await import('../src/persistence/store.js');
         const previousConfig = store.getConfigValues([
             'allowedUserIds',
-            'defaultUserDailyBudgetUsd',
+            'defaultUserMonthlyBudgetUsd',
         ]);
         const previousUserBudgets = store.listUserBudgets();
         const emptyProfileDb = createSqliteDatabase(':memory:');
@@ -1432,7 +1550,7 @@ describe('Dashboard API', () => {
         try {
             store.updateConfigValues({
                 allowedUserIds: [],
-                defaultUserDailyBudgetUsd: 0.5,
+                defaultUserMonthlyBudgetUsd: 0.5,
             });
             replaceBudgets(
                 store.listUserBudgets(),
@@ -1490,7 +1608,7 @@ describe('Dashboard API', () => {
 
         expect(res.status).toBe(200);
         expect(res.body).toEqual({
-            version: '0.3.0',
+            version: '0.4.0',
             repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases',
         });
     });
@@ -1530,7 +1648,7 @@ describe('Dashboard API', () => {
             expect(res.status).toBe(200);
             expect(res.headers['content-type']).toContain('text/plain');
             expect(res.text).toContain(
-                'babel_app_version_info{version="0.3.0",repository_url="https://github.com/0xH4KU/babel-discord-translator/releases"} 1',
+                'babel_app_version_info{version="0.4.0",repository_url="https://github.com/0xH4KU/babel-discord-translator/releases"} 1',
             );
             expect(res.text).toContain('babel_translations_total');
             expect(res.text).toContain('babel_translation_failures_total');
@@ -1726,6 +1844,42 @@ describe('Dashboard API', () => {
         // Should NOT expose the real key
         expect(res.body!.vertexAiApiKey as string).not.toContain('sk-abcdef');
         expect(res.body!.visionApiKey as string).not.toContain('vision-abcdef');
+    });
+
+    it('should keep Pocket and Guild global budget settings independent', async () => {
+        const { store } = await import('../src/persistence/store.js');
+        const previous = store.getConfigValues([
+            'monthlyBudgetUsd',
+            'pocketGlobalMonthlyBudgetUsd',
+        ]);
+        const dashboard = startProfileDashboard(BABEL_POCKET_PROFILE);
+
+        try {
+            store.updateConfigValues({
+                monthlyBudgetUsd: 4,
+                pocketGlobalMonthlyBudgetUsd: 9,
+            });
+            const { cookie, csrf } = await loginDashboard(dashboard.server);
+
+            const before = await request(dashboard.server, 'GET', '/api/config', { cookie });
+            expect(before.body!.monthlyBudgetUsd).toBe(9);
+
+            const update = await request(dashboard.server, 'POST', '/api/config', {
+                cookie,
+                csrf,
+                body: { monthlyBudgetUsd: 11 },
+            });
+            expect(update.status).toBe(200);
+            expect(
+                store.getConfigValues(['monthlyBudgetUsd', 'pocketGlobalMonthlyBudgetUsd']),
+            ).toEqual({
+                monthlyBudgetUsd: 4,
+                pocketGlobalMonthlyBudgetUsd: 11,
+            });
+        } finally {
+            store.updateConfigValues(previous);
+            dashboard.close();
+        }
     });
 
     // --- CSRF protection ---
@@ -3031,7 +3185,7 @@ describe('Dashboard API', () => {
             expect(rootRes.status).toBe(200);
             expect(guildRes.status).toBe(200);
             expect(pocketRes.status).toBe(200);
-            expect(rootRes.body).toEqual(globalHistory);
+            expect(rootRes.body).toEqual(guildHistory);
             expect(guildRes.body).toEqual(guildHistory);
             expect(pocketRes.body).toEqual(pocketHistory);
             expect(usageMock.getGuildHistoryForGuilds).toHaveBeenCalledWith(['guild-1']);

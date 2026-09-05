@@ -11,14 +11,21 @@ export const MANAGED_RUNTIME_CONFIG_KEYS = [
     'cooldownSeconds',
     'cacheMaxSize',
     'geminiModel',
+    'vertexAiSupportsImages',
+    'geminiMediaResolution',
     'translationPrompt',
     'maxInputLength',
     'maxOutputTokens',
-    'dailyBudgetUsd',
+    'monthlyBudgetUsd',
+    'pocketGlobalMonthlyBudgetUsd',
+    'budgetFiveHourPercent',
+    'budgetSevenDayPercent',
+    'budgetFairShareMultiplier',
     'visionMonthlyImageLimit',
     'openaiApiKey',
     'openaiBaseUrl',
     'openaiModel',
+    'openaiSupportsImages',
     'translationProvider',
     'translationMaxConcurrent',
     'translationMaxGlobalQueue',
@@ -59,13 +66,25 @@ const CONFIG_EFFECT_DESCRIPTIONS: Record<ManagedRuntimeConfigKey, string> = {
         'Update the in-memory translation cache capacity immediately and trim overflow entries.',
     geminiModel:
         'Clear translation cache and reset provider state so future requests use the new Vertex AI model.',
+    vertexAiSupportsImages:
+        'Clear translation cache and reset provider state so Babel Lens uses the confirmed Vertex AI image capability.',
+    geminiMediaResolution:
+        'Clear translation cache and reset provider state so Babel Lens uses the updated Gemini media resolution.',
     translationPrompt: 'Clear the translation cache so future requests use the new prompt.',
     maxInputLength:
         'No in-memory sync required; request validation reads the persisted value on each call.',
     maxOutputTokens:
         'Clear the translation cache so future requests use the new output token limit.',
-    dailyBudgetUsd:
+    monthlyBudgetUsd:
         'No in-memory sync required; budget checks read the persisted value on each call.',
+    pocketGlobalMonthlyBudgetUsd:
+        'No in-memory sync required; Pocket budget checks read the persisted value on each call.',
+    budgetFiveHourPercent:
+        'No in-memory sync required; budget checks read the five-hour limit on each call.',
+    budgetSevenDayPercent:
+        'No in-memory sync required; budget checks read the seven-day limit on each call.',
+    budgetFairShareMultiplier:
+        'No in-memory sync required; budget checks read the fair-share multiplier on each call.',
     visionMonthlyImageLimit:
         'No in-memory sync required; Babel Lens reads the persisted monthly limit on each call.',
     openaiApiKey:
@@ -74,6 +93,8 @@ const CONFIG_EFFECT_DESCRIPTIONS: Record<ManagedRuntimeConfigKey, string> = {
         'Clear translation cache and reset provider state so future requests use the updated OpenAI-compatible endpoint.',
     openaiModel:
         'Clear translation cache and reset provider state so future requests use the updated OpenAI-compatible model.',
+    openaiSupportsImages:
+        'Clear translation cache and reset provider state so Babel Lens uses the confirmed OpenAI-compatible image capability.',
     translationProvider:
         'Clear translation cache and reset provider state so future requests use the new provider.',
     translationMaxConcurrent: 'Update the runtime translation concurrency limit immediately.',
@@ -124,6 +145,9 @@ export function applyConfigUpdateEffects(
             case 'openaiApiKey':
             case 'openaiBaseUrl':
             case 'openaiModel':
+            case 'vertexAiSupportsImages':
+            case 'geminiMediaResolution':
+            case 'openaiSupportsImages':
             case 'translationProvider':
                 clearCache();
                 resetProviders();
@@ -141,7 +165,11 @@ export function applyConfigUpdateEffects(
                 clearCache();
                 break;
             case 'maxInputLength':
-            case 'dailyBudgetUsd':
+            case 'monthlyBudgetUsd':
+            case 'pocketGlobalMonthlyBudgetUsd':
+            case 'budgetFiveHourPercent':
+            case 'budgetSevenDayPercent':
+            case 'budgetFairShareMultiplier':
             case 'visionApiKey':
             case 'visionMonthlyImageLimit':
                 break;

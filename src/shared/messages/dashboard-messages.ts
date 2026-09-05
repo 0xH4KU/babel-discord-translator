@@ -18,7 +18,7 @@ export const dashboardMessages = {
         cacheMaxSize: rangeMessage('cacheMaxSize', 10, 2000),
         maxInputLength: rangeMessage('maxInputLength', 100, 10000),
         maxOutputTokens: rangeMessage('maxOutputTokens', 100, 8192),
-        dailyBudgetUsd: nonNegativeMessage('dailyBudgetUsd'),
+        monthlyBudgetUsd: nonNegativeMessage('monthlyBudgetUsd'),
         inputPricePerMillion: nonNegativeMessage('inputPricePerMillion'),
         outputPricePerMillion: nonNegativeMessage('outputPricePerMillion'),
         translationProvider:

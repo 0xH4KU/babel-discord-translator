@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.4.0 - 2026-09-05
+
+- Added multimodal Babel Lens routing with Cloud Vision OCR fallback for text-only providers, shared translation pipeline behavior, stricter OCR region filtering, normalized markers, and safer truncated-response handling.
+- Reworked translation spending around UTC monthly budgets and configurable rolling five-hour/seven-day fair-use limits, with isolated Guild/Pocket pools, worst-case reservations, and persisted settled costs. Existing SQLite data migrates automatically on startup.
+- Redesigned dashboard navigation and Settings, separated primary/fallback provider controls, improved provider diagnostics, and pinned save actions to the bottom of Settings and Access pages.
+
 ## 0.3.0 - 2026-08-29
 
 - Added Babel Lens image OCR through Google Cloud Vision, numbered image/translation regions, dedicated OCR caching, a Vision API key, shared Guild/Pocket context-menu support, localized `/help` guidance, and end-user documentation.

@@ -1,5 +1,7 @@
 const VISION_ENDPOINT = 'https://vision.googleapis.com/v1/images:annotate';
 const VISION_TIMEOUT_MS = 15_000;
+const MIN_BLOCK_CONFIDENCE = 0.7;
+const MAX_REGION_CHARACTERS = 500;
 
 interface VisionError {
     code?: number;
@@ -19,6 +21,7 @@ interface VisionParagraph {
 interface VisionBlock {
     boundingBox?: { vertices?: Array<{ x?: number; y?: number }> };
     blockType?: string;
+    confidence?: number;
     paragraphs?: VisionParagraph[];
 }
 
@@ -100,10 +103,12 @@ function blockText(block: VisionBlock): string {
     return (block.paragraphs ?? []).map(paragraphText).filter(Boolean).join('\n');
 }
 
-function isMeaningfulBlockText(text: string): boolean {
+function isMeaningfulBlockText(text: string, confidence?: number): boolean {
     const compact = text.replace(/\s/gu, '');
-    // ponytail: only isolated ASCII glyphs are skipped; add confidence filtering if noise returns.
-    return compact.length > 1 || /[^\u0000-\u007f]/u.test(compact);
+    if (confidence !== undefined && confidence < MIN_BLOCK_CONFIDENCE) return false;
+    return (
+        compact.length > 1 || (/[^\u0000-\u007f]/u.test(compact) && /[\p{L}\p{N}]/u.test(compact))
+    );
 }
 
 function parseVisionText(result?: VisionImageResponse): VisionTextResult {
@@ -114,23 +119,31 @@ function parseVisionText(result?: VisionImageResponse): VisionTextResult {
     const blocks =
         page?.blocks?.filter((block) => !block.blockType || block.blockType === 'TEXT') ?? [];
     const recognizedBlocks = blocks
-        .map((block) => ({ text: blockText(block), bounds: blockBounds(block) }))
-        .filter(({ text }) => isMeaningfulBlockText(text));
+        .map((block) => ({
+            text: blockText(block),
+            bounds: blockBounds(block),
+            confidence: block.confidence,
+        }))
+        .filter(({ text, confidence }) => isMeaningfulBlockText(text, confidence));
     const parsedRegions =
         imageWidth > 0 && imageHeight > 0
             ? recognizedBlocks.flatMap(({ text, bounds }) => {
                   return text && bounds ? [{ text, ...bounds }] : [];
               })
             : [];
-
-    // ponytail: dense OCR falls back to the existing caption instead of drawing 100+ markers.
-    const regions = parsedRegions.length <= 99 ? parsedRegions : [];
     const text = (
         recognizedBlocks.map((block) => block.text).join('\n') ||
         (blocks.length === 0
             ? (annotation?.text ?? result?.textAnnotations?.[0]?.description ?? '')
             : '')
     ).trim();
+    // ponytail: dense pages get a plain caption; add layout analysis if dense-region links matter.
+    const regions =
+        parsedRegions.length === recognizedBlocks.length &&
+        parsedRegions.length <= 99 &&
+        text.replace(/\s/gu, '').length <= MAX_REGION_CHARACTERS
+            ? parsedRegions
+            : [];
     return { text, imageWidth, imageHeight, regions };
 }
 
@@ -153,6 +166,9 @@ export async function detectTextWithCloudVision(
                 {
                     image: { content: image.toString('base64') },
                     features: [{ type: 'TEXT_DETECTION' }],
+                    imageContext: {
+                        textDetectionParams: { enableTextDetectionConfidenceScore: true },
+                    },
                 },
             ],
         }),

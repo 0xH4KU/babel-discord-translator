@@ -4,6 +4,7 @@
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Babel — Dashboard</title>
+        <link rel="icon" href="data:," />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
             href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
@@ -51,7 +52,10 @@
                         <span>User installs and allowlist</span>
                     </a>
                 </div>
-                <button class="btn btn-secondary btn-sm profile-select-logout" data-action="doLogout">
+                <button
+                    class="btn btn-secondary btn-sm profile-select-logout"
+                    data-action="doLogout"
+                >
                     Logout
                 </button>
             </main>
@@ -80,16 +84,20 @@
                     </div>
                     <div class="wizard-provider-section" id="wiz-section-vertex">
                         <div class="input-group">
-                        <label>Vertex AI API Key</label>
-                        <input type="password" id="wiz-apikey" placeholder="AQ.Ab8R..." />
+                            <label>Vertex AI API Key</label>
+                            <input type="password" id="wiz-apikey" placeholder="AQ.Ab8R..." />
                         </div>
                         <div class="input-group">
-                        <label>GCP Project ID</label>
-                        <input type="text" id="wiz-project" placeholder="gen-lang-client-xxxxxx" />
+                            <label>GCP Project ID</label>
+                            <input
+                                type="text"
+                                id="wiz-project"
+                                placeholder="gen-lang-client-xxxxxx"
+                            />
                         </div>
                         <div class="input-group">
-                        <label>GCP Location</label>
-                        <input type="text" id="wiz-location" value="global" />
+                            <label>GCP Location</label>
+                            <input type="text" id="wiz-location" value="global" />
                         </div>
                     </div>
                     <div class="wizard-provider-section" id="wiz-section-openai">
@@ -103,11 +111,17 @@
                                 type="text"
                                 id="wiz-openai-baseurl"
                                 placeholder="https://api.openai.com"
+                                data-action="wizOpenaiIdentityChanged"
                             />
                         </div>
                         <div class="input-group">
                             <label>OpenAI-Compatible Model</label>
-                            <input type="text" id="wiz-openai-model" placeholder="gpt-4o-mini" />
+                            <input
+                                type="text"
+                                id="wiz-openai-model"
+                                placeholder="gpt-4o-mini"
+                                data-action="wizOpenaiIdentityChanged"
+                            />
                         </div>
                     </div>
                     <div class="wizard-nav">
@@ -117,11 +131,45 @@
                 </div>
 
                 <div class="wizard-step" id="wiz-1">
-                    <h2>Model Selection</h2>
-                    <div class="step-desc">Choose which Gemini model to use for translations.</div>
-                    <div class="input-group">
+                    <h2>Model Capabilities</h2>
+                    <div class="step-desc">
+                        Confirm whether each configured model accepts images.
+                    </div>
+                    <div class="input-group" id="wiz-model-vertex">
                         <label>Model Name</label>
-                        <input type="text" id="wiz-model" value="gemini-2.5-flash-lite" />
+                        <input
+                            type="text"
+                            id="wiz-model"
+                            value="gemini-2.5-flash-lite"
+                            data-action="wizVertexModelChanged"
+                        />
+                        <label class="capability-toggle">
+                            <span>
+                                <strong>This Vertex model supports images</strong>
+                                <small
+                                    >Babel Lens will identify, translate, and locate text
+                                    directly.</small
+                                >
+                            </span>
+                            <input
+                                type="checkbox"
+                                id="wiz-vertex-images"
+                                data-action="wizCapabilityChanged"
+                            />
+                        </label>
+                    </div>
+                    <div class="input-group" id="wiz-model-openai">
+                        <label class="capability-toggle">
+                            <span>
+                                <strong>This OpenAI-compatible model supports images</strong>
+                                <small>Confirm this for the exact Base URL and model above.</small>
+                            </span>
+                            <input
+                                type="checkbox"
+                                id="wiz-openai-images"
+                                data-action="wizCapabilityChanged"
+                            />
+                        </label>
                     </div>
                     <div class="wizard-nav">
                         <button class="btn btn-secondary" data-action="wizPrev">← Back</button>
@@ -132,6 +180,20 @@
                 <div class="wizard-step" id="wiz-2">
                     <h2>Bot Settings</h2>
                     <div class="step-desc">Configure rate limiting and caching.</div>
+                    <div class="wizard-provider-section" id="wiz-vision-fallback">
+                        <div class="input-group">
+                            <label>Cloud Vision API Key (optional)</label>
+                            <input
+                                type="password"
+                                id="wiz-vision-apikey"
+                                placeholder="Required only for text-only models"
+                            />
+                        </div>
+                        <div class="input-group">
+                            <label>Vision Monthly Image Limit</label>
+                            <input type="number" id="wiz-vision-limit" value="900" min="0" />
+                        </div>
+                    </div>
                     <div class="input-group">
                         <label>Cooldown (seconds per user)</label>
                         <input type="number" id="wiz-cooldown" value="5" min="1" max="60" />
@@ -152,728 +214,1171 @@
 
         <!-- ===== DASHBOARD ===== -->
         <div id="dashboard-view" class="view">
-            <div class="header">
-                <img id="bot-avatar" src="" alt="" />
-                <div class="header-title">
-                    <h1 id="bot-name">Loading...</h1>
-                    <span class="tag" id="bot-tag"></span>
+            <aside class="header dashboard-sidebar">
+                <div class="sidebar-brandline" aria-hidden="true">
+                    <span class="sidebar-wordmark">Babel</span>
+                    <span>Control</span>
                 </div>
-                <div class="header-meta">
-                    <a
-                        class="version-link"
-                        id="version-link"
-                        href="https://github.com/0xH4KU/babel-discord-translator/releases"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        >v0.1.3</a
+                <div class="sidebar-identity">
+                    <div class="sidebar-avatar">
+                        <img id="bot-avatar" src="" alt="" />
+                        <span class="sidebar-presence" aria-hidden="true"></span>
+                    </div>
+                    <div class="header-title">
+                        <h1 id="bot-name">Loading...</h1>
+                        <span class="tag" id="bot-tag"></span>
+                    </div>
+                </div>
+                <nav class="tabs primary-nav" aria-label="Dashboard pages">
+                    <span class="sidebar-nav-label" aria-hidden="true">Workspace</span>
+                    <button
+                        class="tab-btn active"
+                        aria-current="page"
+                        data-action="switchTab"
+                        data-action-args='["overview"]'
                     >
-                    <div class="status">Online</div>
-                    <span class="health-badge checking" id="api-health">API</span>
-                </div>
-                <button class="btn-logout" data-action="doLogout">Logout</button>
-            </div>
-
-            <div class="tabs">
-                <button class="tab-btn active" data-action="switchTab" data-action-args="[&quot;overview&quot;]">Overview</button>
-                <button class="tab-btn" data-action="switchTab" data-action-args="[&quot;history&quot;]">History</button>
-                <button class="tab-btn" data-action="switchTab" data-action-args="[&quot;logs&quot;]">Logs</button>
-                <button class="tab-btn" data-action="switchTab" data-action-args="[&quot;access&quot;]">Access</button>
-                <button class="tab-btn" data-action="switchTab" data-action-args="[&quot;settings&quot;]">Settings</button>
-            </div>
-
-            <!-- Overview Tab -->
-            <div class="tab-content active" id="tab-overview">
-                <div class="budget-card" id="budget-card">
-                    <div class="budget-header">
-                        <span class="label" id="budget-card-label">Server Budgets</span>
-                        <span class="amount" id="budget-amount">-</span>
-                    </div>
-                    <div id="guild-budget-overview"></div>
-                </div>
-
-                <section class="operations-panel" aria-labelledby="operations-title">
-                    <div class="operations-header">
-                        <div>
-                            <h2 id="operations-title">Operations</h2>
+                        <span>Overview</span>
+                    </button>
+                    <button class="tab-btn" data-action="switchTab" data-action-args='["activity"]'>
+                        <span>Activity</span>
+                    </button>
+                    <button class="tab-btn" data-action="switchTab" data-action-args='["access"]'>
+                        <span>Access</span>
+                    </button>
+                    <button class="tab-btn" data-action="switchTab" data-action-args='["settings"]'>
+                        <span>Settings</span>
+                    </button>
+                </nav>
+                <select
+                    id="mobile-main-nav"
+                    class="settings-select mobile-main-nav"
+                    aria-label="Dashboard page"
+                    data-action="switchTabFromSelect"
+                    data-action-value="value"
+                >
+                    <option value="overview">Overview</option>
+                    <option value="activity">Activity</option>
+                    <option value="access">Access</option>
+                    <option value="settings">Settings</option>
+                </select>
+                <div class="sidebar-footer">
+                    <span class="sidebar-footer-label">System status</span>
+                    <div class="header-meta">
+                        <div class="sidebar-status-row">
+                            <span class="sidebar-status-name">Bot</span>
+                            <div class="status">Online</div>
                         </div>
-                        <div class="operations-mode">
-                            <span class="operations-mode-label">Mode</span>
-                            <span class="operations-pill" id="ops-provider-mode">-</span>
-                        </div>
-                    </div>
-                    <div class="operations-grid">
-                        <div class="operations-card" id="ops-provider-vertex"></div>
-                        <div class="operations-card" id="ops-provider-openai"></div>
-                        <div class="operations-card" id="ops-runtime"></div>
-                        <div class="operations-card" id="ops-budget-risk"></div>
-                    </div>
-                    <div class="operations-guidance" id="ops-guidance"></div>
-                </section>
-
-                <section class="setup-doctor-panel" aria-labelledby="setup-doctor-title">
-                    <div class="setup-doctor-header">
-                        <h2 id="setup-doctor-title">Setup Doctor</h2>
-                        <button
-                            class="btn btn-secondary btn-sm"
-                            id="setup-doctor-run"
-                            type="button"
-                            data-action="runSetupDoctor"
-                        >
-                            Run Doctor
-                        </button>
-                    </div>
-                    <div
-                        class="setup-doctor-results"
-                        id="setup-doctor-results"
-                        role="status"
-                        aria-live="polite"
-                        aria-busy="false"
-                    ></div>
-                </section>
-
-                <div class="grid">
-                    <div class="card">
-                        <div class="label">Today's Cost</div>
-                        <div class="value" id="stat-cost">-</div>
-                        <div class="sub" id="stat-cost-breakdown"></div>
-                    </div>
-                    <div class="card">
-                        <div class="label">Total Translations</div>
-                        <div class="value" id="stat-total">-</div>
-                        <div class="sub" id="stat-total-detail"></div>
-                    </div>
-                    <div class="card">
-                        <div class="label">Translation Cache Hit Rate</div>
-                        <div class="value" id="stat-hitrate">-</div>
-                        <div class="sub" id="stat-saved"></div>
-                    </div>
-                    <div class="card">
-                        <div class="label">Uptime</div>
-                        <div class="value" id="stat-uptime">-</div>
-                        <div class="sub" id="stat-memory"></div>
-                    </div>
-                </div>
-
-                <div class="refresh-note">Auto-refresh every 5s</div>
-            </div>
-
-            <!-- History Tab -->
-            <div class="tab-content" id="tab-history">
-                <div class="table-card">
-                    <div class="table-header">
-                        <h3>Usage History (Last 30 Days)</h3>
-                        <div class="table-header-actions">
-                            <span class="sub-info" id="history-summary"></span>
-                            <button class="btn btn-secondary btn-sm" data-action="downloadUsageExport">
-                                Export CSV
-                            </button>
+                        <div class="sidebar-status-row">
+                            <span class="sidebar-status-name">API</span>
+                            <span class="health-badge checking" id="api-health">Checking</span>
                         </div>
                     </div>
-                    <div class="bar-chart" id="history-chart"></div>
-                    <div id="history-table-container">
-                        <div class="empty-state">No history data yet. Usage is archived daily.</div>
+                    <div class="sidebar-actions">
+                        <a
+                            class="version-link"
+                            id="version-link"
+                            href="https://github.com/0xH4KU/babel-discord-translator/releases"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            >v0.1.3</a
+                        >
+                        <button class="btn-logout" data-action="doLogout">Logout</button>
                     </div>
-                    <div id="history-pagination"></div>
                 </div>
-            </div>
+            </aside>
 
-            <!-- Logs Tab -->
-            <div class="tab-content" id="tab-logs">
-                <div class="table-card">
-                    <div class="table-header">
-                        <h3>Translation Log</h3>
-                        <span class="sub-info" id="log-count"></span>
-                    </div>
-                    <div class="log-filters">
-                        <button
-                            class="log-filter-btn active"
-                            data-log-filter="all"
-                            data-action="setLogFilter"
-                        >
-                            All
-                        </button>
-                        <button
-                            class="log-filter-btn"
-                            data-log-filter="translation"
-                            data-action="setLogFilter" data-action-args="[&quot;translation&quot;]"
-                        >
-                            Translations
-                        </button>
-                        <button
-                            class="log-filter-btn"
-                            data-log-filter="error"
-                            data-action="setLogFilter" data-action-args="[&quot;error&quot;]"
-                        >
-                            Errors
-                        </button>
-                        <button
-                            class="log-filter-btn"
-                            data-error-filter="rate_limit"
-                            data-action="setErrorTypeFilter" data-action-args="[&quot;rate_limit&quot;]"
-                        >
-                            Rate Limit
-                        </button>
-                        <button
-                            class="log-filter-btn"
-                            data-error-filter="auth"
-                            data-action="setErrorTypeFilter" data-action-args="[&quot;auth&quot;]"
-                        >
-                            Auth
-                        </button>
-                        <button
-                            class="log-filter-btn"
-                            data-error-filter="timeout"
-                            data-action="setErrorTypeFilter" data-action-args="[&quot;timeout&quot;]"
-                        >
-                            Timeout
-                        </button>
-                    </div>
-                    <div id="log-table-container">
-                        <div class="empty-state">
-                            No translations logged yet. Logs are stored in memory only.
+            <main class="dashboard-main">
+                <!-- Overview Tab -->
+                <div class="tab-content active" id="tab-overview">
+                    <div class="budget-card" id="budget-card">
+                        <div class="budget-header">
+                            <span class="label" id="budget-card-label">Server Budgets</span>
+                            <span class="amount" id="budget-amount">-</span>
                         </div>
+                        <div id="guild-budget-overview"></div>
                     </div>
-                    <div id="log-pagination"></div>
-                </div>
-                <div class="refresh-note mt-sm">Recent translation and error events</div>
-            </div>
 
-            <!-- Access Tab -->
-            <div class="tab-content" id="tab-access">
-                <div class="settings-section" data-capability="guildAccess">
-                    <h3>Server Feature Access</h3>
-                    <div class="desc-text">
-                        Choose access per server. Enabling Babel Lens also enables Translation;
-                        disabling Translation also disables Lens.
-                    </div>
-                    <div id="guild-list" class="guild-list">
-                        <div class="no-guilds">Loading servers...</div>
-                    </div>
-                    <div id="guild-pagination"></div>
-                    <div class="add-guild-row">
-                        <input
-                            type="text"
-                            id="add-guild-input"
-                            placeholder="Paste a Guild ID to add manually"
-                        />
-                        <button class="btn btn-primary btn-sm" data-action="addManualGuild">
-                            Add
-                        </button>
-                    </div>
-                </div>
-
-                <div class="settings-section" data-capability="pendingUserInstallOwners" hidden>
-                    <h3>User Whitelist</h3>
-                    <div class="desc-text">
-                        Only whitelisted Discord users can use Babel Pocket. New users are disabled
-                        by default.
-                    </div>
-                    <div id="user-access-list" class="guild-list">
-                        <div class="no-guilds">Loading users...</div>
-                    </div>
-                    <div id="user-access-pagination"></div>
-                    <div class="add-guild-row">
-                        <input
-                            type="text"
-                            id="add-user-input"
-                            placeholder="Paste a Discord User ID"
-                        />
-                        <button class="btn btn-primary btn-sm" data-action="addAllowedUser">
-                            Add
-                        </button>
-                    </div>
-                </div>
-
-                <div class="settings-section">
-                    <h3>User Language Preferences</h3>
-                    <div class="prefs-count" id="prefs-count">Loading...</div>
-                    <div class="prefs-tools">
-                        <select
-                            id="prefs-guild-filter"
-                            aria-label="Filter user language preferences by server"
-                            data-action="setPrefsGuildFilter" data-action-value="value"
-                        >
-                            <option value="">Loading servers...</option>
-                        </select>
-                        <input
-                            type="search"
-                            id="prefs-search"
-                            placeholder="Search user ID or language"
-                            data-action="setPrefsSearch" data-action-value="value"
-                        />
-                        <button
-                            class="btn-danger"
-                            id="prefs-batch-delete"
-                            data-action="deleteSelectedUserPrefs"
-                            disabled
-                        >
-                            Clear Selected
-                        </button>
-                    </div>
-                    <div id="user-prefs-container">
-                        <div class="empty-state">Loading user preferences...</div>
-                    </div>
-                    <div id="prefs-pagination"></div>
-                </div>
-
-                <div class="settings-section" data-capability="guildGlossary">
-                    <h3>Server Glossary</h3>
-                    <div class="desc-text">
-                        Configure server-specific term mappings. Use identical source and target
-                        text to preserve names, brands, or game terms.
-                    </div>
-                    <div class="settings-row">
-                        <div class="input-group">
-                            <label>Server</label>
-                            <select
-                                id="glossary-guild"
-                                class="settings-select"
-                                data-action="selectGlossaryGuild" data-action-value="value"
-                            ></select>
-                        </div>
-                    </div>
-                    <div class="glossary-form">
-                        <input type="hidden" id="glossary-entry-id" />
-                        <div class="settings-row">
-                            <div class="input-group">
-                                <label>Source Term</label>
-                                <input
-                                    type="text"
-                                    id="glossary-source"
-                                    maxlength="120"
-                                    placeholder="OpenAI"
-                                />
+                    <section class="operations-panel" aria-labelledby="operations-title">
+                        <div class="operations-header">
+                            <div>
+                                <h2 id="operations-title">Operations</h2>
                             </div>
-                            <div class="input-group">
-                                <label>Language</label>
-                                <select id="glossary-target-language" class="settings-select">
-                                    <option value="auto">Auto / Legacy</option>
-                                    <option value="zh-TW">繁體中文</option>
-                                    <option value="zh-CN">简体中文</option>
-                                    <option value="en-US">English</option>
-                                    <option value="ja">日本語</option>
-                                    <option value="ko">한국어</option>
-                                    <option value="fr">Français</option>
-                                    <option value="de">Deutsch</option>
-                                </select>
-                            </div>
-                            <div class="input-group">
-                                <label>Target Term</label>
-                                <input
-                                    type="text"
-                                    id="glossary-target"
-                                    maxlength="120"
-                                    placeholder="OpenAI"
-                                />
+                            <div class="operations-mode">
+                                <span class="operations-mode-label">Mode</span>
+                                <span class="operations-pill" id="ops-provider-mode">-</span>
                             </div>
                         </div>
-                        <div class="settings-row">
-                            <div class="input-group">
-                                <label>Notes</label>
-                                <input
-                                    type="text"
-                                    id="glossary-notes"
-                                    maxlength="200"
-                                    placeholder="Preserve brand name"
-                                />
-                            </div>
+                        <div class="operations-grid">
+                            <div class="operations-card" id="ops-provider-vertex"></div>
+                            <div class="operations-card" id="ops-provider-openai"></div>
+                            <div class="operations-card" id="ops-runtime"></div>
+                            <div class="operations-card" id="ops-budget-risk"></div>
                         </div>
-                        <div class="glossary-actions">
-                            <button class="btn btn-primary btn-sm" data-action="saveGlossaryEntry">
-                                Save Term
-                            </button>
+                        <div class="operations-guidance" id="ops-guidance"></div>
+                    </section>
+
+                    <section class="setup-doctor-panel" aria-labelledby="setup-doctor-title">
+                        <div class="setup-doctor-header">
+                            <h2 id="setup-doctor-title">Setup Doctor</h2>
                             <button
                                 class="btn btn-secondary btn-sm"
-                                data-action="resetGlossaryForm"
+                                id="setup-doctor-run"
+                                type="button"
+                                data-action="runSetupDoctor"
                             >
-                                Clear
+                                Run Doctor
                             </button>
                         </div>
+                        <div
+                            class="setup-doctor-results"
+                            id="setup-doctor-results"
+                            role="status"
+                            aria-live="polite"
+                            aria-busy="false"
+                        ></div>
+                    </section>
+
+                    <div class="grid">
+                        <div class="card">
+                            <div class="label">Today's Cost</div>
+                            <div class="value" id="stat-cost">-</div>
+                            <div class="sub" id="stat-cost-breakdown"></div>
+                        </div>
+                        <div class="card">
+                            <div class="label">Total Translations</div>
+                            <div class="value" id="stat-total">-</div>
+                            <div class="sub" id="stat-total-detail"></div>
+                        </div>
+                        <div class="card">
+                            <div class="label">Translation Cache Hit Rate</div>
+                            <div class="value" id="stat-hitrate">-</div>
+                            <div class="sub" id="stat-saved"></div>
+                        </div>
+                        <div class="card">
+                            <div class="label">Uptime</div>
+                            <div class="value" id="stat-uptime">-</div>
+                            <div class="sub" id="stat-memory"></div>
+                        </div>
                     </div>
-                    <div class="glossary-import">
-                        <div class="glossary-import-grid">
-                            <div class="input-group glossary-import-file-group">
-                                <label>Import Glossary</label>
-                                <div class="glossary-file-picker">
-                                    <input
-                                        type="file"
-                                        id="glossary-import-file"
-                                        class="glossary-file-input"
-                                        accept=".csv,.tsv,text/csv,text/tab-separated-values,text/plain"
-                                        data-action="readGlossaryImportFile" data-action-element="true"
-                                    />
-                                    <label class="glossary-file-button" for="glossary-import-file">
-                                        Choose CSV/TSV
-                                    </label>
-                                    <span id="glossary-import-file-name" class="glossary-file-name"
-                                        >No file selected</span
+
+                    <div class="refresh-note">Auto-refresh every 5s</div>
+                </div>
+
+                <!-- Activity Tab -->
+                <div class="tab-content" id="tab-activity">
+                    <div class="secondary-nav" aria-label="Activity views">
+                        <button
+                            class="secondary-nav-btn active"
+                            data-activity-view="usage"
+                            data-action="switchActivityView"
+                            data-action-args='["usage"]'
+                        >
+                            Usage
+                        </button>
+                        <button
+                            class="secondary-nav-btn"
+                            data-activity-view="logs"
+                            data-action="switchActivityView"
+                            data-action-args='["logs"]'
+                        >
+                            Logs
+                        </button>
+                    </div>
+                    <section class="activity-panel active" id="activity-usage">
+                        <div class="table-card">
+                            <div class="table-header">
+                                <h3>Usage History (Last 30 Days)</h3>
+                                <div class="table-header-actions">
+                                    <span class="sub-info" id="history-summary"></span>
+                                    <button
+                                        class="btn btn-secondary btn-sm"
+                                        data-action="downloadUsageExport"
                                     >
+                                        Export CSV
+                                    </button>
                                 </div>
                             </div>
-                            <div class="input-group glossary-import-mode-group">
-                                <label>Duplicate Terms</label>
-                                <div class="glossary-import-options">
-                                    <label class="glossary-import-option">
-                                        <input
-                                            type="radio"
-                                            name="glossary-import-mode"
-                                            value="skip"
-                                            checked
-                                        />
-                                        <span>
-                                            <strong>Skip existing</strong>
-                                            <small>Keep current terms unchanged</small>
-                                        </span>
-                                    </label>
-                                    <label class="glossary-import-option">
-                                        <input
-                                            type="radio"
-                                            name="glossary-import-mode"
-                                            value="overwrite"
-                                        />
-                                        <span>
-                                            <strong>Overwrite existing</strong>
-                                            <small>Update matching source terms</small>
-                                        </span>
-                                    </label>
+                            <div class="bar-chart" id="history-chart"></div>
+                            <div id="history-table-container">
+                                <div class="empty-state">
+                                    No history data yet. Usage is archived daily.
+                                </div>
+                            </div>
+                            <div id="history-pagination"></div>
+                        </div>
+                    </section>
+
+                    <section class="activity-panel" id="activity-logs">
+                        <div class="table-card">
+                            <div class="table-header">
+                                <h3>Translation Log</h3>
+                                <span class="sub-info" id="log-count"></span>
+                            </div>
+                            <div class="log-filters">
+                                <button
+                                    class="log-filter-btn active"
+                                    data-log-filter="all"
+                                    data-action="setLogFilter"
+                                >
+                                    All
+                                </button>
+                                <button
+                                    class="log-filter-btn"
+                                    data-log-filter="translation"
+                                    data-action="setLogFilter"
+                                    data-action-args='["translation"]'
+                                >
+                                    Translations
+                                </button>
+                                <button
+                                    class="log-filter-btn"
+                                    data-log-filter="error"
+                                    data-action="setLogFilter"
+                                    data-action-args='["error"]'
+                                >
+                                    Errors
+                                </button>
+                                <button
+                                    class="log-filter-btn"
+                                    data-error-filter="rate_limit"
+                                    data-action="setErrorTypeFilter"
+                                    data-action-args='["rate_limit"]'
+                                >
+                                    Rate Limit
+                                </button>
+                                <button
+                                    class="log-filter-btn"
+                                    data-error-filter="auth"
+                                    data-action="setErrorTypeFilter"
+                                    data-action-args='["auth"]'
+                                >
+                                    Auth
+                                </button>
+                                <button
+                                    class="log-filter-btn"
+                                    data-error-filter="timeout"
+                                    data-action="setErrorTypeFilter"
+                                    data-action-args='["timeout"]'
+                                >
+                                    Timeout
+                                </button>
+                            </div>
+                            <div id="log-table-container">
+                                <div class="empty-state">
+                                    No translations logged yet. Logs are stored in memory only.
+                                </div>
+                            </div>
+                            <div id="log-pagination"></div>
+                        </div>
+                        <div class="refresh-note mt-sm">Recent translation and error events</div>
+                    </section>
+                </div>
+
+                <!-- Access Tab -->
+                <div class="tab-content" id="tab-access">
+                    <div class="secondary-nav access-nav" aria-label="Access views">
+                        <button
+                            class="secondary-nav-btn active"
+                            data-access-view="servers"
+                            data-capability="guildAccess"
+                            data-action="switchAccessView"
+                            data-action-args='["servers"]'
+                        >
+                            Servers
+                        </button>
+                        <button
+                            class="secondary-nav-btn"
+                            data-access-view="users"
+                            data-capability="pendingUserInstallOwners"
+                            data-action="switchAccessView"
+                            data-action-args='["users"]'
+                        >
+                            Users
+                        </button>
+                        <button
+                            class="secondary-nav-btn"
+                            data-access-view="languages"
+                            data-action="switchAccessView"
+                            data-action-args='["languages"]'
+                        >
+                            Language Preferences
+                        </button>
+                        <button
+                            class="secondary-nav-btn"
+                            data-access-view="glossary"
+                            data-capability="guildGlossary"
+                            data-action="switchAccessView"
+                            data-action-args='["glossary"]'
+                        >
+                            Glossary
+                        </button>
+                    </div>
+                    <select
+                        id="access-view-select"
+                        class="settings-select mobile-secondary-nav"
+                        aria-label="Access view"
+                        data-action="switchAccessView"
+                        data-action-value="value"
+                    >
+                        <option value="servers" data-capability="guildAccess">Servers</option>
+                        <option value="users" data-capability="pendingUserInstallOwners">
+                            Users
+                        </option>
+                        <option value="languages">Language Preferences</option>
+                        <option value="glossary" data-capability="guildGlossary">Glossary</option>
+                    </select>
+
+                    <section
+                        class="access-panel active settings-section"
+                        id="access-servers"
+                        data-capability="guildAccess"
+                    >
+                        <div class="section-heading">
+                            <div>
+                                <h3>Servers</h3>
+                                <div class="desc-text">
+                                    Stage Translation and Lens access, then save the batch.
                                 </div>
                             </div>
                         </div>
-                        <div class="input-group glossary-import-text-group">
-                            <label>CSV or TSV Text</label>
-                            <textarea
-                                id="glossary-import-text"
-                                class="glossary-import-textarea"
-                                rows="5"
-                                maxlength="131072"
-                                spellcheck="false"
-                                placeholder="sourceText,targetLanguage,targetText,notes&#10;OpenAI,auto,OpenAI,Preserve brand name&#10;raid,zh-TW,團本,Game term&#10;raid,ja,レイド,Game term"
-                            ></textarea>
+                        <div class="access-master-detail">
+                            <div class="access-master-pane">
+                                <div id="guild-list" class="access-master-list">
+                                    <div class="no-guilds">Loading servers...</div>
+                                </div>
+                                <div id="guild-pagination"></div>
+                                <div class="add-guild-row">
+                                    <input
+                                        type="text"
+                                        id="add-guild-input"
+                                        placeholder="Paste a Guild ID"
+                                    />
+                                    <button
+                                        class="btn btn-primary btn-sm"
+                                        data-action="addManualGuild"
+                                    >
+                                        Add
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="access-detail-pane" id="guild-detail">
+                                <div class="empty-state">Select a server.</div>
+                            </div>
                         </div>
-                        <div class="glossary-actions">
-                            <button class="btn btn-secondary btn-sm" data-action="clearGlossaryImport">
-                                Clear Import
-                            </button>
-                            <button class="btn btn-primary btn-sm" data-action="importGlossaryEntries">
-                                Import Terms
+                        <div class="save-bar save-bar-inline">
+                            <span class="save-status" data-access-save-status
+                                >No unsaved access changes</span
+                            >
+                            <button
+                                class="btn btn-primary"
+                                data-access-save-button
+                                data-action="saveGuildWhitelist"
+                                disabled
+                            >
+                                Save Changes
                             </button>
                         </div>
-                        <div id="glossary-import-result" class="glossary-import-result" hidden></div>
-                    </div>
-                    <div id="glossary-container">
-                        <div class="empty-state">Select a server to manage glossary terms.</div>
-                    </div>
-                </div>
+                    </section>
 
-                <div class="save-bar" data-capability="guildAccess">
-                    <span class="save-status" data-access-save-status
-                        >No unsaved access changes</span
+                    <section
+                        class="access-panel settings-section"
+                        id="access-users"
+                        data-capability="pendingUserInstallOwners"
+                        hidden
                     >
-                    <button
-                        class="btn btn-primary"
-                        data-access-save-button
-                        data-action="saveGuildWhitelist"
-                        disabled
-                    >
-                        Save Changes
-                    </button>
-                </div>
-                <div class="save-bar" data-capability="pendingUserInstallOwners">
-                    <span class="save-status" data-access-save-status
-                        >No unsaved whitelist changes</span
-                    >
-                    <button
-                        class="btn btn-primary"
-                        data-access-save-button
-                        data-action="saveUserWhitelist"
-                        disabled
-                    >
-                        Save Changes
-                    </button>
-                </div>
-            </div>
+                        <h3>Users</h3>
+                        <div class="desc-text">
+                            New Babel Pocket users stay disabled until the staged allowlist is
+                            saved.
+                        </div>
+                        <div class="access-master-detail">
+                            <div class="access-master-pane">
+                                <div id="user-access-list" class="access-master-list">
+                                    <div class="no-guilds">Loading users...</div>
+                                </div>
+                                <div id="user-access-pagination"></div>
+                                <div class="add-guild-row">
+                                    <input
+                                        type="text"
+                                        id="add-user-input"
+                                        placeholder="Paste a Discord User ID"
+                                    />
+                                    <button
+                                        class="btn btn-primary btn-sm"
+                                        data-action="addAllowedUser"
+                                    >
+                                        Add
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="access-detail-pane" id="user-access-detail">
+                                <div class="empty-state">Select a user.</div>
+                            </div>
+                        </div>
+                        <div class="save-bar save-bar-inline">
+                            <span class="save-status" data-access-save-status
+                                >No unsaved access changes</span
+                            >
+                            <button
+                                class="btn btn-primary"
+                                data-access-save-button
+                                data-action="saveUserWhitelist"
+                                disabled
+                            >
+                                Save Changes
+                            </button>
+                        </div>
+                    </section>
 
-            <!-- Settings Tab -->
-            <div class="tab-content" id="tab-settings">
-                <div class="settings-section">
-                    <h3>Translation Provider</h3>
-                    <div class="desc-text">
-                        Choose which AI provider(s) to use for translation. You can set a primary
-                        and fallback provider for redundancy.
-                    </div>
-                    <div class="settings-row">
-                        <div class="input-group">
-                            <label>Provider Mode</label>
-                            <select id="cfg-provider" class="settings-select" data-action="onProviderModeChange">
-                                <option value="vertex">Vertex AI only</option>
-                                <option value="openai">OpenAI-compatible only</option>
-                                <option value="vertex+openai">Vertex AI (primary) + OpenAI (backup)</option>
-                                <option value="openai+vertex">OpenAI (primary) + Vertex AI (backup)</option>
+                    <section class="access-panel settings-section" id="access-languages">
+                        <h3>User Language Preferences</h3>
+                        <div class="prefs-count" id="prefs-count">Loading...</div>
+                        <div class="prefs-tools">
+                            <select
+                                id="prefs-guild-filter"
+                                aria-label="Filter user language preferences by server"
+                                data-action="setPrefsGuildFilter"
+                                data-action-value="value"
+                            >
+                                <option value="">Loading servers...</option>
                             </select>
-                            <div class="hint">When using dual providers, the backup is used automatically if the primary fails.</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="settings-section" id="section-vertex">
-                    <h3>Vertex AI API</h3>
-                    <div class="settings-row">
-                        <div class="input-group">
-                            <label>API Key</label>
                             <input
-                                type="password"
-                                id="cfg-apikey"
-                                placeholder="Enter new key to change"
-                            />
-                        </div>
-                    </div>
-                    <div class="settings-row">
-                        <div class="input-group">
-                            <label>GCP Project</label>
-                            <input type="text" id="cfg-project" />
-                        </div>
-                        <div class="input-group">
-                            <label>Location</label>
-                            <input type="text" id="cfg-location" />
-                        </div>
-                    </div>
-                    <div class="settings-row">
-                        <div class="input-group">
-                            <label>Model</label>
-                            <input type="text" id="cfg-model" />
-                        </div>
-                    </div>
-                </div>
-
-                <div class="settings-section" id="section-openai">
-                    <h3>OpenAI-Compatible API</h3>
-                    <div class="desc-text">
-                        Works with OpenAI, OpenRouter, and compatible endpoints that expose
-                        /v1/chat/completions.
-                    </div>
-                    <div class="settings-row">
-                        <div class="input-group">
-                            <label>API Key</label>
-                            <input
-                                type="password"
-                                id="cfg-openai-apikey"
-                                placeholder="Enter new key to change"
-                            />
-                        </div>
-                    </div>
-                    <div class="settings-row">
-                        <div class="input-group">
-                            <label>Base URL</label>
-                            <input
-                                type="text"
-                                id="cfg-openai-baseurl"
-                                placeholder="e.g. https://openrouter.ai/api"
-                            />
-                            <div class="hint">Babel appends /v1/chat/completions to this URL.</div>
-                        </div>
-                        <div class="input-group">
-                            <label>Model</label>
-                            <input
-                                type="text"
-                                id="cfg-openai-model"
-                                placeholder="e.g. gpt-4o-mini"
-                            />
-                        </div>
-                    </div>
-                </div>
-
-                <div class="settings-section">
-                    <h3>Babel Lens / Google Cloud Vision</h3>
-                    <div class="desc-text">
-                        Configure OCR separately from the translation provider. The monthly limit
-                        defaults to 900, is shared by Guild and Pocket, and disables Lens at 0.
-                    </div>
-                    <div class="settings-row">
-                        <div class="input-group">
-                            <label>Cloud Vision API Key</label>
-                            <input
-                                type="password"
-                                id="cfg-vision-apikey"
-                                placeholder="Enter new key to change"
-                            />
-                            <div class="hint">The key must allow the Cloud Vision API.</div>
-                        </div>
-                        <div class="input-group">
-                            <label>Monthly Image Limit (0 = disabled)</label>
-                            <input
-                                type="number"
-                                id="cfg-vision-limit"
-                                min="0"
-                                step="1"
-                                data-action="previewVisionLimit"
+                                type="search"
+                                id="prefs-search"
+                                placeholder="Search user ID or language"
+                                data-action="setPrefsSearch"
                                 data-action-value="value"
                             />
-                            <div class="hint" id="cfg-vision-usage">
-                                0 / 900 images used this month
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="settings-section">
-                    <h3>Pricing &amp; Budget</h3>
-                    <div class="settings-row">
-                        <div class="input-group">
-                            <label>Input Price ($ per 1M tokens)</label>
-                            <input type="number" id="cfg-input-price" min="0" step="0.01" />
-                            <div class="hint">e.g. Gemini 2.5 Flash Lite: $0.10</div>
-                        </div>
-                        <div class="input-group">
-                            <label>Output Price ($ per 1M tokens)</label>
-                            <input type="number" id="cfg-output-price" min="0" step="0.01" />
-                            <div class="hint">e.g. Gemini 2.5 Flash Lite: $0.40</div>
-                        </div>
-                    </div>
-                    <div class="settings-row">
-                        <div class="input-group">
-                            <label id="cfg-budget-label">Global Daily Budget (USD, 0 = unlimited)</label>
-                            <input type="number" id="cfg-budget" min="0" step="0.1" />
-                            <div class="hint" id="cfg-budget-hint">
-                                Default for servers without custom budgets. Set per-server budgets
-                                in Access tab.
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="settings-section">
-                    <h3>Bot Settings</h3>
-                    <div class="settings-row">
-                        <div class="input-group">
-                            <label>Cooldown (seconds)</label>
-                            <input type="number" id="cfg-cooldown" min="1" max="60" />
-                        </div>
-                        <div class="input-group">
-                            <label>Translation Cache Max Size</label>
-                            <input type="number" id="cfg-cache" min="100" max="2000" />
-                            <div class="hint">Recommended ceiling for small instances: 2000</div>
-                        </div>
-                        <div class="input-group inline-action">
-                            <button class="btn btn-secondary btn-sm" data-action="clearCache">
-                                Clear Caches
-                            </button>
-                        </div>
-                    </div>
-                    <div class="settings-row">
-                        <div class="input-group">
-                            <label>Max Input Length (chars)</label>
-                            <input type="number" id="cfg-max-input" min="100" max="10000" />
-                            <div class="hint">
-                                Max characters per translation request (default: 2000)
-                            </div>
-                        </div>
-                        <div class="input-group">
-                            <label>Max Output Tokens</label>
-                            <input type="number" id="cfg-max-output" min="100" max="8192" />
-                            <div class="hint">Gemini response token limit (default: 1000)</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="settings-section">
-                    <h3>Runtime Limits</h3>
-                    <div class="settings-row">
-                        <div class="input-group">
-                            <label>Concurrent Translations</label>
-                            <input type="number" id="cfg-max-concurrent" min="1" />
-                        </div>
-                        <div class="input-group">
-                            <label>Global Queue</label>
-                            <input type="number" id="cfg-max-global-queue" min="1" />
-                        </div>
-                        <div class="input-group">
-                            <label>Per-Server Queue</label>
-                            <input type="number" id="cfg-max-guild-queue" min="1" />
-                        </div>
-                    </div>
-                    <div class="settings-row">
-                        <div class="input-group">
-                            <label>Per-User Outstanding Requests</label>
-                            <input type="number" id="cfg-max-user-outstanding" min="1" />
-                        </div>
-                        <div class="input-group">
-                            <label>Queue Wait Timeout (ms)</label>
-                            <input type="number" id="cfg-max-queue-wait" min="1" step="1000" />
-                        </div>
-                    </div>
-                </div>
-
-                <div class="settings-section">
-                    <h3>Translation Prompt</h3>
-                    <div class="desc-text">
-                        Customize the system prompt used for translations. Leave empty to use the
-                        default.
-                    </div>
-                    <div class="prompt-editor">
-                        <textarea
-                            id="cfg-prompt"
-                            placeholder="Leave empty to use default prompt..."
-                        ></textarea>
-                        <div class="prompt-actions">
-                            <span class="prompt-hint"
-                                >Use <code>${text}</code> is automatically appended. Only edit the
-                                instructions above it.</span
-                            >
                             <button
-                                class="btn btn-secondary btn-sm"
-                                data-action="restoreDefaultPrompt"
+                                class="btn-danger"
+                                id="prefs-batch-delete"
+                                data-action="deleteSelectedUserPrefs"
+                                disabled
                             >
-                                Restore Default
+                                Clear Selected
                             </button>
                         </div>
-                    </div>
+                        <div id="user-prefs-container">
+                            <div class="empty-state">Loading user preferences...</div>
+                        </div>
+                        <div id="prefs-pagination"></div>
+                    </section>
+
+                    <section
+                        class="access-panel settings-section"
+                        id="access-glossary"
+                        data-capability="guildGlossary"
+                    >
+                        <div class="section-heading">
+                            <div>
+                                <h3>Server Glossary</h3>
+                                <div class="desc-text">
+                                    Server-specific term mappings used by Translation and Lens.
+                                </div>
+                            </div>
+                            <div class="section-actions">
+                                <button
+                                    class="btn btn-secondary btn-sm"
+                                    data-action="openGlossaryImport"
+                                >
+                                    Import
+                                </button>
+                                <button
+                                    class="btn btn-primary btn-sm"
+                                    data-action="openGlossaryEditor"
+                                >
+                                    Add Term
+                                </button>
+                            </div>
+                        </div>
+                        <div class="settings-row">
+                            <div class="input-group">
+                                <label>Server</label>
+                                <select
+                                    id="glossary-guild"
+                                    class="settings-select"
+                                    data-action="selectGlossaryGuild"
+                                    data-action-value="value"
+                                ></select>
+                            </div>
+                        </div>
+                        <div id="glossary-container">
+                            <div class="empty-state">Select a server to manage glossary terms.</div>
+                        </div>
+                    </section>
+
+                    <dialog class="dashboard-dialog" id="glossary-editor-dialog">
+                        <div class="dialog-heading">
+                            <h3 id="glossary-dialog-title">Add Glossary Term</h3>
+                            <button
+                                class="icon-button"
+                                type="button"
+                                title="Close"
+                                aria-label="Close"
+                                data-action="closeGlossaryEditor"
+                            >
+                                &times;
+                            </button>
+                        </div>
+                        <div class="glossary-form dialog-body">
+                            <input type="hidden" id="glossary-entry-id" />
+                            <div class="settings-row">
+                                <div class="input-group">
+                                    <label>Source Term</label>
+                                    <input
+                                        type="text"
+                                        id="glossary-source"
+                                        maxlength="120"
+                                        placeholder="OpenAI"
+                                    />
+                                </div>
+                                <div class="input-group">
+                                    <label>Language</label>
+                                    <select id="glossary-target-language" class="settings-select">
+                                        <option value="auto">Auto / Legacy</option>
+                                        <option value="zh-TW">繁體中文</option>
+                                        <option value="zh-CN">简体中文</option>
+                                        <option value="en-US">English</option>
+                                        <option value="ja">日本語</option>
+                                        <option value="ko">한국어</option>
+                                        <option value="fr">Français</option>
+                                        <option value="de">Deutsch</option>
+                                    </select>
+                                </div>
+                                <div class="input-group">
+                                    <label>Target Term</label>
+                                    <input
+                                        type="text"
+                                        id="glossary-target"
+                                        maxlength="120"
+                                        placeholder="OpenAI"
+                                    />
+                                </div>
+                            </div>
+                            <div class="settings-row">
+                                <div class="input-group">
+                                    <label>Notes</label>
+                                    <input
+                                        type="text"
+                                        id="glossary-notes"
+                                        maxlength="200"
+                                        placeholder="Preserve brand name"
+                                    />
+                                </div>
+                            </div>
+                            <div class="glossary-actions">
+                                <button
+                                    class="btn btn-primary btn-sm"
+                                    data-action="saveGlossaryEntry"
+                                >
+                                    Save Term
+                                </button>
+                                <button
+                                    class="btn btn-secondary btn-sm"
+                                    data-action="closeGlossaryEditor"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    </dialog>
+
+                    <dialog
+                        class="dashboard-dialog dashboard-dialog-wide"
+                        id="glossary-import-dialog"
+                    >
+                        <div class="dialog-heading">
+                            <h3>Import Glossary</h3>
+                            <button
+                                class="icon-button"
+                                type="button"
+                                title="Close"
+                                aria-label="Close"
+                                data-action="closeGlossaryImport"
+                            >
+                                &times;
+                            </button>
+                        </div>
+                        <div class="glossary-import dialog-body">
+                            <div class="glossary-import-grid">
+                                <div class="input-group glossary-import-file-group">
+                                    <label>Import Glossary</label>
+                                    <div class="glossary-file-picker">
+                                        <input
+                                            type="file"
+                                            id="glossary-import-file"
+                                            class="glossary-file-input"
+                                            accept=".csv,.tsv,text/csv,text/tab-separated-values,text/plain"
+                                            data-action="readGlossaryImportFile"
+                                            data-action-element="true"
+                                        />
+                                        <label
+                                            class="glossary-file-button"
+                                            for="glossary-import-file"
+                                        >
+                                            Choose CSV/TSV
+                                        </label>
+                                        <span
+                                            id="glossary-import-file-name"
+                                            class="glossary-file-name"
+                                            >No file selected</span
+                                        >
+                                    </div>
+                                </div>
+                                <div class="input-group glossary-import-mode-group">
+                                    <label>Duplicate Terms</label>
+                                    <div class="glossary-import-options">
+                                        <label class="glossary-import-option">
+                                            <input
+                                                type="radio"
+                                                name="glossary-import-mode"
+                                                value="skip"
+                                                checked
+                                            />
+                                            <span>
+                                                <strong>Skip existing</strong>
+                                                <small>Keep current terms unchanged</small>
+                                            </span>
+                                        </label>
+                                        <label class="glossary-import-option">
+                                            <input
+                                                type="radio"
+                                                name="glossary-import-mode"
+                                                value="overwrite"
+                                            />
+                                            <span>
+                                                <strong>Overwrite existing</strong>
+                                                <small>Update matching source terms</small>
+                                            </span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="input-group glossary-import-text-group">
+                                <label>CSV or TSV Text</label>
+                                <textarea
+                                    id="glossary-import-text"
+                                    class="glossary-import-textarea"
+                                    rows="5"
+                                    maxlength="131072"
+                                    spellcheck="false"
+                                    placeholder="sourceText,targetLanguage,targetText,notes&#10;OpenAI,auto,OpenAI,Preserve brand name&#10;raid,zh-TW,團本,Game term&#10;raid,ja,レイド,Game term"
+                                ></textarea>
+                            </div>
+                            <div class="glossary-actions">
+                                <button
+                                    class="btn btn-secondary btn-sm"
+                                    data-action="clearGlossaryImport"
+                                >
+                                    Clear Import
+                                </button>
+                                <button
+                                    class="btn btn-primary btn-sm"
+                                    data-action="importGlossaryEntries"
+                                >
+                                    Import Terms
+                                </button>
+                            </div>
+                            <div
+                                id="glossary-import-result"
+                                class="glossary-import-result"
+                                hidden
+                            ></div>
+                        </div>
+                    </dialog>
                 </div>
 
-                <div class="settings-section">
-                    <h3>Translation Test</h3>
-                    <div class="desc-text">
-                        Test the translation API directly. This uses real tokens.
-                    </div>
-                    <div class="test-widget">
-                        <input
-                            type="text"
-                            id="test-text"
-                            placeholder="Enter text to translate..."
-                        />
-                        <select id="test-lang" class="test-select">
-                            <option value="auto">Auto</option>
-                            <option value="zh-TW">繁體中文</option>
-                            <option value="zh-CN">简体中文</option>
-                            <option value="en">English</option>
-                            <option value="ja">日本語</option>
-                            <option value="ko">한국어</option>
-                        </select>
-                        <button
-                            class="btn btn-primary btn-sm"
-                            id="test-btn"
-                            data-action="testTranslate"
+                <!-- Settings Tab -->
+                <div class="tab-content" id="tab-settings">
+                    <div class="settings-layout">
+                        <nav
+                            class="secondary-nav settings-category-nav"
+                            aria-label="Settings categories"
                         >
-                            Test
+                            <button
+                                class="secondary-nav-btn settings-category-btn active"
+                                data-settings-category="providers"
+                                data-action="switchSettingsCategory"
+                                data-action-args='["providers"]'
+                            >
+                                Providers
+                            </button>
+                            <button
+                                class="secondary-nav-btn settings-category-btn"
+                                data-settings-category="lens"
+                                data-action="switchSettingsCategory"
+                                data-action-args='["lens"]'
+                            >
+                                Babel Lens
+                            </button>
+                            <button
+                                class="secondary-nav-btn settings-category-btn"
+                                data-settings-category="cost"
+                                data-action="switchSettingsCategory"
+                                data-action-args='["cost"]'
+                            >
+                                Cost &amp; Limits
+                            </button>
+                            <button
+                                class="secondary-nav-btn settings-category-btn"
+                                data-settings-category="translation"
+                                data-action="switchSettingsCategory"
+                                data-action-args='["translation"]'
+                            >
+                                Translation
+                            </button>
+                            <button
+                                class="secondary-nav-btn settings-category-btn"
+                                data-settings-category="security"
+                                data-action="switchSettingsCategory"
+                                data-action-args='["security"]'
+                            >
+                                Security
+                            </button>
+                        </nav>
+                        <select
+                            id="settings-category-select"
+                            class="settings-select mobile-settings-category"
+                            aria-label="Settings category"
+                            data-action="switchSettingsCategory"
+                            data-action-value="value"
+                        >
+                            <option value="providers">Providers</option>
+                            <option value="lens">Babel Lens</option>
+                            <option value="cost">Cost &amp; Limits</option>
+                            <option value="translation">Translation</option>
+                            <option value="security">Security</option>
+                        </select>
+
+                        <div class="settings-category-content">
+                            <section class="settings-category-panel active" id="settings-providers">
+                                <div class="settings-section">
+                                    <h3>Provider Order</h3>
+                                    <div class="settings-row">
+                                        <div class="input-group">
+                                            <label for="cfg-provider">Primary</label>
+                                            <select
+                                                id="cfg-provider"
+                                                class="settings-select"
+                                                data-action="onProviderModeChange"
+                                            >
+                                                <option value="vertex">Vertex AI</option>
+                                                <option value="openai">OpenAI-compatible</option>
+                                            </select>
+                                        </div>
+                                        <div class="input-group">
+                                            <label for="cfg-provider-fallback">Fallback</label>
+                                            <select
+                                                id="cfg-provider-fallback"
+                                                class="settings-select"
+                                                data-action="onProviderModeChange"
+                                            >
+                                                <option value="">None</option>
+                                                <option value="vertex">Vertex AI</option>
+                                                <option value="openai">OpenAI-compatible</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section" id="section-vertex">
+                                    <h3>Vertex AI</h3>
+                                    <div class="settings-row">
+                                        <div class="input-group">
+                                            <label>API Key</label
+                                            ><input
+                                                type="password"
+                                                id="cfg-apikey"
+                                                placeholder="Enter new key to change"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div class="settings-row">
+                                        <div class="input-group">
+                                            <label>GCP Project</label
+                                            ><input type="text" id="cfg-project" />
+                                        </div>
+                                        <div class="input-group">
+                                            <label>Location</label
+                                            ><input type="text" id="cfg-location" />
+                                        </div>
+                                    </div>
+                                    <div class="settings-row">
+                                        <div class="input-group">
+                                            <label>Model</label
+                                            ><input
+                                                type="text"
+                                                id="cfg-model"
+                                                data-action="onVertexIdentityChanged"
+                                            />
+                                        </div>
+                                        <label class="capability-toggle">
+                                            <span
+                                                ><strong>This model supports images</strong
+                                                ><small>Reset when the model changes.</small></span
+                                            >
+                                            <input
+                                                type="checkbox"
+                                                id="cfg-vertex-images"
+                                                data-action="onProviderCapabilityChange"
+                                            />
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="settings-section" id="section-openai">
+                                    <h3>OpenAI-Compatible</h3>
+                                    <div class="settings-row">
+                                        <div class="input-group">
+                                            <label>API Key</label
+                                            ><input
+                                                type="password"
+                                                id="cfg-openai-apikey"
+                                                placeholder="Enter new key to change"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div class="settings-row">
+                                        <div class="input-group">
+                                            <label>Base URL</label
+                                            ><input
+                                                type="text"
+                                                id="cfg-openai-baseurl"
+                                                placeholder="https://api.openai.com"
+                                                data-action="onOpenaiIdentityChanged"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div class="settings-row">
+                                        <div class="input-group">
+                                            <label>Model</label
+                                            ><input
+                                                type="text"
+                                                id="cfg-openai-model"
+                                                placeholder="gpt-4o-mini"
+                                                data-action="onOpenaiIdentityChanged"
+                                            />
+                                        </div>
+                                        <label class="capability-toggle">
+                                            <span
+                                                ><strong>This model supports images</strong
+                                                ><small
+                                                    >Reset when the Base URL or model
+                                                    changes.</small
+                                                ></span
+                                            >
+                                            <input
+                                                type="checkbox"
+                                                id="cfg-openai-images"
+                                                data-action="onProviderCapabilityChange"
+                                            />
+                                        </label>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <section class="settings-category-panel" id="settings-lens">
+                                <div class="settings-section">
+                                    <h3>Provider Routes</h3>
+                                    <div class="route-summary" id="lens-route-summary">
+                                        <div>
+                                            <span>Vertex AI</span
+                                            ><strong id="lens-route-vertex">-</strong>
+                                        </div>
+                                        <div>
+                                            <span>OpenAI-compatible</span
+                                            ><strong id="lens-route-openai">-</strong>
+                                        </div>
+                                    </div>
+                                    <div class="settings-row">
+                                        <div class="input-group">
+                                            <label>Gemini Media Resolution</label>
+                                            <select
+                                                id="cfg-media-resolution"
+                                                class="settings-select"
+                                            >
+                                                <option value="default">Default</option>
+                                                <option value="low">Low</option>
+                                                <option value="medium">Medium</option>
+                                                <option value="high">High</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div
+                                    class="settings-section vision-fallback-only"
+                                    id="vision-fallback-settings"
+                                >
+                                    <h3>Cloud Vision Fallback</h3>
+                                    <div class="desc-text">
+                                        Shown because at least one enabled provider is marked
+                                        text-only.
+                                    </div>
+                                    <div class="settings-row">
+                                        <div class="input-group">
+                                            <label>Cloud Vision API Key</label
+                                            ><input
+                                                type="password"
+                                                id="cfg-vision-apikey"
+                                                placeholder="Enter new key to change"
+                                            />
+                                        </div>
+                                        <div class="input-group">
+                                            <label>Monthly Image Limit (0 = disabled)</label>
+                                            <input
+                                                type="number"
+                                                id="cfg-vision-limit"
+                                                min="0"
+                                                step="1"
+                                                data-action="previewVisionLimit"
+                                                data-action-value="value"
+                                            />
+                                            <div class="hint" id="cfg-vision-usage">
+                                                0 / 900 images used this month
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <section class="settings-category-panel" id="settings-cost">
+                                <div class="settings-section">
+                                    <h3>Pricing &amp; Budget</h3>
+                                    <div class="settings-row">
+                                        <div class="input-group">
+                                            <label>Input Price ($ per 1M tokens)</label
+                                            ><input
+                                                type="number"
+                                                id="cfg-input-price"
+                                                min="0"
+                                                step="0.01"
+                                            />
+                                        </div>
+                                        <div class="input-group">
+                                            <label>Output Price ($ per 1M tokens)</label
+                                            ><input
+                                                type="number"
+                                                id="cfg-output-price"
+                                                min="0"
+                                                step="0.01"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div class="settings-row">
+                                        <div class="input-group">
+                                            <label id="cfg-budget-label"
+                                                >Global Monthly Budget (USD, 0 = unlimited)</label
+                                            ><input
+                                                type="number"
+                                                id="cfg-budget"
+                                                min="0"
+                                                step="0.1"
+                                            />
+                                            <div class="hint" id="cfg-budget-hint"></div>
+                                        </div>
+                                    </div>
+                                    <div class="settings-row">
+                                        <div class="input-group">
+                                            <label>5-Hour Limit (% of monthly)</label
+                                            ><input
+                                                type="number"
+                                                id="cfg-budget-five-hour"
+                                                min="0.1"
+                                                max="100"
+                                                step="0.1"
+                                            />
+                                        </div>
+                                        <div class="input-group">
+                                            <label>7-Day Limit (% of monthly)</label
+                                            ><input
+                                                type="number"
+                                                id="cfg-budget-seven-day"
+                                                min="0.1"
+                                                max="100"
+                                                step="0.1"
+                                            />
+                                        </div>
+                                        <div class="input-group" data-capability="guildAccess">
+                                            <label>Fair-Share Multiplier</label
+                                            ><input
+                                                type="number"
+                                                id="cfg-budget-fair-share"
+                                                min="1"
+                                                step="0.1"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section">
+                                    <h3>Runtime Limits</h3>
+                                    <div class="settings-row">
+                                        <div class="input-group">
+                                            <label>Concurrent Translations</label
+                                            ><input type="number" id="cfg-max-concurrent" min="1" />
+                                        </div>
+                                        <div class="input-group">
+                                            <label>Global Queue</label
+                                            ><input
+                                                type="number"
+                                                id="cfg-max-global-queue"
+                                                min="1"
+                                            />
+                                        </div>
+                                        <div class="input-group">
+                                            <label>Per-Server Queue</label
+                                            ><input
+                                                type="number"
+                                                id="cfg-max-guild-queue"
+                                                min="1"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div class="settings-row">
+                                        <div class="input-group">
+                                            <label>Per-User Outstanding</label
+                                            ><input
+                                                type="number"
+                                                id="cfg-max-user-outstanding"
+                                                min="1"
+                                            />
+                                        </div>
+                                        <div class="input-group">
+                                            <label>Queue Wait Timeout (ms)</label
+                                            ><input
+                                                type="number"
+                                                id="cfg-max-queue-wait"
+                                                min="1"
+                                                step="1"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <section class="settings-category-panel" id="settings-translation">
+                                <div class="settings-section">
+                                    <h3>Translation</h3>
+                                    <div class="settings-row">
+                                        <div class="input-group">
+                                            <label>Cooldown (seconds)</label
+                                            ><input
+                                                type="number"
+                                                id="cfg-cooldown"
+                                                min="1"
+                                                max="60"
+                                            />
+                                        </div>
+                                        <div class="input-group">
+                                            <label>Cache Max Size</label
+                                            ><input
+                                                type="number"
+                                                id="cfg-cache"
+                                                min="100"
+                                                max="2000"
+                                            />
+                                        </div>
+                                        <div class="input-group inline-action">
+                                            <button
+                                                class="btn btn-secondary btn-sm"
+                                                data-action="clearCache"
+                                            >
+                                                Clear Caches
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="settings-row">
+                                        <div class="input-group">
+                                            <label>Max Input Length</label
+                                            ><input
+                                                type="number"
+                                                id="cfg-max-input"
+                                                min="100"
+                                                max="10000"
+                                            />
+                                        </div>
+                                        <div class="input-group">
+                                            <label>Max Output Tokens</label
+                                            ><input
+                                                type="number"
+                                                id="cfg-max-output"
+                                                min="100"
+                                                max="8192"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section">
+                                    <h3>Translation Prompt</h3>
+                                    <div class="prompt-editor">
+                                        <textarea
+                                            id="cfg-prompt"
+                                            placeholder="Leave empty to use default prompt..."
+                                        ></textarea>
+                                        <div class="prompt-actions">
+                                            <span class="prompt-hint"
+                                                >Custom instructions apply to text and Lens.</span
+                                            ><button
+                                                class="btn btn-secondary btn-sm"
+                                                data-action="restoreDefaultPrompt"
+                                            >
+                                                Restore Default
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section">
+                                    <h3>Translation Test</h3>
+                                    <div class="test-widget">
+                                        <input
+                                            type="text"
+                                            id="test-text"
+                                            placeholder="Enter text to translate..."
+                                        /><select id="test-lang" class="test-select">
+                                            <option value="auto">Auto</option>
+                                            <option value="zh-TW">繁體中文</option>
+                                            <option value="zh-CN">简体中文</option>
+                                            <option value="en">English</option>
+                                            <option value="ja">日本語</option>
+                                            <option value="ko">한국어</option></select
+                                        ><button
+                                            class="btn btn-primary btn-sm"
+                                            id="test-btn"
+                                            data-action="testTranslate"
+                                        >
+                                            Test
+                                        </button>
+                                    </div>
+                                    <div class="test-result" id="test-result">
+                                        <div id="test-output"></div>
+                                        <div class="meta" id="test-meta"></div>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <section class="settings-category-panel" id="settings-security">
+                                <div class="settings-section">
+                                    <h3>Dashboard Sessions</h3>
+                                    <div class="desc-text">
+                                        Review active admin sessions and revoke stale logins.
+                                    </div>
+                                    <div class="session-list" id="session-list"></div>
+                                </div>
+                            </section>
+                        </div>
+                    </div>
+                    <div class="save-bar settings-save-bar">
+                        <span class="save-status" id="settings-save-status"
+                            >No unsaved changes</span
+                        >
+                        <button
+                            class="btn btn-primary"
+                            id="settings-save-button"
+                            data-action="saveSettings"
+                            disabled
+                        >
+                            Save Changes
                         </button>
                     </div>
-                    <div class="test-result" id="test-result">
-                        <div id="test-output"></div>
-                        <div class="meta" id="test-meta"></div>
-                    </div>
                 </div>
-
-                <div class="settings-section">
-                    <h3>Dashboard Sessions</h3>
-                    <div class="desc-text">
-                        Review active admin sessions and revoke stale logins.
-                    </div>
-                    <div class="session-list" id="session-list"></div>
-                </div>
-
-                <div class="save-bar">
-                    <button class="btn btn-primary" data-action="saveSettings">Save Changes</button>
-                </div>
-            </div>
+            </main>
         </div>
 
         <div class="toast" id="toast"></div>

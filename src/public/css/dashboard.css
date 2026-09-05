@@ -220,7 +220,7 @@
 .card .label {
   font-size: 0.7rem;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0;
   color: var(--text-dim);
   margin-bottom: 0.4rem;
   font-weight: 600;
@@ -257,7 +257,7 @@
 .budget-header .label {
   font-size: 0.7rem;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0;
   color: var(--text-dim);
   font-weight: 600;
 }
@@ -278,7 +278,9 @@
 .budget-bar .fill {
   height: 100%;
   border-radius: 3px;
-  transition: width 0.5s ease, background 0.3s;
+  transition:
+    width 0.5s ease,
+    background 0.3s;
   background: var(--green);
   min-width: 0;
 }
@@ -327,7 +329,7 @@
 .operations-mode-label {
   font-size: 0.7rem;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0;
   color: var(--text-dim);
   font-weight: 600;
 }
@@ -577,7 +579,7 @@
   padding: 0.1rem 0.35rem;
   border-radius: 3px;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   vertical-align: middle;
   margin-left: 0.25rem;
 }
@@ -622,7 +624,7 @@
   font-size: 0.6rem;
   font-weight: 700;
   color: var(--red);
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   white-space: nowrap;
 }
 
@@ -768,7 +770,9 @@
   outline: none;
   appearance: none;
   -webkit-appearance: none;
-  transition: border-color 0.2s, background 0.2s;
+  transition:
+    border-color 0.2s,
+    background 0.2s;
 }
 
 .prefs-tools select {
@@ -855,6 +859,384 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* --- Dashboard shell --- */
+#dashboard-view {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  width: 100%;
+}
+
+#dashboard-view.active {
+  display: flex;
+  align-items: stretch;
+}
+
+.dashboard-sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 20;
+  width: 248px;
+  height: 100vh;
+  margin: 0;
+  padding: 1.25rem 1rem;
+  border-right: 1px solid #252531;
+  border-bottom: 0;
+  background: #131319;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  box-shadow: 12px 0 32px rgba(0, 0, 0, 0.12);
+}
+
+.sidebar-brandline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 1.5rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #252531;
+  color: #5f5f73;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.sidebar-wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: #f4f4f7;
+}
+
+.sidebar-wordmark::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.sidebar-identity {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  padding-bottom: 1.25rem;
+}
+
+.sidebar-avatar {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.sidebar-avatar .sidebar-presence {
+  position: absolute;
+  right: -1px;
+  bottom: 1px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid #131319;
+  border-radius: 50%;
+  background: var(--green);
+}
+
+.sidebar-identity .header-title {
+  overflow: hidden;
+}
+
+.sidebar-identity h1,
+.sidebar-identity .tag {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-identity h1 {
+  font-size: 1rem;
+}
+
+.primary-nav {
+  flex: 1;
+  display: grid;
+  align-content: start;
+  gap: 0.35rem;
+  margin: 0;
+  padding-top: 1rem;
+  border: 0;
+  border-top: 1px solid #252531;
+  overflow: visible;
+  counter-reset: sidebar-page;
+}
+
+.sidebar-nav-label,
+.sidebar-footer-label {
+  color: #5f5f73;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.sidebar-nav-label {
+  margin: 0 0.65rem 0.35rem;
+}
+
+.primary-nav .tab-btn {
+  counter-increment: sidebar-page;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0 0.7rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  display: grid;
+  grid-template-columns: 1.55rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.4rem;
+  text-align: left;
+  color: #7f7f93;
+}
+
+.primary-nav .tab-btn::before {
+  content: '0' counter(sidebar-page);
+  color: #515164;
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.primary-nav .tab-btn::after {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 2px;
+  background: transparent;
+}
+
+.primary-nav .tab-btn:hover {
+  border-color: #252531;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.primary-nav .tab-btn.active {
+  border-color: #2b2b37;
+  background: #1a1a22;
+  box-shadow: inset 2px 0 var(--accent);
+  color: #f4f4f7;
+}
+
+.primary-nav .tab-btn.active::before {
+  color: var(--accent);
+}
+
+.primary-nav .tab-btn.active::after {
+  background: var(--accent);
+}
+
+.sidebar-footer {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: auto;
+  padding-top: 1rem;
+  border-top: 1px solid #252531;
+}
+
+.dashboard-sidebar .header-meta {
+  order: initial;
+  width: 100%;
+  margin: 0;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid #252531;
+  border-radius: 8px;
+  background: #0f0f14;
+  display: grid;
+  gap: 0;
+}
+
+.sidebar-status-row {
+  min-height: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.sidebar-status-row + .sidebar-status-row {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #20202a;
+}
+
+.sidebar-status-name {
+  color: #68687c;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.dashboard-sidebar .status,
+.dashboard-sidebar .health-badge {
+  font-size: 0.78rem;
+}
+
+.sidebar-actions {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.55rem;
+}
+
+.sidebar-actions .version-link,
+.sidebar-actions .btn-logout {
+  min-height: 2.25rem;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.dashboard-sidebar .btn-logout {
+  width: 100%;
+}
+
+.dashboard-main {
+  display: flex;
+  flex-direction: column;
+  width: calc(100% - 248px);
+  max-width: 1440px;
+  min-height: 100vh;
+  min-width: 0;
+  margin-left: 248px;
+  padding: 1.75rem 2rem 3rem;
+}
+
+.mobile-main-nav,
+.mobile-secondary-nav,
+.mobile-activity-list {
+  display: none;
+}
+
+#tab-overview.active {
+  display: flex;
+  flex-direction: column;
+}
+
+#tab-overview .operations-panel {
+  order: 1;
+}
+#tab-overview .setup-doctor-panel {
+  order: 2;
+}
+#tab-overview .budget-card {
+  order: 3;
+}
+#tab-overview .grid {
+  order: 4;
+}
+#tab-overview .refresh-note {
+  order: 5;
+}
+
+.secondary-nav {
+  display: flex;
+  gap: 0.25rem;
+  min-height: 2.5rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.secondary-nav-btn {
+  padding: 0 0.9rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.secondary-nav-btn:hover,
+.secondary-nav-btn.active {
+  color: var(--text);
+}
+
+.secondary-nav-btn.active {
+  border-bottom-color: var(--accent);
+}
+
+.activity-panel,
+.access-panel {
+  display: none;
+}
+
+.activity-panel.active,
+.access-panel.active {
+  display: block;
+}
+
+.section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.section-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.mobile-activity-row {
+  border-bottom: 1px solid var(--border);
+}
+
+.mobile-activity-row summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 3rem;
+  padding: 0.6rem 0.75rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.mobile-activity-row summary::after {
+  content: '+';
+  color: var(--text-dim);
+  font-weight: 700;
+}
+
+.mobile-activity-row[open] summary::after {
+  content: '-';
+}
+
+.mobile-activity-row dl {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0 0.75rem 0.85rem;
+}
+
+.mobile-activity-row dl div {
+  display: grid;
+  grid-template-columns: 7rem minmax(0, 1fr);
+  gap: 0.75rem;
+}
+
+.mobile-activity-row dt,
+.mobile-activity-row dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.76rem;
+}
+
+.mobile-activity-row dt {
+  color: var(--text-dim);
 }
 
 .user-identity-name {

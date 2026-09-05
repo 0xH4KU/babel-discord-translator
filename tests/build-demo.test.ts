@@ -138,11 +138,30 @@ describe('build-dashboard-demo', () => {
             pendingUserInstallOwners: true,
         });
 
+        const guildConfig = JSON.parse(
+            readFileSync(join(demoDir, 'guild', 'demo', 'fixtures', 'config.json'), 'utf-8'),
+        ) as { vertexAiSupportsImages?: boolean; openaiSupportsImages?: boolean };
+        expect(guildConfig).toMatchObject({
+            vertexAiSupportsImages: true,
+            openaiSupportsImages: false,
+        });
+
         const pocketConfig = JSON.parse(
             readFileSync(join(demoDir, 'pocket', 'demo', 'fixtures', 'config.json'), 'utf-8'),
-        ) as { allowedGuildIds?: string[]; allowedUserIds?: string[] };
+        ) as {
+            allowedGuildIds?: string[];
+            allowedUserIds?: string[];
+            vertexAiSupportsImages?: boolean;
+            openaiSupportsImages?: boolean;
+            geminiMediaResolution?: string;
+        };
         expect(pocketConfig.allowedGuildIds).toEqual([]);
         expect(pocketConfig.allowedUserIds).toEqual(['200000000000000001', '200000000000000002']);
+        expect(pocketConfig).toMatchObject({
+            vertexAiSupportsImages: true,
+            openaiSupportsImages: true,
+            geminiMediaResolution: 'default',
+        });
 
         expect(
             readFileSync(join(demoDir, 'guild', 'demo', 'fixtures', 'user-prefs.json'), 'utf-8'),

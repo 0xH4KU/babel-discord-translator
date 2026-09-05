@@ -15,10 +15,12 @@ import type { TranslationWebhookService } from '../modules/translation/webhook-s
 import type { DiscordUserProfileRepository } from '../modules/dashboard/discord-user-profile-repository.js';
 import type { PendingUserInstallOwnerRepository } from '../modules/dashboard/pending-user-install-owner-repository.js';
 import type { AppProfile } from '../apps/app-profile.js';
+import type { BudgetLimitOverrides } from './budget-limits.js';
 
 // --- Provider ---
 
 export type TranslationProviderMode = 'vertex' | 'openai' | 'vertex+openai' | 'openai+vertex';
+export type GeminiMediaResolution = 'default' | 'low' | 'medium' | 'high';
 
 export interface TranslationPrompt {
     system: string;
@@ -28,11 +30,11 @@ export interface TranslationPrompt {
 // --- Store ---
 
 export interface GuildBudgetConfig {
-    dailyBudgetUsd: number;
+    monthlyBudgetUsd: number;
 }
 
 export interface UserBudgetConfig {
-    dailyBudgetUsd: number;
+    monthlyBudgetUsd: number;
 }
 
 export interface TranslationScope {
@@ -82,6 +84,8 @@ export interface StoreData {
     gcpProject: string;
     gcpLocation: string;
     geminiModel: string;
+    vertexAiSupportsImages: boolean;
+    geminiMediaResolution: GeminiMediaResolution;
     allowedGuildIds: string[];
     lensEnabledGuildIds: string[];
     allowedUserIds: string[];
@@ -90,9 +94,13 @@ export interface StoreData {
     setupComplete: boolean;
     inputPricePerMillion: number;
     outputPricePerMillion: number;
-    dailyBudgetUsd: number;
+    monthlyBudgetUsd: number;
+    pocketGlobalMonthlyBudgetUsd: number;
+    budgetFiveHourPercent: number;
+    budgetSevenDayPercent: number;
+    budgetFairShareMultiplier: number;
     visionMonthlyImageLimit: number;
-    defaultUserDailyBudgetUsd: number;
+    defaultUserMonthlyBudgetUsd: number;
     tokenUsage: TokenUsage | null;
     usageHistory: UsageHistoryEntry[];
     translationPrompt: string;
@@ -109,9 +117,11 @@ export interface StoreData {
     openaiApiKey: string;
     openaiBaseUrl: string;
     openaiModel: string;
+    openaiSupportsImages: boolean;
     translationProvider: TranslationProviderMode;
     // Per-guild budget & usage
     guildBudgets: Record<string, GuildBudgetConfig>;
+    guildBudgetLimitOverrides: Record<string, BudgetLimitOverrides>;
     guildVisionLimits: Record<string, number>;
     guildTokenUsage: Record<string, TokenUsage>;
     guildUsageHistory: Record<string, UsageHistoryEntry[]>;
@@ -127,6 +137,8 @@ export interface TokenUsage {
     inputTokens: number;
     outputTokens: number;
     requests: number;
+    inputCost?: number;
+    outputCost?: number;
 }
 
 export interface UsageHistoryEntry {
@@ -134,6 +146,8 @@ export interface UsageHistoryEntry {
     inputTokens: number;
     outputTokens: number;
     requests: number;
+    inputCost?: number;
+    outputCost?: number;
 }
 
 // --- Translation ---
@@ -146,8 +160,27 @@ export interface TranslationResult {
     fallback?: boolean;
 }
 
+export interface LensRegion {
+    translation: string;
+    box_2d: [number, number, number, number];
+}
+
+export interface ImageTranslationResult extends TranslationResult {
+    hasText: boolean;
+    regions: LensRegion[];
+    route?: 'direct' | 'vision';
+    warnings?: string[];
+}
+
+export interface ImageTranslationRequest {
+    image: Buffer;
+    mimeType: 'image/jpeg' | 'image/png' | 'image/webp';
+    prompt: TranslationPrompt;
+}
+
 export interface VertexAIResponse {
     candidates?: Array<{
+        finishReason?: string;
         content?: {
             parts?: Array<{ text?: string }>;
         };
@@ -160,6 +193,7 @@ export interface VertexAIResponse {
 
 export interface OpenAIChatResponse {
     choices?: Array<{
+        finish_reason?: string | null;
         message?: {
             content?: string;
         };
@@ -258,7 +292,7 @@ export interface UsageCost {
 }
 
 export interface UsageStats extends UsageCost {
-    dailyBudget: number;
+    monthlyBudget: number;
     budgetUsedPercent: number;
     budgetExceeded: boolean;
 }

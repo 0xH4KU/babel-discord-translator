@@ -51,3 +51,20 @@ export class ProviderHttpError extends Error {
         this.retryAfterMs = retryAfterMs;
     }
 }
+
+export class ProviderResponseError extends Error {
+    readonly inputTokens: number;
+    readonly outputTokens: number;
+
+    constructor(
+        message: string,
+        inputTokens: number,
+        outputTokens: number,
+        options?: { cause?: Error },
+    ) {
+        super(message, options);
+        this.name = 'ProviderResponseError';
+        this.inputTokens = inputTokens;
+        this.outputTokens = outputTokens;
+    }
+}

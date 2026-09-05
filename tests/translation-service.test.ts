@@ -4,10 +4,22 @@ import { TranslationCache } from '../src/modules/translation/cache.js';
 import { CooldownManager } from '../src/modules/translation/cooldown.js';
 import { ProviderOrchestratorError } from '../src/infra/provider-orchestrator.js';
 import { TranslationLog } from '../src/shared/log.js';
-import { createTranslationService, _test } from '../src/modules/translation/translation-service.js';
+import {
+    createTranslationService,
+    type TranslationServiceImageRequest,
+    _test,
+} from '../src/modules/translation/translation-service.js';
+import {
+    buildImageTranslationPrompt,
+    buildTranslationPrompt,
+} from '../src/modules/translation/translate.js';
 import { TranslationRuntimeLimiter } from '../src/modules/translation/translation-runtime-limiter.js';
+import type {
+    UsageBudgetAdmission,
+    UsageBudgetReservation,
+} from '../src/modules/usage/usage.js';
 import type { AccessMode } from '../src/apps/app-profile.js';
-import type { StoreData, TranslationResult } from '../src/shared/types.js';
+import type { ImageTranslationResult, StoreData, TranslationResult } from '../src/shared/types.js';
 
 function createStructuredLoggerMock(base: Record<string, unknown> = {}) {
     const entries: Array<Record<string, unknown>> = [];
@@ -49,16 +61,20 @@ function createStoreMock(overrides: Partial<StoreData> = {}) {
         gcpProject: 'test-project',
         gcpLocation: 'global',
         geminiModel: 'gemini-2.5-flash-lite',
+        vertexAiSupportsImages: false,
+        geminiMediaResolution: 'default',
+        visionApiKey: 'vision-key',
         allowedGuildIds: ['guild-1'],
+        lensEnabledGuildIds: ['guild-1'],
         allowedUserIds: [],
         cooldownSeconds: 0,
         cacheMaxSize: 2000,
         setupComplete: true,
         inputPricePerMillion: 0,
         outputPricePerMillion: 0,
-        dailyBudgetUsd: 0,
+        monthlyBudgetUsd: 0,
         visionMonthlyImageLimit: 900,
-        defaultUserDailyBudgetUsd: 0,
+        defaultUserMonthlyBudgetUsd: 0,
         tokenUsage: null,
         usageHistory: [],
         translationPrompt: '',
@@ -71,10 +87,17 @@ function createStoreMock(overrides: Partial<StoreData> = {}) {
         translationMaxGuildQueue: 5,
         translationMaxUserOutstanding: 1,
         translationMaxQueueWaitMs: 30000,
+        openaiApiKey: '',
+        openaiBaseUrl: '',
+        openaiModel: '',
+        openaiSupportsImages: false,
+        translationProvider: 'vertex',
         guildBudgets: {},
+        guildVisionLimits: {},
         guildTokenUsage: {},
         guildUsageHistory: {},
         userBudgets: {},
+        userVisionLimits: {},
         userTokenUsage: {},
         userUsageHistory: {},
         ...overrides,
@@ -87,16 +110,20 @@ function createStoreMock(overrides: Partial<StoreData> = {}) {
             gcpProject: data.gcpProject,
             gcpLocation: data.gcpLocation,
             geminiModel: data.geminiModel,
+            vertexAiSupportsImages: data.vertexAiSupportsImages,
+            geminiMediaResolution: data.geminiMediaResolution,
+            visionApiKey: data.visionApiKey,
             allowedGuildIds: [...data.allowedGuildIds],
+            lensEnabledGuildIds: [...data.lensEnabledGuildIds],
             allowedUserIds: [...data.allowedUserIds],
             cooldownSeconds: data.cooldownSeconds,
             cacheMaxSize: data.cacheMaxSize,
             setupComplete: data.setupComplete,
             inputPricePerMillion: data.inputPricePerMillion,
             outputPricePerMillion: data.outputPricePerMillion,
-            dailyBudgetUsd: data.dailyBudgetUsd,
+            monthlyBudgetUsd: data.monthlyBudgetUsd,
             visionMonthlyImageLimit: data.visionMonthlyImageLimit,
-            defaultUserDailyBudgetUsd: data.defaultUserDailyBudgetUsd,
+            defaultUserMonthlyBudgetUsd: data.defaultUserMonthlyBudgetUsd,
             translationPrompt: data.translationPrompt,
             maxInputLength: data.maxInputLength,
             maxOutputTokens: data.maxOutputTokens,
@@ -108,6 +135,7 @@ function createStoreMock(overrides: Partial<StoreData> = {}) {
             openaiApiKey: data.openaiApiKey,
             openaiBaseUrl: data.openaiBaseUrl,
             openaiModel: data.openaiModel,
+            openaiSupportsImages: data.openaiSupportsImages,
             translationProvider: data.translationProvider,
         })),
         isSetupComplete: vi.fn((): boolean => data.setupComplete),
@@ -132,14 +160,44 @@ function createUsageMock() {
     return {
         record,
         tryReserveBudget: vi.fn(
-            ({ guildId, userId }: { guildId?: string | null; userId?: string | null }) => ({
-                settle: vi.fn((inputTokens: number, outputTokens: number) =>
-                    record(inputTokens, outputTokens, { guildId, userId }),
-                ),
-                release: vi.fn(),
+            ({
+                guildId,
+                userId,
+                actorUserId,
+            }: {
+                guildId?: string | null;
+                userId?: string | null;
+                actorUserId?: string | null;
+            }): UsageBudgetAdmission => ({
+                allowed: true,
+                reservation: {
+                    settle: vi.fn((inputTokens: number, outputTokens: number) =>
+                        record(inputTokens, outputTokens, { guildId, userId, actorUserId }),
+                    ),
+                    release: vi.fn(),
+                },
             }),
         ),
     };
+}
+
+function rejectedBudget(): UsageBudgetAdmission {
+    return {
+        allowed: false,
+        reason: {
+            budgetScope: 'guild:shared',
+            budgetWindow: '5h',
+            budgetUsedUsd: 0.04,
+            budgetPendingUsd: 0.01,
+            budgetEstimatedUsd: 0.01,
+            budgetLimitUsd: 0.05,
+        },
+    };
+}
+
+function reservationFrom(admission: UsageBudgetAdmission | undefined): UsageBudgetReservation {
+    if (!admission?.allowed) throw new Error('Expected an allowed budget admission');
+    return admission.reservation;
 }
 
 function createGlossaryRepositoryMock(
@@ -171,6 +229,16 @@ function createService({
             outputTokens: 6,
         }),
     ),
+    imageTranslator = vi.fn(
+        async (): Promise<ImageTranslationResult> => ({
+            text: '圖片翻譯',
+            hasText: true,
+            regions: [{ translation: '圖片翻譯', box_2d: [100, 100, 300, 900] }],
+            route: 'direct',
+            inputTokens: 120,
+            outputTokens: 20,
+        }),
+    ),
     usageTracker = createUsageMock(),
     glossaryRepository = createGlossaryRepositoryMock(),
     loggerState = createStructuredLoggerMock(),
@@ -182,6 +250,7 @@ function createService({
 }: {
     storeOverrides?: Partial<StoreData>;
     translator?: ReturnType<typeof vi.fn>;
+    imageTranslator?: ReturnType<typeof vi.fn>;
     usageTracker?: ReturnType<typeof createUsageMock>;
     glossaryRepository?: ReturnType<typeof createGlossaryRepositoryMock>;
     loggerState?: ReturnType<typeof createStructuredLoggerMock>;
@@ -207,6 +276,7 @@ function createService({
         usageTracker,
         glossaryRepository,
         translator,
+        imageTranslator,
         metrics,
         runtimeLimiter,
         appProfileId,
@@ -226,12 +296,282 @@ function createService({
         usageTracker,
         glossaryRepository,
         translator,
+        imageTranslator,
         metrics,
         loggerState,
     };
 }
 
+function createImageRequest(
+    overrides: Partial<TranslationServiceImageRequest> = {},
+): TranslationServiceImageRequest {
+    return {
+        command: 'babel',
+        commandLabel: 'Babel Lens (context menu)',
+        guildId: 'guild-1',
+        guildName: 'Test Guild',
+        userId: 'user1',
+        userTag: 'user#0001',
+        locale: 'zh-TW',
+        requestId: 'lens-request',
+        resolveImage: vi.fn(async () => ({
+            image: Buffer.from('normalized-image'),
+            mimeType: 'image/png',
+            width: 100,
+            height: 50,
+            hash: 'image-hash',
+        })),
+        resolveVision: vi.fn(async () => ({
+            text: 'Text from image',
+            imageWidth: 100,
+            imageHeight: 50,
+            regions: [{ text: 'Text from image', x: 10, y: 5, width: 80, height: 20 }],
+        })),
+        ...overrides,
+    };
+}
+
 describe('TranslationService', () => {
+    it('should reserve the UTF-8 prompt upper bound across retries and fallback providers', () => {
+        expect(
+            _test.estimateBudgetTokens(
+                { system: 'S系', user: '🙂' },
+                100,
+                'vertex+openai',
+                4096,
+            ),
+        ).toEqual({
+            estimatedInputTokens: (4 + 4 + 256 + 4096) * 8,
+            estimatedOutputTokens: 100 * 8,
+        });
+    });
+
+    it('should reserve image budget, settle actual direct usage, and cache the result', async () => {
+        const resolveVision = vi.fn(async () => {
+            throw new Error('Vision must not run for a direct route');
+        });
+        const { service, imageTranslator, usageTracker } = createService({
+            storeOverrides: { visionMonthlyImageLimit: 0, vertexAiSupportsImages: true },
+        });
+
+        const first = await service.processImage(createImageRequest({ resolveVision }));
+        const second = await service.processImage(
+            createImageRequest({ userId: 'user2', requestId: 'lens-request-2', resolveVision }),
+        );
+
+        expect(first).toMatchObject({
+            status: 'success',
+            route: 'direct',
+            cached: false,
+            inputTokens: 120,
+            outputTokens: 20,
+        });
+        expect(second).toMatchObject({ status: 'success', cached: true, inputTokens: 0 });
+        expect(usageTracker.tryReserveBudget).toHaveBeenCalledOnce();
+        expect(usageTracker.tryReserveBudget).toHaveBeenCalledWith({
+            ..._test.estimateBudgetTokens(
+                buildImageTranslationPrompt('auto'),
+                1000,
+                'vertex',
+                4096,
+            ),
+            guildId: 'guild-1',
+            userId: null,
+            actorUserId: 'user1',
+        });
+        expect(usageTracker.record).toHaveBeenCalledWith(120, 20, {
+            guildId: 'guild-1',
+            userId: null,
+            actorUserId: 'user1',
+        });
+        expect(imageTranslator).toHaveBeenCalledOnce();
+        expect(resolveVision).not.toHaveBeenCalled();
+    });
+
+    it('should block on translation budget before resolving Vision', async () => {
+        const usageTracker = createUsageMock();
+        usageTracker.tryReserveBudget.mockReturnValueOnce(rejectedBudget());
+        const resolveVision = vi.fn();
+        const { service, imageTranslator } = createService({ usageTracker });
+
+        const result = await service.processImage(createImageRequest({ resolveVision }));
+
+        expect(result.status).toBe('blocked');
+        expect(imageTranslator).not.toHaveBeenCalled();
+        expect(resolveVision).not.toHaveBeenCalled();
+    });
+
+    it('should release model budget when Vision finds no text', async () => {
+        const usageTracker = createUsageMock();
+        const imageTranslator = vi.fn(async (_image, _mime, _target, resolveVision) => {
+            expect(await resolveVision()).toEqual({ hasText: false });
+            return {
+                text: '',
+                hasText: false,
+                regions: [],
+                route: 'vision' as const,
+                inputTokens: 0,
+                outputTokens: 0,
+            };
+        });
+        const { service } = createService({ usageTracker, imageTranslator });
+
+        const result = await service.processImage(
+            createImageRequest({
+                resolveVision: vi.fn(async () => ({
+                    text: '',
+                    imageWidth: 100,
+                    imageHeight: 50,
+                    regions: [],
+                })),
+            }),
+        );
+
+        expect(result).toMatchObject({ status: 'success', hasText: false, route: 'vision' });
+        const reservation = reservationFrom(usageTracker.tryReserveBudget.mock.results[0]?.value);
+        expect(reservation.release).toHaveBeenCalledOnce();
+        expect(reservation.settle).not.toHaveBeenCalled();
+        expect(usageTracker.record).not.toHaveBeenCalled();
+    });
+
+    it('should give Vision the normalized image, marker prompt, and normalized boxes once', async () => {
+        const resolveVision = vi.fn(async (image: Buffer) => {
+            expect(image).toEqual(Buffer.from('normalized-image'));
+            return {
+                text: 'Text from image',
+                imageWidth: 100,
+                imageHeight: 50,
+                regions: [{ text: 'Text from image', x: 10, y: 5, width: 80, height: 20 }],
+            };
+        });
+        const imageTranslator = vi.fn(async (_image, _mime, _target, resolve) => {
+            const vision = await resolve();
+            expect(vision.prompt?.user).toBe('[[BABEL_REGION_1]] Text from image');
+            expect(vision.boxes).toEqual([[100, 100, 500, 900]]);
+            return {
+                text: '[1] 圖片翻譯',
+                hasText: true,
+                regions: [{ translation: '圖片翻譯', box_2d: vision.boxes![0]! }],
+                route: 'vision' as const,
+                inputTokens: 20,
+                outputTokens: 5,
+            };
+        });
+        const { service } = createService({ imageTranslator });
+
+        await service.processImage(createImageRequest({ resolveVision }));
+        await service.processImage(
+            createImageRequest({ userId: 'user2', requestId: 'lens-request-2', resolveVision }),
+        );
+
+        expect(resolveVision).toHaveBeenCalledOnce();
+        expect(imageTranslator).toHaveBeenCalledOnce();
+    });
+
+    it('should settle tokens for a direct no-text result', async () => {
+        const imageTranslator = vi.fn(async () => ({
+            text: '',
+            hasText: false,
+            regions: [],
+            route: 'direct' as const,
+            inputTokens: 80,
+            outputTokens: 4,
+        }));
+        const { service, usageTracker } = createService({ imageTranslator });
+
+        const result = await service.processImage(createImageRequest());
+
+        expect(result).toMatchObject({ status: 'success', hasText: false, route: 'direct' });
+        expect(usageTracker.record).toHaveBeenCalledWith(80, 4, {
+            guildId: 'guild-1',
+            userId: null,
+            actorUserId: 'user1',
+        });
+    });
+
+    it('should settle billed token usage when image translation fails', async () => {
+        const imageTranslator = vi.fn(async () => {
+            throw new ProviderOrchestratorError('Invalid Babel Lens JSON response', {
+                provider: 'vertex',
+                errorType: 'unknown',
+                inputTokens: 90,
+                outputTokens: 12,
+            });
+        });
+        const { service, usageTracker, metrics } = createService({ imageTranslator });
+
+        const result = await service.processImage(createImageRequest());
+
+        expect(result.status).toBe('error');
+        expect(usageTracker.record).toHaveBeenCalledWith(90, 12, {
+            guildId: 'guild-1',
+            userId: null,
+            actorUserId: 'user1',
+        });
+        const reservation = reservationFrom(usageTracker.tryReserveBudget.mock.results[0]?.value);
+        expect(reservation.release).not.toHaveBeenCalled();
+        expect(metrics.snapshot().translationApiCallsTotal).toBe(1);
+    });
+
+    it('should not cache fallback image results', async () => {
+        const imageTranslator = vi.fn(
+            async (): Promise<ImageTranslationResult> => ({
+                text: 'fallback translation',
+                hasText: true,
+                regions: [],
+                route: 'direct',
+                provider: 'openai',
+                fallback: true,
+                inputTokens: 20,
+                outputTokens: 5,
+            }),
+        );
+        const { service } = createService({ imageTranslator });
+
+        const first = await service.processImage(createImageRequest());
+        const second = await service.processImage(
+            createImageRequest({ userId: 'user2', requestId: 'lens-request-2' }),
+        );
+
+        expect(first).toMatchObject({ status: 'success', cached: false, fallback: true });
+        expect(second).toMatchObject({ status: 'success', cached: false, fallback: true });
+        expect(imageTranslator).toHaveBeenCalledTimes(2);
+    });
+
+    it('should not cache fallback text results', async () => {
+        const translator = vi.fn(
+            async (): Promise<TranslationResult> => ({
+                text: 'fallback translation',
+                provider: 'openai',
+                fallback: true,
+                inputTokens: 8,
+                outputTokens: 3,
+            }),
+        );
+        const { service } = createService({ translator });
+        const request = {
+            command: 'translate' as const,
+            commandLabel: '/translate',
+            guildId: 'guild-1',
+            guildName: 'Test Guild',
+            userId: 'user1',
+            userTag: 'user#0001',
+            text: 'Hello',
+            targetLanguageOption: 'ja',
+        };
+
+        const first = await service.process(request);
+        const second = await service.process({
+            ...request,
+            userId: 'user2',
+            userTag: 'user#0002',
+        });
+
+        expect(first).toMatchObject({ status: 'success', cached: false, fallback: true });
+        expect(second).toMatchObject({ status: 'success', cached: false, fallback: true });
+        expect(translator).toHaveBeenCalledTimes(2);
+    });
+
     it('should translate successfully and record usage through the shared service', async () => {
         const beforeTranslate = vi.fn(async () => undefined);
         const { service, usageTracker, translator, log, metrics, loggerState } = createService({
@@ -286,6 +626,7 @@ describe('TranslationService', () => {
         expect(usageTracker.record).toHaveBeenCalledWith(12, 6, {
             guildId: 'guild-1',
             userId: null,
+            actorUserId: 'user1',
         });
         expect(log.size).toBe(1);
         expect(metrics.snapshot()).toMatchObject({
@@ -394,7 +735,7 @@ describe('TranslationService', () => {
     it('should preserve deferred state when Lens translation is blocked after OCR', async () => {
         const beforeTranslate = vi.fn(async () => undefined);
         const usageTracker = createUsageMock();
-        usageTracker.tryReserveBudget.mockReturnValueOnce(null as never);
+        usageTracker.tryReserveBudget.mockReturnValueOnce(rejectedBudget());
         const { service } = createService({ usageTracker });
 
         const result = await service.process({
@@ -410,7 +751,7 @@ describe('TranslationService', () => {
         expect(beforeTranslate).toHaveBeenCalledOnce();
         expect(result).toEqual({
             status: 'blocked',
-            message: 'Daily budget exceeded, try again tomorrow!',
+            message: 'Translation budget limit reached. Please try again later.',
             deferred: true,
         });
     });
@@ -676,7 +1017,7 @@ describe('TranslationService', () => {
             targetLanguageOption: 'ko',
         });
         usageTracker.tryReserveBudget.mockClear();
-        usageTracker.tryReserveBudget.mockReturnValue(null);
+        usageTracker.tryReserveBudget.mockReturnValue(rejectedBudget());
         const second = await service.process({
             command: 'translate',
             commandLabel: '/translate',
@@ -991,7 +1332,7 @@ describe('TranslationService', () => {
                 },
             ],
         });
-        const { service } = createService({ translator, glossaryRepository });
+        const { service, usageTracker } = createService({ translator, glossaryRepository });
 
         const first = await service.process({
             command: 'translate',
@@ -1089,6 +1430,29 @@ describe('TranslationService', () => {
                 },
             ],
         });
+        expect(usageTracker.tryReserveBudget).toHaveBeenNthCalledWith(1, {
+            ..._test.estimateBudgetTokens(
+                buildTranslationPrompt('OpenAI raid tonight', 'zh-TW', '', [
+                    {
+                        sourceText: 'raid',
+                        targetLanguage: 'zh-TW',
+                        targetText: '團本',
+                        notes: '',
+                    },
+                    {
+                        sourceText: 'OpenAI',
+                        targetLanguage: 'auto',
+                        targetText: 'OpenAI',
+                        notes: 'Preserve brand name',
+                    },
+                ]),
+                1000,
+                'vertex',
+            ),
+            guildId: 'guild-1',
+            userId: null,
+            actorUserId: 'user1',
+        });
     });
 
     it('should ignore guild glossary entries when guild glossary is disabled', async () => {
@@ -1144,9 +1508,9 @@ describe('TranslationService', () => {
 
     it('should block requests when the guild budget is exceeded', async () => {
         const usageTracker = createUsageMock();
-        usageTracker.tryReserveBudget.mockReturnValue(null);
+        usageTracker.tryReserveBudget.mockReturnValue(rejectedBudget());
         const translator = vi.fn();
-        const { service, metrics } = createService({ usageTracker, translator });
+        const { service, metrics, loggerState } = createService({ usageTracker, translator });
 
         const result = await service.process({
             command: 'translate',
@@ -1161,10 +1525,22 @@ describe('TranslationService', () => {
 
         expect(result).toEqual({
             status: 'blocked',
-            message: 'Daily budget exceeded',
+            message: 'Translation budget limit reached',
         });
         expect(translator).not.toHaveBeenCalled();
         expect(metrics.snapshot().budgetExceededTotal).toBe(1);
+        expect(loggerState.entries).toContainEqual(
+            expect.objectContaining({
+                event: 'translation.request.blocked',
+                blockReason: 'budget_exceeded',
+                budgetScope: 'guild:shared',
+                budgetWindow: '5h',
+                budgetUsedUsd: 0.04,
+                budgetPendingUsd: 0.01,
+                budgetEstimatedUsd: 0.01,
+                budgetLimitUsd: 0.05,
+            }),
+        );
     });
 
     it('should release reserved budget when the provider fails', async () => {
@@ -1185,7 +1561,7 @@ describe('TranslationService', () => {
             text: 'Hello world',
         });
 
-        const reservation = usageTracker.tryReserveBudget.mock.results[0]?.value;
+        const reservation = reservationFrom(usageTracker.tryReserveBudget.mock.results[0]?.value);
         expect(result.status).toBe('error');
         expect(reservation?.release).toHaveBeenCalledOnce();
         expect(usageTracker.record).not.toHaveBeenCalled();
@@ -1216,6 +1592,7 @@ describe('TranslationService', () => {
         expect(usageTracker.record).toHaveBeenCalledWith(12, 6, {
             guildId: null,
             userId: 'user-owner',
+            actorUserId: 'user-owner',
         });
     });
 
@@ -1245,6 +1622,7 @@ describe('TranslationService', () => {
         expect(usageTracker.record).toHaveBeenCalledWith(12, 6, {
             guildId: null,
             userId: 'user-owner',
+            actorUserId: 'actor',
         });
     });
 
@@ -1272,6 +1650,7 @@ describe('TranslationService', () => {
         expect(usageTracker.record).toHaveBeenCalledWith(12, 6, {
             guildId: null,
             userId: 'actor',
+            actorUserId: 'actor',
         });
     });
 

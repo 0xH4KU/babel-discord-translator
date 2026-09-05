@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { validateConfigUpdate } from '../src/modules/dashboard/config-validation.js';
+import {
+    applyProviderCapabilityResets,
+    validateConfigUpdate,
+} from '../src/modules/dashboard/config-validation.js';
 import { dashboardMessages } from '../src/shared/messages/dashboard-messages.js';
+import { DEFAULT_STORE_DATA } from '../src/persistence/store-defaults.js';
 
 describe('validateConfigUpdate', () => {
     it('should drop empty or masked API keys from the update', () => {
@@ -36,7 +40,7 @@ describe('validateConfigUpdate', () => {
             usageHistory: [],
             userLanguagePrefs: { u: 'ja' },
             userLanguagePreferenceEntries: [{ guildId: 'g', userId: 'u', language: 'ja' }],
-            guildBudgets: { g: { dailyBudgetUsd: 1 } },
+            guildBudgets: { g: { monthlyBudgetUsd: 1 } },
             guildTokenUsage: {},
             guildUsageHistory: {},
         });
@@ -113,7 +117,7 @@ describe('validateConfigUpdate', () => {
     }
 
     const nonNegativeCases = [
-        ['dailyBudgetUsd', dashboardMessages.validation.dailyBudgetUsd],
+        ['monthlyBudgetUsd', dashboardMessages.validation.monthlyBudgetUsd],
         ['inputPricePerMillion', dashboardMessages.validation.inputPricePerMillion],
         ['outputPricePerMillion', dashboardMessages.validation.outputPricePerMillion],
     ] as const;
@@ -145,6 +149,38 @@ describe('validateConfigUpdate', () => {
             valid: true,
             sanitized: { visionMonthlyImageLimit: 950 },
         });
+    });
+
+    it('should validate nested budget limit settings together', () => {
+        expect(
+            validateConfigUpdate({
+                budgetFiveHourPercent: '10',
+                budgetSevenDayPercent: '40',
+                budgetFairShareMultiplier: '2',
+            }),
+        ).toMatchObject({
+            valid: true,
+            sanitized: {
+                budgetFiveHourPercent: 10,
+                budgetSevenDayPercent: 40,
+                budgetFairShareMultiplier: 2,
+            },
+        });
+        expect(validateConfigUpdate({ budgetFiveHourPercent: 40 })).toMatchObject({
+            valid: false,
+        });
+        expect(
+            validateConfigUpdate(
+                { budgetFiveHourPercent: 40 },
+                {
+                    budgetFiveHourPercent: 5,
+                    budgetSevenDayPercent: 50,
+                    budgetFairShareMultiplier: 1.5,
+                },
+            ),
+        ).toMatchObject({ valid: true });
+        expect(validateConfigUpdate({ budgetSevenDayPercent: 101 }).valid).toBe(false);
+        expect(validateConfigUpdate({ budgetFairShareMultiplier: 0.9 }).valid).toBe(false);
     });
 
     it('should require positive integers for translation throughput limits', () => {
@@ -195,9 +231,9 @@ describe('validateConfigUpdate', () => {
             valid: false,
             error: 'setupComplete must be a boolean',
         });
-        expect(validateConfigUpdate({ dailyBudgetUsd: '1oops' })).toMatchObject({
+        expect(validateConfigUpdate({ monthlyBudgetUsd: '1oops' })).toMatchObject({
             valid: false,
-            error: dashboardMessages.validation.dailyBudgetUsd,
+            error: dashboardMessages.validation.monthlyBudgetUsd,
         });
         expect(validateConfigUpdate({ translationMaxConcurrent: '3.5' })).toMatchObject({
             valid: false,
@@ -210,6 +246,48 @@ describe('validateConfigUpdate', () => {
         expect(validateConfigUpdate({ translationProvider: ['vertex'] })).toMatchObject({
             valid: false,
             error: dashboardMessages.validation.translationProvider,
+        });
+    });
+
+    it('should validate image capability and Gemini media resolution fields', () => {
+        expect(
+            validateConfigUpdate({
+                vertexAiSupportsImages: true,
+                openaiSupportsImages: false,
+                geminiMediaResolution: 'medium',
+            }),
+        ).toMatchObject({ valid: true });
+        expect(validateConfigUpdate({ vertexAiSupportsImages: 'yes' })).toMatchObject({
+            valid: false,
+            error: 'vertexAiSupportsImages must be a boolean',
+        });
+        expect(validateConfigUpdate({ geminiMediaResolution: 'ultra_high' })).toMatchObject({
+            valid: false,
+        });
+    });
+
+    it('should reset image capability when its model identity changes unless reconfirmed', () => {
+        const current = {
+            ...DEFAULT_STORE_DATA,
+            geminiModel: 'gemini-old',
+            vertexAiSupportsImages: true,
+            openaiBaseUrl: 'https://old.example',
+            openaiModel: 'model-old',
+            openaiSupportsImages: true,
+        };
+
+        expect(applyProviderCapabilityResets(current, { geminiModel: 'gemini-new' })).toEqual({
+            geminiModel: 'gemini-new',
+            vertexAiSupportsImages: false,
+        });
+        expect(
+            applyProviderCapabilityResets(current, {
+                openaiBaseUrl: 'https://new.example',
+                openaiSupportsImages: true,
+            }),
+        ).toEqual({
+            openaiBaseUrl: 'https://new.example',
+            openaiSupportsImages: true,
         });
     });
 });

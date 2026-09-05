@@ -46,14 +46,14 @@ curl -fsS -H "Authorization: Bearer $BABEL_METRICS_TOKEN" http://localhost:3000/
 
 ## Common Responses
 
-| Symptom                               | Likely Cause                                                    | Response                                                              |
-| ------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `/livez` fails                        | Process crash, SQLite unavailable, config repository failure    | Restart the service, then inspect logs and database path permissions  |
-| `/readyz` fails but `/livez` passes   | Setup incomplete, Discord disconnected, or provider config missing | Complete setup, restore Discord connectivity, or fix provider config |
-| Provider auth errors                  | Expired or wrong API key, wrong GCP project, revoked credential | Rotate credentials and test from dashboard Translation Test           |
-| Queue rejections                      | Traffic burst, provider slowdown, limits too tight              | Raise queue/concurrency carefully, or lower Discord usage temporarily |
-| Budget blocks                         | Daily budget reached or estimate guard would overspend          | Raise budget or wait for the daily reset                              |
-| Cache hit rate collapses after deploy | Prompt/model/output-token config changed                        | Expected after cache-key version changes; monitor provider traffic    |
+| Symptom                               | Likely Cause                                                       | Response                                                              |
+| ------------------------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------- |
+| `/livez` fails                        | Process crash, SQLite unavailable, config repository failure       | Restart the service, then inspect logs and database path permissions  |
+| `/readyz` fails but `/livez` passes   | Setup incomplete, Discord disconnected, or provider config missing | Complete setup, restore Discord connectivity, or fix provider config  |
+| Provider auth errors                  | Expired or wrong API key, wrong GCP project, revoked credential    | Rotate credentials and test from dashboard Translation Test           |
+| Queue rejections                      | Traffic burst, provider slowdown, limits too tight                 | Raise queue/concurrency carefully, or lower Discord usage temporarily |
+| Budget blocks                         | Translation budget reached or estimate guard would overspend       | Review the active limit window or raise the monthly budget            |
+| Cache hit rate collapses after deploy | Prompt/model/output-token config changed                           | Expected after cache-key version changes; monitor provider traffic    |
 
 ## Release Checks
 

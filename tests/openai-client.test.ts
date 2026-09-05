@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     checkOpenAiHealth,
     createOpenAiProvider,
+    generateImageTranslationContent,
     generateTranslationContent,
     isOpenAiConfigured,
     _test,
@@ -12,6 +13,7 @@ vi.mock('../src/persistence/store.js', () => {
         openaiApiKey: 'test-openai-key',
         openaiBaseUrl: 'https://api.openai.example',
         openaiModel: 'gpt-test',
+        openaiSupportsImages: false,
         allowedGuildIds: [],
     };
 
@@ -36,13 +38,18 @@ import { store } from '../src/persistence/store.js';
 
 const translationPrompt = (user: string) => ({ system: 'Translate accurately.', user });
 
-function chatResponse(content: string | null, usage?: Record<string, unknown>) {
+function chatResponse(
+    content: string | null,
+    usage?: Record<string, unknown>,
+    finishReason?: string,
+) {
     return {
         ok: true,
         status: 200,
         json: () =>
             Promise.resolve({
-                choices: content === null ? [] : [{ message: { content } }],
+                choices:
+                    content === null ? [] : [{ message: { content }, finish_reason: finishReason }],
                 ...(usage !== undefined ? { usage } : {}),
             }),
         text: () => Promise.resolve(''),
@@ -109,6 +116,93 @@ describe('openai-client', () => {
             text: 'hola',
             inputTokens: 6,
             outputTokens: 1,
+        });
+    });
+
+    it('should send compatible text and image_url content parts without forcing response format', async () => {
+        globalThis.fetch = vi
+            .fn()
+            .mockResolvedValue(
+                chatResponse(JSON.stringify({ has_text: true, translation: 'hola', regions: [] }), {
+                    prompt_tokens: 50,
+                    completion_tokens: 10,
+                }),
+            );
+
+        const result = await generateImageTranslationContent(
+            {
+                image: Buffer.from('image'),
+                mimeType: 'image/webp',
+                prompt: translationPrompt('Read and translate the image.'),
+            },
+            512,
+        );
+
+        expect(result).toMatchObject({ text: 'hola', inputTokens: 50, outputTokens: 10 });
+        const request = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1];
+        const body = JSON.parse(request.body);
+        expect(body.messages[1].content).toEqual([
+            { type: 'text', text: 'Read and translate the image.' },
+            {
+                type: 'image_url',
+                image_url: {
+                    url: `data:image/webp;base64,${Buffer.from('image').toString('base64')}`,
+                },
+            },
+        ]);
+        expect(body).not.toHaveProperty('response_format');
+        expect(body.messages[1].content[1].image_url).not.toHaveProperty('detail');
+    });
+
+    it('should report image output truncated by the configured token limit', async () => {
+        globalThis.fetch = vi
+            .fn()
+            .mockResolvedValue(
+                chatResponse(
+                    '{"has_text":true',
+                    { prompt_tokens: 10, completion_tokens: 1000 },
+                    'length',
+                ),
+            );
+
+        await expect(
+            generateImageTranslationContent(
+                {
+                    image: Buffer.from('image'),
+                    mimeType: 'image/png',
+                    prompt: translationPrompt('Read it.'),
+                },
+                1000,
+            ),
+        ).rejects.toMatchObject({
+            name: 'ProviderResponseError',
+            message: expect.stringContaining('truncated by Max Output Tokens'),
+            inputTokens: 10,
+            outputTokens: 1000,
+        });
+    });
+
+    it('should preserve usage when an image response contains invalid JSON', async () => {
+        globalThis.fetch = vi
+            .fn()
+            .mockResolvedValue(
+                chatResponse('not json', { prompt_tokens: 30, completion_tokens: 4 }),
+            );
+
+        await expect(
+            generateImageTranslationContent(
+                {
+                    image: Buffer.from('image'),
+                    mimeType: 'image/png',
+                    prompt: translationPrompt('Read it.'),
+                },
+                1000,
+            ),
+        ).rejects.toMatchObject({
+            name: 'ProviderResponseError',
+            message: 'Invalid Babel Lens JSON response',
+            inputTokens: 30,
+            outputTokens: 4,
         });
     });
 
@@ -270,12 +364,18 @@ describe('openai-client', () => {
         });
     });
 
-    it('should strip trailing slashes when building the completions URL', () => {
+    it('should normalize supported completions base URLs', () => {
         expect(_test.buildChatCompletionsUrl('https://host//')).toBe(
             'https://host/v1/chat/completions',
         );
         expect(_test.buildChatCompletionsUrl('https://host')).toBe(
             'https://host/v1/chat/completions',
+        );
+        expect(_test.buildChatCompletionsUrl('https://host/v1/')).toBe(
+            'https://host/v1/chat/completions',
+        );
+        expect(_test.buildChatCompletionsUrl('https://host/compat/chat/completions/')).toBe(
+            'https://host/compat/chat/completions',
         );
     });
 

@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { buildTranslationCacheKey, TranslationCache } from '../src/modules/translation/cache.js';
+import {
+    buildLensCacheKey,
+    buildTranslationCacheKey,
+    TranslationCache,
+} from '../src/modules/translation/cache.js';
 
 describe('TranslationCache', () => {
     it('should return null for cache miss', () => {
@@ -137,5 +141,26 @@ describe('TranslationCache', () => {
         expect(base).not.toBe(differentModel);
         expect(base).not.toBe(differentPrompt);
         expect(base).not.toBe(differentSource);
+    });
+
+    it('should include Lens image and route configuration in its cache key', () => {
+        const input = {
+            imageHash: 'image-hash',
+            targetLanguage: 'zh-TW',
+            providerFingerprint: 'vertex|model|images=true|resolution=high',
+            prompt: 'lens prompt',
+            glossaryVersion: 'glossary-v1',
+            maxOutputTokens: 1000,
+        };
+
+        const base = buildLensCacheKey(input);
+        expect(buildLensCacheKey(input)).toBe(base);
+        expect(
+            buildLensCacheKey({
+                ...input,
+                providerFingerprint: 'vertex|model|images=false|resolution=high',
+            }),
+        ).not.toBe(base);
+        expect(buildLensCacheKey({ ...input, imageHash: 'other-image' })).not.toBe(base);
     });
 });

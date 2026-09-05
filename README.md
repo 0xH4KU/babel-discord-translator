@@ -32,7 +32,7 @@ Right-click any message → **Apps** → **Babel** or **Babel Pocket** for text,
 [![Node.js](https://img.shields.io/badge/Node.js-22.13%2B-green.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue.svg)](https://www.typescriptlang.org/)
 [![discord.js](https://img.shields.io/badge/discord.js-v14-blue.svg)](https://discord.js.org)
-[![Version](https://img.shields.io/badge/version-0.3.0-brightgreen.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-0.4.0-brightgreen.svg)](package.json)
 [![CI](https://github.com/0xH4KU/babel-discord-translator/actions/workflows/ci.yml/badge.svg)](https://github.com/0xH4KU/babel-discord-translator/actions)
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/babel-discord-tran-1?referralCode=euhy-o&utm_medium=integration&utm_source=template&utm_campaign=generic)
@@ -314,7 +314,12 @@ Set `BABEL_APP=combined` to run both Babel Guild and Babel Pocket in one process
 
 ### Migration & Legacy Export
 
-Babel applies SQLite schema migrations automatically during startup. The scoped Lens quota migration preserves the existing global monthly Vision usage counter. Back up the database before upgrading; do not run `db:migrate` for normal schema upgrades.
+Babel applies SQLite schema migrations automatically during startup. Budget migrations
+convert existing daily translation budgets to monthly values with `monthly = daily * 30`,
+split Guild and Pocket into persistent usage pools, and settle legacy token history once
+using the prices configured during upgrade; `0` remains unlimited. The scoped Lens quota
+migration preserves the existing global monthly Vision usage counter. Back up the database
+before upgrading; do not run `db:migrate` for normal schema upgrades.
 
 Babel auto-imports `data/config.json` into SQLite on first startup. Manual scripts:
 
@@ -361,7 +366,7 @@ Babel stores runtime data through native `node:sqlite`. Before upgrading Node on
 │                              │                               │
 │  ┌───────────────────────────▼─────────────────────────────┐ │
 │  │                   SQLite (babel.sqlite)                  │ │
-│  │  app_config │ daily_usage │ guild_budgets │ sessions ... │ │
+│  │ app_config │ scoped_usage │ rolling_usage │ budgets ... │ │
 │  └─────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
 ```

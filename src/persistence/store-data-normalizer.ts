@@ -1,5 +1,6 @@
 import type {
     GuildBudgetConfig,
+    GeminiMediaResolution,
     StoreData,
     TokenUsage,
     TranslationProviderMode,
@@ -7,6 +8,29 @@ import type {
     UserBudgetConfig,
     UserLanguagePreferenceEntry,
 } from '../shared/types.js';
+import { DEFAULT_BUDGET_LIMITS, type BudgetLimitOverrides } from '../shared/budget-limits.js';
+
+type BudgetInput = {
+    monthlyBudgetUsd?: number;
+    dailyBudgetUsd?: number;
+};
+
+export type StoreDataInput = Omit<
+    Partial<StoreData>,
+    | 'monthlyBudgetUsd'
+    | 'pocketGlobalMonthlyBudgetUsd'
+    | 'defaultUserMonthlyBudgetUsd'
+    | 'guildBudgets'
+    | 'userBudgets'
+> & {
+    monthlyBudgetUsd?: number;
+    pocketGlobalMonthlyBudgetUsd?: number;
+    defaultUserMonthlyBudgetUsd?: number;
+    dailyBudgetUsd?: number;
+    defaultUserDailyBudgetUsd?: number;
+    guildBudgets?: Record<string, BudgetInput>;
+    userBudgets?: Record<string, BudgetInput>;
+};
 
 function normalizeNumber(value: unknown, fallback = 0): number {
     return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
@@ -14,6 +38,10 @@ function normalizeNumber(value: unknown, fallback = 0): number {
 
 function normalizeString(value: unknown, fallback = ''): string {
     return typeof value === 'string' ? value : fallback;
+}
+
+function normalizeMonthlyBudget(monthly: unknown, daily: unknown): number {
+    return monthly === undefined ? normalizeNumber(daily) * 30 : normalizeNumber(monthly);
 }
 
 const VALID_PROVIDER_MODES: ReadonlySet<string> = new Set([
@@ -29,6 +57,14 @@ function normalizeProviderMode(value: unknown): TranslationProviderMode {
         : 'vertex';
 }
 
+const VALID_MEDIA_RESOLUTIONS: ReadonlySet<string> = new Set(['default', 'low', 'medium', 'high']);
+
+function normalizeMediaResolution(value: unknown): GeminiMediaResolution {
+    return typeof value === 'string' && VALID_MEDIA_RESOLUTIONS.has(value)
+        ? (value as GeminiMediaResolution)
+        : 'default';
+}
+
 function normalizeUsageEntry(
     entry: Partial<UsageHistoryEntry> | null | undefined,
 ): UsageHistoryEntry {
@@ -37,6 +73,7 @@ function normalizeUsageEntry(
         inputTokens: normalizeNumber(entry?.inputTokens),
         outputTokens: normalizeNumber(entry?.outputTokens),
         requests: normalizeNumber(entry?.requests),
+        ...normalizeSettledCosts(entry),
     };
 }
 
@@ -46,6 +83,18 @@ function normalizeTokenUsageEntry(entry: Partial<TokenUsage> | null | undefined)
         inputTokens: normalizeNumber(entry?.inputTokens),
         outputTokens: normalizeNumber(entry?.outputTokens),
         requests: normalizeNumber(entry?.requests),
+        ...normalizeSettledCosts(entry),
+    };
+}
+
+function normalizeSettledCosts(entry: Partial<TokenUsage> | null | undefined) {
+    return {
+        ...(typeof entry?.inputCost === 'number' && Number.isFinite(entry.inputCost)
+            ? { inputCost: entry.inputCost }
+            : {}),
+        ...(typeof entry?.outputCost === 'number' && Number.isFinite(entry.outputCost)
+            ? { outputCost: entry.outputCost }
+            : {}),
     };
 }
 
@@ -108,23 +157,33 @@ function normalizeUserLanguagePreferenceEntries(
 }
 
 export function cloneGuildBudgets(
-    budgets: Record<string, GuildBudgetConfig> | undefined,
+    budgets: Record<string, BudgetInput> | undefined,
 ): Record<string, GuildBudgetConfig> {
     return Object.fromEntries(
         Object.entries(budgets ?? {}).map(([guildId, budget]) => [
             guildId,
-            { dailyBudgetUsd: normalizeNumber(budget?.dailyBudgetUsd) },
+            {
+                monthlyBudgetUsd: normalizeMonthlyBudget(
+                    budget?.monthlyBudgetUsd,
+                    budget?.dailyBudgetUsd,
+                ),
+            },
         ]),
     );
 }
 
 export function cloneUserBudgets(
-    budgets: Record<string, UserBudgetConfig> | undefined,
+    budgets: Record<string, BudgetInput> | undefined,
 ): Record<string, UserBudgetConfig> {
     return Object.fromEntries(
         Object.entries(budgets ?? {}).map(([userId, budget]) => [
             userId,
-            { dailyBudgetUsd: normalizeNumber(budget?.dailyBudgetUsd) },
+            {
+                monthlyBudgetUsd: normalizeMonthlyBudget(
+                    budget?.monthlyBudgetUsd,
+                    budget?.dailyBudgetUsd,
+                ),
+            },
         ]),
     );
 }
@@ -134,6 +193,22 @@ function cloneVisionLimits(limits: Record<string, number> | undefined): Record<s
         Object.entries(limits ?? {}).filter(
             ([scopeId, limit]) => scopeId && Number.isSafeInteger(limit) && limit >= 0,
         ),
+    );
+}
+
+export function cloneGuildBudgetLimitOverrides(
+    overrides: Record<string, BudgetLimitOverrides> | undefined,
+): Record<string, BudgetLimitOverrides> {
+    return Object.fromEntries(
+        Object.entries(overrides ?? {}).map(([guildId, values]) => {
+            const entries =
+                values && typeof values === 'object'
+                    ? Object.entries(values).filter(
+                          ([, value]) => typeof value === 'number' && Number.isFinite(value),
+                      )
+                    : [];
+            return [guildId, Object.fromEntries(entries)];
+        }),
     );
 }
 
@@ -181,7 +256,7 @@ export function cloneUserUsageHistory(
     );
 }
 
-export function normalizeStoreData(data: Partial<StoreData> | undefined): StoreData {
+export function normalizeStoreData(data: StoreDataInput | undefined): StoreData {
     const source = data ?? {};
 
     return {
@@ -190,6 +265,8 @@ export function normalizeStoreData(data: Partial<StoreData> | undefined): StoreD
         gcpProject: normalizeString(source.gcpProject),
         gcpLocation: normalizeString(source.gcpLocation, 'global'),
         geminiModel: normalizeString(source.geminiModel, 'gemini-2.5-flash-lite'),
+        vertexAiSupportsImages: source.vertexAiSupportsImages === true,
+        geminiMediaResolution: normalizeMediaResolution(source.geminiMediaResolution),
         allowedGuildIds: Array.isArray(source.allowedGuildIds)
             ? source.allowedGuildIds.filter(
                   (guildId): guildId is string => typeof guildId === 'string',
@@ -208,9 +285,28 @@ export function normalizeStoreData(data: Partial<StoreData> | undefined): StoreD
         setupComplete: source.setupComplete === true,
         inputPricePerMillion: normalizeNumber(source.inputPricePerMillion),
         outputPricePerMillion: normalizeNumber(source.outputPricePerMillion),
-        dailyBudgetUsd: normalizeNumber(source.dailyBudgetUsd),
+        monthlyBudgetUsd: normalizeMonthlyBudget(source.monthlyBudgetUsd, source.dailyBudgetUsd),
+        pocketGlobalMonthlyBudgetUsd: normalizeNumber(
+            source.pocketGlobalMonthlyBudgetUsd,
+            normalizeMonthlyBudget(source.monthlyBudgetUsd, source.dailyBudgetUsd),
+        ),
+        budgetFiveHourPercent: normalizeNumber(
+            source.budgetFiveHourPercent,
+            DEFAULT_BUDGET_LIMITS.budgetFiveHourPercent,
+        ),
+        budgetSevenDayPercent: normalizeNumber(
+            source.budgetSevenDayPercent,
+            DEFAULT_BUDGET_LIMITS.budgetSevenDayPercent,
+        ),
+        budgetFairShareMultiplier: normalizeNumber(
+            source.budgetFairShareMultiplier,
+            DEFAULT_BUDGET_LIMITS.budgetFairShareMultiplier,
+        ),
         visionMonthlyImageLimit: normalizeNumber(source.visionMonthlyImageLimit, 900),
-        defaultUserDailyBudgetUsd: normalizeNumber(source.defaultUserDailyBudgetUsd),
+        defaultUserMonthlyBudgetUsd: normalizeMonthlyBudget(
+            source.defaultUserMonthlyBudgetUsd,
+            source.defaultUserDailyBudgetUsd,
+        ),
         tokenUsage: cloneTokenUsage(source.tokenUsage),
         usageHistory: cloneUsageHistory(source.usageHistory),
         translationPrompt: normalizeString(source.translationPrompt),
@@ -220,7 +316,7 @@ export function normalizeStoreData(data: Partial<StoreData> | undefined): StoreD
             source.userLanguagePreferenceEntries,
         ),
         maxInputLength: normalizeNumber(source.maxInputLength, 2000),
-        maxOutputTokens: normalizeNumber(source.maxOutputTokens, 1000),
+        maxOutputTokens: normalizeNumber(source.maxOutputTokens, 4096),
         translationMaxConcurrent: normalizeNumber(source.translationMaxConcurrent, 4),
         translationMaxGlobalQueue: normalizeNumber(source.translationMaxGlobalQueue, 25),
         translationMaxGuildQueue: normalizeNumber(source.translationMaxGuildQueue, 5),
@@ -229,8 +325,10 @@ export function normalizeStoreData(data: Partial<StoreData> | undefined): StoreD
         openaiApiKey: normalizeString(source.openaiApiKey),
         openaiBaseUrl: normalizeString(source.openaiBaseUrl),
         openaiModel: normalizeString(source.openaiModel),
+        openaiSupportsImages: source.openaiSupportsImages === true,
         translationProvider: normalizeProviderMode(source.translationProvider),
         guildBudgets: cloneGuildBudgets(source.guildBudgets),
+        guildBudgetLimitOverrides: cloneGuildBudgetLimitOverrides(source.guildBudgetLimitOverrides),
         guildVisionLimits: cloneVisionLimits(source.guildVisionLimits),
         guildTokenUsage: cloneGuildDailyUsage(source.guildTokenUsage),
         guildUsageHistory: cloneGuildUsageHistory(source.guildUsageHistory),

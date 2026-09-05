@@ -1,8 +1,9 @@
 # Babel Budget Model
 
-This document explains how Babel Guild and Babel Pocket enforce daily translation
+This document explains how Babel Guild and Babel Pocket enforce monthly translation
 spending limits and monthly Babel Lens image quotas. Translation budgets are expressed
-in USD per day and are calculated from the configured input and output token prices.
+in USD per UTC calendar month and are calculated from the configured input and output
+token prices.
 
 ## Shared Rules
 
@@ -11,31 +12,76 @@ in USD per day and are calculated from the configured input and output token pri
   limit.
 - Before a translation runs, Babel estimates the request cost. If current cost plus
   the estimate is greater than or equal to the relevant limit, the request is blocked.
-- Daily counters reset when Babel detects a new UTC calendar day.
+- The estimate covers the complete system, glossary, and user prompt, the configured
+  maximum output, provider fallback, and HTTP retries. This is intentionally more
+  conservative than the usage normally settled after a successful request.
+- Token prices are captured when a request is admitted. Changing a configured price
+  affects future requests only; previously settled USD costs are not recalculated.
+- The monthly counter resets at the start of each UTC calendar month. Short windows are
+  rolling and do not reset at a fixed clock time.
 
 Because Babel blocks at `>= limit`, a user or server may be stopped slightly before the
 dashboard appears to land exactly on the configured number.
+
+## Rolling Fair-Use Limits
+
+Every finite translation budget is enforced through three nested windows:
+
+| Window         | Default share of monthly budget | Behavior                 |
+| -------------- | ------------------------------- | ------------------------ |
+| Rolling 5 hour | 5%                              | Short burst protection   |
+| Rolling 7 day  | 30%                             | Sustained-use protection |
+| UTC month      | 100%                            | Fixed hard ceiling       |
+
+The 5-hour percentage, 7-day percentage, and fair-share multiplier are deployment
+settings. They must satisfy `0 < 5-hour <= 7-day <= 100`; the monthly percentage is
+always 100 and cannot be changed. Babel stores rolling usage in one-minute buckets, so
+the short-window boundary has up to one minute of conservative rounding.
+
+For Pocket, the same three windows apply independently to the user's budget and to the
+shared Global Safety Budget. A request must fit under both.
+
+For Guild, each translating user also receives a dynamic share of the server's active
+budget window:
+
+```text
+user window limit = server window limit * min(1, fair-share multiplier / active users)
+```
+
+The default multiplier is `1.5`. Active users are distinct users with recorded
+translation usage in that server during the previous rolling 7 days; the current
+requester is included even when this is their first request. Failures before any
+billable provider usage do not consume the translation budget. A provider failure that
+returns billable input or output tokens does consume budget, because that provider work
+has already occurred. For example, with three active users the default individual
+ceiling is 50% of each server window. This is a ceiling, not a reservation: unused
+shares remain available to other users subject to their own ceiling and the server
+ceiling.
+
+Deployment defaults are configured in Settings. Each Guild can override any of the
+three configurable values in Access; an empty value inherits the deployment default.
+Guild overrides are independent from custom monthly budgets.
 
 ## Babel Pocket
 
 Babel Pocket uses user-install access. Its budget model has two layers:
 
-1. Per-user daily budget
+1. Per-user monthly budget
 2. Global Safety Budget
 
-### Per-User Daily Budget
+### Per-User Monthly Budget
 
 Each user in the User Whitelist can have a custom budget. This is the maximum that
-specific user can spend in one day.
+specific user can spend in one month.
 
-If a user does not have a custom budget, Babel uses the default user daily budget from
+If a user does not have a custom budget, Babel uses the default user monthly budget from
 configuration. If that default is `0`, the user has no individual cap, but the Global
 Safety Budget can still stop them.
 
 ### Global Safety Budget
 
 The Global Safety Budget is a shared safety cap across all Pocket user-install usage.
-It is not a per-user default. It is the maximum total Pocket spend for the day.
+It is not a per-user default. It is the maximum total Pocket spend for the month.
 
 For example:
 
@@ -56,13 +102,13 @@ The result is intentionally conservative:
 - A user can also be blocked by the shared Global Safety Budget.
 - The sum of all user budgets may be higher than the Global Safety Budget. This is
   allowed and works like overbooking, because not every allowed user is expected to
-  spend their full personal budget every day.
+  spend their full personal budget every month.
 
 ### Pocket Dashboard Labels
 
 - Settings: `Global Safety Budget`
 - Access tab: per-user budget controls in `User Whitelist`
-- Overview: `Daily Budget` shows shared Pocket usage against the Global Safety Budget
+- Overview: `Monthly Budget` shows shared Pocket usage against the Global Safety Budget
 
 ## Babel Guild
 
@@ -75,13 +121,13 @@ There are two kinds of guild/server budget behavior:
 
 ### Servers With Custom Budgets
 
-When a server has a custom daily budget, that server uses its own independent budget
+When a server has a custom monthly budget, that server uses its own independent budget
 and usage counter.
 
 Example:
 
-| Server | Budget |
-| ------ | ------ |
+| Server | Budget  |
+| ------ | ------- |
 | A      | `$0.20` |
 | B      | `$0.75` |
 
@@ -92,19 +138,19 @@ If a server custom budget is set to `0`, that server is unlimited.
 
 ### Servers Without Custom Budgets
 
-Servers without custom budgets use the Global Daily Budget. This is a shared pool for
+Servers without custom budgets use the Global Monthly Budget. This is a shared pool for
 all non-custom-budget servers.
 
 Example:
 
-| Server | Budget mode |
-| ------ | ----------- |
-| A      | Global      |
-| B      | Global      |
-| C      | `$0.20` custom |
+| Server | Budget mode          |
+| ------ | -------------------- |
+| A      | Global               |
+| B      | Global               |
+| C      | `$0.20` custom       |
 | D      | `0` custom unlimited |
 
-If the Global Daily Budget is `$0.50`:
+If the Global Monthly Budget is `$0.50`:
 
 - A and B share the same `$0.50` pool.
 - C has its own `$0.20` pool.
@@ -116,21 +162,38 @@ global default.
 
 ### Guild Dashboard Labels
 
-- Settings: `Global Daily Budget`
+- Settings: `Global Monthly Budget`
 - Access tab: per-server budget controls in the server whitelist
 - Overview: `Server Budgets` shows custom server budgets and global-budget servers
 
 ## Quick Comparison
 
-| Product | Individual cap | Shared cap | What shares the cap |
-| ------- | -------------- | ---------- | ------------------- |
-| Pocket  | User budget    | Global Safety Budget | All Pocket users |
-| Guild   | Custom server budget | Global Daily Budget | Servers without custom budgets |
+| Product | Individual cap       | Shared cap            | What shares the cap            |
+| ------- | -------------------- | --------------------- | ------------------------------ |
+| Pocket  | User budget          | Global Safety Budget  | All Pocket users               |
+| Guild   | Custom server budget | Global Monthly Budget | Servers without custom budgets |
 
 In short:
 
 - Pocket is `per-user cap + shared safety cap`.
 - Guild is `custom server caps + shared global pool for non-custom servers`.
+- Guild's Global Monthly Budget and Pocket's Global Safety Budget are separate settings
+  backed by separate usage pools. Updating either one does not change the other.
+
+## Upgrade From Daily Budgets
+
+The SQLite migrations convert existing daily translation budgets to monthly budgets as
+`monthly = daily * 30`, including global, default-user, per-server, and per-user values.
+An existing `0` remains unlimited. Existing usage is assigned once to the separate
+Guild and Pocket pools during upgrade. Because legacy rows did not store their pool,
+that one-time assignment uses the custom Guild budgets present during migration.
+
+Legacy token history is also assigned a settled USD cost once, using the input and
+output prices configured during migration. Later price changes do not alter that
+history. The schema migrations run automatically at startup; back up the SQLite
+database before upgrading. Existing monthly usage remains the hard ceiling immediately
+after upgrade, while rolling windows begin with the minute-level usage available in the
+database.
 
 ## Babel Lens Image Quotas
 

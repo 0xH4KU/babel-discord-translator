@@ -12,6 +12,15 @@ export interface TranslationCacheKeyInput {
     glossaryVersion?: string;
 }
 
+export interface LensCacheKeyInput {
+    imageHash: string;
+    targetLanguage: string;
+    providerFingerprint: string;
+    prompt: string;
+    glossaryVersion?: string;
+    maxOutputTokens: number;
+}
+
 function hashCachePart(value: string): string {
     return crypto.createHash('sha256').update(value).digest('hex').slice(0, 16);
 }
@@ -29,6 +38,26 @@ export function buildTranslationCacheKey({
         'translation',
         TRANSLATION_CACHE_SCHEMA_VERSION,
         hashCachePart(sourceText),
+        targetLanguage,
+        hashCachePart(providerFingerprint),
+        maxOutputTokens,
+        hashCachePart(prompt),
+        hashCachePart(glossaryVersion),
+    ].join(':');
+}
+
+export function buildLensCacheKey({
+    imageHash,
+    targetLanguage,
+    providerFingerprint,
+    prompt,
+    glossaryVersion = '',
+    maxOutputTokens,
+}: LensCacheKeyInput): string {
+    return [
+        'lens',
+        'v1',
+        imageHash,
         targetLanguage,
         hashCachePart(providerFingerprint),
         maxOutputTokens,

@@ -117,10 +117,10 @@ function renderGuildBudgetOverview(container, guilds) {
     });
 }
 
-function renderDailyBudgetOverview(container, usage, users = []) {
+function renderMonthlyBudgetOverview(container, usage, users = []) {
     container.replaceChildren();
 
-    const budget = Number(usage?.dailyBudget || 0);
+    const budget = Number(usage?.monthlyBudget || 0);
     const totalCost = Number(usage?.totalCost || 0);
     const requests = Number(usage?.requests || 0);
 
@@ -241,7 +241,8 @@ function renderOperations(operations) {
         const title = document.createElement('h3');
         title.textContent = 'Runtime';
 
-        const pressure = Number(runtimePressure.inflight || 0) + Number(runtimePressure.queued || 0);
+        const pressure =
+            Number(runtimePressure.inflight || 0) + Number(runtimePressure.queued || 0);
         const pill = document.createElement('span');
         setStatusPillClass(pill, pressure > 0 ? 'warn' : 'ok');
         pill.textContent = pressure > 0 ? 'Busy' : 'Clear';
@@ -307,17 +308,89 @@ function renderOperations(operations) {
     }
 }
 
+let currentDashboardTab = 'overview';
+let currentActivityView = 'usage';
+let currentAccessView = 'servers';
+
+function switchTabFromSelect(name) {
+    switchTab(name);
+}
+
+function switchActivityView(name) {
+    currentActivityView = name === 'logs' ? 'logs' : 'usage';
+    document.querySelectorAll('.secondary-nav-btn[data-activity-view]').forEach((button) => {
+        button.classList.toggle('active', button.dataset.activityView === currentActivityView);
+    });
+    document.querySelectorAll('.activity-panel').forEach((panel) => {
+        panel.classList.toggle('active', panel.id === 'activity-' + currentActivityView);
+    });
+    if (currentActivityView === 'logs') loadLogs();
+    else loadHistory();
+}
+
+function switchAccessView(name) {
+    const target = document.getElementById('access-' + name);
+    if (!target || target.hidden) return;
+    currentAccessView = name;
+    document.querySelectorAll('.secondary-nav-btn[data-access-view]').forEach((button) => {
+        button.classList.toggle('active', button.dataset.accessView === name);
+    });
+    document.querySelectorAll('.access-panel').forEach((panel) => {
+        panel.classList.toggle('active', panel === target);
+    });
+    const select = document.getElementById('access-view-select');
+    if (select) select.value = name;
+}
+
+function configureAccessNavigation() {
+    const preferred = hasDashboardCapability('guildAccess')
+        ? 'servers'
+        : hasDashboardCapability('pendingUserInstallOwners')
+          ? 'users'
+          : 'languages';
+    if (
+        !document.getElementById('access-' + currentAccessView) ||
+        document.getElementById('access-' + currentAccessView).hidden
+    ) {
+        currentAccessView = preferred;
+    }
+    switchAccessView(currentAccessView);
+}
+
 function switchTab(name) {
-    document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+    if (
+        currentDashboardTab === 'settings' &&
+        name !== 'settings' &&
+        typeof confirmSettingsNavigation === 'function' &&
+        !confirmSettingsNavigation()
+    ) {
+        const mobileNav = document.getElementById('mobile-main-nav');
+        if (mobileNav) mobileNav.value = currentDashboardTab;
+        return;
+    }
+
+    document.querySelectorAll('.tab-btn').forEach((b) => {
+        b.classList.remove('active');
+        b.removeAttribute('aria-current');
+    });
     document.querySelectorAll('.tab-content').forEach((c) => c.classList.remove('active'));
-    document
-        .querySelector(`.tab-btn[data-action="switchTab"][data-action-args='["${name}"]']`)
-        ?.classList.add('active');
-    document.getElementById('tab-' + name).classList.add('active');
+    const activeButton = document.querySelector(
+        `.tab-btn[data-action="switchTab"][data-action-args='["${name}"]']`,
+    );
+    activeButton?.classList.add('active');
+    activeButton?.setAttribute('aria-current', 'page');
+    const target = document.getElementById('tab-' + name);
+    if (!target) return;
+    target.classList.add('active');
+    currentDashboardTab = name;
+    const mobileNav = document.getElementById('mobile-main-nav');
+    if (mobileNav) mobileNav.value = name;
     if (name === 'settings') loadSettings();
-    if (name === 'access') loadAccess();
-    if (name === 'history') loadHistory();
-    if (name === 'logs') loadLogs();
+    if (name === 'access') {
+        configureAccessNavigation();
+        loadAccess();
+    }
+    if (name === 'activity') switchActivityView(currentActivityView);
 }
 
 async function loadStats() {
@@ -341,7 +414,7 @@ async function loadStats() {
         if (d.usage.inputTokens > 0) parts.push(formatTokens(d.usage.inputTokens) + ' in');
         if (d.usage.outputTokens > 0) parts.push(formatTokens(d.usage.outputTokens) + ' out');
         document.getElementById('stat-cost-breakdown').textContent =
-            parts.join(' / ') || 'No usage today';
+            parts.join(' / ') || 'No usage this month';
 
         // Budget overview — per-server
         const budgetCard = document.getElementById('budget-card');
@@ -349,12 +422,13 @@ async function loadStats() {
         const hasGuildBudgetCapability = hasDashboardCapability('guildAccess');
         const hasUserBudgetCapability = hasDashboardCapability('userAccess');
         const hasAnyBudget = guilds.some((g) => g.budget > 0);
-        const hasDailyBudget = Number(d.usage.dailyBudget || 0) > 0;
-        const hasBudgetUsage = Number(d.usage.totalCost || 0) > 0 || Number(d.usage.requests || 0) > 0;
+        const hasMonthlyBudget = Number(d.usage.monthlyBudget || 0) > 0;
+        const hasBudgetUsage =
+            Number(d.usage.totalCost || 0) > 0 || Number(d.usage.requests || 0) > 0;
 
         if (
-            (hasGuildBudgetCapability && (hasAnyBudget || hasDailyBudget)) ||
-            (hasUserBudgetCapability && (hasDailyBudget || hasBudgetUsage))
+            (hasGuildBudgetCapability && (hasAnyBudget || hasMonthlyBudget)) ||
+            (hasUserBudgetCapability && (hasMonthlyBudget || hasBudgetUsage))
         ) {
             budgetCard.style.display = '';
             document.getElementById('budget-amount').textContent =
@@ -364,7 +438,7 @@ async function loadStats() {
             if (hasGuildBudgetCapability && guilds.length > 0) {
                 renderGuildBudgetOverview(container, guilds);
             } else if (hasUserBudgetCapability) {
-                renderDailyBudgetOverview(container, d.usage, d.userBudgets || []);
+                renderMonthlyBudgetOverview(container, d.usage, d.userBudgets || []);
             } else {
                 container.replaceChildren();
             }
@@ -381,8 +455,16 @@ async function loadStats() {
         );
         const ocrCache = d.ocrCache || { size: 0, maxSize: 0, hitRate: 'N/A' };
         document.getElementById('stat-saved').textContent =
-            d.cache.size + ' / ' + d.cache.maxSize + ' translations · ' +
-            ocrCache.size + ' / ' + ocrCache.maxSize + ' OCR (' + ocrCache.hitRate + ')';
+            d.cache.size +
+            ' / ' +
+            d.cache.maxSize +
+            ' translations · ' +
+            ocrCache.size +
+            ' / ' +
+            ocrCache.maxSize +
+            ' OCR (' +
+            ocrCache.hitRate +
+            ')';
         document.getElementById('stat-uptime').textContent = formatUptime(d.bot.uptime);
         const memory = d.bot.memory || {};
         const rssMB = memory.rssMB || d.bot.memoryMB || '?';
@@ -397,7 +479,7 @@ async function loadStats() {
 async function checkApiHealth() {
     const badge = document.getElementById('api-health');
     badge.className = 'health-badge checking';
-    badge.textContent = 'API';
+    badge.textContent = 'Checking';
     badge.title = 'Checking...';
     try {
         const res = await api('/health');
@@ -410,17 +492,16 @@ async function checkApiHealth() {
         const failedProvider = providerChecks.find((check) => check.status === 'fail');
         if (data.healthy) {
             badge.className = 'health-badge ok';
-            badge.textContent = 'API';
+            badge.textContent = 'Ready';
             badge.title = 'Ready · ' + (passingProvider?.latencyMs ?? '?') + 'ms';
         } else {
             badge.className = 'health-badge fail';
-            badge.textContent = 'API';
-            badge.title =
-                failedProvider?.error || checks.configuration?.detail || 'Unknown error';
+            badge.textContent = 'Issue';
+            badge.title = failedProvider?.error || checks.configuration?.detail || 'Unknown error';
         }
     } catch {
         badge.className = 'health-badge fail';
-        badge.textContent = 'API';
+        badge.textContent = 'Offline';
         badge.title = 'Connection failed';
     }
 }

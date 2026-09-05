@@ -108,7 +108,7 @@ describe('dashboard static assets', () => {
         expect(nodes['prefs-count'].textContent).toBe('1 shown / 1 total');
     });
 
-    it('renders the overview budget card for Babel Pocket daily budget usage', async () => {
+    it('renders the overview budget card for Babel Pocket monthly budget usage', async () => {
         const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
         const appJs = readFileSync('src/public/js/app.js', 'utf-8');
         const dashboardJs = readFileSync('src/public/js/dashboard.js', 'utf-8');
@@ -195,7 +195,7 @@ describe('dashboard static assets', () => {
                     operations: {},
                     usage: {
                         totalCost: 0.21,
-                        dailyBudget: 1.25,
+                        monthlyBudget: 1.25,
                         inputTokens: 1000,
                         outputTokens: 2000,
                         requests: 89,
@@ -261,11 +261,9 @@ describe('dashboard static assets', () => {
 
         expect(nodes['budget-card'].hidden).toBe(false);
         expect(nodes['budget-card'].style.display).toBe('');
-        expect(nodes['budget-card-label'].textContent).toBe('Daily Budget');
+        expect(nodes['budget-card-label'].textContent).toBe('Monthly Budget');
         expect(nodes['budget-amount'].textContent).toBe('Total: $0.21');
-        expect(nodes['stat-saved'].textContent).toBe(
-            '0 / 2000 translations · 3 / 250 OCR (60.0%)',
-        );
+        expect(nodes['stat-saved'].textContent).toBe('0 / 2000 translations · 3 / 250 OCR (60.0%)');
         expect(nodes['guild-budget-overview'].children).toHaveLength(3);
         expect(
             createdElements.some((element) => element.textContent === 'Global Safety Budget'),
@@ -397,7 +395,7 @@ describe('dashboard static assets', () => {
                 visionLimitsJs,
                 `currentConfig = {
                     allowedGuildIds: ["guild');alert(1)//"],
-                    dailyBudgetUsd: 0
+                    monthlyBudgetUsd: 0
                 };`,
                 `accessAllowedGuildIdsDraft = ["guild');alert(1)//"];`,
                 `allGuilds = [{
@@ -455,7 +453,7 @@ describe('dashboard static assets', () => {
                 `currentConfig = {
                     allowedGuildIds: ['guild-1'],
                     lensEnabledGuildIds: ['guild-1'],
-                    dailyBudgetUsd: 0
+                    monthlyBudgetUsd: 0
                 };`,
                 `accessAllowedGuildIdsDraft = ['guild-1'];`,
                 `accessLensEnabledGuildIdsDraft = ['guild-1'];`,
@@ -479,7 +477,9 @@ describe('dashboard static assets', () => {
         expect(state).toEqual({ allowed: ['guild-2'], lens: ['guild-2'] });
         expect(nodes['guild-list'].innerHTML).toContain('Translation');
         expect(nodes['guild-list'].innerHTML).toContain('Babel Lens');
-        expect(nodes['guild-list'].innerHTML).toContain('Enabled');
+        expect(nodes['guild-list'].innerHTML).toContain('Translation + Lens');
+        expect(nodes['guild-list'].innerHTML).toContain('access-master-item');
+        expect(nodes['guild-list'].innerHTML).toContain('access-selected-detail');
         expect(nodes['guild-list'].innerHTML).not.toMatch(
             /data-lens-guild-id="guild-1"[^>]*disabled/,
         );
@@ -569,16 +569,21 @@ describe('dashboard static assets', () => {
         );
         expect(nodes['history-chart'].innerHTML).not.toContain('onmouseover="alert(1)');
         expect(nodes['history-table-container'].innerHTML).not.toContain('<script>');
+        expect(nodes['history-table-container'].innerHTML).toContain(
+            '<details class="mobile-activity-row">',
+        );
     });
 
     it('submits all runtime settings with numeric values', async () => {
         const settingsJs = readFileSync('src/public/js/settings.js', 'utf-8');
-        const fields: Record<string, { value: string }> = {
+        const fields: Record<string, { value: string; checked?: boolean }> = {
             'cfg-apikey': { value: '' },
             'cfg-vision-apikey': { value: 'vision-key' },
             'cfg-project': { value: 'project-1' },
             'cfg-location': { value: 'global' },
             'cfg-model': { value: 'gemini-model' },
+            'cfg-vertex-images': { value: '', checked: true },
+            'cfg-media-resolution': { value: 'high' },
             'cfg-cooldown': { value: '7' },
             'cfg-cache': { value: '3000' },
             'cfg-max-input': { value: '4096' },
@@ -591,12 +596,17 @@ describe('dashboard static assets', () => {
             'cfg-input-price': { value: '0.25' },
             'cfg-output-price': { value: '1.5' },
             'cfg-budget': { value: '3.75' },
+            'cfg-budget-five-hour': { value: '8' },
+            'cfg-budget-seven-day': { value: '35' },
+            'cfg-budget-fair-share': { value: '2' },
             'cfg-vision-limit': { value: '950' },
             'cfg-prompt': { value: 'Translate precisely.' },
             'cfg-provider': { value: 'openai' },
+            'cfg-provider-fallback': { value: 'vertex' },
             'cfg-openai-apikey': { value: '' },
             'cfg-openai-baseurl': { value: 'https://api.example.test/v1' },
             'cfg-openai-model': { value: 'model-1' },
+            'cfg-openai-images': { value: '', checked: false },
         };
         const requests: Array<{ path: string; options: { method?: string; body?: string } }> = [];
         const context = {
@@ -631,14 +641,66 @@ describe('dashboard static assets', () => {
             translationMaxQueueWaitMs: 45000,
             maxInputLength: 4096,
             maxOutputTokens: 2048,
+            budgetFiveHourPercent: 8,
+            budgetSevenDayPercent: 35,
+            budgetFairShareMultiplier: 2,
             visionMonthlyImageLimit: 950,
             visionApiKey: 'vision-key',
+            vertexAiSupportsImages: true,
+            openaiSupportsImages: false,
+            geminiMediaResolution: 'high',
+            translationProvider: 'openai+vertex',
         });
         expect(
             Object.values(payload)
                 .filter((value) => typeof value === 'number')
                 .every((value) => Number.isFinite(value)),
         ).toBe(true);
+    });
+
+    it('submits per-guild budget limit overrides with blank fields inherited', async () => {
+        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const requests: Array<{ path: string; options: { method?: string; body?: string } }> = [];
+        const fields = {
+            'gbl5-guild-1': { value: '8' },
+            'gbl7-guild-1': { value: '' },
+            'gblf-guild-1': { value: '2' },
+        };
+        const context = {
+            document: {
+                getElementById(id: string) {
+                    return fields[id as keyof typeof fields] || null;
+                },
+            },
+            hasDashboardCapability(name: string) {
+                return name === 'guildAccess';
+            },
+            async api(path: string, options: { method?: string; body?: string } = {}) {
+                requests.push({ path, options });
+                if (path === '/guild-budgets' && !options.method) {
+                    return { json: async () => ({}) };
+                }
+                return { ok: true };
+            },
+            showToast() {},
+        };
+
+        vm.createContext(context);
+        vm.runInContext(accessJs, context);
+        vm.runInContext('renderGuilds = () => {};', context);
+        await vm.runInContext("saveGuildBudgetLimits('guild-1');", context);
+
+        expect(requests[0]).toMatchObject({
+            path: '/guild-budgets/guild-1',
+            options: { method: 'POST' },
+        });
+        expect(JSON.parse(requests[0].options.body!)).toEqual({
+            budgetLimitOverrides: {
+                budgetFiveHourPercent: 8,
+                budgetFairShareMultiplier: 2,
+            },
+        });
+        expect(requests[1]?.path).toBe('/guild-budgets');
     });
 
     it('previews a custom Vision limit while editing', () => {
@@ -660,6 +722,81 @@ describe('dashboard static assets', () => {
         );
 
         expect(usage.textContent).toBe('0 / 950 images used · 2026-08');
+    });
+
+    it('shows Vision settings only for enabled text-only providers and tracks drafts', () => {
+        const settingsJs = readFileSync('src/public/js/settings.js', 'utf-8');
+        const fallback = { hidden: true };
+        const fallbackOptions = [
+            { value: '', disabled: false },
+            { value: 'vertex', disabled: false },
+            { value: 'openai', disabled: false },
+        ];
+        const status = {
+            textContent: '',
+            classList: { toggle() {} },
+        };
+        const button = { disabled: true };
+        const fields = {
+            'cfg-provider': { value: 'vertex' },
+            'cfg-provider-fallback': { value: '', options: fallbackOptions },
+            'cfg-vertex-images': { checked: false },
+            'cfg-openai-images': { checked: false },
+            'cfg-model': { value: 'gemini-new' },
+            'lens-route-vertex': { textContent: '', className: '' },
+            'lens-route-openai': { textContent: '', className: '' },
+            'settings-save-status': status,
+            'settings-save-button': button,
+        };
+        const context = {
+            document: {
+                getElementById(id: string) {
+                    return fields[id as keyof typeof fields] || null;
+                },
+                querySelectorAll(selector: string) {
+                    return selector === '.vision-fallback-only' ? [fallback] : [];
+                },
+            },
+        };
+
+        vm.createContext(context);
+        vm.runInContext(settingsJs, context);
+        vm.runInContext(
+            `currentConfig = { translationProvider: 'vertex', geminiModel: 'gemini-old' };
+             settingsLoaded = true;
+             refreshLensRoutes();`,
+            context,
+        );
+        expect(fallback.hidden).toBe(false);
+        expect(fields['lens-route-vertex'].textContent).toBe('Vision fallback');
+
+        fields['cfg-vertex-images'].checked = true;
+        vm.runInContext('onProviderCapabilityChange();', context);
+        expect(fallback.hidden).toBe(true);
+        expect(fields['lens-route-vertex'].textContent).toBe('Direct multimodal');
+        expect(button.disabled).toBe(false);
+        expect(status.textContent).toBe('Unsaved changes');
+
+        vm.runInContext('onVertexIdentityChanged();', context);
+        expect(fields['cfg-vertex-images'].checked).toBe(false);
+
+        fields['cfg-provider-fallback'].value = 'vertex';
+        vm.runInContext('onProviderModeChange();', context);
+        expect(fields['cfg-provider-fallback'].value).toBe('');
+        expect(fallbackOptions.find((option) => option.value === 'vertex')?.disabled).toBe(true);
+    });
+
+    it('partitions Access and Settings into profile-aware compact views', () => {
+        const html = readFileSync('src/public/index.html', 'utf-8');
+        const logsJs = readFileSync('src/public/js/logs.js', 'utf-8');
+
+        expect(html).toContain('id="tab-activity"');
+        expect(html).toMatch(/id="access-servers"\s+data-capability="guildAccess"/);
+        expect(html).toMatch(/id="access-users"\s+data-capability="pendingUserInstallOwners"/);
+        expect(html).toMatch(/id="access-glossary"\s+data-capability="guildGlossary"/);
+        expect(html).toContain('id="glossary-editor-dialog"');
+        expect(html).toContain('id="settings-category-select"');
+        expect(logsJs).toContain("details.className = 'mobile-activity-row'");
     });
 
     it('returns to login when an authenticated API request expires', async () => {

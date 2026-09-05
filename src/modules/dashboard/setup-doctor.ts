@@ -9,6 +9,12 @@ import { store, type ConfigStore } from '../../persistence/store.js';
 import { configRepository, type ConfigRepository } from '../config/config-repository.js';
 import { getReadinessStatus } from '../../shared/health.js';
 import type { StoreData } from '../../shared/types.js';
+import {
+    DEFAULT_BUDGET_LIMITS,
+    resolveBudgetLimits,
+    validateBudgetLimits,
+} from '../../shared/budget-limits.js';
+import { providerModeIncludes } from './operations-summary.js';
 
 export type SetupDoctorStatus = 'pass' | 'warn' | 'fail' | 'skipped';
 
@@ -34,7 +40,8 @@ type SetupDoctorConfigStore = Pick<
 > &
     Partial<SetupDoctorBudgetStore>;
 
-type SetupDoctorBudgetStore = Pick<ConfigStore, 'listGuildBudgets' | 'listUserBudgets'>;
+type SetupDoctorBudgetStore = Pick<ConfigStore, 'listGuildBudgets' | 'listUserBudgets'> &
+    Partial<Pick<ConfigStore, 'listGuildBudgetLimitOverrides'>>;
 
 export interface SetupDoctorDeps {
     profile: AppProfile;
@@ -56,10 +63,52 @@ const CHECK_TITLES: Record<string, string> = {
     commands: 'Discord commands',
     'provider-vertex': 'Vertex AI provider',
     'provider-openai': 'OpenAI provider',
+    'lens-fallback': 'Babel Lens fallback',
     sqlite: 'SQLite',
     budget: 'Budget',
     webhook: 'Webhook',
 };
+
+function lensFallbackCheck(configStore: SetupDoctorConfigStore): SetupDoctorCheckDraft {
+    try {
+        const config = configStore.getDashboardConfig();
+        const needsVision =
+            (providerModeIncludes(config.translationProvider, 'vertex') &&
+                !config.vertexAiSupportsImages) ||
+            (providerModeIncludes(config.translationProvider, 'openai') &&
+                !config.openaiSupportsImages);
+
+        if (!needsVision) {
+            return {
+                id: 'lens-fallback',
+                status: 'skipped',
+                detail: 'All enabled providers use direct image translation',
+            };
+        }
+
+        if (!config.visionApiKey.trim() || config.visionMonthlyImageLimit <= 0) {
+            return {
+                id: 'lens-fallback',
+                status: 'warn',
+                detail: 'A text-only provider needs Cloud Vision, but fallback is not configured',
+                action: 'Configure a Vision key and limit, or confirm image support in Settings.',
+            };
+        }
+
+        return {
+            id: 'lens-fallback',
+            status: 'pass',
+            detail: 'Cloud Vision fallback is configured for text-only providers',
+        };
+    } catch (error) {
+        return {
+            id: 'lens-fallback',
+            status: 'warn',
+            detail: 'Babel Lens fallback configuration could not be checked',
+            error: errorMessage(error),
+        };
+    }
+}
 
 type SetupDoctorCheckDraft = Omit<SetupDoctorCheck, 'title'> & { title?: string };
 
@@ -331,8 +380,12 @@ function budgetCheck(
         const values = [
             ['input price', config.inputPricePerMillion],
             ['output price', config.outputPricePerMillion],
-            ['daily budget', config.dailyBudgetUsd],
-            ['default user daily budget', config.defaultUserDailyBudgetUsd],
+            ['monthly budget', config.monthlyBudgetUsd],
+            [
+                'Pocket global monthly budget',
+                config.pocketGlobalMonthlyBudgetUsd ?? config.monthlyBudgetUsd,
+            ],
+            ['default user monthly budget', config.defaultUserMonthlyBudgetUsd],
             ...budgetEntries('guild', budgetStore.listGuildBudgets()),
             ...budgetEntries('user', budgetStore.listUserBudgets()),
         ] as const;
@@ -344,6 +397,25 @@ function budgetCheck(
                 status: 'fail',
                 detail: `Negative or invalid price/budget values: ${invalid.map(([name]) => name).join(', ')}`,
                 action: 'Set price and budget values to 0 or higher.',
+            };
+        }
+
+        const globalLimits = resolveBudgetLimits(DEFAULT_BUDGET_LIMITS, config);
+        const globalLimitError = validateBudgetLimits(globalLimits);
+        const guildLimitError = Object.entries(budgetStore.listGuildBudgetLimitOverrides?.() ?? {})
+            .map(([guildId, overrides]) => [
+                guildId,
+                validateBudgetLimits(resolveBudgetLimits(globalLimits, overrides)),
+            ])
+            .find(([, error]) => error);
+        if (globalLimitError || guildLimitError) {
+            return {
+                id: 'budget',
+                status: 'fail',
+                detail: globalLimitError
+                    ? `Invalid budget limits: ${globalLimitError}`
+                    : `Invalid budget limits for guild ${guildLimitError![0]}: ${guildLimitError![1]}`,
+                action: 'Correct the rolling budget percentages and fair-share multiplier.',
             };
         }
 
@@ -378,8 +450,8 @@ function budgetEntries(
     budgets: StoreData['guildBudgets'] | StoreData['userBudgets'],
 ): Array<[string, number]> {
     return Object.entries(budgets).map(([id, budget]) => [
-        `${scope} ${id} daily budget`,
-        budget.dailyBudgetUsd,
+        `${scope} ${id} monthly budget`,
+        budget.monthlyBudgetUsd,
     ]);
 }
 
@@ -495,6 +567,7 @@ export async function runSetupDoctor({
             requireProfileSpecificRegistrationEnv,
         }),
         ...(await providerChecks(configStore, healthCheck, openAiHealthCheck)),
+        lensFallbackCheck(configStore),
         await sqliteCheck(sqliteProbe),
         budgetCheck(configStore, resolvedBudgetStore),
         webhookCheck(profile, client),

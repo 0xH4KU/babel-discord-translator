@@ -35,6 +35,8 @@ interface DemoConfigFixture {
     gcpProject: string;
     gcpLocation: string;
     geminiModel: string;
+    vertexAiSupportsImages: boolean;
+    geminiMediaResolution: 'default' | 'low' | 'medium' | 'high';
     allowedGuildIds: string[];
     lensEnabledGuildIds: string[];
     allowedUserIds: string[];
@@ -43,7 +45,10 @@ interface DemoConfigFixture {
     setupComplete: boolean;
     inputPricePerMillion: number;
     outputPricePerMillion: number;
-    dailyBudgetUsd: number;
+    monthlyBudgetUsd: number;
+    budgetFiveHourPercent: number;
+    budgetSevenDayPercent: number;
+    budgetFairShareMultiplier: number;
     visionMonthlyImageLimit: number;
     visionUsage: {
         month: string;
@@ -51,7 +56,7 @@ interface DemoConfigFixture {
         limit: number;
         remaining: number;
     };
-    defaultUserDailyBudgetUsd: number;
+    defaultUserMonthlyBudgetUsd: number;
     translationPrompt: string;
     maxInputLength: number;
     maxOutputTokens: number;
@@ -64,6 +69,7 @@ interface DemoConfigFixture {
     hasOpenaiApiKey: boolean;
     openaiBaseUrl: string;
     openaiModel: string;
+    openaiSupportsImages: boolean;
     translationProvider: string;
 }
 
@@ -266,8 +272,8 @@ const DEMO_STATS = {
         inputCost: 0.0918,
         outputCost: 0.122,
         totalCost: 0.2138,
-        dailyBudget: 2,
-        budgetUsedPercent: 10.69,
+        monthlyBudget: 60,
+        budgetUsedPercent: 0.36,
         budgetExceeded: false,
     },
     guildBudgets: [
@@ -311,6 +317,8 @@ const DEMO_CONFIG: DemoConfigFixture = {
     gcpProject: 'babel-demo-project',
     gcpLocation: 'global',
     geminiModel: 'gemini-2.5-flash-lite',
+    vertexAiSupportsImages: true,
+    geminiMediaResolution: 'default',
     allowedGuildIds: ['100000000000000001', '100000000000000002'],
     lensEnabledGuildIds: ['100000000000000001'],
     allowedUserIds: [],
@@ -319,7 +327,10 @@ const DEMO_CONFIG: DemoConfigFixture = {
     setupComplete: true,
     inputPricePerMillion: 0.1,
     outputPricePerMillion: 0.4,
-    dailyBudgetUsd: 0.75,
+    monthlyBudgetUsd: 22.5,
+    budgetFiveHourPercent: 5,
+    budgetSevenDayPercent: 30,
+    budgetFairShareMultiplier: 1.5,
     visionMonthlyImageLimit: 900,
     visionUsage: {
         month: '2026-06',
@@ -327,7 +338,7 @@ const DEMO_CONFIG: DemoConfigFixture = {
         limit: 900,
         remaining: 716,
     },
-    defaultUserDailyBudgetUsd: 0,
+    defaultUserMonthlyBudgetUsd: 0,
     translationPrompt: '',
     maxInputLength: 2000,
     maxOutputTokens: 1000,
@@ -340,6 +351,7 @@ const DEMO_CONFIG: DemoConfigFixture = {
     hasOpenaiApiKey: true,
     openaiBaseUrl: 'https://api.openai.com',
     openaiModel: 'gpt-4o-mini',
+    openaiSupportsImages: false,
     translationProvider: 'vertex+openai',
 };
 
@@ -373,7 +385,17 @@ const DEMO_GUILDS = [
 const DEMO_GUILD_BUDGETS = {
     '100000000000000001': {
         name: 'Builder Lounge',
-        budget: 1.25,
+        budget: 37.5,
+        limits: {
+            budgetFiveHourPercent: 8,
+            budgetSevenDayPercent: 35,
+            budgetFairShareMultiplier: 2,
+        },
+        limitOverrides: {
+            budgetFiveHourPercent: 8,
+            budgetSevenDayPercent: 35,
+            budgetFairShareMultiplier: 2,
+        },
         usage: {
             date: '2026-06-01',
             inputTokens: 501_200,
@@ -382,8 +404,8 @@ const DEMO_GUILD_BUDGETS = {
             inputCost: 0.0501,
             outputCost: 0.0604,
             totalCost: 1.07,
-            dailyBudget: 1.25,
-            budgetUsedPercent: 85.6,
+            monthlyBudget: 37.5,
+            budgetUsedPercent: 2.85,
             budgetExceeded: false,
         },
     },
@@ -398,8 +420,8 @@ const DEMO_GUILD_BUDGETS = {
             inputCost: 0.0222,
             outputCost: 0.0346,
             totalCost: 0.28,
-            dailyBudget: 0.75,
-            budgetUsedPercent: 37.3,
+            monthlyBudget: 22.5,
+            budgetUsedPercent: 1.24,
             budgetExceeded: false,
         },
     },
@@ -414,7 +436,7 @@ const DEMO_GUILD_BUDGETS = {
             inputCost: 0.0113,
             outputCost: 0.0193,
             totalCost: 0.15,
-            dailyBudget: 0,
+            monthlyBudget: 0,
             budgetUsedPercent: 0,
             budgetExceeded: false,
         },
@@ -430,8 +452,8 @@ const DEMO_GUILD_BUDGETS = {
             inputCost: 0.0082,
             outputCost: 0.0077,
             totalCost: 0.05,
-            dailyBudget: 0.75,
-            budgetUsedPercent: 6.6,
+            monthlyBudget: 22.5,
+            budgetUsedPercent: 0.22,
             budgetExceeded: false,
         },
     },
@@ -463,6 +485,7 @@ const DEMO_LOGS: DemoLogFixture = [
         guildName: 'Builder Lounge',
         userId: '200000000000000001',
         userTag: 'alice#1024',
+        command: 'Babel Lens',
         contentPreview: 'Can someone translate the release notes?',
         cached: false,
         targetLanguage: 'zh-TW',
@@ -475,6 +498,7 @@ const DEMO_LOGS: DemoLogFixture = [
         guildName: 'Indie Game Dev',
         userId: '200000000000000002',
         userTag: 'kenji#2048',
+        command: 'Babel',
         contentPreview: 'The prototype build is ready for testing.',
         cached: true,
         targetLanguage: 'ja',
@@ -501,6 +525,7 @@ const DEMO_LOGS: DemoLogFixture = [
         guildName: 'Open Source Asia',
         userId: '200000000000000004',
         userTag: 'sofia#7788',
+        command: 'Babel',
         contentPreview: 'Please keep the code comments in English.',
         cached: false,
         targetLanguage: 'ko',
@@ -673,7 +698,7 @@ const DEMO_GLOSSARY = {
 };
 
 const DEMO_VERSION = {
-    version: '0.2.1',
+    version: '0.3.0',
     repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases',
 };
 
@@ -750,8 +775,8 @@ function createStatsFixture(variant: DemoVariant): typeof DEMO_STATS {
             inputCost: 0.0318,
             outputCost: 0.042,
             totalCost: 0.0738,
-            dailyBudget: 0.5,
-            budgetUsedPercent: 14.76,
+            monthlyBudget: 15,
+            budgetUsedPercent: 0.49,
         },
         guildBudgets: [],
         userBudgets: [
@@ -826,8 +851,9 @@ function createConfigFixture(variant: DemoVariant): typeof DEMO_CONFIG {
         allowedGuildIds: [],
         lensEnabledGuildIds: [],
         allowedUserIds: ['200000000000000001', '200000000000000002'],
-        dailyBudgetUsd: 0.25,
-        defaultUserDailyBudgetUsd: 0.5,
+        monthlyBudgetUsd: 7.5,
+        defaultUserMonthlyBudgetUsd: 15,
+        openaiSupportsImages: true,
     };
 }
 
@@ -1101,6 +1127,8 @@ const DEMO_CSS = `
   background: rgba(15, 23, 42, 0.96);
   color: var(--text);
   box-shadow: var(--shadow-sm);
+  width: calc(100% - 248px);
+  margin-left: 248px;
 }
 
 .demo-banner strong {
@@ -1128,55 +1156,15 @@ const DEMO_CSS = `
   cursor: not-allowed !important;
 }
 
-.demo-only-section {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: rgba(15, 23, 42, 0.45);
-  padding: 1rem;
-  margin-bottom: 1rem;
-}
-
-.demo-only-section h3 {
-  margin-top: 0;
-}
-
-.demo-only-section ul {
-  margin: 0.75rem 0 0;
-  padding-left: 1.25rem;
-  color: var(--text-dim);
+@media (max-width: 768px) {
+  .demo-banner {
+    width: 100%;
+    margin-left: 0;
+  }
 }
 `;
 
 function createDemoReadonlyJs(variant: DemoVariant): string {
-    const pocketSummary =
-        variant.kind === 'pocket'
-            ? `
-  async function installPocketDemoSections() {
-    const accessTab = document.getElementById('tab-access');
-    if (!accessTab || accessTab.querySelector('[data-pocket-demo-summary]')) return;
-
-    accessTab.querySelectorAll('.settings-section').forEach((section) => {
-      const heading = section.querySelector('h3')?.textContent || '';
-      if (heading.includes('Server Feature Access') || heading.includes('Server Glossary')) {
-        section.style.display = 'none';
-      }
-    });
-    accessTab.querySelectorAll('.save-bar[data-capability="guildAccess"]').forEach((saveBar) => {
-      saveBar.style.display = 'none';
-    });
-
-    const summary = document.createElement('div');
-    summary.className = 'demo-only-section';
-    summary.dataset.pocketDemoSummary = 'true';
-    summary.innerHTML =
-      '<h3>User Install Access</h3>' +
-      '<div class="desc-text">Babel Pocket uses user allowlists and per-user budgets. The demo fixtures include approved installing users and one pending owner request.</div>' +
-      '<ul><li>Approved users: Alex Chen, Mei Lin</li><li>Pending user-install owner: Waiting Operator</li><li>Default user budget: $0.50/day</li></ul>';
-    accessTab.prepend(summary);
-  }`
-            : `
-  async function installPocketDemoSections() {}`;
-
     return `
 (function () {
   const appName = ${JSON.stringify(variant.productName)};
@@ -1191,8 +1179,6 @@ function createDemoReadonlyJs(variant: DemoVariant): string {
       '<div class="demo-badge">Read-only demo</div>';
     document.body.prepend(banner);
   }
-${pocketSummary}
-
   function disableMutations() {
     const selectors = [
       '#login-view',
@@ -1227,7 +1213,6 @@ ${pocketSummary}
 
   window.addEventListener('DOMContentLoaded', () => {
     installDemoBanner();
-    installPocketDemoSections();
     wrapToast();
     setTimeout(disableMutations, 100);
     setInterval(disableMutations, 1000);

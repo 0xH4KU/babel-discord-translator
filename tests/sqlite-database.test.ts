@@ -71,7 +71,9 @@ describe('createSqliteDatabase', () => {
                     WHERE type = 'table'
                       AND name IN (
                           'user_budgets',
+                          'guild_budget_limit_overrides',
                           'scoped_usage',
+                          'rolling_usage',
                           'pending_user_install_owners'
                       )
                     ORDER BY name ASC
@@ -80,7 +82,9 @@ describe('createSqliteDatabase', () => {
                 .all() as Array<{ name: string }>;
 
             expect(rows.map((row) => row.name)).toEqual([
+                'guild_budget_limit_overrides',
                 'pending_user_install_owners',
+                'rolling_usage',
                 'scoped_usage',
                 'user_budgets',
             ]);
@@ -320,8 +324,239 @@ describe('createSqliteDatabase', () => {
                 .prepare('SELECT id FROM schema_migrations ORDER BY id ASC')
                 .all() as Array<{ id: number }>;
             expect(migrationIds.map((row) => row.id)).toEqual([
-                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
             ]);
+        } finally {
+            db.close();
+        }
+    });
+
+    it('should convert legacy daily budgets to monthly budgets', async () => {
+        const { DatabaseSync } = await import('node:sqlite');
+        const { runMigrations } = await import('../src/persistence/sqlite-database.js');
+        const db = new DatabaseSync(':memory:');
+
+        try {
+            db.exec(`
+                CREATE TABLE schema_migrations (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    applied_at TEXT NOT NULL
+                );
+                INSERT INTO schema_migrations (id, name, applied_at)
+                VALUES
+                    (1, 'one', '2026-01-01'), (2, 'two', '2026-01-01'),
+                    (3, 'three', '2026-01-01'), (4, 'four', '2026-01-01'),
+                    (5, 'five', '2026-01-01'), (6, 'six', '2026-01-01'),
+                    (7, 'seven', '2026-01-01'), (8, 'eight', '2026-01-01'),
+                    (9, 'nine', '2026-01-01'), (10, 'ten', '2026-01-01'),
+                    (11, 'eleven', '2026-01-01');
+
+                CREATE TABLE app_config (key TEXT PRIMARY KEY, value_json TEXT NOT NULL);
+                INSERT INTO app_config (key, value_json) VALUES
+                    ('dailyBudgetUsd', '2'),
+                    ('defaultUserDailyBudgetUsd', '0.5');
+
+                CREATE TABLE guild_budgets (
+                    guild_id TEXT PRIMARY KEY,
+                    daily_budget_usd REAL NOT NULL
+                );
+                CREATE TABLE user_budgets (
+                    user_id TEXT PRIMARY KEY,
+                    daily_budget_usd REAL NOT NULL
+                );
+                INSERT INTO guild_budgets VALUES ('guild-1', 3);
+                INSERT INTO user_budgets VALUES ('user-1', 0.25);
+            `);
+
+            runMigrations(db);
+
+            expect(
+                db.prepare('SELECT monthly_budget_usd as budget FROM guild_budgets').get(),
+            ).toEqual({ budget: 90 });
+            expect(
+                db.prepare('SELECT monthly_budget_usd as budget FROM user_budgets').get(),
+            ).toEqual({ budget: 7.5 });
+            expect(
+                db.prepare(`SELECT key, value_json as value FROM app_config ORDER BY key`).all(),
+            ).toEqual([
+                { key: 'defaultUserMonthlyBudgetUsd', value: '15' },
+                { key: 'monthlyBudgetUsd', value: '60' },
+                { key: 'pocketGlobalMonthlyBudgetUsd', value: '60' },
+            ]);
+        } finally {
+            db.close();
+        }
+    });
+
+    it('should snapshot existing usage into stable product budget pools', async () => {
+        const { DatabaseSync } = await import('node:sqlite');
+        const { runMigrations } = await import('../src/persistence/sqlite-database.js');
+        const db = new DatabaseSync(':memory:');
+
+        try {
+            db.exec(`
+                CREATE TABLE schema_migrations (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    applied_at TEXT NOT NULL
+                );
+                WITH RECURSIVE ids(id) AS (SELECT 1 UNION ALL SELECT id + 1 FROM ids WHERE id < 14)
+                INSERT INTO schema_migrations (id, name, applied_at)
+                SELECT id, 'existing', '2026-01-01' FROM ids;
+
+                CREATE TABLE app_config (key TEXT PRIMARY KEY, value_json TEXT NOT NULL);
+                INSERT INTO app_config VALUES ('monthlyBudgetUsd', '7');
+                CREATE TABLE guild_budgets (
+                    guild_id TEXT PRIMARY KEY,
+                    monthly_budget_usd REAL NOT NULL
+                );
+                INSERT INTO guild_budgets VALUES ('custom', 2);
+                CREATE TABLE scoped_usage (
+                    scope TEXT NOT NULL,
+                    scope_id TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    input_tokens INTEGER NOT NULL,
+                    output_tokens INTEGER NOT NULL,
+                    requests INTEGER NOT NULL,
+                    PRIMARY KEY (scope, scope_id, date)
+                );
+                INSERT INTO scoped_usage VALUES
+                    ('global', '', '2026-03-27', 195, 95, 4),
+                    ('guild', 'custom', '2026-03-27', 40, 20, 1),
+                    ('guild', 'shared', '2026-03-27', 30, 15, 1),
+                    ('user', 'pocket', '2026-03-27', 25, 10, 1);
+                CREATE TABLE rolling_usage (
+                    scope TEXT NOT NULL,
+                    scope_id TEXT NOT NULL,
+                    bucket_start TEXT NOT NULL,
+                    input_tokens INTEGER NOT NULL,
+                    output_tokens INTEGER NOT NULL,
+                    requests INTEGER NOT NULL,
+                    PRIMARY KEY (scope, scope_id, bucket_start)
+                );
+            `);
+
+            runMigrations(db);
+
+            expect(
+                db
+                    .prepare(
+                        `SELECT pool_id AS poolId, input_tokens AS inputTokens,
+                                output_tokens AS outputTokens, requests
+                         FROM budget_usage ORDER BY pool_id`,
+                    )
+                    .all(),
+            ).toEqual([
+                { poolId: 'guild:custom', inputTokens: 40, outputTokens: 20, requests: 1 },
+                { poolId: 'guild:shared', inputTokens: 130, outputTokens: 65, requests: 2 },
+                { poolId: 'pocket:shared', inputTokens: 25, outputTokens: 10, requests: 1 },
+            ]);
+            expect(
+                db
+                    .prepare(
+                        `SELECT value_json AS value FROM app_config
+                         WHERE key = 'pocketGlobalMonthlyBudgetUsd'`,
+                    )
+                    .get(),
+            ).toEqual({ value: '7' });
+        } finally {
+            db.close();
+        }
+    });
+
+    it('should backfill settled costs for databases already on budget-pool migration 15', async () => {
+        const { DatabaseSync } = await import('node:sqlite');
+        const { runMigrations } = await import('../src/persistence/sqlite-database.js');
+        const db = new DatabaseSync(':memory:');
+
+        try {
+            db.exec(`
+                CREATE TABLE schema_migrations (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    applied_at TEXT NOT NULL
+                );
+                WITH RECURSIVE ids(id) AS (SELECT 1 UNION ALL SELECT id + 1 FROM ids WHERE id < 15)
+                INSERT INTO schema_migrations (id, name, applied_at)
+                SELECT id, 'existing', '2026-01-01' FROM ids;
+
+                CREATE TABLE app_config (key TEXT PRIMARY KEY, value_json TEXT NOT NULL);
+                INSERT INTO app_config VALUES
+                    ('inputPricePerMillion', '2'),
+                    ('outputPricePerMillion', '4');
+                CREATE TABLE guild_budgets (
+                    guild_id TEXT PRIMARY KEY,
+                    monthly_budget_usd REAL NOT NULL
+                );
+                CREATE TABLE scoped_usage (
+                    scope TEXT NOT NULL,
+                    scope_id TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    input_tokens INTEGER NOT NULL,
+                    output_tokens INTEGER NOT NULL,
+                    requests INTEGER NOT NULL,
+                    PRIMARY KEY (scope, scope_id, date)
+                );
+                INSERT INTO scoped_usage VALUES
+                    ('global', '', '2026-03-27', 500000, 250000, 1),
+                    ('guild', 'shared', '2026-03-27', 500000, 250000, 1);
+                CREATE TABLE rolling_usage (
+                    scope TEXT NOT NULL,
+                    scope_id TEXT NOT NULL,
+                    bucket_start TEXT NOT NULL,
+                    input_tokens INTEGER NOT NULL,
+                    output_tokens INTEGER NOT NULL,
+                    requests INTEGER NOT NULL,
+                    PRIMARY KEY (scope, scope_id, bucket_start)
+                );
+                INSERT INTO rolling_usage VALUES
+                    ('global', '', '2026-03-27T10:00:00.000Z', 500000, 250000, 1),
+                    ('guild', 'shared', '2026-03-27T10:00:00.000Z', 500000, 250000, 1);
+                CREATE TABLE budget_usage (
+                    pool_id TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    input_tokens INTEGER NOT NULL,
+                    output_tokens INTEGER NOT NULL,
+                    requests INTEGER NOT NULL,
+                    PRIMARY KEY (pool_id, date)
+                );
+                CREATE TABLE rolling_budget_usage (
+                    pool_id TEXT NOT NULL,
+                    bucket_start TEXT NOT NULL,
+                    input_tokens INTEGER NOT NULL,
+                    output_tokens INTEGER NOT NULL,
+                    requests INTEGER NOT NULL,
+                    PRIMARY KEY (pool_id, bucket_start)
+                );
+            `);
+
+            runMigrations(db);
+
+            expect(
+                db
+                    .prepare(
+                        `SELECT input_cost_usd AS inputCost, output_cost_usd AS outputCost
+                         FROM scoped_usage WHERE scope = 'global'`,
+                    )
+                    .get(),
+            ).toEqual({ inputCost: 1, outputCost: 1 });
+            expect(
+                db
+                    .prepare(
+                        `SELECT input_cost_usd AS inputCost, output_cost_usd AS outputCost
+                         FROM budget_usage WHERE pool_id = 'guild:shared'`,
+                    )
+                    .get(),
+            ).toEqual({ inputCost: 1, outputCost: 1 });
+            expect(
+                db
+                    .prepare(
+                        `SELECT input_cost_usd AS inputCost, output_cost_usd AS outputCost
+                         FROM rolling_budget_usage WHERE pool_id = 'guild:shared'`,
+                    )
+                    .get(),
+            ).toEqual({ inputCost: 1, outputCost: 1 });
         } finally {
             db.close();
         }
@@ -357,12 +592,14 @@ describe('createSqliteDatabase', () => {
             runMigrations(db);
 
             expect(
-                db.prepare(
-                    `
+                db
+                    .prepare(
+                        `
                         SELECT scope, scope_id as scopeId, month, images
                         FROM vision_monthly_usage
                     `,
-                ).get(),
+                    )
+                    .get(),
             ).toEqual({ scope: 'global', scopeId: '', month: '2026-08', images: 7 });
         } finally {
             db.close();

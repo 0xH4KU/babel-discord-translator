@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
     formatDetectedText,
+    extractRegionTranslations,
     normalizeRegionTranslation,
+    visionRegionsToBoxes,
 } from '../src/modules/translation/lens-regions.js';
 
 describe('Babel Lens region markers', () => {
@@ -20,10 +22,7 @@ describe('Babel Lens region markers', () => {
             '[[BABEL_REGION_1]] First [2]\n\n[[BABEL_REGION_2]] Second',
         );
         expect(
-            normalizeRegionTranslation(
-                '[[BABEL_REGION_1]] 第一 [2]\n\n[[BABEL_REGION_2]] 第二',
-                2,
-            ),
+            normalizeRegionTranslation('[[BABEL_REGION_1]] 第一 [2]\n[[BABEL_REGION_2]] 第二', 2),
         ).toEqual({
             markersMatch: true,
             displayText: '[1] 第一 [2]\n\n[2] 第二',
@@ -35,5 +34,23 @@ describe('Babel Lens region markers', () => {
             markersMatch: false,
             displayText: '第一 [9]',
         });
+        expect(normalizeRegionTranslation('[[BABEL_REGION_1]] orphaned', 0).displayText).toBe(
+            'orphaned',
+        );
+    });
+
+    it('should normalize Vision boxes and pair translated markers', () => {
+        const boxes = visionRegionsToBoxes({
+            text: 'one',
+            imageWidth: 200,
+            imageHeight: 100,
+            regions: [{ text: 'one', x: 20, y: 10, width: 80, height: 30 }],
+        });
+
+        expect(boxes).toEqual([[100, 100, 400, 500]]);
+        expect(extractRegionTranslations('[[BABEL_REGION_1]] translated', boxes)).toEqual([
+            { translation: 'translated', box_2d: [100, 100, 400, 500] },
+        ]);
+        expect(extractRegionTranslations('missing marker', boxes)).toEqual([]);
     });
 });

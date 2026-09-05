@@ -32,7 +32,7 @@ import {
     type DashboardCapabilities,
 } from './capabilities.js';
 import { PendingUserInstallOwnerRepository } from './pending-user-install-owner-repository.js';
-import { validateConfigUpdate } from './config-validation.js';
+import { applyProviderCapabilityResets, validateConfigUpdate } from './config-validation.js';
 import { runSetupDoctor } from './setup-doctor.js';
 import {
     MAX_GLOSSARY_IMPORT_BYTES,
@@ -52,6 +52,11 @@ import { applySecurityHeaders } from './security-headers.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import type { DashboardDeps, GuildGlossaryInput } from '../../shared/types.js';
+import {
+    resolveBudgetLimits,
+    validateBudgetLimits,
+    type BudgetLimitOverrides,
+} from '../../shared/budget-limits.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BYTES_PER_MB = 1024 * 1024;
@@ -98,31 +103,81 @@ function parseVisionLimit(value: unknown): number | null {
     return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : NaN;
 }
 
+function parseBudget(value: unknown): number | null {
+    if (value === null || value === undefined) return null;
+    if (typeof value !== 'number' && typeof value !== 'string') return NaN;
+    if (typeof value === 'string' && !value.trim()) return NaN;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : NaN;
+}
+
 function applyScopedBudgetUpdate(
     scope: 'guild' | 'user',
     scopeId: string,
     input: unknown,
 ):
-    | { ok: true; budget?: number | null; visionLimit?: number | null }
+    | {
+          ok: true;
+          budget?: number | null;
+          visionLimit?: number | null;
+          limitOverrides?: BudgetLimitOverrides;
+      }
     | { ok: false; error: string } {
     const body = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
-    const hasBudget = Object.hasOwn(body, 'dailyBudgetUsd');
+    const hasBudget = Object.hasOwn(body, 'monthlyBudgetUsd');
     const hasVisionLimit = Object.hasOwn(body, 'visionMonthlyImageLimit');
-    if (!hasBudget && !hasVisionLimit) {
-        return { ok: false, error: 'A budget or Vision limit is required' };
+    const hasLimitOverrides = scope === 'guild' && Object.hasOwn(body, 'budgetLimitOverrides');
+    if (!hasBudget && !hasVisionLimit && !hasLimitOverrides) {
+        return { ok: false, error: 'A budget, budget limit, or Vision limit is required' };
     }
 
-    const budget =
-        hasBudget && body.dailyBudgetUsd !== null && body.dailyBudgetUsd !== undefined
-            ? parseFloat(String(body.dailyBudgetUsd))
-            : null;
-    if (hasBudget && budget !== null && (isNaN(budget) || budget < 0)) {
-        return { ok: false, error: dashboardMessages.validation.dailyBudgetUsd };
+    const budget = hasBudget ? parseBudget(body.monthlyBudgetUsd) : null;
+    if (hasBudget && Number.isNaN(budget)) {
+        return { ok: false, error: dashboardMessages.validation.monthlyBudgetUsd };
     }
 
     const visionLimit = hasVisionLimit ? parseVisionLimit(body.visionMonthlyImageLimit) : null;
     if (hasVisionLimit && Number.isNaN(visionLimit)) {
         return { ok: false, error: 'Vision limit must be a non-negative integer' };
+    }
+
+    let limitOverrides: BudgetLimitOverrides | undefined;
+    if (hasLimitOverrides) {
+        const inputOverrides = body.budgetLimitOverrides;
+        if (
+            inputOverrides !== null &&
+            (!inputOverrides || typeof inputOverrides !== 'object' || Array.isArray(inputOverrides))
+        ) {
+            return { ok: false, error: 'Budget limit overrides must be an object or null' };
+        }
+        const allowedKeys = new Set([
+            'budgetFiveHourPercent',
+            'budgetSevenDayPercent',
+            'budgetFairShareMultiplier',
+        ]);
+        const unknownKey = Object.keys(inputOverrides ?? {}).find((key) => !allowedKeys.has(key));
+        if (unknownKey) return { ok: false, error: `Unknown budget limit: ${unknownKey}` };
+
+        limitOverrides = {};
+        for (const key of [
+            'budgetFiveHourPercent',
+            'budgetSevenDayPercent',
+            'budgetFairShareMultiplier',
+        ] as const) {
+            const value = (inputOverrides as Record<string, unknown> | null)?.[key];
+            if (value === undefined || value === null || value === '') continue;
+            if (typeof value !== 'number' && typeof value !== 'string') {
+                return { ok: false, error: `${key} must be a finite number or null` };
+            }
+            const parsed = Number(value);
+            if (!Number.isFinite(parsed)) {
+                return { ok: false, error: `${key} must be a finite number or null` };
+            }
+            limitOverrides[key] = parsed;
+        }
+        const defaults = configRepository.getRuntimeConfig();
+        const limitError = validateBudgetLimits(resolveBudgetLimits(defaults, limitOverrides));
+        if (limitError) return { ok: false, error: limitError };
     }
 
     if (hasBudget) {
@@ -136,11 +191,13 @@ function applyScopedBudgetUpdate(
         if (visionLimit === null) store.clearVisionScopeLimit(scope, scopeId);
         else store.setVisionScopeLimit(scope, scopeId, visionLimit);
     }
+    if (limitOverrides) store.setGuildBudgetLimitOverrides(scopeId, limitOverrides);
 
     return {
         ok: true,
         ...(hasBudget ? { budget } : {}),
         ...(hasVisionLimit ? { visionLimit } : {}),
+        ...(limitOverrides ? { limitOverrides } : {}),
     };
 }
 
@@ -410,7 +467,10 @@ export function createDashboardApp({
         const cacheStats = cache.stats();
         const ocrCacheStats = ocrCache.stats();
         const runtimeConfig = configRepository.getRuntimeConfig();
-        const usageStats = usage.getStats(runtimeConfig);
+        const usageStats =
+            scope.profile.id === 'babel-pocket'
+                ? usage.getPocketStats(runtimeConfig)
+                : usage.getStats(runtimeConfig);
         const scopeProfileId = isCombinedDashboard ? scope.appProfileIdForLogs : undefined;
         const metricsSnapshot = metrics.snapshot({ appProfileId: scopeProfileId });
         const memoryUsage = process.memoryUsage();
@@ -435,12 +495,12 @@ export function createDashboardApp({
         const guildBudgetList = scope.capabilities.guildAccess
             ? scopedClient.guilds.cache.map((guild) => {
                   const guildCfg = guildBudgetConfigs[guild.id];
-                  const hasCustom = Boolean(guildCfg && guildCfg.dailyBudgetUsd !== undefined);
+                  const hasCustom = Boolean(guildCfg && guildCfg.monthlyBudgetUsd !== undefined);
                   const guildStats = guildStatsById[guild.id];
                   const scopedStats = hasCustom ? guildStats : usageStats;
                   const budget = hasCustom
-                      ? (guildCfg?.dailyBudgetUsd ?? 0)
-                      : (scopedStats?.dailyBudget ?? usageStats.dailyBudget);
+                      ? (guildCfg?.monthlyBudgetUsd ?? 0)
+                      : (scopedStats?.monthlyBudget ?? usageStats.monthlyBudget);
                   const totalCost = scopedStats?.totalCost ?? 0;
                   const requests = scopedStats?.requests ?? 0;
                   return {
@@ -482,7 +542,7 @@ export function createDashboardApp({
                   const customBudget = userBudgetConfigs[userId];
                   const userStats = userStatsById[userId]!;
                   const budget =
-                      customBudget?.dailyBudgetUsd ?? runtimeConfig.defaultUserDailyBudgetUsd;
+                      customBudget?.monthlyBudgetUsd ?? runtimeConfig.defaultUserMonthlyBudgetUsd;
                   const totalCost = userStats.totalCost ?? 0;
                   return {
                       id: userId,
@@ -577,11 +637,16 @@ export function createDashboardApp({
     });
 
     api.get('/config', auth.requireAuth, (_req: Request, res: Response) => {
+        const scope = getScope(res);
         const cfg = configRepository.getDashboardConfig();
         const visionMonth = new Date().toISOString().slice(0, 7);
         const visionImages = store.getVisionMonthlyUsage(visionMonth);
         res.json({
             ...cfg,
+            monthlyBudgetUsd:
+                scope.profile.id === 'babel-pocket'
+                    ? cfg.pocketGlobalMonthlyBudgetUsd
+                    : cfg.monthlyBudgetUsd,
             vertexAiApiKey: cfg.vertexAiApiKey ? '••••' + cfg.vertexAiApiKey.slice(-6) : '',
             hasApiKey: !!cfg.vertexAiApiKey,
             visionApiKey: cfg.visionApiKey ? '••••' + cfg.visionApiKey.slice(-6) : '',
@@ -598,16 +663,46 @@ export function createDashboardApp({
     });
 
     api.post('/config', auth.requireAuth, auth.requireCsrf, (req: Request, res: Response) => {
-        const { valid, error, sanitized } = validateConfigUpdate(req.body);
+        const scope = getScope(res);
+        const currentConfig = configRepository.getDashboardConfig();
+        const submittedConfig = { ...req.body } as Record<string, unknown>;
+        if (
+            scope.profile.id === 'babel-pocket' &&
+            Object.hasOwn(submittedConfig, 'monthlyBudgetUsd')
+        ) {
+            submittedConfig.pocketGlobalMonthlyBudgetUsd = submittedConfig.monthlyBudgetUsd;
+            delete submittedConfig.monthlyBudgetUsd;
+        }
+        const { valid, error, sanitized } = validateConfigUpdate(submittedConfig, currentConfig);
         if (!valid) {
             res.status(400).json({ error });
             return;
         }
 
-        const currentConfig = configRepository.getDashboardConfig();
-        configRepository.updateConfig(sanitized);
+        const budgetLimitKeys = [
+            'budgetFiveHourPercent',
+            'budgetSevenDayPercent',
+            'budgetFairShareMultiplier',
+        ] as const;
+        if (budgetLimitKeys.some((key) => sanitized[key] !== undefined)) {
+            const nextDefaults = resolveBudgetLimits(currentConfig, sanitized);
+            for (const [guildId, overrides] of Object.entries(
+                store.listGuildBudgetLimitOverrides(),
+            )) {
+                const guildError = validateBudgetLimits(
+                    resolveBudgetLimits(nextDefaults, overrides),
+                );
+                if (guildError) {
+                    res.status(400).json({ error: `Guild ${guildId}: ${guildError}` });
+                    return;
+                }
+            }
+        }
 
-        const effects = applyConfigUpdateEffects(currentConfig, sanitized, {
+        const normalizedUpdates = applyProviderCapabilityResets(currentConfig, sanitized);
+        configRepository.updateConfig(normalizedUpdates);
+
+        const effects = applyConfigUpdateEffects(currentConfig, normalizedUpdates, {
             cache,
             cooldown,
             cooldowns: cooldowns ? Object.values(cooldowns) : undefined,
@@ -651,10 +746,10 @@ export function createDashboardApp({
             }
 
             res.json(usage.getGuildHistory(guildId));
-        } else if (isCombinedDashboard && scope.appProfileIdForLogs === 'babel-guild') {
+        } else if (scope.profile.id === 'babel-guild') {
             const guildIds = scope.client.guilds.cache.map((guild) => guild.id);
             res.json(usage.getGuildHistoryForGuilds(guildIds));
-        } else if (isCombinedDashboard && scope.appProfileIdForLogs === 'babel-pocket') {
+        } else if (scope.profile.id === 'babel-pocket') {
             res.json(usage.getAllUserHistory());
         } else {
             res.json(usage.getHistory());
@@ -674,6 +769,8 @@ export function createDashboardApp({
         (_req: Request, res: Response) => {
             const scope = getScope(res);
             const guildBudgets = store.listGuildBudgets();
+            const limitOverrides = store.listGuildBudgetLimitOverrides();
+            const defaultLimits = configRepository.getRuntimeConfig();
             const visionMonth = new Date().toISOString().slice(0, 7);
             const visionLimits = store.listVisionScopeLimits('guild');
             const visionUsage = store.listVisionMonthlyUsage(visionMonth, 'guild');
@@ -688,16 +785,20 @@ export function createDashboardApp({
                     name: string;
                     budget: number;
                     usage: ReturnType<typeof usage.getGuildStats>;
+                    limits: ReturnType<typeof resolveBudgetLimits>;
+                    limitOverrides: BudgetLimitOverrides;
                     vision: { month: string; images: number; limit: number | null };
                 }
             > = {};
 
             for (const [id, guild] of guilds) {
-                const hasCustom = guildBudgets[id]?.dailyBudgetUsd !== undefined;
+                const hasCustom = guildBudgets[id]?.monthlyBudgetUsd !== undefined;
                 result[id] = {
                     name: guild.name,
-                    budget: guildBudgets[id]?.dailyBudgetUsd ?? -1,
+                    budget: guildBudgets[id]?.monthlyBudgetUsd ?? -1,
                     usage: hasCustom ? (guildStatsById[id] ?? usage.getGuildStats(id)) : usageStats,
+                    limits: resolveBudgetLimits(defaultLimits, limitOverrides[id]),
+                    limitOverrides: limitOverrides[id] ?? {},
                     vision: {
                         month: visionMonth,
                         images: visionUsage[id] ?? 0,
@@ -743,7 +844,7 @@ export function createDashboardApp({
             for (const userId of userIds) {
                 const customBudget = userBudgets[userId];
                 result[userId] = {
-                    budget: customBudget?.dailyBudgetUsd ?? cfg.defaultUserDailyBudgetUsd,
+                    budget: customBudget?.monthlyBudgetUsd ?? cfg.defaultUserMonthlyBudgetUsd,
                     isCustom: customBudget !== undefined,
                     allowed: allowedUserIds.has(userId),
                     pending: pendingUserIds.has(userId) && !allowedUserIds.has(userId),
@@ -819,6 +920,7 @@ export function createDashboardApp({
                         ? { mode: 'global' }
                         : { budget: result.budget }
                     : {}),
+                ...('limitOverrides' in result ? { limitOverrides: result.limitOverrides } : {}),
             });
         },
     );

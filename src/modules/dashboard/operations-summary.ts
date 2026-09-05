@@ -147,7 +147,7 @@ export function buildOperationsGuidance({
             area: 'budget',
             severity: 'critical',
             title: 'Server budget exceeded',
-            action: 'Raise the affected server budget or wait for the daily reset.',
+            action: 'Raise the affected server budget or wait for the monthly reset.',
         });
     } else if (budgetRisk.warningCount > 0) {
         guidance.push({

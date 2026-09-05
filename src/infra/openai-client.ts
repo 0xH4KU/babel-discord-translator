@@ -10,7 +10,15 @@ import {
     normalizeProviderTokenCount,
 } from './provider-http.js';
 import type { TranslationProvider, TranslateOptions } from './provider-orchestrator.js';
-import type { OpenAIChatResponse, TranslationPrompt, TranslationResult } from '../shared/types.js';
+import type {
+    ImageTranslationRequest,
+    ImageTranslationResult,
+    OpenAIChatResponse,
+    TranslationPrompt,
+    TranslationResult,
+} from '../shared/types.js';
+import { parseImageTranslationResponse } from '../modules/translation/lens-model.js';
+import { ProviderResponseError } from './provider-errors.js';
 
 const MAX_RETRIES = DEFAULT_PROVIDER_MAX_RETRIES;
 const REQUEST_TIMEOUT_MS = DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS;
@@ -42,6 +50,8 @@ function getOpenAiConfig(runtimeConfig?: RuntimeConfig): OpenAiConfig {
 
 function buildChatCompletionsUrl(baseUrl: string): string {
     const base = baseUrl.replace(/\/+$/, '');
+    if (base.endsWith('/chat/completions')) return base;
+    if (base.endsWith('/v1')) return `${base}/chat/completions`;
     return `${base}/v1/chat/completions`;
 }
 
@@ -62,6 +72,7 @@ async function requestChatCompletion(
         logContext,
         runtimeConfig,
         signal,
+        image,
     }: {
         maxOutputTokens: number;
         temperature?: number;
@@ -71,6 +82,7 @@ async function requestChatCompletion(
         logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'>;
         runtimeConfig?: RuntimeConfig;
         signal?: AbortSignal;
+        image?: Pick<ImageTranslationRequest, 'image' | 'mimeType'>;
     },
 ): Promise<{ data: OpenAIChatResponse; latencyMs: number }> {
     const logger = appLogger.child({
@@ -117,7 +129,20 @@ async function requestChatCompletion(
                             ? [{ role: 'user', content: prompt }]
                             : [
                                   { role: 'system', content: prompt.system },
-                                  { role: 'user', content: prompt.user },
+                                  {
+                                      role: 'user',
+                                      content: image
+                                          ? [
+                                                { type: 'text', text: prompt.user },
+                                                {
+                                                    type: 'image_url',
+                                                    image_url: {
+                                                        url: `data:${image.mimeType};base64,${image.image.toString('base64')}`,
+                                                    },
+                                                },
+                                            ]
+                                          : prompt.user,
+                                  },
                               ],
                     max_tokens: maxOutputTokens,
                     temperature,
@@ -165,6 +190,51 @@ async function requestChatCompletion(
         data: (await response.json()) as OpenAIChatResponse,
         latencyMs,
     };
+}
+
+export async function generateImageTranslationContent(
+    request: ImageTranslationRequest,
+    maxOutputTokens: number,
+    options?: TranslateOptions,
+): Promise<ImageTranslationResult> {
+    const { data } = await requestChatCompletion(request.prompt, {
+        maxOutputTokens,
+        logPrefix: 'Babel Lens',
+        logContext: options?.logContext,
+        runtimeConfig: options?.runtimeConfig,
+        signal: options?.signal,
+        image: request,
+    });
+
+    const choice = data.choices?.[0];
+    const result = choice?.message?.content?.trim() ?? '';
+    const usage = data.usage || {};
+    const inputTokens = normalizeProviderTokenCount(usage.prompt_tokens, 4096);
+    const outputTokens = normalizeProviderTokenCount(
+        usage.completion_tokens,
+        result ? estimateTokenCount(result) : 0,
+    );
+    if (choice?.finish_reason === 'length') {
+        throw new ProviderResponseError(
+            'Babel Lens output was truncated by Max Output Tokens; increase it in Settings.',
+            inputTokens,
+            outputTokens,
+        );
+    }
+    if (!result) {
+        throw new ProviderResponseError(
+            'Empty Babel Lens response from OpenAI',
+            inputTokens,
+            outputTokens,
+        );
+    }
+
+    try {
+        return parseImageTranslationResponse(result, inputTokens, outputTokens);
+    } catch (error) {
+        const cause = error instanceof Error ? error : new Error(String(error));
+        throw new ProviderResponseError(cause.message, inputTokens, outputTokens, { cause });
+    }
 }
 
 export async function generateTranslationContent(
@@ -238,6 +308,16 @@ export function createOpenAiProvider(): TranslationProvider {
         },
         isConfigured(options?: TranslateOptions): boolean {
             return isOpenAiConfigured(options?.runtimeConfig);
+        },
+        supportsImageInput(options?: TranslateOptions): boolean {
+            return options?.runtimeConfig?.openaiSupportsImages === true;
+        },
+        translateImage(
+            request: ImageTranslationRequest,
+            maxOutputTokens: number,
+            options?: TranslateOptions,
+        ): Promise<ImageTranslationResult> {
+            return generateImageTranslationContent(request, maxOutputTokens, options);
         },
     };
 }

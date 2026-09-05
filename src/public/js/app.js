@@ -14,8 +14,10 @@ function getDashboardProfile() {
 
 function isCombinedDashboard() {
   const profiles = dashboardCapabilities?.profiles || [];
-  return profiles.some((profile) => profile.id === 'babel-guild')
-    && profiles.some((profile) => profile.id === 'babel-pocket');
+  return (
+    profiles.some((profile) => profile.id === 'babel-guild') &&
+    profiles.some((profile) => profile.id === 'babel-pocket')
+  );
 }
 
 function getDashboardPathScope() {
@@ -63,14 +65,14 @@ function applyDashboardCapabilities(data) {
   if (budgetLabel) {
     budgetLabel.textContent = hasDashboardCapability('guildAccess')
       ? 'Server Budgets'
-      : 'Daily Budget';
+      : 'Monthly Budget';
   }
 
   const budgetSettingsLabel = document.getElementById('cfg-budget-label');
   if (budgetSettingsLabel) {
     budgetSettingsLabel.textContent = hasDashboardCapability('userAccess')
       ? 'Global Safety Budget (USD, 0 = unlimited)'
-      : 'Global Daily Budget (USD, 0 = unlimited)';
+      : 'Global Monthly Budget (USD, 0 = unlimited)';
   }
 
   const budgetHint = document.getElementById('cfg-budget-hint');
@@ -79,6 +81,8 @@ function applyDashboardCapabilities(data) {
       ? 'Safety cap across all user-install usage. Pocket does not use server whitelist or per-server budgets.'
       : 'Default for servers without custom budgets. Set per-server budgets in Access tab.';
   }
+
+  if (typeof configureAccessNavigation === 'function') configureAccessNavigation();
 }
 
 async function loadDashboardCapabilities() {

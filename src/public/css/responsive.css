@@ -2,35 +2,102 @@
 
 @media (max-width: 768px) {
     #dashboard-view {
-        padding: 1rem;
+        padding: 0;
+        flex-direction: column;
     }
 
-    .header {
-        flex-wrap: wrap;
-        gap: 0.75rem;
-        align-items: center;
-    }
-
-    .header-title {
-        flex: 1;
-    }
-
-    .header-meta {
-        order: 4;
-        margin-left: 0;
+    .dashboard-sidebar {
+        position: sticky;
+        inset: 0 0 auto;
         width: 100%;
-        gap: 0.6rem;
-        padding-left: calc(44px + 0.75rem);
+        height: auto;
+        padding: 0.65rem 0.75rem;
+        border-right: 0;
+        border-bottom: 1px solid var(--border);
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 0.55rem 0.75rem;
     }
 
-    .header .status,
-    .header .health-badge {
-        font-size: 0.8rem;
+    .sidebar-brandline,
+    .sidebar-footer-label {
+        display: none;
     }
 
-    .header .btn-logout {
-        margin-left: auto;
-        order: 3;
+    .sidebar-identity {
+        min-width: 0;
+        padding-bottom: 0;
+        grid-column: 1 / -1;
+        grid-row: 1;
+    }
+
+    .primary-nav {
+        display: none;
+    }
+
+    .mobile-main-nav {
+        display: block;
+        grid-column: 1 / -1;
+        grid-row: 3;
+        min-height: 2.4rem;
+    }
+
+    .sidebar-footer {
+        display: contents;
+    }
+
+    .dashboard-sidebar .header-meta {
+        display: flex;
+        align-items: center;
+        width: auto;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        grid-column: 1;
+        grid-row: 2;
+    }
+
+    .sidebar-status-row {
+        min-height: 0;
+        gap: 0.35rem;
+    }
+
+    .sidebar-status-row + .sidebar-status-row {
+        margin: 0 0 0 0.75rem;
+        padding: 0;
+        border: 0;
+    }
+
+    .sidebar-status-row:first-child .sidebar-status-name {
+        display: none;
+    }
+
+    .sidebar-actions {
+        display: flex;
+        gap: 0.4rem;
+        grid-column: 2;
+        grid-row: 2;
+    }
+
+    .sidebar-actions .version-link {
+        display: inline-flex;
+        min-height: 2rem;
+    }
+
+    .sidebar-actions .btn-logout {
+        display: inline-flex;
+        width: auto;
+        min-height: 2rem;
+        padding: 0.35rem 0.65rem;
+    }
+
+    .dashboard-main {
+        flex: 1;
+        width: 100%;
+        min-height: 0;
+        margin-left: 0;
+        padding: 1rem 0.85rem 2.5rem;
     }
 
     .grid {
@@ -45,6 +112,61 @@
     .settings-row {
         flex-direction: column;
         gap: 0.75rem;
+    }
+
+    .settings-layout {
+        display: block;
+    }
+
+    .settings-category-nav {
+        display: none;
+    }
+
+    .mobile-settings-category {
+        display: block;
+        margin-bottom: 1rem;
+    }
+
+    .access-nav {
+        display: none;
+    }
+
+    .mobile-secondary-nav {
+        display: block;
+        margin-bottom: 1rem;
+    }
+
+    .access-master-detail {
+        grid-template-columns: 1fr;
+        min-height: 0;
+    }
+
+    .access-master-pane {
+        border-right: 0;
+    }
+
+    .access-detail-pane {
+        display: none;
+    }
+
+    .access-master-detail.show-detail .access-master-pane {
+        display: none;
+    }
+
+    .access-master-detail.show-detail .access-detail-pane {
+        display: block;
+    }
+
+    .access-back-button {
+        display: inline-flex;
+    }
+
+    #tab-activity .table-scroll {
+        display: none;
+    }
+
+    .mobile-activity-list {
+        display: block;
     }
 
     .tab-btn {
@@ -148,23 +270,28 @@
         gap: 0.25rem;
     }
 
+    .session-item {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .session-title {
+        flex-wrap: wrap;
+    }
+
+    .session-badge {
+        white-space: nowrap;
+    }
+
     .table-card .table-header {
         flex-direction: column;
         align-items: flex-start;
         gap: 0.25rem;
     }
 
-    .header {
-        gap: 0.6rem;
-    }
-
-    .header img {
+    .dashboard-sidebar img {
         width: 40px;
         height: 40px;
-    }
-
-    .header-meta {
-        padding-left: 0;
     }
 
     .version-link {
@@ -174,6 +301,38 @@
 
     .btn-logout {
         padding: 0.35rem 0.65rem;
+    }
+
+    .settings-section,
+    .access-panel.settings-section {
+        padding-inline: 0;
+    }
+
+    .capability-toggle {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .section-heading {
+        flex-direction: column;
+    }
+
+    .section-actions,
+    .section-actions .btn {
+        width: 100%;
+    }
+
+    .access-master-item {
+        grid-template-columns: 28px minmax(0, 1fr);
+    }
+
+    .access-master-status {
+        grid-column: 2;
+    }
+
+    .dashboard-dialog {
+        width: calc(100vw - 1rem);
+        max-height: calc(100vh - 1rem);
     }
 
     .prefs-tools {
@@ -255,7 +414,7 @@
         color: var(--text-dim);
         font-size: 0.62rem;
         font-weight: 700;
-        letter-spacing: 0.05em;
+        letter-spacing: 0;
         text-transform: uppercase;
     }
 

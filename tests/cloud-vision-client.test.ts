@@ -70,6 +70,9 @@ describe('Cloud Vision client', () => {
         const body = JSON.parse(String(init.body));
         expect(body.requests).toHaveLength(1);
         expect(body.requests[0].features).toEqual([{ type: 'TEXT_DETECTION' }]);
+        expect(body.requests[0].imageContext).toEqual({
+            textDetectionParams: { enableTextDetectionConfidenceScore: true },
+        });
         expect(new Headers(init.headers).get('x-goog-api-key')).toBe('vision-key');
     });
 
@@ -92,12 +95,97 @@ describe('Cloud Vision client', () => {
         ).rejects.toThrow('Cloud Vision request failed: API disabled');
     });
 
-    it('should ignore isolated ASCII glyphs without dropping valid short text', () => {
+    it('should reject low-confidence blocks and isolated OCR artifacts', () => {
         expect(_test.isMeaningfulBlockText('8')).toBe(false);
+        expect(_test.isMeaningfulBlockText('。', 0.85)).toBe(false);
+        expect(_test.isMeaningfulBlockText('tA', 0.52)).toBe(false);
         expect(_test.isMeaningfulBlockText('OK')).toBe(true);
         expect(_test.isMeaningfulBlockText('AI')).toBe(true);
         expect(_test.isMeaningfulBlockText('$5')).toBe(true);
         expect(_test.isMeaningfulBlockText('CODE')).toBe(true);
+        expect(_test.isMeaningfulBlockText('程', 0.8)).toBe(true);
         expect(_test.isMeaningfulBlockText('程式')).toBe(true);
+    });
+
+    it('should omit region markers for dense text while preserving the OCR text', () => {
+        const text = '文'.repeat(501);
+        const result = _test.parseVisionText({
+            fullTextAnnotation: {
+                pages: [
+                    {
+                        width: 100,
+                        height: 100,
+                        blocks: [
+                            {
+                                blockType: 'TEXT',
+                                confidence: 0.99,
+                                boundingBox: {
+                                    vertices: [
+                                        { x: 1, y: 1 },
+                                        { x: 99, y: 1 },
+                                        { x: 99, y: 99 },
+                                        { x: 1, y: 99 },
+                                    ],
+                                },
+                                paragraphs: [
+                                    {
+                                        words: [
+                                            {
+                                                symbols: [...text].map((character) => ({
+                                                    text: character,
+                                                })),
+                                            },
+                                        ],
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                ],
+            },
+        });
+
+        expect(result.text).toBe(text);
+        expect(result.regions).toEqual([]);
+    });
+
+    it('should use the full OCR text when any recognized block has no valid bounds', () => {
+        const result = _test.parseVisionText({
+            fullTextAnnotation: {
+                pages: [
+                    {
+                        width: 100,
+                        height: 100,
+                        blocks: [
+                            {
+                                boundingBox: {
+                                    vertices: [
+                                        { x: 1, y: 1 },
+                                        { x: 50, y: 1 },
+                                        { x: 50, y: 20 },
+                                        { x: 1, y: 20 },
+                                    ],
+                                },
+                                paragraphs: [
+                                    {
+                                        words: [{ symbols: [...'kept'].map((text) => ({ text })) }],
+                                    },
+                                ],
+                            },
+                            {
+                                paragraphs: [
+                                    {
+                                        words: [{ symbols: [...'lost'].map((text) => ({ text })) }],
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                ],
+            },
+        });
+
+        expect(result.text).toBe('kept\nlost');
+        expect(result.regions).toEqual([]);
     });
 });

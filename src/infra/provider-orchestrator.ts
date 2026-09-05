@@ -2,11 +2,19 @@ import type { StructuredLogFields } from '../shared/structured-logger.js';
 import { appLogger } from '../shared/structured-logger.js';
 import type { AppMetricsCollector } from '../shared/app-metrics.js';
 import type {
+    ImageTranslationRequest,
+    ImageTranslationResult,
+    LensRegion,
     TranslationPrompt,
     TranslationProviderMode,
     TranslationResult,
 } from '../shared/types.js';
 import type { RuntimeConfig } from '../modules/config/config-repository.js';
+import {
+    extractRegionTranslations,
+    normalizeRegionTranslation,
+} from '../modules/translation/lens-regions.js';
+import { ProviderResponseError } from './provider-errors.js';
 
 export interface TranslateOptions {
     logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'>;
@@ -28,6 +36,12 @@ export interface TranslationProvider {
     ): Promise<TranslationResult>;
     /** Whether the provider has enough config to attempt a call. */
     isConfigured(options?: TranslateOptions): boolean;
+    supportsImageInput(options?: TranslateOptions): boolean;
+    translateImage(
+        request: ImageTranslationRequest,
+        maxOutputTokens: number,
+        options?: TranslateOptions,
+    ): Promise<ImageTranslationResult>;
 }
 
 export interface ProviderOrchestratorResult extends TranslationResult {
@@ -35,6 +49,22 @@ export interface ProviderOrchestratorResult extends TranslationResult {
     provider: string;
     /** Whether a fallback provider was used. */
     fallback: boolean;
+}
+
+export interface VisionTranslationResolution {
+    hasText: boolean;
+    prompt?: TranslationPrompt;
+    boxes?: LensRegion['box_2d'][];
+}
+
+export interface ProviderImageTranslationRequest extends ImageTranslationRequest {
+    resolveVision: () => Promise<VisionTranslationResolution>;
+}
+
+export interface ProviderImageOrchestratorResult extends ImageTranslationResult {
+    provider: string;
+    fallback: boolean;
+    route: 'direct' | 'vision';
 }
 
 export interface ProviderOrchestratorOptions {
@@ -49,6 +79,8 @@ export interface ProviderOrchestratorOptions {
 export class ProviderOrchestratorError extends Error {
     readonly provider: string;
     readonly errorType: string;
+    readonly inputTokens: number;
+    readonly outputTokens: number;
 
     constructor(
         message: string,
@@ -56,12 +88,16 @@ export class ProviderOrchestratorError extends Error {
             provider: string;
             errorType: string;
             cause?: Error;
+            inputTokens?: number;
+            outputTokens?: number;
         },
     ) {
         super(message, { cause: options.cause });
         this.name = 'ProviderOrchestratorError';
         this.provider = options.provider;
         this.errorType = options.errorType;
+        this.inputTokens = options.inputTokens ?? 0;
+        this.outputTokens = options.outputTokens ?? 0;
     }
 }
 
@@ -106,6 +142,17 @@ function toError(error: unknown): Error {
     return error instanceof Error ? error : new Error(String(error));
 }
 
+class ProviderRouteError extends Error {
+    constructor(
+        message: string,
+        readonly route: 'vision',
+        options?: { cause?: Error },
+    ) {
+        super(message, options);
+        this.name = 'ProviderRouteError';
+    }
+}
+
 export function createProviderOrchestrator(
     mode: TranslationProviderMode,
     providers: Map<string, TranslationProvider>,
@@ -119,22 +166,180 @@ export function createProviderOrchestrator(
         state: new Map<string, { failures: number; openUntil: number }>(),
     };
 
-    const isCircuitOpen = (provider: string): boolean => {
-        const state = breaker.state.get(provider);
+    const breakerKey = (operation: 'text' | 'image', provider: string): string =>
+        `${operation}:${provider}`;
+
+    const isCircuitOpen = (operation: 'text' | 'image', provider: string): boolean => {
+        const state = breaker.state.get(breakerKey(operation, provider));
         return state !== undefined && state.openUntil > breaker.now();
     };
 
-    const recordBreakerSuccess = (provider: string): void => {
-        breaker.state.delete(provider);
+    const recordBreakerSuccess = (operation: 'text' | 'image', provider: string): void => {
+        breaker.state.delete(breakerKey(operation, provider));
     };
 
-    const recordBreakerFailure = (provider: string): void => {
-        const current = breaker.state.get(provider) ?? { failures: 0, openUntil: 0 };
+    const recordBreakerFailure = (operation: 'text' | 'image', provider: string): void => {
+        const key = breakerKey(operation, provider);
+        const current = breaker.state.get(key) ?? { failures: 0, openUntil: 0 };
         const failures = current.failures + 1;
-        breaker.state.set(provider, {
+        breaker.state.set(key, {
             failures,
             openUntil:
                 failures >= breaker.failureThreshold ? breaker.now() + breaker.cooldownMs : 0,
+        });
+    };
+
+    const runProviders = async <T extends TranslationResult>(
+        operation: 'text' | 'image',
+        options: TranslateOptions | undefined,
+        attempt: (
+            provider: TranslationProvider,
+            providerOptions: TranslateOptions,
+        ) => Promise<{ result: T; providerCalled: boolean; route?: 'direct' | 'vision' }>,
+    ): Promise<T & { provider: string; fallback: boolean }> => {
+        const metrics = options?.metrics ?? orchestratorOptions.metrics;
+        const ordered = resolveProviderOrder(mode, providers);
+        const configured = ordered.filter((provider) => provider.isConfigured(options));
+        const available = configured.filter((provider) => !isCircuitOpen(operation, provider.name));
+
+        if (configured.length === 0) {
+            throw new Error(
+                'No translation provider is configured. Please complete setup in the dashboard.',
+            );
+        }
+        if (available.length === 0) {
+            throw new Error('All configured translation providers are temporarily unavailable.');
+        }
+
+        options?.signal?.throwIfAborted();
+        let lastError: Error | null = null;
+        let lastProvider: string | null = null;
+        let failedInputTokens = 0;
+        let failedOutputTokens = 0;
+
+        for (let index = 0; index < available.length; index++) {
+            const provider = available[index]!;
+            const orderedIndex = ordered.indexOf(provider);
+            const isFallback = orderedIndex > 0;
+            const attemptSignal = AbortSignal.timeout(DEFAULT_TRANSLATION_PROVIDER_TIMEOUT_MS);
+            const providerOptions: TranslateOptions = {
+                ...options,
+                signal: options?.signal
+                    ? AbortSignal.any([options.signal, attemptSignal])
+                    : attemptSignal,
+            };
+
+            try {
+                if (isFallback) {
+                    const fromProvider = ordered[orderedIndex - 1]!;
+                    const fallbackErrorType = lastError
+                        ? classifyProviderError(lastError)
+                        : configured.includes(fromProvider)
+                          ? 'circuit_open'
+                          : 'configuration';
+                    const fallbackError =
+                        lastError ??
+                        new Error(
+                            configured.includes(fromProvider)
+                                ? `${fromProvider.name} circuit is open`
+                                : `${fromProvider.name} is not configured`,
+                        );
+                    metrics?.recordProviderFallback({
+                        from: fromProvider.name,
+                        to: provider.name,
+                        errorType: fallbackErrorType,
+                        error: fallbackError.message,
+                    });
+                    logger.warn('provider_orchestrator.fallback', {
+                        from: fromProvider.name,
+                        to: provider.name,
+                        error: fallbackError.message,
+                        fallbackReason: !lastError
+                            ? fallbackErrorType
+                            : lastError instanceof ProviderRouteError
+                              ? `${lastError.route}_failed`
+                              : classifyProviderError(lastError),
+                        ...options?.logContext,
+                    });
+                }
+
+                const startedAt = Date.now();
+                const outcome = await attempt(provider, providerOptions);
+                if (outcome.providerCalled) {
+                    recordBreakerSuccess(operation, provider.name);
+                    metrics?.recordProviderSuccess(provider.name, {
+                        latencyMs: Date.now() - startedAt,
+                    });
+                }
+                if (
+                    'warnings' in outcome.result &&
+                    Array.isArray(outcome.result.warnings) &&
+                    outcome.result.warnings.length > 0
+                ) {
+                    logger.warn('provider_orchestrator.image_regions_invalid', {
+                        route: outcome.route,
+                        provider: provider.name,
+                        warnings: outcome.result.warnings,
+                        ...options?.logContext,
+                    });
+                }
+                if (outcome.route) {
+                    logger.info('provider_orchestrator.image_completed', {
+                        route: outcome.route,
+                        provider: provider.name,
+                        fallback: isFallback,
+                        regionCount:
+                            'regions' in outcome.result && Array.isArray(outcome.result.regions)
+                                ? outcome.result.regions.length
+                                : 0,
+                        ...options?.logContext,
+                    });
+                }
+                return {
+                    ...outcome.result,
+                    inputTokens: failedInputTokens + outcome.result.inputTokens,
+                    outputTokens: failedOutputTokens + outcome.result.outputTokens,
+                    provider: provider.name,
+                    fallback: isFallback,
+                };
+            } catch (error) {
+                lastError = toError(error);
+                lastProvider = provider.name;
+                if (lastError instanceof ProviderResponseError) {
+                    failedInputTokens += lastError.inputTokens;
+                    failedOutputTokens += lastError.outputTokens;
+                }
+                if (lastError instanceof ProviderRouteError) {
+                    logger.warn('provider_orchestrator.route_failed', {
+                        route: lastError.route,
+                        provider: provider.name,
+                        error: lastError.message,
+                        hasNextProvider: index < available.length - 1,
+                        ...options?.logContext,
+                    });
+                } else {
+                    recordBreakerFailure(operation, provider.name);
+                    metrics?.recordProviderFailure(provider.name, {
+                        errorType: classifyProviderError(lastError),
+                        error: lastError.message,
+                    });
+                    logger.error('provider_orchestrator.provider_failed', {
+                        provider: provider.name,
+                        error: lastError.message,
+                        hasNextProvider: index < available.length - 1,
+                        ...options?.logContext,
+                    });
+                }
+                if (options?.signal?.aborted) break;
+            }
+        }
+
+        throw new ProviderOrchestratorError(lastError?.message ?? 'Unknown provider failure', {
+            provider: lastProvider ?? 'unknown',
+            errorType: classifyProviderError(lastError),
+            cause: lastError ?? undefined,
+            inputTokens: failedInputTokens,
+            outputTokens: failedOutputTokens,
         });
     };
 
@@ -144,98 +349,94 @@ export function createProviderOrchestrator(
             maxOutputTokens: number,
             options?: TranslateOptions,
         ): Promise<ProviderOrchestratorResult> {
-            const metrics = options?.metrics ?? orchestratorOptions.metrics;
-            const providerOptions = {
-                ...options,
-                signal:
-                    options?.signal ?? AbortSignal.timeout(DEFAULT_TRANSLATION_PROVIDER_TIMEOUT_MS),
-            };
-            const ordered = resolveProviderOrder(mode, providers);
-            const configured = ordered.filter((p) => p.isConfigured(options));
-            const available = configured.filter((p) => !isCircuitOpen(p.name));
+            return runProviders('text', options, async (provider, providerOptions) => ({
+                result: await provider.translate(prompt, maxOutputTokens, providerOptions),
+                providerCalled: true,
+            }));
+        },
 
-            if (configured.length === 0) {
-                throw new Error(
-                    'No translation provider is configured. Please complete setup in the dashboard.',
-                );
-            }
+        async translateImage(
+            request: ProviderImageTranslationRequest,
+            maxOutputTokens: number,
+            options?: TranslateOptions,
+        ): Promise<ProviderImageOrchestratorResult> {
+            let visionPromise: Promise<VisionTranslationResolution> | null = null;
+            const resolveVision = (): Promise<VisionTranslationResolution> =>
+                (visionPromise ??= request.resolveVision());
 
-            if (available.length === 0) {
-                throw new Error(
-                    'All configured translation providers are temporarily unavailable.',
-                );
-            }
-
-            providerOptions.signal.throwIfAborted();
-
-            let lastError: Error | null = null;
-            let lastProvider: string | null = null;
-
-            for (let i = 0; i < available.length; i++) {
-                const provider = available[i]!;
-                const configuredIndex = configured.indexOf(provider);
-                const isFallback = configuredIndex > 0;
-
-                try {
-                    if (isFallback) {
-                        const fromProvider = configured[configuredIndex - 1]!;
-                        const fallbackError =
-                            lastError ?? new Error(`${fromProvider.name} circuit is open`);
-                        metrics?.recordProviderFallback({
-                            from: fromProvider.name,
-                            to: provider.name,
-                            errorType: lastError
-                                ? classifyProviderError(lastError)
-                                : 'circuit_open',
-                            error: fallbackError.message,
-                        });
-                        logger.warn('provider_orchestrator.fallback', {
-                            from: fromProvider.name,
-                            to: provider.name,
-                            error: fallbackError.message,
-                            ...options?.logContext,
-                        });
+            return runProviders<ImageTranslationResult>(
+                'image',
+                options,
+                async (provider, providerOptions) => {
+                    if (provider.supportsImageInput(providerOptions)) {
+                        const result = await provider.translateImage(
+                            request,
+                            maxOutputTokens,
+                            providerOptions,
+                        );
+                        return {
+                            result: { ...result, route: 'direct' as const },
+                            providerCalled: true,
+                            route: 'direct' as const,
+                        };
                     }
 
-                    const startedAt = Date.now();
-                    const result = await provider.translate(
-                        prompt,
+                    let vision: VisionTranslationResolution;
+                    try {
+                        vision = await resolveVision();
+                    } catch (error) {
+                        const cause = toError(error);
+                        throw new ProviderRouteError(cause.message, 'vision', { cause });
+                    }
+                    if (!vision.hasText) {
+                        return {
+                            result: {
+                                text: '',
+                                hasText: false,
+                                regions: [],
+                                inputTokens: 0,
+                                outputTokens: 0,
+                                route: 'vision' as const,
+                            },
+                            providerCalled: false,
+                            route: 'vision' as const,
+                        };
+                    }
+                    if (!vision.prompt) {
+                        throw new ProviderRouteError(
+                            'Cloud Vision returned no translation prompt',
+                            'vision',
+                        );
+                    }
+
+                    const translated = await provider.translate(
+                        vision.prompt,
                         maxOutputTokens,
                         providerOptions,
                     );
-                    recordBreakerSuccess(provider.name);
-                    metrics?.recordProviderSuccess(provider.name, {
-                        latencyMs: Date.now() - startedAt,
-                    });
+                    const boxes = vision.boxes ?? [];
+                    const normalized = normalizeRegionTranslation(translated.text, boxes.length);
+                    const regions = normalized.markersMatch
+                        ? extractRegionTranslations(translated.text, boxes)
+                        : [];
+                    const warnings =
+                        boxes.length === 0 || regions.length !== boxes.length
+                            ? ['invalid_regions']
+                            : undefined;
                     return {
-                        ...result,
-                        provider: provider.name,
-                        fallback: isFallback,
+                        result: {
+                            ...translated,
+                            text: normalized.displayText,
+                            hasText: true,
+                            regions,
+                            route: 'vision' as const,
+                            ...(warnings ? { warnings } : {}),
+                        },
+                        providerCalled: true,
+                        route: 'vision' as const,
                     };
-                } catch (error) {
-                    lastError = toError(error);
-                    lastProvider = provider.name;
-                    recordBreakerFailure(provider.name);
-                    metrics?.recordProviderFailure(provider.name, {
-                        errorType: classifyProviderError(lastError),
-                        error: lastError.message,
-                    });
-                    logger.error('provider_orchestrator.provider_failed', {
-                        provider: provider.name,
-                        error: lastError.message,
-                        hasNextProvider: i < available.length - 1,
-                        ...options?.logContext,
-                    });
-                    if (providerOptions.signal.aborted) break;
-                }
-            }
-
-            // All providers failed — preserve the last provider diagnostic for callers.
-            throw new ProviderOrchestratorError(lastError?.message ?? 'Unknown provider failure', {
-                provider: lastProvider ?? 'unknown',
-                errorType: classifyProviderError(lastError),
-                cause: lastError ?? undefined,
-            });
+                },
+            ) as Promise<ProviderImageOrchestratorResult>;
         },
     };
 }

@@ -66,6 +66,8 @@ describe('ConfigStore', () => {
             inputTokens: 100,
             outputTokens: 50,
             requests: 1,
+            inputCost: 0,
+            outputCost: 0,
         });
         second.close();
     });
@@ -184,13 +186,49 @@ describe('ConfigStore', () => {
         expect(store.getGuildBudget('guild-1')).toBeNull();
 
         store.setGuildBudget('guild-1', 2.5);
-        expect(store.getGuildBudget('guild-1')).toEqual({ dailyBudgetUsd: 2.5 });
-        expect(store.listGuildBudgets()).toEqual({ 'guild-1': { dailyBudgetUsd: 2.5 } });
+        expect(store.getGuildBudget('guild-1')).toEqual({ monthlyBudgetUsd: 2.5 });
+        expect(store.listGuildBudgets()).toEqual({ 'guild-1': { monthlyBudgetUsd: 2.5 } });
 
         expect(store.clearGuildBudget('guild-1')).toBe(true);
         expect(store.getGuildBudget('guild-1')).toBeNull();
         expect(store.clearGuildBudget('guild-1')).toBe(false);
         store.close();
+    });
+
+    it('should persist per-guild budget limit overrides through snapshots', async () => {
+        const { ConfigStore } = await importStoreModule();
+        const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+
+        expect(store.getGuildBudgetLimitOverrides('guild-1')).toEqual({});
+        store.setGuildBudgetLimitOverrides('guild-1', {
+            budgetFiveHourPercent: 8,
+            budgetFairShareMultiplier: 2,
+        });
+        expect(store.getGuildBudgetLimitOverrides('guild-1')).toEqual({
+            budgetFiveHourPercent: 8,
+            budgetFairShareMultiplier: 2,
+        });
+        expect(store.listGuildBudgetLimitOverrides()).toEqual({
+            'guild-1': { budgetFiveHourPercent: 8, budgetFairShareMultiplier: 2 },
+        });
+
+        const snapshot = store.exportSnapshot();
+        store.clearGuildBudgetLimitOverrides('guild-1');
+        store.importSnapshot(snapshot);
+        expect(store.getGuildBudgetLimitOverrides('guild-1')).toEqual({
+            budgetFiveHourPercent: 8,
+            budgetFairShareMultiplier: 2,
+        });
+        store.close();
+
+        const reopened = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+        expect(reopened.getGuildBudgetLimitOverrides('guild-1')).toMatchObject({
+            budgetFiveHourPercent: 8,
+            budgetFairShareMultiplier: 2,
+        });
+        expect(reopened.clearGuildBudgetLimitOverrides('guild-1')).toBe(true);
+        expect(reopened.clearGuildBudgetLimitOverrides('guild-1')).toBe(false);
+        reopened.close();
     });
 
     it('should support per-guild glossary operations', async () => {
@@ -310,6 +348,8 @@ describe('ConfigStore', () => {
             inputTokens: 100,
             outputTokens: 50,
             requests: 1,
+            inputCost: 0,
+            outputCost: 0,
         });
         expect(store.getUsageHistory('guild', '2026-03-27', ['guild-1'])).toEqual([
             {
@@ -317,6 +357,8 @@ describe('ConfigStore', () => {
                 inputTokens: 80,
                 outputTokens: 40,
                 requests: 1,
+                inputCost: 0,
+                outputCost: 0,
             },
         ]);
         expect(store.getUsage('guild', 'guild-2', '2026-03-27')).toBeNull();
@@ -326,8 +368,115 @@ describe('ConfigStore', () => {
                 inputTokens: 100,
                 outputTokens: 50,
                 requests: 1,
+                inputCost: 0,
+                outputCost: 0,
             },
         });
+        expect(store.getUsageBetween('guild', 'guild-1', '2026-03-01', '2026-04-01')).toEqual({
+            date: '2026-03-01',
+            inputTokens: 180,
+            outputTokens: 90,
+            requests: 2,
+            inputCost: 0,
+            outputCost: 0,
+        });
+        expect(
+            store.getUsageForIdsBetween(
+                'guild',
+                ['guild-1', 'guild-2'],
+                '2026-03-01',
+                '2026-04-01',
+            ),
+        ).toEqual({
+            'guild-1': {
+                date: '2026-03-01',
+                inputTokens: 180,
+                outputTokens: 90,
+                requests: 2,
+                inputCost: 0,
+                outputCost: 0,
+            },
+        });
+        store.close();
+    });
+
+    it('should preserve settled costs when token prices change', async () => {
+        const { ConfigStore } = await importStoreModule();
+        const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+        store.updateConfigValues({ inputPricePerMillion: 1, outputPricePerMillion: 2 });
+
+        store.recordUsage('2026-03-27T10:01:00.000Z', 1_000_000, 500_000, {
+            guildId: 'guild-1',
+        });
+        store.updateConfigValues({ inputPricePerMillion: 10, outputPricePerMillion: 20 });
+        store.recordUsage('2026-03-27T10:01:30.000Z', 1_000_000, 500_000, {
+            guildId: 'guild-1',
+        });
+        store.updateConfigValues({ inputPricePerMillion: 100, outputPricePerMillion: 200 });
+
+        expect(store.getUsage('guild', 'guild-1', '2026-03-27')).toMatchObject({
+            inputTokens: 2_000_000,
+            outputTokens: 1_000_000,
+            inputCost: 11,
+            outputCost: 11,
+        });
+        expect(
+            store.getRollingBudgetPoolUsageBetween(
+                'guild:shared',
+                '2026-03-27T10:00:00.000Z',
+                '2026-03-27T11:00:00.000Z',
+            ),
+        ).toMatchObject({ inputCost: 11, outputCost: 11 });
+        store.close();
+    });
+
+    it('should retain rolling usage and guild actor attribution', async () => {
+        const { ConfigStore } = await importStoreModule();
+        const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
+
+        store.recordUsage('2026-03-27T10:01:30.000Z', 100, 50, {
+            guildId: 'guild-1',
+            actorUserId: 'user-1',
+        });
+        store.recordUsage('2026-03-27T10:01:50.000Z', 20, 10, {
+            guildId: 'guild-1',
+            actorUserId: 'user-1',
+        });
+        store.recordUsage('2026-03-27T11:00:00.000Z', 40, 20, {
+            guildId: 'guild-1',
+            actorUserId: 'user-2',
+        });
+
+        expect(
+            store.getRollingUsageBetween(
+                'guild',
+                'guild-1',
+                '2026-03-27T10:00:00.000Z',
+                '2026-03-27T11:00:00.000Z',
+            ),
+        ).toEqual({
+            date: '2026-03-27T10:00:00.000Z',
+            inputTokens: 120,
+            outputTokens: 60,
+            requests: 2,
+            inputCost: 0,
+            outputCost: 0,
+        });
+        expect(
+            store.getGuildUserRollingUsage(
+                'guild-1',
+                'user-1',
+                '2026-03-27T10:00:00.000Z',
+                '2026-03-27T12:00:00.000Z',
+            ),
+        ).toMatchObject({ inputTokens: 120, outputTokens: 60, requests: 2 });
+        expect(
+            store.countActiveGuildUsers(
+                'guild-1',
+                '2026-03-20T00:00:00.000Z',
+                '2026-03-28T00:00:00.000Z',
+            ),
+        ).toBe(2);
         store.close();
     });
 
@@ -402,7 +551,7 @@ describe('ConfigStore', () => {
         second.close();
     });
 
-    it('should calculate shared global usage in SQLite', async () => {
+    it('should persist Guild and Pocket usage in independent budget pools', async () => {
         const { ConfigStore } = await importStoreModule();
         const store = new ConfigStore({ dbPath, autoImportLegacyJson: false });
 
@@ -410,12 +559,65 @@ describe('ConfigStore', () => {
         store.recordUsage('2026-03-27', 100, 50);
         store.recordUsage('2026-03-27', 40, 20, { guildId: 'custom' });
         store.recordUsage('2026-03-27', 30, 15, { guildId: 'shared' });
+        store.recordUsage('2026-03-27', 25, 10, { userId: 'pocket-user' });
 
         expect(store.getSharedGlobalUsage('2026-03-27')).toEqual({
             date: '2026-03-27',
             inputTokens: 130,
             outputTokens: 65,
             requests: 2,
+            inputCost: 0,
+            outputCost: 0,
+        });
+        expect(store.getSharedGlobalUsageBetween('2026-03-01', '2026-04-01')).toEqual({
+            date: '2026-03-01',
+            inputTokens: 130,
+            outputTokens: 65,
+            requests: 2,
+            inputCost: 0,
+            outputCost: 0,
+        });
+        expect(store.getBudgetPoolUsage('pocket:shared', '2026-03-27')).toEqual({
+            date: '2026-03-27',
+            inputTokens: 25,
+            outputTokens: 10,
+            requests: 1,
+            inputCost: 0,
+            outputCost: 0,
+        });
+        expect(store.getBudgetPoolUsage('guild:custom', '2026-03-27')).toEqual({
+            date: '2026-03-27',
+            inputTokens: 40,
+            outputTokens: 20,
+            requests: 1,
+            inputCost: 0,
+            outputCost: 0,
+        });
+        expect(
+            store.getSharedRollingUsageBetween(
+                '2026-03-27T00:00:00.000Z',
+                '2026-03-28T00:00:00.000Z',
+            ),
+        ).toEqual({
+            date: '2026-03-27T00:00:00.000Z',
+            inputTokens: 130,
+            outputTokens: 65,
+            requests: 2,
+            inputCost: 0,
+            outputCost: 0,
+        });
+
+        store.clearGuildBudget('custom');
+        store.setGuildBudget('shared', 2);
+        expect(store.getSharedGlobalUsageBetween('2026-03-01', '2026-04-01')).toMatchObject({
+            inputTokens: 130,
+            outputTokens: 65,
+            requests: 2,
+        });
+        expect(store.getBudgetPoolUsage('guild:custom', '2026-03-27')).toMatchObject({
+            inputTokens: 40,
+            outputTokens: 20,
+            requests: 1,
         });
         store.close();
     });
@@ -430,12 +632,14 @@ describe('ConfigStore', () => {
         store.recordUsage('2026-03-26', 80, 40, { userId: 'user-1' });
         store.recordUsage('2026-03-27', 100, 50, { userId: 'user-1' });
 
-        expect(store.getUserBudget('user-1')).toEqual({ dailyBudgetUsd: 1.5 });
+        expect(store.getUserBudget('user-1')).toEqual({ monthlyBudgetUsd: 1.5 });
         expect(store.getUsage('user', 'user-1', '2026-03-27')).toEqual({
             date: '2026-03-27',
             inputTokens: 100,
             outputTokens: 50,
             requests: 1,
+            inputCost: 0,
+            outputCost: 0,
         });
         expect(store.getUsageHistory('user', '2026-03-27', ['user-1'])).toEqual([
             {
@@ -443,15 +647,19 @@ describe('ConfigStore', () => {
                 inputTokens: 80,
                 outputTokens: 40,
                 requests: 1,
+                inputCost: 0,
+                outputCost: 0,
             },
         ]);
-        expect(store.listUserBudgets()).toEqual({ 'user-1': { dailyBudgetUsd: 1.5 } });
+        expect(store.listUserBudgets()).toEqual({ 'user-1': { monthlyBudgetUsd: 1.5 } });
         expect(store.getUsageForIds('user', ['user-1'], '2026-03-27')).toEqual({
             'user-1': {
                 date: '2026-03-27',
                 inputTokens: 100,
                 outputTokens: 50,
                 requests: 1,
+                inputCost: 0,
+                outputCost: 0,
             },
         });
         expect(store.clearUserBudget('user-1')).toBe(true);

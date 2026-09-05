@@ -4,12 +4,10 @@ import type { UsageScope } from './usage-scope.js';
 
 export type BudgetScopeKind = 'global' | 'guild' | 'user';
 
-export interface BudgetScopeDecision {
-    kind: BudgetScopeKind;
-    budget: number;
-    guildId?: string;
-    userId?: string;
-}
+export type BudgetScopeDecision =
+    | { kind: 'global'; budget: number }
+    | { kind: 'guild'; budget: number; guildId: string }
+    | { kind: 'user'; budget: number; userId: string };
 
 export function resolveBudgetScope(
     scope: UsageScope,
@@ -21,7 +19,7 @@ export function resolveBudgetScope(
         return {
             kind: 'user',
             userId: scope.userId,
-            budget: userBudget?.dailyBudgetUsd ?? runtimeConfig.defaultUserDailyBudgetUsd ?? 0,
+            budget: userBudget?.monthlyBudgetUsd ?? runtimeConfig.defaultUserMonthlyBudgetUsd ?? 0,
         };
     }
 
@@ -31,13 +29,13 @@ export function resolveBudgetScope(
             return {
                 kind: 'guild',
                 guildId: scope.guildId,
-                budget: guildBudget.dailyBudgetUsd,
+                budget: guildBudget.monthlyBudgetUsd,
             };
         }
     }
 
     return {
         kind: 'global',
-        budget: runtimeConfig.dailyBudgetUsd || 0,
+        budget: runtimeConfig.monthlyBudgetUsd || 0,
     };
 }

@@ -1,4 +1,3 @@
-
 /**
  * Logs tab: translation log loading, filtering, and pagination.
  */
@@ -6,7 +5,8 @@
 let currentLogFilter;
 let currentErrorTypeFilter;
 let allLogData = [];
-let logPage = 1, logPageSize = 15;
+let logPage = 1,
+  logPageSize = 15;
 
 function createCell(text, className) {
   const td = document.createElement('td');
@@ -68,7 +68,7 @@ async function loadLogs() {
     allLogData = await res.json();
     logPage = 1;
     renderLogs();
-  } catch { }
+  } catch {}
 }
 
 function renderHeaderRow(thead) {
@@ -114,7 +114,9 @@ function createTranslationDiagnosticCell(entry) {
   const langLabel = entry.targetLanguage === 'auto' ? 'auto' : entry.targetLanguage;
   appendTextBadge(td, 'lang', langLabel);
   appendTextBadge(td, 'source', entry.langSource);
-  td.appendChild(createBadge(entry.cached ? 'Cache' : 'API', entry.cached ? 'badge-yellow' : 'badge-green'));
+  td.appendChild(
+    createBadge(entry.cached ? 'Cache' : 'API', entry.cached ? 'badge-yellow' : 'badge-green'),
+  );
 
   return td;
 }
@@ -137,7 +139,12 @@ function renderLogRow(entry) {
 
   const typeCell = document.createElement('td');
   typeCell.className = 'log-diagnostics';
-  typeCell.appendChild(createBadge(entry.type === 'error' ? 'Error' : 'OK', entry.type === 'error' ? 'badge-red' : 'badge-green'));
+  typeCell.appendChild(
+    createBadge(
+      entry.type === 'error' ? 'Error' : 'OK',
+      entry.type === 'error' ? 'badge-red' : 'badge-green',
+    ),
+  );
   appendTextBadge(typeCell, 'source', entry.command);
   tr.appendChild(typeCell);
 
@@ -153,6 +160,54 @@ function renderLogRow(entry) {
   }
 
   return tr;
+}
+
+function renderMobileLogRow(entry) {
+  const details = document.createElement('details');
+  details.className = 'mobile-activity-row' + (entry.type === 'error' ? ' log-row-error' : '');
+
+  const summary = document.createElement('summary');
+  const identity = document.createElement('span');
+  identity.textContent =
+    new Date(entry.timestamp).toLocaleTimeString() + ' · ' + (entry.command || '-');
+  const status = createBadge(
+    entry.type === 'error' ? 'Error' : 'OK',
+    entry.type === 'error' ? 'badge-red' : 'badge-green',
+  );
+  summary.append(identity, status);
+
+  const body = document.createElement('dl');
+  const rows =
+    entry.type === 'error'
+      ? [
+          ['Server', entry.guildName],
+          ['User', entry.userTag],
+          ['Error', entry.error],
+          ['Provider', entry.provider],
+          ['Type', entry.errorType],
+          ['Request', entry.requestId],
+          ['Action', entry.suggestedAction],
+        ]
+      : [
+          ['Server', entry.guildName],
+          ['User', entry.userTag],
+          ['Content', entry.contentPreview],
+          ['Target', entry.targetLanguage],
+          ['Language source', entry.langSource],
+          ['Result', entry.cached ? 'Cache' : 'API'],
+        ];
+  rows.forEach(([label, value]) => {
+    const row = document.createElement('div');
+    const dt = document.createElement('dt');
+    const dd = document.createElement('dd');
+    dt.textContent = label;
+    dd.textContent = value || '-';
+    row.append(dt, dd);
+    body.appendChild(row);
+  });
+
+  details.append(summary, body);
+  return details;
 }
 
 function renderLogs() {
@@ -182,7 +237,10 @@ function renderLogs() {
 
   table.append(thead, tbody);
   tableScroll.appendChild(table);
-  container.replaceChildren(tableScroll);
+  const mobileList = document.createElement('div');
+  mobileList.className = 'mobile-activity-list';
+  pageData.forEach((entry) => mobileList.appendChild(renderMobileLogRow(entry)));
+  container.replaceChildren(tableScroll, mobileList);
 
   renderPagination('log-pagination', {
     total: allLogData.length,
@@ -193,5 +251,12 @@ function renderLogs() {
   });
 }
 
-function setLogPage(p) { logPage = p; renderLogs(); }
-function setLogPageSize(s) { logPageSize = s; logPage = 1; renderLogs(); }
+function setLogPage(p) {
+  logPage = p;
+  renderLogs();
+}
+function setLogPageSize(s) {
+  logPageSize = s;
+  logPage = 1;
+  renderLogs();
+}

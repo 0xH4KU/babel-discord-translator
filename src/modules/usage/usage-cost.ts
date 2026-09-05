@@ -11,8 +11,8 @@ export function createEmptyUsage(date: string): TokenUsage {
 }
 
 export function withCost(usage: TokenUsage, inputPrice: number, outputPrice: number): UsageCost {
-    const inputCost = (usage.inputTokens / 1_000_000) * inputPrice;
-    const outputCost = (usage.outputTokens / 1_000_000) * outputPrice;
+    const inputCost = usage.inputCost ?? (usage.inputTokens / 1_000_000) * inputPrice;
+    const outputCost = usage.outputCost ?? (usage.outputTokens / 1_000_000) * outputPrice;
 
     return {
         ...usage,
@@ -25,18 +25,20 @@ export function withCost(usage: TokenUsage, inputPrice: number, outputPrice: num
 export function toUsageStats(cost: UsageCost, budget: number): UsageStats {
     return {
         ...cost,
-        dailyBudget: budget,
+        monthlyBudget: budget,
         budgetUsedPercent: budget > 0 ? Math.min((cost.totalCost / budget) * 100, 100) : 0,
         budgetExceeded: budget > 0 && cost.totalCost >= budget,
     };
 }
 
 export function calculateCost(
-    usage: Pick<TokenUsage, 'inputTokens' | 'outputTokens'>,
+    usage: Pick<TokenUsage, 'inputTokens' | 'outputTokens' | 'inputCost' | 'outputCost'>,
     runtimeConfig: Pick<RuntimeConfig, 'inputPricePerMillion' | 'outputPricePerMillion'>,
 ): number {
     return (
-        (usage.inputTokens / 1_000_000) * (runtimeConfig.inputPricePerMillion || 0) +
-        (usage.outputTokens / 1_000_000) * (runtimeConfig.outputPricePerMillion || 0)
+        (usage.inputCost ??
+            (usage.inputTokens / 1_000_000) * (runtimeConfig.inputPricePerMillion || 0)) +
+        (usage.outputCost ??
+            (usage.outputTokens / 1_000_000) * (runtimeConfig.outputPricePerMillion || 0))
     );
 }
