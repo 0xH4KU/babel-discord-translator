@@ -1,3 +1,4 @@
+import { sendPrivateChunks, replyToTranslationFailure } from '../shared/discord-reply.js';
 import {
     MessageFlags,
     type Attachment,
@@ -24,10 +25,6 @@ interface BabelLensCommandDeps extends CommandDeps {
     ocrCache: TranslationCache;
     renderLimiter: TranslationRuntimeLimiter;
     profile?: AppProfile;
-}
-
-function getUserInstallOwnerId(interaction: MessageContextMenuCommandInteraction): string | null {
-    return interaction.authorizingIntegrationOwners?.['1'] ?? null;
 }
 
 function isSupportedImage(attachment: Attachment): boolean {
@@ -99,13 +96,7 @@ async function sendLensReply(
         targetLanguage: '',
         cached: false,
     });
-    await interaction.editReply({
-        content: messages[0] ?? '',
-    });
-
-    for (const message of messages.slice(1)) {
-        await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
-    }
+    await sendPrivateChunks(interaction, messages);
 }
 
 export async function handleBabelLens(
@@ -143,7 +134,7 @@ export async function handleBabelLens(
     const requestId = createRequestId();
     const billingUserId =
         profile.accessMode === 'user-install'
-            ? (getUserInstallOwnerId(interaction) ?? interaction.user.id)
+            ? (interaction.authorizingIntegrationOwners?.['1'] ?? interaction.user.id)
             : null;
     const visionQuotaScope: VisionQuotaScope =
         profile.accessMode === 'guild'
@@ -166,23 +157,12 @@ export async function handleBabelLens(
             return normalized;
         },
         resolveVision: (image) =>
-            detectTextWithBudget(
-                image,
-                ocrCache,
-                requestId,
-                visionQuotaScope,
-            ),
+            detectTextWithBudget(image, ocrCache, requestId, visionQuotaScope),
         beforeTranslate: () => interaction.deferReply({ flags: MessageFlags.Ephemeral }),
     });
 
-    if (result.status === 'blocked') {
-        if (result.deferred) await interaction.editReply({ content: result.message });
-        else await interaction.reply({ content: result.message, flags: MessageFlags.Ephemeral });
-        return;
-    }
-    if (result.status === 'error') {
-        if (result.deferred) await interaction.editReply({ content: result.message });
-        else await interaction.reply({ content: result.message, flags: MessageFlags.Ephemeral });
+    if (result.status !== 'success') {
+        await replyToTranslationFailure(interaction, result);
         return;
     }
 
@@ -208,11 +188,7 @@ export async function handleBabelLens(
 
     try {
         const rendered = await renderAdmission.reservation.run(() =>
-            renderLensImage(
-                sourceImage!,
-                result.translatedText,
-                result.regions,
-            ),
+            renderLensImage(sourceImage!, result.translatedText, result.regions),
         );
         await sendLensReply(interaction, result.translatedText, rendered);
     } catch (error) {

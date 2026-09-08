@@ -5,7 +5,10 @@ import { describe, expect, it } from 'vitest';
 describe('dashboard static assets', () => {
     it('filters user language preferences by selected guild', () => {
         const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
-        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const accessJs =
+            readFileSync('src/public/js/access.js', 'utf-8') +
+            '\n' +
+            readFileSync('src/public/js/glossary.js', 'utf-8');
         const nodes = {
             'prefs-count': { textContent: '' },
             'prefs-guild-filter': { disabled: false, innerHTML: '', value: '' },
@@ -64,7 +67,10 @@ describe('dashboard static assets', () => {
 
     it('renders Pocket user preferences without server filtering controls', () => {
         const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
-        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const accessJs =
+            readFileSync('src/public/js/access.js', 'utf-8') +
+            '\n' +
+            readFileSync('src/public/js/glossary.js', 'utf-8');
         const nodes = {
             'prefs-count': { textContent: '' },
             'prefs-guild-filter': { disabled: false, hidden: false, innerHTML: '', value: '' },
@@ -318,7 +324,10 @@ describe('dashboard static assets', () => {
 
     it('escapes glossary table fields rendered from stored import data', () => {
         const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
-        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const accessJs =
+            readFileSync('src/public/js/access.js', 'utf-8') +
+            '\n' +
+            readFileSync('src/public/js/glossary.js', 'utf-8');
         const glossaryContainer = { innerHTML: '' };
         const context = {
             document: {
@@ -360,7 +369,10 @@ describe('dashboard static assets', () => {
 
     it('escapes guild access rows rendered from Discord data', () => {
         const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
-        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const accessJs =
+            readFileSync('src/public/js/access.js', 'utf-8') +
+            '\n' +
+            readFileSync('src/public/js/glossary.js', 'utf-8');
         const visionLimitsJs = readFileSync('src/public/js/vision-limits.js', 'utf-8');
         const nodes = {
             'guild-list': { innerHTML: '' },
@@ -418,7 +430,10 @@ describe('dashboard static assets', () => {
 
     it('keeps Lens access scoped to translation-enabled guilds', () => {
         const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
-        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const accessJs =
+            readFileSync('src/public/js/access.js', 'utf-8') +
+            '\n' +
+            readFileSync('src/public/js/glossary.js', 'utf-8');
         const visionLimitsJs = readFileSync('src/public/js/vision-limits.js', 'utf-8');
         const nodes = {
             'guild-list': { innerHTML: '' },
@@ -659,7 +674,10 @@ describe('dashboard static assets', () => {
     });
 
     it('submits per-guild budget limit overrides with blank fields inherited', async () => {
-        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const accessJs =
+            readFileSync('src/public/js/access.js', 'utf-8') +
+            '\n' +
+            readFileSync('src/public/js/glossary.js', 'utf-8');
         const requests: Array<{ path: string; options: { method?: string; body?: string } }> = [];
         const fields = {
             'gbl5-guild-1': { value: '8' },
@@ -845,7 +863,10 @@ describe('dashboard static assets', () => {
     });
 
     it('submits glossary imports and renders the server result', async () => {
-        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const accessJs =
+            readFileSync('src/public/js/access.js', 'utf-8') +
+            '\n' +
+            readFileSync('src/public/js/glossary.js', 'utf-8');
         const nodes = {
             'glossary-import-text': { value: '  source,target\nraid,團本  ' },
             'glossary-import-result': { hidden: true, innerHTML: '' },

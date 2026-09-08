@@ -211,3 +211,14 @@ must fit under both the global and scoped limits when an override exists. Babel 
 both counters in one SQLite transaction immediately before an outbound Cloud Vision
 request. OCR cache hits and callers joining the same in-flight OCR request do not consume
 another image.
+
+### Lens OCR translation admission
+
+The OCR text route applies `maxInputLength` to the text sent for translation,
+including region markers. Oversized OCR text is rejected rather than truncated.
+The initial image translation reservation remains held during OCR. If the actual
+OCR prompt needs a larger input-token estimate, Babel reserves the difference
+before sending that prompt to a text provider. Actual usage is settled once;
+the supplementary reservation is released on success or failure. OCR itself can
+still consume a Vision image quota before text length or supplementary budget
+checks reject the translation. Direct image translation keeps its image estimate.

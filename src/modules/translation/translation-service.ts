@@ -106,9 +106,7 @@ interface ImageTranslator {
     ): Promise<ImageTranslationResult>;
 }
 
-interface InFlightTranslation {
-    promise: Promise<TranslationResult>;
-}
+type InFlightTranslation = ReturnType<typeof Promise.withResolvers<TranslationResult>>;
 
 const PROMPT_TOKEN_OVERHEAD_PER_CALL = 256;
 const LENS_IMAGE_INPUT_TOKENS_PER_CALL = 4096;
@@ -125,8 +123,7 @@ function estimateBudgetTokens(
 
     return {
         estimatedInputTokens:
-            (promptBytes + PROMPT_TOKEN_OVERHEAD_PER_CALL + extraInputTokensPerCall) *
-            maximumCalls,
+            (promptBytes + PROMPT_TOKEN_OVERHEAD_PER_CALL + extraInputTokensPerCall) * maximumCalls,
         estimatedOutputTokens: maxOutputTokens * maximumCalls,
     };
 }
@@ -141,18 +138,13 @@ export interface TranslationServiceRequest {
     userTag: string;
     locale?: string;
     text?: string;
-    resolveText?: () => Promise<string>;
-    preserveNumberedMarkers?: boolean;
     targetLanguageOption?: string | null;
     requestId?: string;
     beforeTranslate?: () => Promise<unknown>;
     bypassAccessControl?: boolean;
 }
 
-export interface TranslationServiceImageRequest extends Omit<
-    TranslationServiceRequest,
-    'text' | 'resolveText' | 'preserveNumberedMarkers'
-> {
+export interface TranslationServiceImageRequest extends Omit<TranslationServiceRequest, 'text'> {
     resolveImage: () => Promise<NormalizedLensImage>;
     resolveVision: (image: Buffer) => Promise<VisionTextResult>;
 }
@@ -281,19 +273,10 @@ function parseCachedImageTranslation(value: string | null): ImageTranslationResu
     }
 }
 
-function createInFlightTranslation() {
-    let resolve!: (value: TranslationResult | PromiseLike<TranslationResult>) => void;
-    let reject!: (reason?: unknown) => void;
-    const promise = new Promise<TranslationResult>((res, rej) => {
-        resolve = res;
-        reject = rej;
-    });
-
-    return {
-        entry: { promise },
-        resolve,
-        reject,
-    };
+function createInFlightTranslation(): InFlightTranslation {
+    const pending = Promise.withResolvers<TranslationResult>();
+    void pending.promise.catch(() => undefined);
+    return pending;
 }
 
 export function createTranslationService({
@@ -317,26 +300,31 @@ export function createTranslationService({
     const inFlightTranslations = new Map<string, InFlightTranslation>();
     const profileMetrics = createProfileMetricsCollector(metrics, appProfileId);
 
-    return {
-        async process(request: TranslationServiceRequest): Promise<TranslationServiceResult> {
-            const messages = getDiscordTranslationCommandMessages(request.command);
-            const requestId = request.requestId ?? createRequestId();
-            const requestLogger = logger.child({
-                requestId,
-                guildId: request.guildId ?? null,
-                userId: request.userId,
-                command: request.command,
-                commandLabel: request.commandLabel,
-            });
-            requestLogger.info('translation.request.started', {
-                locale: request.locale ?? null,
-                textLength: request.text?.length ?? null,
-                deferredTextResolution: !!request.resolveText,
-                hasTargetLanguageOption: !!(
-                    request.targetLanguageOption && request.targetLanguageOption !== 'auto'
-                ),
-            });
+    function prepareRequest(request: TranslationServiceRequest, inputType: 'text' | 'image') {
+        const messages = getDiscordTranslationCommandMessages(request.command);
+        const requestId = request.requestId ?? createRequestId();
+        const requestLogger = logger.child({
+            requestId,
+            guildId: request.guildId ?? null,
+            userId: request.userId,
+            command: request.command,
+            commandLabel: request.commandLabel,
+        });
+        requestLogger.info('translation.request.started', {
+            locale: request.locale ?? null,
+            inputType,
+            textLength: request.text?.length ?? null,
+            hasTargetLanguageOption: !!(
+                request.targetLanguageOption && request.targetLanguageOption !== 'auto'
+            ),
+        });
 
+        const runtimeConfig = configStore.getRuntimeConfig();
+        const scope = createTranslationScope(request);
+        const checkAdmission = (): Extract<
+            TranslationServiceResult,
+            { status: 'blocked' }
+        > | null => {
             if (!configStore.isSetupComplete()) {
                 requestLogger.warn('translation.request.blocked', {
                     blockReason: 'setup_incomplete',
@@ -344,8 +332,6 @@ export function createTranslationService({
                 return { status: 'blocked', message: messages.setupIncomplete };
             }
 
-            const runtimeConfig = configStore.getRuntimeConfig();
-            const scope = createTranslationScope(request);
             const accessDecision = request.bypassAccessControl
                 ? { authorized: true }
                 : decideTranslationAccess(accessMode, runtimeConfig, scope);
@@ -366,48 +352,6 @@ export function createTranslationService({
                 };
             }
 
-            const usageScope = {
-                guildId: accessMode === 'guild' ? (request.guildId ?? null) : null,
-                userId: accessMode === 'user-install' ? getEffectiveUserId(scope) : null,
-                actorUserId: scope.actorUserId,
-            };
-
-            const acquireRuntime = (
-                stage: 'text_resolution' | 'translation',
-            ): {
-                reservation: TranslationRuntimeReservation | null;
-                blocked: TranslationServiceResult | null;
-            } => {
-                if (!runtimeLimiter) return { reservation: null, blocked: null };
-
-                const admission = runtimeLimiter.acquire({
-                    guildId: request.guildId ?? null,
-                    userId: getEffectiveUserId(scope),
-                });
-                if (!admission.accepted) {
-                    requestLogger.warn('translation.request.blocked', {
-                        blockReason: admission.reason,
-                        stage,
-                        runtime: admission.snapshot,
-                    });
-                    return {
-                        reservation: null,
-                        blocked: {
-                            status: 'blocked',
-                            message: resolveQueueBusyMessage(admission.reason, messages),
-                        },
-                    };
-                }
-
-                requestLogger.info(
-                    admission.reservation.queued
-                        ? 'translation.queue.enqueued'
-                        : 'translation.queue.acquired',
-                    { stage, runtime: runtimeLimiter.snapshot() },
-                );
-                return { reservation: admission.reservation, blocked: null };
-            };
-
             const cooldownState = cooldown.check(request.userId);
             if (!cooldownState.allowed) {
                 requestLogger.warn('translation.request.blocked', {
@@ -420,61 +364,137 @@ export function createTranslationService({
                 };
             }
 
-            let deferred = false;
-            let originalText = request.text ?? '';
-            if (request.resolveText) {
-                const runtime = acquireRuntime('text_resolution');
-                if (runtime.blocked) return runtime.blocked;
+            return null;
+        };
+        const usageScope = {
+            guildId: accessMode === 'guild' ? (request.guildId ?? null) : null,
+            userId: accessMode === 'user-install' ? getEffectiveUserId(scope) : null,
+            actorUserId: scope.actorUserId,
+        };
 
-                try {
-                    cooldown.set(request.userId);
-                    if (request.beforeTranslate) {
-                        await request.beforeTranslate();
-                        deferred = true;
-                        requestLogger.info('translation.request.deferred');
-                    }
-                    const resolveText = request.resolveText;
-                    originalText = runtime.reservation
-                        ? await runtime.reservation.run(async (meta) => {
-                              if (meta.queued) {
-                                  requestLogger.info('translation.queue.started', {
-                                      stage: 'text_resolution',
-                                      waitMs: meta.waitMs,
-                                      runtime: meta.snapshot,
-                                  });
-                              }
-                              return resolveText();
-                          })
-                        : await resolveText();
-                } catch (error) {
-                    runtime.reservation?.cancel();
-                    const caughtError = error instanceof Error ? error : new Error(String(error));
-                    const sanitizedMessage = sanitizeError(caughtError.message);
-                    const diagnostic = classifyTranslationError(caughtError.message);
-                    profileMetrics?.recordTranslationFailure();
-                    log.addError({
-                        appProfileId,
-                        guildId: request.guildId,
-                        guildName: request.guildName,
-                        userId: request.userId,
-                        userTag: request.userTag,
-                        error: sanitizedMessage,
-                        command: request.commandLabel,
-                        requestId,
-                        errorType: diagnostic.errorType,
-                        suggestedAction: diagnostic.suggestedAction,
-                    });
-                    requestLogger.error('translation.text_resolution.failed', {
-                        error: sanitizedMessage,
-                        errorType: diagnostic.errorType,
-                    });
-                    return {
-                        status: 'error',
-                        deferred,
-                        message: discordMessages.translationFailed(sanitizedMessage),
-                    };
-                }
+        const acquireRuntime = (
+            stage: 'image_resolution' | 'translation',
+        ): {
+            reservation: TranslationRuntimeReservation | null;
+            blocked: Extract<TranslationServiceResult, { status: 'blocked' }> | null;
+        } => {
+            if (!runtimeLimiter) return { reservation: null, blocked: null };
+
+            const admission = runtimeLimiter.acquire({
+                guildId: request.guildId ?? null,
+                userId: getEffectiveUserId(scope),
+            });
+            if (!admission.accepted) {
+                requestLogger.warn('translation.request.blocked', {
+                    blockReason: admission.reason,
+                    stage,
+                    runtime: admission.snapshot,
+                });
+                return {
+                    reservation: null,
+                    blocked: {
+                        status: 'blocked',
+                        message: resolveQueueBusyMessage(admission.reason, messages),
+                    },
+                };
             }
+
+            requestLogger.info(
+                admission.reservation.queued
+                    ? 'translation.queue.enqueued'
+                    : 'translation.queue.acquired',
+                { stage, runtime: runtimeLimiter.snapshot() },
+            );
+            return { reservation: admission.reservation, blocked: null };
+        };
+
+        const reportFailure = (
+            error: unknown,
+            deferred: boolean,
+            event = 'translation.request.failed',
+        ): Extract<TranslationServiceResult, { status: 'error' }> => {
+            const caughtError = error instanceof Error ? error : new Error(String(error));
+            const sanitizedMessage = sanitizeError(caughtError.message);
+            const diagnostic =
+                caughtError instanceof ProviderOrchestratorError
+                    ? {
+                          errorType: caughtError.errorType,
+                          suggestedAction: suggestedActionForErrorType(caughtError.errorType),
+                      }
+                    : classifyTranslationError(caughtError.message);
+            profileMetrics?.recordTranslationFailure();
+            log.addError({
+                appProfileId,
+                guildId: request.guildId,
+                guildName: request.guildName,
+                userId: request.userId,
+                userTag: request.userTag,
+                error: sanitizedMessage,
+                command: request.commandLabel,
+                requestId,
+                provider:
+                    caughtError instanceof ProviderOrchestratorError
+                        ? caughtError.provider
+                        : undefined,
+                ...diagnostic,
+            });
+            requestLogger.error(event, {
+                inputType,
+                error: sanitizedMessage,
+                errorType: diagnostic.errorType,
+            });
+            return {
+                status: 'error',
+                deferred,
+                message: discordMessages.translationFailed(sanitizedMessage),
+            };
+        };
+        return {
+            messages,
+            requestId,
+            requestLogger,
+            runtimeConfig,
+            scope,
+            usageScope,
+            checkAdmission,
+            acquireRuntime,
+            reportFailure,
+        };
+    }
+
+    function getTarget(request: TranslationServiceRequest) {
+        const { targetLanguage, langSource } = resolveTargetLanguage(request, userPreferenceStore, {
+            accessMode,
+        });
+        const glossaryEntries =
+            enableGuildGlossary && request.guildId
+                ? glossaryRepository.listGuildGlossary(request.guildId)
+                : [];
+        const selectedGlossaryEntries = selectGlossaryEntriesForTarget(
+            glossaryEntries,
+            targetLanguage,
+        );
+        return { targetLanguage, langSource, selectedGlossaryEntries };
+    }
+
+    return {
+        async process(request: TranslationServiceRequest): Promise<TranslationServiceResult> {
+            const {
+                messages,
+                requestId,
+                requestLogger,
+                runtimeConfig,
+                scope,
+                usageScope,
+                checkAdmission,
+                acquireRuntime,
+                reportFailure,
+            } = prepareRequest(request, 'text');
+            const blocked = checkAdmission();
+            if (blocked) return blocked;
+
+            let deferred = false;
+            const originalText = request.text ?? '';
 
             if (!originalText.trim()) {
                 requestLogger.warn('translation.request.blocked', { blockReason: 'empty_text' });
@@ -495,25 +515,12 @@ export function createTranslationService({
                 };
             }
 
-            const { targetLanguage, langSource } = resolveTargetLanguage(
-                request,
-                userPreferenceStore,
-                { accessMode },
-            );
-            const glossaryEntries =
-                enableGuildGlossary && request.guildId
-                    ? glossaryRepository.listGuildGlossary(request.guildId)
-                    : [];
-            const selectedGlossaryEntries = selectGlossaryEntriesForTarget(
-                glossaryEntries,
-                targetLanguage,
-            );
+            const { targetLanguage, langSource, selectedGlossaryEntries } = getTarget(request);
             const translationPrompt = buildTranslationPrompt(
                 originalText,
                 targetLanguage,
                 runtimeConfig.translationPrompt,
                 selectedGlossaryEntries,
-                request.preserveNumberedMarkers,
             );
             const glossaryVersion = buildGlossaryVersion(selectedGlossaryEntries);
             const cacheKey = buildTranslationCacheKey({
@@ -529,10 +536,6 @@ export function createTranslationService({
             let reservation: TranslationRuntimeReservation | null = null;
             let budgetReservation: UsageBudgetReservation | null = null;
             let leaderInFlight: InFlightTranslation | null = null;
-            let resolveLeaderInFlight:
-                | ((value: TranslationResult | PromiseLike<TranslationResult>) => void)
-                | null = null;
-            let rejectLeaderInFlight: ((reason?: unknown) => void) | null = null;
 
             try {
                 let translated = cache.get(cacheKey);
@@ -604,12 +607,8 @@ export function createTranslationService({
                     }
                     budgetReservation = budgetAdmission.reservation;
 
-                    const inFlightTranslation = createInFlightTranslation();
-                    leaderInFlight = inFlightTranslation.entry;
-                    resolveLeaderInFlight = inFlightTranslation.resolve;
-                    rejectLeaderInFlight = inFlightTranslation.reject;
+                    leaderInFlight = createInFlightTranslation();
                     inFlightTranslations.set(cacheKey, leaderInFlight);
-                    void leaderInFlight.promise.catch(() => undefined);
                 }
 
                 if (!deferred && !joinedInFlight && request.beforeTranslate) {
@@ -636,7 +635,6 @@ export function createTranslationService({
                             ...(selectedGlossaryEntries.length > 0
                                 ? { glossaryEntries: selectedGlossaryEntries }
                                 : {}),
-                            preserveNumberedMarkers: request.preserveNumberedMarkers === true,
                             runtimeConfig,
                         });
                         if (!result.fallback) cache.set(cacheKey, result.text);
@@ -646,7 +644,7 @@ export function createTranslationService({
                         fallback = result.fallback;
                         budgetReservation?.settle(result.inputTokens, result.outputTokens);
                         budgetReservation = null;
-                        resolveLeaderInFlight?.(result);
+                        leaderInFlight?.resolve(result);
                         return result.text;
                     };
 
@@ -670,7 +668,7 @@ export function createTranslationService({
                                     waitMs: meta.waitMs,
                                 });
                                 cached = true;
-                                resolveLeaderInFlight?.({
+                                leaderInFlight?.resolve({
                                     text: queuedCached,
                                     inputTokens: 0,
                                     outputTokens: 0,
@@ -719,7 +717,7 @@ export function createTranslationService({
                     fallback,
                 };
             } catch (error) {
-                rejectLeaderInFlight?.(error);
+                leaderInFlight?.reject(error);
                 reservation?.cancel();
                 const caughtError = error instanceof Error ? error : new Error(String(error));
                 if (
@@ -731,42 +729,7 @@ export function createTranslationService({
                     budgetReservation = null;
                 }
                 budgetReservation?.release();
-                const message = caughtError.message;
-                const sanitizedMessage = sanitizeError(message);
-                const diagnostic =
-                    caughtError instanceof ProviderOrchestratorError
-                        ? {
-                              errorType: caughtError.errorType,
-                              suggestedAction: suggestedActionForErrorType(caughtError.errorType),
-                          }
-                        : classifyTranslationError(message);
-                profileMetrics?.recordTranslationFailure();
-                log.addError({
-                    appProfileId,
-                    guildId: request.guildId,
-                    guildName: request.guildName,
-                    userId: request.userId,
-                    userTag: request.userTag,
-                    error: sanitizedMessage,
-                    command: request.commandLabel,
-                    requestId,
-                    provider:
-                        caughtError instanceof ProviderOrchestratorError
-                            ? caughtError.provider
-                            : undefined,
-                    errorType: diagnostic.errorType,
-                    suggestedAction: diagnostic.suggestedAction,
-                });
-                requestLogger.error('translation.request.failed', {
-                    error: sanitizedMessage,
-                    errorType: diagnostic.errorType,
-                });
-
-                return {
-                    status: 'error',
-                    deferred,
-                    message: discordMessages.translationFailed(sanitizedMessage),
-                };
+                return reportFailure(caughtError, deferred);
             } finally {
                 if (leaderInFlight && inFlightTranslations.get(cacheKey) === leaderInFlight) {
                     inFlightTranslations.delete(cacheKey);
@@ -776,101 +739,19 @@ export function createTranslationService({
         async processImage(
             request: TranslationServiceImageRequest,
         ): Promise<ImageTranslationServiceResult> {
-            const messages = getDiscordTranslationCommandMessages(request.command);
-            const requestId = request.requestId ?? createRequestId();
-            const requestLogger = logger.child({
+            const {
+                messages,
                 requestId,
-                guildId: request.guildId ?? null,
-                userId: request.userId,
-                command: request.command,
-                commandLabel: request.commandLabel,
-            });
-            requestLogger.info('translation.request.started', {
-                locale: request.locale ?? null,
-                inputType: 'image',
-                hasTargetLanguageOption: !!(
-                    request.targetLanguageOption && request.targetLanguageOption !== 'auto'
-                ),
-            });
-
-            if (!configStore.isSetupComplete()) {
-                requestLogger.warn('translation.request.blocked', {
-                    blockReason: 'setup_incomplete',
-                });
-                return { status: 'blocked', message: messages.setupIncomplete };
-            }
-
-            const runtimeConfig = configStore.getRuntimeConfig();
-            const scope = createTranslationScope(request);
-            const accessDecision = request.bypassAccessControl
-                ? { authorized: true }
-                : decideTranslationAccess(accessMode, runtimeConfig, scope);
-            if (!accessDecision.authorized) {
-                requestLogger.warn('translation.request.blocked', {
-                    blockReason: accessDecision.blockReason,
-                });
-                if (accessDecision.pendingUserId) {
-                    pendingUserInstallOwnerRepository?.recordSeen(accessDecision.pendingUserId);
-                }
-                return {
-                    status: 'blocked',
-                    message:
-                        accessDecision.blockReason === 'user_not_allowed'
-                            ? discordMessages.unauthorizedUser()
-                            : discordMessages.unauthorizedGuild(),
-                };
-            }
-
-            const cooldownState = cooldown.check(request.userId);
-            if (!cooldownState.allowed) {
-                requestLogger.warn('translation.request.blocked', {
-                    blockReason: 'cooldown_active',
-                    cooldownRemainingSeconds: cooldownState.remaining,
-                });
-                return {
-                    status: 'blocked',
-                    message: discordMessages.cooldownRemaining(cooldownState.remaining),
-                };
-            }
-
-            const usageScope = {
-                guildId: accessMode === 'guild' ? (request.guildId ?? null) : null,
-                userId: accessMode === 'user-install' ? getEffectiveUserId(scope) : null,
-                actorUserId: scope.actorUserId,
-            };
-            const acquireRuntime = (
-                stage: 'image_resolution' | 'translation',
-            ): {
-                reservation: TranslationRuntimeReservation | null;
-                blocked: ImageTranslationServiceResult | null;
-            } => {
-                if (!runtimeLimiter) return { reservation: null, blocked: null };
-                const admission = runtimeLimiter.acquire({
-                    guildId: request.guildId ?? null,
-                    userId: getEffectiveUserId(scope),
-                });
-                if (!admission.accepted) {
-                    requestLogger.warn('translation.request.blocked', {
-                        blockReason: admission.reason,
-                        stage,
-                        runtime: admission.snapshot,
-                    });
-                    return {
-                        reservation: null,
-                        blocked: {
-                            status: 'blocked',
-                            message: resolveQueueBusyMessage(admission.reason, messages),
-                        },
-                    };
-                }
-                requestLogger.info(
-                    admission.reservation.queued
-                        ? 'translation.queue.enqueued'
-                        : 'translation.queue.acquired',
-                    { stage, runtime: runtimeLimiter.snapshot() },
-                );
-                return { reservation: admission.reservation, blocked: null };
-            };
+                requestLogger,
+                runtimeConfig,
+                scope,
+                usageScope,
+                checkAdmission,
+                acquireRuntime,
+                reportFailure,
+            } = prepareRequest(request, 'image');
+            const blocked = checkAdmission();
+            if (blocked) return blocked;
 
             let deferred = false;
             let normalizedImage: NormalizedLensImage;
@@ -898,67 +779,35 @@ export function createTranslationService({
             } catch (error) {
                 imageRuntime.reservation?.cancel();
                 const caughtError = error instanceof Error ? error : new Error(String(error));
-                const sanitizedMessage = sanitizeError(caughtError.message);
-                const diagnostic = classifyTranslationError(caughtError.message);
-                profileMetrics?.recordTranslationFailure();
-                log.addError({
-                    appProfileId,
-                    guildId: request.guildId,
-                    guildName: request.guildName,
-                    userId: request.userId,
-                    userTag: request.userTag,
-                    error: sanitizedMessage,
-                    command: request.commandLabel,
-                    requestId,
-                    errorType: diagnostic.errorType,
-                    suggestedAction: diagnostic.suggestedAction,
-                });
-                requestLogger.error('translation.image_resolution.failed', {
-                    error: sanitizedMessage,
-                    errorType: diagnostic.errorType,
-                });
-                return {
-                    status: 'error',
-                    deferred,
-                    message: discordMessages.translationFailed(sanitizedMessage),
-                };
+                return reportFailure(caughtError, deferred, 'translation.image_resolution.failed');
             }
 
-            const { targetLanguage, langSource } = resolveTargetLanguage(
-                request,
-                userPreferenceStore,
-                { accessMode },
-            );
-            const glossaryEntries =
-                enableGuildGlossary && request.guildId
-                    ? glossaryRepository.listGuildGlossary(request.guildId)
-                    : [];
-            const selectedGlossaryEntries = selectGlossaryEntriesForTarget(
-                glossaryEntries,
-                targetLanguage,
-            );
+            const { targetLanguage, langSource, selectedGlossaryEntries } = getTarget(request);
             const glossaryVersion = buildGlossaryVersion(selectedGlossaryEntries);
             const imagePrompt = buildImageTranslationPrompt(
                 targetLanguage,
                 runtimeConfig.translationPrompt,
                 selectedGlossaryEntries,
             );
+            const imageEstimate = estimateBudgetTokens(
+                imagePrompt,
+                runtimeConfig.maxOutputTokens || 4096,
+                runtimeConfig.translationProvider || 'vertex',
+                LENS_IMAGE_INPUT_TOKENS_PER_CALL,
+            );
             const cacheKey = buildLensCacheKey({
                 imageHash: normalizedImage.hash,
                 targetLanguage,
                 providerFingerprint: buildProviderFingerprint(runtimeConfig),
-                prompt: `${imagePrompt.system}\n${imagePrompt.user}`,
+                prompt: `${imagePrompt.system}\n${imagePrompt.user}\nmaxInputLength:${runtimeConfig.maxInputLength}`,
                 glossaryVersion,
                 maxOutputTokens: runtimeConfig.maxOutputTokens || 4096,
             });
 
             let reservation: TranslationRuntimeReservation | null = null;
             let budgetReservation: UsageBudgetReservation | null = null;
+            const ocrBudget = { reservation: null as UsageBudgetReservation | null };
             let leaderInFlight: InFlightTranslation | null = null;
-            let resolveLeaderInFlight:
-                | ((value: TranslationResult | PromiseLike<TranslationResult>) => void)
-                | null = null;
-            let rejectLeaderInFlight: ((reason?: unknown) => void) | null = null;
 
             try {
                 let result = parseCachedImageTranslation(cache.get(cacheKey));
@@ -987,12 +836,7 @@ export function createTranslationService({
                     }
                     reservation = runtime.reservation;
                     const budgetAdmission = usageTracker.tryReserveBudget({
-                        ...estimateBudgetTokens(
-                            imagePrompt,
-                            runtimeConfig.maxOutputTokens || 4096,
-                            runtimeConfig.translationProvider || 'vertex',
-                            LENS_IMAGE_INPUT_TOKENS_PER_CALL,
-                        ),
+                        ...imageEstimate,
                         ...usageScope,
                     });
                     if (!budgetAdmission.allowed) {
@@ -1011,12 +855,8 @@ export function createTranslationService({
                     }
                     budgetReservation = budgetAdmission.reservation;
 
-                    const inFlightTranslation = createInFlightTranslation();
-                    leaderInFlight = inFlightTranslation.entry;
-                    resolveLeaderInFlight = inFlightTranslation.resolve;
-                    rejectLeaderInFlight = inFlightTranslation.reject;
+                    leaderInFlight = createInFlightTranslation();
                     inFlightTranslations.set(cacheKey, leaderInFlight);
-                    void leaderInFlight.promise.catch(() => undefined);
                 }
 
                 if (!result) {
@@ -1032,15 +872,49 @@ export function createTranslationService({
                                     ...detected,
                                     regions: detected.regions.slice(0, 99),
                                 };
+                                const text = formatDetectedText(bounded);
+                                const maxInputLength = runtimeConfig.maxInputLength || 2000;
+                                if (text.length > maxInputLength) {
+                                    throw new Error(
+                                        discordMessages.textTooLong(text.length, maxInputLength),
+                                    );
+                                }
+                                const prompt = buildTranslationPrompt(
+                                    text,
+                                    targetLanguage,
+                                    runtimeConfig.translationPrompt,
+                                    selectedGlossaryEntries,
+                                    true,
+                                );
+                                const ocrEstimate = estimateBudgetTokens(
+                                    prompt,
+                                    runtimeConfig.maxOutputTokens || 4096,
+                                    runtimeConfig.translationProvider || 'vertex',
+                                );
+                                const extraInputTokens =
+                                    ocrEstimate.estimatedInputTokens -
+                                    imageEstimate.estimatedInputTokens;
+                                // Hold the image reservation too: an earlier direct attempt may already have incurred usage.
+                                if (extraInputTokens > 0) {
+                                    const admission = usageTracker.tryReserveBudget({
+                                        ...usageScope,
+                                        estimatedInputTokens: extraInputTokens,
+                                        estimatedOutputTokens: 0,
+                                    });
+                                    if (!admission.allowed) {
+                                        profileMetrics?.recordBudgetExceeded();
+                                        requestLogger.warn('translation.request.blocked', {
+                                            blockReason: 'budget_exceeded',
+                                            inputType: 'image',
+                                            ...admission.reason,
+                                        });
+                                        throw new Error(messages.budgetExceeded);
+                                    }
+                                    ocrBudget.reservation = admission.reservation;
+                                }
                                 return {
                                     hasText: true,
-                                    prompt: buildTranslationPrompt(
-                                        formatDetectedText(bounded),
-                                        targetLanguage,
-                                        runtimeConfig.translationPrompt,
-                                        selectedGlossaryEntries,
-                                        true,
-                                    ),
+                                    prompt,
                                     boxes: visionRegionsToBoxes(bounded),
                                 };
                             },
@@ -1079,7 +953,7 @@ export function createTranslationService({
                         if (!normalizedResult.fallback) {
                             cache.set(cacheKey, JSON.stringify(normalizedResult));
                         }
-                        resolveLeaderInFlight?.(normalizedResult);
+                        leaderInFlight?.resolve(normalizedResult);
                         return normalizedResult;
                     };
 
@@ -1098,7 +972,7 @@ export function createTranslationService({
                                     budgetReservation?.release();
                                     budgetReservation = null;
                                     cached = true;
-                                    resolveLeaderInFlight?.(queuedCached);
+                                    leaderInFlight?.resolve(queuedCached);
                                     return queuedCached;
                                 }
                             }
@@ -1150,7 +1024,7 @@ export function createTranslationService({
                     fallback: result.fallback,
                 };
             } catch (error) {
-                rejectLeaderInFlight?.(error);
+                leaderInFlight?.reject(error);
                 reservation?.cancel();
                 const caughtError = error instanceof Error ? error : new Error(String(error));
                 if (
@@ -1163,42 +1037,9 @@ export function createTranslationService({
                     budgetReservation = null;
                 }
                 budgetReservation?.release();
-                const sanitizedMessage = sanitizeError(caughtError.message);
-                const diagnostic =
-                    caughtError instanceof ProviderOrchestratorError
-                        ? {
-                              errorType: caughtError.errorType,
-                              suggestedAction: suggestedActionForErrorType(caughtError.errorType),
-                          }
-                        : classifyTranslationError(caughtError.message);
-                profileMetrics?.recordTranslationFailure();
-                log.addError({
-                    appProfileId,
-                    guildId: request.guildId,
-                    guildName: request.guildName,
-                    userId: request.userId,
-                    userTag: request.userTag,
-                    error: sanitizedMessage,
-                    command: request.commandLabel,
-                    requestId,
-                    provider:
-                        caughtError instanceof ProviderOrchestratorError
-                            ? caughtError.provider
-                            : undefined,
-                    errorType: diagnostic.errorType,
-                    suggestedAction: diagnostic.suggestedAction,
-                });
-                requestLogger.error('translation.request.failed', {
-                    inputType: 'image',
-                    error: sanitizedMessage,
-                    errorType: diagnostic.errorType,
-                });
-                return {
-                    status: 'error',
-                    deferred,
-                    message: discordMessages.translationFailed(sanitizedMessage),
-                };
+                return reportFailure(caughtError, deferred);
             } finally {
+                ocrBudget.reservation?.release();
                 if (leaderInFlight && inFlightTranslations.get(cacheKey) === leaderInFlight) {
                     inFlightTranslations.delete(cacheKey);
                 }

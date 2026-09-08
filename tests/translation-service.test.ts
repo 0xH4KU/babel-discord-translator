@@ -14,10 +14,7 @@ import {
     buildTranslationPrompt,
 } from '../src/modules/translation/translate.js';
 import { TranslationRuntimeLimiter } from '../src/modules/translation/translation-runtime-limiter.js';
-import type {
-    UsageBudgetAdmission,
-    UsageBudgetReservation,
-} from '../src/modules/usage/usage.js';
+import type { UsageBudgetAdmission, UsageBudgetReservation } from '../src/modules/usage/usage.js';
 import type { AccessMode } from '../src/apps/app-profile.js';
 import type { ImageTranslationResult, StoreData, TranslationResult } from '../src/shared/types.js';
 
@@ -334,12 +331,7 @@ function createImageRequest(
 describe('TranslationService', () => {
     it('should reserve the UTF-8 prompt upper bound across retries and fallback providers', () => {
         expect(
-            _test.estimateBudgetTokens(
-                { system: 'S系', user: '🙂' },
-                100,
-                'vertex+openai',
-                4096,
-            ),
+            _test.estimateBudgetTokens({ system: 'S系', user: '🙂' }, 100, 'vertex+openai', 4096),
         ).toEqual({
             estimatedInputTokens: (4 + 4 + 256 + 4096) * 8,
             estimatedOutputTokens: 100 * 8,
@@ -466,6 +458,151 @@ describe('TranslationService', () => {
 
         expect(resolveVision).toHaveBeenCalledOnce();
         expect(imageTranslator).toHaveBeenCalledOnce();
+    });
+
+    it.each([false, true])(
+        'rejects oversized OCR before calling a text provider (regions=%s)',
+        async (withRegions) => {
+            const providerCall = vi.fn();
+            const imageTranslator = vi.fn(async (_image, _mime, _target, resolve) => {
+                await resolve();
+                providerCall();
+                throw new Error('must not reach provider');
+            });
+            const { service, usageTracker } = createService({ imageTranslator });
+            const text = '漢'.repeat(100_000);
+            const result = await service.processImage(
+                createImageRequest({
+                    beforeTranslate: async () => undefined,
+                    resolveVision: async () => ({
+                        text,
+                        imageWidth: 100,
+                        imageHeight: 100,
+                        regions: withRegions ? [{ text, x: 0, y: 0, width: 100, height: 100 }] : [],
+                    }),
+                }),
+            );
+            expect(result).toMatchObject({ status: 'error', deferred: true });
+            expect(providerCall).not.toHaveBeenCalled();
+            expect(
+                reservationFrom(usageTracker.tryReserveBudget.mock.results[0]?.value).release,
+            ).toHaveBeenCalledOnce();
+        },
+    );
+
+    it.each([false, true])(
+        'reserves actual OCR prompt growth and releases it after settlement (failure=%s)',
+        async (fail) => {
+            const text = '漢'.repeat(5000);
+            const imageTranslator = vi.fn(async (_image, _mime, _target, resolve) => {
+                const vision = await resolve();
+                expect(vision.prompt.user).toBe(text);
+                if (fail)
+                    throw new ProviderOrchestratorError('Invalid response', {
+                        provider: 'vertex',
+                        errorType: 'unknown',
+                        inputTokens: 5000,
+                        outputTokens: 20,
+                    });
+                return {
+                    text: 'done',
+                    hasText: true,
+                    regions: [],
+                    route: 'vision',
+                    inputTokens: 5000,
+                    outputTokens: 20,
+                };
+            });
+            const { service, usageTracker } = createService({
+                imageTranslator,
+                storeOverrides: { maxInputLength: 10000 },
+            });
+            const result = await service.processImage(
+                createImageRequest({
+                    resolveVision: async () => ({
+                        text,
+                        imageWidth: 100,
+                        imageHeight: 100,
+                        regions: [],
+                    }),
+                }),
+            );
+            expect(result.status).toBe(fail ? 'error' : 'success');
+            expect(usageTracker.tryReserveBudget).toHaveBeenCalledTimes(2);
+            const extra = usageTracker.tryReserveBudget.mock.calls[1]![0];
+            const initial = usageTracker.tryReserveBudget.mock.calls[0]![0];
+            expect(extra.estimatedInputTokens).toBeGreaterThan(0);
+            expect(extra.estimatedOutputTokens).toBe(0);
+            expect(initial.estimatedInputTokens + extra.estimatedInputTokens).toBe(
+                _test.estimateBudgetTokens(
+                    buildTranslationPrompt(text, 'auto', '', [], true),
+                    1000,
+                    'vertex',
+                ).estimatedInputTokens,
+            );
+            expect(usageTracker.record).toHaveBeenCalledOnce();
+            expect(usageTracker.record).toHaveBeenCalledWith(5000, 20, expect.anything());
+            const extraReservation = reservationFrom(
+                usageTracker.tryReserveBudget.mock.results[1]?.value,
+            );
+            expect(extraReservation.release).toHaveBeenCalledOnce();
+            expect(extraReservation.settle).not.toHaveBeenCalled();
+        },
+    );
+
+    it('does not call the OCR text provider when the extra budget cannot be reserved', async () => {
+        const usageTracker = createUsageMock();
+        const initialReservation = { settle: vi.fn(), release: vi.fn() };
+        usageTracker.tryReserveBudget
+            .mockReturnValueOnce({ allowed: true, reservation: initialReservation })
+            .mockReturnValueOnce(rejectedBudget());
+        const providerCall = vi.fn();
+        const imageTranslator = vi.fn(async (_image, _mime, _target, resolve) => {
+            await resolve();
+            providerCall();
+            throw new Error('must not reach provider');
+        });
+        const { service, metrics } = createService({
+            imageTranslator,
+            usageTracker,
+            storeOverrides: { maxInputLength: 10000 },
+        });
+        const result = await service.processImage(
+            createImageRequest({
+                resolveVision: async () => ({
+                    text: '漢'.repeat(5000),
+                    imageWidth: 100,
+                    imageHeight: 100,
+                    regions: [],
+                }),
+            }),
+        );
+        expect(result.status).toBe('error');
+        expect(providerCall).not.toHaveBeenCalled();
+        expect(initialReservation.release).toHaveBeenCalledOnce();
+        expect(initialReservation.settle).not.toHaveBeenCalled();
+        expect(metrics.snapshot().budgetExceededTotal).toBe(1);
+    });
+
+    it('checks access before downloading images and releases capacity after a failed deferral', async () => {
+        const request = createImageRequest();
+        const denied = createService({ storeOverrides: { allowedGuildIds: [] } });
+        expect((await denied.service.processImage(request)).status).toBe('blocked');
+        expect(request.resolveImage).not.toHaveBeenCalled();
+        const runtimeLimiter = new TranslationRuntimeLimiter();
+        const { service } = createService({ runtimeLimiter });
+        expect(
+            (
+                await service.processImage(
+                    createImageRequest({
+                        beforeTranslate: async () => {
+                            throw new Error('defer failed');
+                        },
+                    }),
+                )
+            ).status,
+        ).toBe('error');
+        expect(runtimeLimiter.snapshot().inflight).toBe(0);
     });
 
     it('should settle tokens for a direct no-text result', async () => {
@@ -657,222 +794,6 @@ describe('TranslationService', () => {
                 }),
             ]),
         );
-    });
-
-    it('should resolve Lens text after access checks and defer only once', async () => {
-        const resolveText = vi.fn(async () => 'Text from image');
-        const beforeTranslate = vi.fn(async () => undefined);
-        const { service, translator, log, loggerState } = createService();
-
-        const result = await service.process({
-            command: 'babel',
-            commandLabel: 'Babel Lens (context menu)',
-            guildId: 'guild-1',
-            userId: 'user1',
-            userTag: 'user#0001',
-            locale: 'en-US',
-            preserveNumberedMarkers: true,
-            resolveText,
-            beforeTranslate,
-        });
-
-        expect(result.status).toBe('success');
-        expect(resolveText).toHaveBeenCalledOnce();
-        expect(beforeTranslate).toHaveBeenCalledOnce();
-        expect(translator).toHaveBeenCalledWith(
-            'Text from image',
-            expect.any(String),
-            expect.objectContaining({ preserveNumberedMarkers: true }),
-        );
-        expect(log.getRecent(1)[0]).toMatchObject({
-            type: 'translation',
-            command: 'Babel Lens (context menu)',
-        });
-        expect(loggerState.entries).toEqual(
-            expect.arrayContaining([
-                expect.objectContaining({
-                    event: 'translation.request.completed',
-                    commandLabel: 'Babel Lens (context menu)',
-                }),
-            ]),
-        );
-
-        const blockedResolver = vi.fn(async () => 'should not run');
-        const { service: blockedService } = createService({
-            storeOverrides: { allowedGuildIds: [] },
-        });
-        await blockedService.process({
-            command: 'babel',
-            commandLabel: 'Babel Lens (context menu)',
-            guildId: 'guild-1',
-            userId: 'user1',
-            userTag: 'user#0001',
-            resolveText: blockedResolver,
-        });
-        expect(blockedResolver).not.toHaveBeenCalled();
-
-        const { service: failedService, log: failedLog } = createService();
-        const failedResult = await failedService.process({
-            command: 'babel',
-            commandLabel: 'Babel Lens (context menu)',
-            guildId: 'guild-1',
-            userId: 'user1',
-            userTag: 'user#0001',
-            requestId: 'req-lens-ocr-failed',
-            resolveText: async () => {
-                throw new Error('Cloud Vision request failed (500)');
-            },
-        });
-        expect(failedResult.status).toBe('error');
-        expect(failedLog.getRecent(1)[0]).toMatchObject({
-            type: 'error',
-            command: 'Babel Lens (context menu)',
-            requestId: 'req-lens-ocr-failed',
-            errorType: 'server_error',
-        });
-    });
-
-    it('should preserve deferred state when Lens translation is blocked after OCR', async () => {
-        const beforeTranslate = vi.fn(async () => undefined);
-        const usageTracker = createUsageMock();
-        usageTracker.tryReserveBudget.mockReturnValueOnce(rejectedBudget());
-        const { service } = createService({ usageTracker });
-
-        const result = await service.process({
-            command: 'babel',
-            commandLabel: 'Babel Lens (context menu)',
-            guildId: 'guild-1',
-            userId: 'user1',
-            userTag: 'user#0001',
-            resolveText: async () => 'Text from image',
-            beforeTranslate,
-        });
-
-        expect(beforeTranslate).toHaveBeenCalledOnce();
-        expect(result).toEqual({
-            status: 'blocked',
-            message: 'Translation budget limit reached. Please try again later.',
-            deferred: true,
-        });
-    });
-
-    it('should preserve deferred state when Lens translation cannot re-enter the runtime', async () => {
-        const run = vi.fn(async (task) =>
-            task({
-                queued: false,
-                waitMs: 0,
-                snapshot: {},
-            }),
-        );
-        const runtimeLimiter = {
-            acquire: vi
-                .fn()
-                .mockReturnValueOnce({
-                    accepted: true,
-                    reservation: { queued: false, run, cancel: vi.fn() },
-                })
-                .mockReturnValueOnce({
-                    accepted: false,
-                    reason: 'global_queue_full',
-                    snapshot: {},
-                }),
-            snapshot: vi.fn(() => ({})),
-        };
-        const { service } = createService({ runtimeLimiter: runtimeLimiter as never });
-
-        const result = await service.process({
-            command: 'babel',
-            commandLabel: 'Babel Lens (context menu)',
-            guildId: 'guild-1',
-            userId: 'user1',
-            userTag: 'user#0001',
-            resolveText: async () => 'Text from image',
-            beforeTranslate: async () => undefined,
-        });
-
-        expect(result).toEqual({
-            status: 'blocked',
-            message: 'Translation service is busy right now. Please try again in a moment.',
-            deferred: true,
-        });
-    });
-
-    it('should keep Lens translations separate from the plain translation cache', async () => {
-        const { service, translator } = createService();
-        const request = {
-            command: 'babel' as const,
-            guildId: 'guild-1',
-            userTag: 'user#0001',
-            locale: 'en-US',
-            text: '[1] Hello',
-        };
-
-        const plain = await service.process({
-            ...request,
-            commandLabel: 'Babel (context menu)',
-            userId: 'user1',
-        });
-        const lens = await service.process({
-            ...request,
-            commandLabel: 'Babel Lens (context menu)',
-            userId: 'user2',
-            preserveNumberedMarkers: true,
-        });
-
-        expect(plain.status).toBe('success');
-        expect(lens.status).toBe('success');
-        expect(translator).toHaveBeenCalledTimes(2);
-        expect(translator.mock.calls[0]?.[2]).toMatchObject({
-            preserveNumberedMarkers: false,
-        });
-        expect(translator.mock.calls[1]?.[2]).toMatchObject({
-            preserveNumberedMarkers: true,
-        });
-    });
-
-    it('should reserve runtime capacity before resolving Lens text', async () => {
-        const pending = deferred<void>();
-        const firstResolver = vi.fn(async () => {
-            await pending.promise;
-            return 'Text from first image';
-        });
-        const secondResolver = vi.fn(async () => 'Text from second image');
-        const runtimeLimiter = new TranslationRuntimeLimiter({
-            maxConcurrent: 1,
-            maxGlobalQueue: 1,
-            maxGuildQueue: 1,
-            maxUserOutstanding: 1,
-        });
-        const { service } = createService({ runtimeLimiter });
-
-        const first = service.process({
-            command: 'babel',
-            commandLabel: 'Babel Lens (context menu)',
-            guildId: 'guild-1',
-            userId: 'user1',
-            userTag: 'user#0001',
-            resolveText: firstResolver,
-            beforeTranslate: async () => undefined,
-        });
-        await vi.waitFor(() => expect(firstResolver).toHaveBeenCalledOnce());
-
-        const second = await service.process({
-            command: 'babel',
-            commandLabel: 'Babel Lens (context menu)',
-            guildId: 'guild-1',
-            userId: 'user1',
-            userTag: 'user#0001',
-            resolveText: secondResolver,
-        });
-
-        expect(second).toEqual({
-            status: 'blocked',
-            message: 'You already have a translation in progress. Please wait a moment.',
-        });
-        expect(secondResolver).not.toHaveBeenCalled();
-
-        pending.resolve();
-        await expect(first).resolves.toMatchObject({ status: 'success' });
     });
 
     it('should read runtime config once per request', async () => {

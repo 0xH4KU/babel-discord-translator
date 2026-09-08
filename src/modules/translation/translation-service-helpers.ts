@@ -1,3 +1,4 @@
+import { classifyProviderError } from '../../infra/provider-errors.js';
 import type { AppMetricsCollector } from '../../shared/app-metrics.js';
 import type { GuildGlossaryEntry } from '../../shared/types.js';
 import type { RuntimeConfig } from '../config/config-repository.js';
@@ -85,41 +86,8 @@ export function classifyTranslationError(message: string): {
     errorType: string;
     suggestedAction: string;
 } {
-    if (/429|rate/i.test(message)) {
-        return {
-            errorType: 'rate_limit',
-            suggestedAction: suggestedActionForErrorType('rate_limit'),
-        };
-    }
-    if (/401|403|auth|api key|not configured/i.test(message)) {
-        return {
-            errorType: 'auth',
-            suggestedAction: suggestedActionForErrorType('auth'),
-        };
-    }
-    if (/timeout|aborted/i.test(message)) {
-        return {
-            errorType: 'timeout',
-            suggestedAction: suggestedActionForErrorType('timeout'),
-        };
-    }
-    if (/budget/i.test(message)) {
-        return {
-            errorType: 'budget',
-            suggestedAction: suggestedActionForErrorType('budget'),
-        };
-    }
-    if (/5\d\d|server/i.test(message)) {
-        return {
-            errorType: 'server_error',
-            suggestedAction: suggestedActionForErrorType('server_error'),
-        };
-    }
-
-    return {
-        errorType: 'unknown',
-        suggestedAction: suggestedActionForErrorType('unknown'),
-    };
+    const errorType = classifyProviderError(new Error(message));
+    return { errorType, suggestedAction: suggestedActionForErrorType(errorType) };
 }
 
 export function buildGlossaryVersion(entries: GuildGlossaryEntry[]): string {

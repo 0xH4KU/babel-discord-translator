@@ -1,3 +1,4 @@
+import { ProviderResponseError } from '../../infra/provider-errors.js';
 import type { ImageTranslationResult, LensRegion } from '../../shared/types.js';
 import { normalizeRegionTranslation } from './lens-regions.js';
 
@@ -16,7 +17,9 @@ function normalizeRegion(value: unknown): LensRegion | null {
 
     const box = box2d.map(Number);
     if (
-        box.some((coordinate) => !Number.isFinite(coordinate) || coordinate < 0 || coordinate > 1000)
+        box.some(
+            (coordinate) => !Number.isFinite(coordinate) || coordinate < 0 || coordinate > 1000,
+        )
     ) {
         return null;
     }
@@ -37,15 +40,27 @@ export function parseImageTranslationResponse(
     try {
         parsed = JSON.parse(unwrapJson(raw));
     } catch {
-        throw new Error('Invalid Babel Lens JSON response');
+        throw new ProviderResponseError(
+            'Invalid Babel Lens JSON response',
+            inputTokens,
+            outputTokens,
+        );
     }
     if (!parsed || typeof parsed !== 'object') {
-        throw new Error('Invalid Babel Lens response structure');
+        throw new ProviderResponseError(
+            'Invalid Babel Lens response structure',
+            inputTokens,
+            outputTokens,
+        );
     }
 
     const value = parsed as Record<string, unknown>;
     if (typeof value.has_text !== 'boolean') {
-        throw new Error('Invalid Babel Lens response: has_text is required');
+        throw new ProviderResponseError(
+            'Invalid Babel Lens response: has_text is required',
+            inputTokens,
+            outputTokens,
+        );
     }
     if (!value.has_text) {
         return { text: '', hasText: false, regions: [], inputTokens, outputTokens };
@@ -53,7 +68,11 @@ export function parseImageTranslationResponse(
 
     const translation = typeof value.translation === 'string' ? value.translation.trim() : '';
     if (!translation) {
-        throw new Error('Invalid Babel Lens response: translation is required');
+        throw new ProviderResponseError(
+            'Invalid Babel Lens response: translation is required',
+            inputTokens,
+            outputTokens,
+        );
     }
 
     const rawRegions = value.regions;

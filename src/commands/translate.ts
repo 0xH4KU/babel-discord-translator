@@ -1,3 +1,4 @@
+import { sendPrivateChunks, replyToTranslationFailure } from '../shared/discord-reply.js';
 import {
     MessageFlags,
     PermissionFlagsBits,
@@ -11,17 +12,6 @@ import { appLogger, createRequestId } from '../shared/structured-logger.js';
 import type { TranslateCommandDeps } from '../shared/types.js';
 
 type TranslateVisibility = 'public' | 'private';
-
-async function sendPrivateChunks(
-    interaction: ChatInputCommandInteraction,
-    messages: string[],
-): Promise<void> {
-    await interaction.editReply({ content: messages[0] ?? '' });
-
-    for (const message of messages.slice(1)) {
-        await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
-    }
-}
 
 /**
  * Handle /translate command — translate text and send publicly via webhook.
@@ -73,17 +63,8 @@ export async function handleTranslate(
         beforeTranslate: () => interaction.deferReply({ flags: MessageFlags.Ephemeral }),
     });
 
-    if (result.status === 'blocked') {
-        await interaction.reply({ content: result.message, flags: MessageFlags.Ephemeral });
-        return;
-    }
-
-    if (result.status === 'error') {
-        if (result.deferred) {
-            await interaction.editReply({ content: result.message });
-        } else {
-            await interaction.reply({ content: result.message, flags: MessageFlags.Ephemeral });
-        }
+    if (result.status !== 'success') {
+        await replyToTranslationFailure(interaction, result);
         return;
     }
 

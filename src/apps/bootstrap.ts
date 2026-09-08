@@ -40,6 +40,8 @@ interface SharedBabelRuntime {
     metrics: AppMetrics;
     runtimeLimiter: TranslationRuntimeLimiter;
     renderLimiter: TranslationRuntimeLimiter;
+    acceptingInteractions: boolean;
+    pendingInteractions: Set<Promise<void>>;
 }
 
 interface ProfileBabelRuntime {
@@ -89,6 +91,8 @@ function createSharedRuntime(): SharedBabelRuntime {
     const runtimeConfig = configRepository.getRuntimeConfig();
 
     return {
+        acceptingInteractions: true,
+        pendingInteractions: new Set(),
         config,
         cache: new TranslationCache(runtimeConfig.cacheMaxSize),
         ocrCache: new TranslationCache(OCR_CACHE_MAX_SIZE),
@@ -162,39 +166,56 @@ function createProfileRuntime(
     const client = createDiscordClient();
 
     client.on(Events.InteractionCreate, async (interaction) => {
-        if (interaction.isChatInputCommand()) {
-            switch (interaction.commandName) {
-                case 'setlang':
-                    return handleSetlang(interaction, { profile });
-                case 'translate':
-                    if (profile.enableTranslateCommand && webhookService) {
-                        return handleTranslate(interaction, { translationService, webhookService });
-                    }
-                    return;
-                case 'help':
-                    return handleHelp(interaction, { profile });
-                case 'mylang':
-                    return handleMylang(interaction, { profile });
+        if (!shared.acceptingInteractions) return;
+        const task = (async () => {
+            if (interaction.isChatInputCommand()) {
+                switch (interaction.commandName) {
+                    case 'setlang':
+                        return handleSetlang(interaction, { profile });
+                    case 'translate':
+                        if (profile.enableTranslateCommand && webhookService) {
+                            return handleTranslate(interaction, {
+                                translationService,
+                                webhookService,
+                            });
+                        }
+                        return;
+                    case 'help':
+                        return handleHelp(interaction, { profile });
+                    case 'mylang':
+                        return handleMylang(interaction, { profile });
+                }
             }
-        }
 
-        if (
-            interaction.isMessageContextMenuCommand() &&
-            interaction.commandName === profile.commandName
-        ) {
-            return handleBabel(interaction, { translationService, profile });
-        }
+            if (
+                interaction.isMessageContextMenuCommand() &&
+                interaction.commandName === profile.commandName
+            ) {
+                return handleBabel(interaction, { translationService, profile });
+            }
 
-        if (
-            interaction.isMessageContextMenuCommand() &&
-            interaction.commandName === BABEL_LENS_COMMAND_NAME
-        ) {
-            return handleBabelLens(interaction, {
-                translationService,
-                ocrCache: shared.ocrCache,
-                renderLimiter: shared.renderLimiter,
-                profile,
+            if (
+                interaction.isMessageContextMenuCommand() &&
+                interaction.commandName === BABEL_LENS_COMMAND_NAME
+            ) {
+                return handleBabelLens(interaction, {
+                    translationService,
+                    ocrCache: shared.ocrCache,
+                    renderLimiter: shared.renderLimiter,
+                    profile,
+                });
+            }
+        })();
+        shared.pendingInteractions.add(task);
+        try {
+            await task;
+        } catch (error) {
+            appLogger.error('discord.interaction.failed', {
+                app: profile.id,
+                error: error instanceof Error ? error.message : String(error),
             });
+        } finally {
+            shared.pendingInteractions.delete(task);
         }
     });
 
@@ -315,6 +336,10 @@ export async function startBabelApps(profiles: AppProfile[]): Promise<void> {
         getDashboardApp: () => dashboardApp,
         getDashboardServer: () => dashboardServer,
         timers: cooldownIntervals,
+        stopAccepting: () => {
+            shared.acceptingInteractions = false;
+        },
+        drain: () => Promise.allSettled(shared.pendingInteractions),
         cleanupTasks: [closeSqliteDatabase],
     });
 

@@ -302,6 +302,7 @@ All configuration is managed through the web dashboard. The `.env` file only nee
 | `DISCORD_TOKEN`       | Discord bot token                                                                       | _required_                                        |
 | `PORT`                | Platform-provided dashboard web server port; takes precedence over `DASHBOARD_PORT`     | unset                                             |
 | `DASHBOARD_PORT`      | Dashboard web server port                                                               | `3000`                                            |
+| `DASHBOARD_TRUSTED_PROXIES` | Trusted reverse-proxy IPs/CIDRs, comma-separated; see deployment guide | empty (direct connections) |
 | `DASHBOARD_HOST`      | Dashboard bind host                                                                     | `0.0.0.0`                                         |
 | `DASHBOARD_PASSWORD`  | Dashboard login password                                                                | `admin` (development only; refused in production) |
 | `BABEL_METRICS_TOKEN` | Bearer/header token for `GET /metrics`; required by default for production public binds | unset                                             |

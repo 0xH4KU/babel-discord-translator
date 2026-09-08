@@ -14,7 +14,8 @@ import {
     extractRegionTranslations,
     normalizeRegionTranslation,
 } from '../modules/translation/lens-regions.js';
-import { ProviderResponseError } from './provider-errors.js';
+import { ProviderResponseError, classifyProviderError } from './provider-errors.js';
+export { classifyProviderError } from './provider-errors.js';
 
 export interface TranslateOptions {
     logContext?: Pick<StructuredLogFields, 'requestId' | 'guildId' | 'userId' | 'command'>;
@@ -121,21 +122,6 @@ function resolveProviderOrder(
         default:
             return [providers.get('vertex')].filter(Boolean) as TranslationProvider[];
     }
-}
-
-export function classifyProviderError(error: Error | null): string {
-    if (error && 'errorType' in error && typeof error.errorType === 'string') {
-        return error.errorType;
-    }
-    if (error?.name === 'TimeoutError' || error?.name === 'AbortError') return 'timeout';
-
-    const message = error?.message ?? '';
-    if (/429|rate/i.test(message)) return 'rate_limit';
-    if (/401|403|auth|api key|not configured/i.test(message)) return 'auth';
-    if (/timeout|aborted/i.test(message)) return 'timeout';
-    if (/5\d\d|server/i.test(message)) return 'server_error';
-    if (/budget/i.test(message)) return 'budget';
-    return 'unknown';
 }
 
 function toError(error: unknown): Error {

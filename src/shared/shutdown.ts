@@ -9,6 +9,8 @@ export interface GracefulShutdownDeps {
     getDashboardApp?: () => express.Express | null;
     getDashboardServer?: () => Pick<Server, 'close' | 'listening'> | null;
     timers?: Array<NodeJS.Timeout | null | undefined>;
+    stopAccepting?: () => void;
+    drain?: () => Promise<unknown>;
     cleanupTasks?: Array<(() => void | Promise<void>) | null | undefined>;
     timeoutMs?: number;
     logger?: StructuredLogger;
@@ -48,8 +50,10 @@ export function createGracefulShutdownHandler({
     getDashboardApp,
     getDashboardServer,
     timers = [],
+    stopAccepting,
+    drain,
     cleanupTasks = [],
-    timeoutMs = 10_000,
+    timeoutMs = 90_000,
     logger = appLogger.child({ component: 'shutdown' }),
     exit = (code: number) => {
         process.exit(code);
@@ -75,6 +79,7 @@ export function createGracefulShutdownHandler({
             const errors: Error[] = [];
 
             try {
+                stopAccepting?.();
                 stopTimers(timers);
 
                 try {
@@ -103,10 +108,12 @@ export function createGracefulShutdownHandler({
                     });
                 }
 
+                await drain?.();
+
                 const uniqueClients = [...new Set(clients)];
                 for (const discordClient of uniqueClients) {
                     try {
-                        discordClient.destroy();
+                        await discordClient.destroy();
                         logger.info('shutdown.discord_client.destroyed', { signal });
                     } catch (error) {
                         errors.push(error as Error);

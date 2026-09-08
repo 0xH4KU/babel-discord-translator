@@ -300,12 +300,7 @@ export async function generateImageTranslationContent(
         );
     }
 
-    try {
-        return parseImageTranslationResponse(result, inputTokens, outputTokens);
-    } catch (error) {
-        const cause = error instanceof Error ? error : new Error(String(error));
-        throw new ProviderResponseError(cause.message, inputTokens, outputTokens, { cause });
-    }
+    return parseImageTranslationResponse(result, inputTokens, outputTokens);
 }
 
 export async function generateTranslationContent(

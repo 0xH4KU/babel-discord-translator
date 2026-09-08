@@ -4,6 +4,7 @@ services:
     image: babel-discord-translator:local
     container_name: babel-translator
     restart: unless-stopped
+    stop_grace_period: 95s
     env_file:
       - .env
     environment:

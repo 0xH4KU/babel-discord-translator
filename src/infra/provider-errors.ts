@@ -68,3 +68,18 @@ export class ProviderResponseError extends Error {
         this.outputTokens = outputTokens;
     }
 }
+
+export function classifyProviderError(error: Error | null): string {
+    if (error && 'errorType' in error && typeof error.errorType === 'string') {
+        return error.errorType;
+    }
+    if (error?.name === 'TimeoutError' || error?.name === 'AbortError') return 'timeout';
+
+    const message = error?.message ?? '';
+    if (/429|rate/i.test(message)) return 'rate_limit';
+    if (/401|403|auth|api key|not configured/i.test(message)) return 'auth';
+    if (/timeout|aborted/i.test(message)) return 'timeout';
+    if (/budget/i.test(message)) return 'budget';
+    if (/5\d\d|server/i.test(message)) return 'server_error';
+    return 'unknown';
+}

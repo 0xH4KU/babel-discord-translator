@@ -23,37 +23,13 @@ function renderVisionLimitControl(scope, scopeId, data) {
     </div>`;
 }
 
-async function refreshVisionLimits(scope) {
-    if (scope === 'guild') {
-        const response = await api('/guild-budgets');
-        guildBudgetData = await response.json();
-        renderGuilds();
-        return;
-    }
-
-    const response = await api('/user-budgets');
-    const payload = await response.json();
-    updateAccessUsersFromBudgetPayload(payload);
-    userProfiles = { ...userProfiles, ...(payload.profiles || {}) };
-    renderAllowedUsers();
-}
-
-async function updateVisionLimit(scope, scopeId, limit) {
-    if (scope !== 'guild' && scope !== 'user') return;
-    const path = scope === 'guild' ? '/guild-budgets/' : '/user-budgets/';
-    const response = await api(path + scopeId, {
-        method: 'POST',
-        body: JSON.stringify({ visionMonthlyImageLimit: limit }),
-    });
-
-    if (!response.ok) {
-        const result = await response.json().catch(() => ({}));
-        showToast(result.error || 'Save failed', true);
-        return;
-    }
-
-    showToast(limit === null ? 'Vision limit reset' : 'Vision limit saved');
-    await refreshVisionLimits(scope);
+function updateVisionLimit(scope, scopeId, limit) {
+    return updateBudget(
+        scope,
+        scopeId,
+        { visionMonthlyImageLimit: limit },
+        limit === null ? 'Vision limit reset' : 'Vision limit saved',
+    );
 }
 
 async function saveVisionLimit(scope, scopeId) {
