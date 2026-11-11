@@ -44,7 +44,7 @@ export async function detectTextWithBudget(
 ): Promise<VisionTextResult> {
     const { apiKey, limit } = assertVisionAvailable(quotaScope);
     const hash = createHash('sha256').update(image).digest('hex');
-    const cacheKey = `vision:text:v3:${hash}`;
+    const cacheKey = `vision:text:v4:${hash}`;
     const cached = ocrCache.get(cacheKey);
     if (cached !== null) return JSON.parse(cached) as VisionTextResult;
 
@@ -85,6 +85,7 @@ export async function detectTextWithBudget(
             scopeUsed: quota.scopeUsed,
             detectedCharacters: detected.text.length,
             detectedRegions: detected.regions.length,
+            detectedUnits: detected.units?.length ?? 0,
         });
         return detected;
     })();

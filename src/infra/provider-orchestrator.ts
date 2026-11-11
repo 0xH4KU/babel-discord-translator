@@ -5,11 +5,13 @@ import type {
     ImageTranslationRequest,
     ImageTranslationResult,
     LensRegion,
+    OcrTextUnit,
     TranslationPrompt,
     TranslationProviderMode,
     TranslationResult,
 } from '../shared/types.js';
 import type { RuntimeConfig } from '../modules/config/config-repository.js';
+import { parseOcrImageTranslationResponse } from '../modules/translation/lens-model.js';
 import {
     extractRegionTranslations,
     normalizeRegionTranslation,
@@ -56,10 +58,12 @@ export interface VisionTranslationResolution {
     hasText: boolean;
     prompt?: TranslationPrompt;
     boxes?: LensRegion['box_2d'][];
+    ocrUnits?: OcrTextUnit[];
 }
 
 export interface ProviderImageTranslationRequest extends ImageTranslationRequest {
     resolveVision: () => Promise<VisionTranslationResolution>;
+    resolveHybridVision?: () => Promise<VisionTranslationResolution | null>;
 }
 
 export interface ProviderImageOrchestratorResult extends ImageTranslationResult {
@@ -350,11 +354,51 @@ export function createProviderOrchestrator(
             const resolveVision = (): Promise<VisionTranslationResolution> =>
                 (visionPromise ??= request.resolveVision());
 
+            let hybridVisionPromise: Promise<VisionTranslationResolution | null> | null = null;
+            const resolveHybridVision = (): Promise<VisionTranslationResolution | null> =>
+                (hybridVisionPromise ??= request.resolveHybridVision
+                    ? request.resolveHybridVision()
+                    : Promise.resolve(null));
+
             return runProviders<ImageTranslationResult>(
                 'image',
                 options,
                 async (provider, providerOptions) => {
                     if (provider.supportsImageInput(providerOptions)) {
+                        const hybrid = await resolveHybridVision();
+                        if (hybrid) {
+                            if (!hybrid.hasText) {
+                                return {
+                                    result: {
+                                        text: '',
+                                        hasText: false,
+                                        regions: [],
+                                        inputTokens: 0,
+                                        outputTokens: 0,
+                                        route: 'hybrid' as const,
+                                    },
+                                    providerCalled: false,
+                                    route: 'hybrid' as const,
+                                };
+                            }
+                            if (hybrid.prompt && hybrid.ocrUnits && hybrid.ocrUnits.length > 0) {
+                                const result = await provider.translateImage(
+                                    {
+                                        ...request,
+                                        prompt: hybrid.prompt,
+                                        ocrUnits: hybrid.ocrUnits,
+                                    },
+                                    maxOutputTokens,
+                                    providerOptions,
+                                );
+                                return {
+                                    result: { ...result, route: 'hybrid' as const },
+                                    providerCalled: true,
+                                    route: 'hybrid' as const,
+                                };
+                            }
+                        }
+
                         const result = await provider.translateImage(
                             request,
                             maxOutputTokens,
@@ -400,6 +444,27 @@ export function createProviderOrchestrator(
                         maxOutputTokens,
                         providerOptions,
                     );
+                    if (vision.ocrUnits && vision.ocrUnits.length > 0) {
+                        try {
+                            const parsed = parseOcrImageTranslationResponse(
+                                translated.text,
+                                vision.ocrUnits,
+                                translated.inputTokens,
+                                translated.outputTokens,
+                            );
+                            return {
+                                result: {
+                                    ...parsed,
+                                    route: 'vision' as const,
+                                },
+                                providerCalled: true,
+                                route: 'vision' as const,
+                            };
+                        } catch (error) {
+                            if (!(error instanceof ProviderResponseError)) throw error;
+                        }
+                    }
+
                     const boxes = vision.boxes ?? [];
                     const normalized = normalizeRegionTranslation(translated.text, boxes.length);
                     const regions = normalized.markersMatch
@@ -413,7 +478,7 @@ export function createProviderOrchestrator(
                         result: {
                             ...translated,
                             text: normalized.displayText,
-                            hasText: true,
+                            hasText: Boolean(normalized.displayText),
                             regions,
                             route: 'vision' as const,
                             ...(warnings ? { warnings } : {}),

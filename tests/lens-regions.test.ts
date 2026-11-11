@@ -4,6 +4,7 @@ import {
     extractRegionTranslations,
     normalizeRegionTranslation,
     visionRegionsToBoxes,
+    visionResultToOcrUnits,
 } from '../src/modules/translation/lens-regions.js';
 
 describe('Babel Lens region markers', () => {
@@ -52,5 +53,26 @@ describe('Babel Lens region markers', () => {
             { translation: 'translated', box_2d: [100, 100, 400, 500] },
         ]);
         expect(extractRegionTranslations('missing marker', boxes)).toEqual([]);
+    });
+
+    it('should derive OCR units from Vision units or regions', () => {
+        expect(
+            visionResultToOcrUnits({
+                text: 'one',
+                imageWidth: 200,
+                imageHeight: 100,
+                regions: [{ text: 'one', x: 20, y: 10, width: 80, height: 30 }],
+            }),
+        ).toEqual([{ id: 1, text: 'one', box_2d: [100, 100, 400, 500] }]);
+
+        expect(
+            visionResultToOcrUnits({
+                text: 'preset',
+                imageWidth: 100,
+                imageHeight: 100,
+                regions: [],
+                units: [{ id: 1, text: 'preset', box_2d: [10, 20, 30, 40] }],
+            }),
+        ).toEqual([{ id: 1, text: 'preset', box_2d: [10, 20, 30, 40] }]);
     });
 });

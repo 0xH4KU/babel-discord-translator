@@ -62,7 +62,7 @@ import type {
     TranslationResult,
 } from '../../shared/types.js';
 import type { NormalizedLensImage } from './lens-image.js';
-import { formatDetectedText, visionRegionsToBoxes } from './lens-regions.js';
+import { visionRegionsToBoxes, visionResultToOcrUnits } from './lens-regions.js';
 import type { VisionTranslationResolution } from '../../infra/provider-orchestrator.js';
 
 interface ConfigRepositoryLike {
@@ -102,7 +102,9 @@ interface ImageTranslator {
         mimeType: ImageTranslationRequest['mimeType'],
         targetLanguage: string,
         resolveVision: () => Promise<VisionTranslationResolution>,
-        options?: TranslatorOptions,
+        options?: TranslatorOptions & {
+            resolveHybridVision?: () => Promise<VisionTranslationResolution | null>;
+        },
     ): Promise<ImageTranslationResult>;
 }
 
@@ -795,11 +797,14 @@ export function createTranslationService({
                 runtimeConfig.translationProvider || 'vertex',
                 LENS_IMAGE_INPUT_TOKENS_PER_CALL,
             );
+            const hybridVisionEnabled = Boolean(
+                runtimeConfig.visionApiKey?.trim() && runtimeConfig.visionMonthlyImageLimit > 0,
+            );
             const cacheKey = buildLensCacheKey({
                 imageHash: normalizedImage.hash,
                 targetLanguage,
                 providerFingerprint: buildProviderFingerprint(runtimeConfig),
-                prompt: `${imagePrompt.system}\n${imagePrompt.user}\nmaxInputLength:${runtimeConfig.maxInputLength}`,
+                prompt: `${imagePrompt.system}\n${imagePrompt.user}\nmaxInputLength:${runtimeConfig.maxInputLength}\nhybridVision:${hybridVisionEnabled}`,
                 glossaryVersion,
                 maxOutputTokens: runtimeConfig.maxOutputTokens || 4096,
             });
@@ -861,31 +866,103 @@ export function createTranslationService({
 
                 if (!result) {
                     const translateAndRecord = async (): Promise<ImageTranslationResult> => {
+                        let detectedPromise: Promise<VisionTextResult> | null = null;
+                        const getDetectedVision = (): Promise<VisionTextResult> =>
+                            (detectedPromise ??= request.resolveVision(normalizedImage.image));
+
+                        const resolveHybridVision =
+                            async (): Promise<VisionTranslationResolution | null> => {
+                                if (!hybridVisionEnabled) return null;
+                                let detected: VisionTextResult;
+                                try {
+                                    detected = await getDetectedVision();
+                                } catch (error) {
+                                    requestLogger.warn('lens.vision.hybrid_fallback_to_direct', {
+                                        error:
+                                            error instanceof Error ? error.message : String(error),
+                                    });
+                                    return null;
+                                }
+                                const units = visionResultToOcrUnits(detected);
+                                if (!detected.text.trim() && units.length === 0) {
+                                    return { hasText: false };
+                                }
+                                if (units.length === 0) {
+                                    return null;
+                                }
+                                const prompt = buildImageTranslationPrompt(
+                                    targetLanguage,
+                                    runtimeConfig.translationPrompt,
+                                    selectedGlossaryEntries,
+                                    { ocrUnits: units, visualContext: true },
+                                );
+                                const hybridEstimate = estimateBudgetTokens(
+                                    prompt,
+                                    runtimeConfig.maxOutputTokens || 4096,
+                                    runtimeConfig.translationProvider || 'vertex',
+                                    LENS_IMAGE_INPUT_TOKENS_PER_CALL,
+                                );
+                                const extraInputTokens =
+                                    hybridEstimate.estimatedInputTokens -
+                                    imageEstimate.estimatedInputTokens;
+                                if (extraInputTokens > 0) {
+                                    const admission = usageTracker.tryReserveBudget({
+                                        ...usageScope,
+                                        estimatedInputTokens: extraInputTokens,
+                                        estimatedOutputTokens: 0,
+                                    });
+                                    if (!admission.allowed) {
+                                        requestLogger.warn(
+                                            'lens.vision.hybrid_budget_fallback_to_direct',
+                                            {
+                                                ...admission.reason,
+                                            },
+                                        );
+                                        return null;
+                                    }
+                                    ocrBudget.reservation?.release();
+                                    ocrBudget.reservation = admission.reservation;
+                                }
+                                return {
+                                    hasText: true,
+                                    prompt,
+                                    ocrUnits: units,
+                                    boxes: units.map((unit) => unit.box_2d),
+                                };
+                            };
+
                         const translated = await imageTranslator(
                             normalizedImage.image,
                             normalizedImage.mimeType,
                             targetLanguage,
                             async () => {
-                                const detected = await request.resolveVision(normalizedImage.image);
+                                const detected = await getDetectedVision();
                                 if (!detected.text.trim()) return { hasText: false };
-                                const bounded = {
-                                    ...detected,
-                                    regions: detected.regions.slice(0, 99),
-                                };
-                                const text = formatDetectedText(bounded);
                                 const maxInputLength = runtimeConfig.maxInputLength || 2000;
-                                if (text.length > maxInputLength) {
+                                if (detected.text.length > maxInputLength) {
                                     throw new Error(
-                                        discordMessages.textTooLong(text.length, maxInputLength),
+                                        discordMessages.textTooLong(
+                                            detected.text.length,
+                                            maxInputLength,
+                                        ),
                                     );
                                 }
-                                const prompt = buildTranslationPrompt(
-                                    text,
-                                    targetLanguage,
-                                    runtimeConfig.translationPrompt,
-                                    selectedGlossaryEntries,
-                                    true,
-                                );
+                                const units = visionResultToOcrUnits(detected);
+                                const prompt =
+                                    units.length > 0
+                                        ? buildImageTranslationPrompt(
+                                              targetLanguage,
+                                              runtimeConfig.translationPrompt,
+                                              selectedGlossaryEntries,
+                                              { ocrUnits: units, visualContext: false },
+                                          )
+                                        : buildTranslationPrompt(
+                                              detected.text,
+                                              targetLanguage,
+                                              runtimeConfig.translationPrompt,
+                                              selectedGlossaryEntries,
+                                              true,
+                                          );
                                 const ocrEstimate = estimateBudgetTokens(
                                     prompt,
                                     runtimeConfig.maxOutputTokens || 4096,
@@ -894,7 +971,7 @@ export function createTranslationService({
                                 const extraInputTokens =
                                     ocrEstimate.estimatedInputTokens -
                                     imageEstimate.estimatedInputTokens;
-                                // Hold the image reservation too: an earlier direct attempt may already have incurred usage.
+                                // Hold the image reservation too: an earlier direct/hybrid attempt may already have incurred usage.
                                 if (extraInputTokens > 0) {
                                     const admission = usageTracker.tryReserveBudget({
                                         ...usageScope,
@@ -910,12 +987,14 @@ export function createTranslationService({
                                         });
                                         throw new Error(messages.budgetExceeded);
                                     }
+                                    ocrBudget.reservation?.release();
                                     ocrBudget.reservation = admission.reservation;
                                 }
                                 return {
                                     hasText: true,
                                     prompt,
-                                    boxes: visionRegionsToBoxes(bounded),
+                                    boxes: visionRegionsToBoxes(detected),
+                                    ...(units.length > 0 ? { ocrUnits: units } : {}),
                                 };
                             },
                             {
@@ -930,6 +1009,7 @@ export function createTranslationService({
                                     ? { glossaryEntries: selectedGlossaryEntries }
                                     : {}),
                                 runtimeConfig,
+                                resolveHybridVision,
                             },
                         );
                         const normalizedResult: ImageTranslationResult = {
@@ -938,6 +1018,7 @@ export function createTranslationService({
                         };
                         if (
                             normalizedResult.route === 'direct' ||
+                            normalizedResult.hasText ||
                             normalizedResult.inputTokens > 0 ||
                             normalizedResult.outputTokens > 0
                         ) {

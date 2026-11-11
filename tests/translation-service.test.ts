@@ -426,7 +426,7 @@ describe('TranslationService', () => {
         expect(usageTracker.record).not.toHaveBeenCalled();
     });
 
-    it('should give Vision the normalized image, marker prompt, and normalized boxes once', async () => {
+    it('should give Vision the normalized image, OCR units prompt, and normalized boxes once', async () => {
         const resolveVision = vi.fn(async (image: Buffer) => {
             expect(image).toEqual(Buffer.from('normalized-image'));
             return {
@@ -438,7 +438,11 @@ describe('TranslationService', () => {
         });
         const imageTranslator = vi.fn(async (_image, _mime, _target, resolve) => {
             const vision = await resolve();
-            expect(vision.prompt?.user).toBe('[[BABEL_REGION_1]] Text from image');
+            expect(vision.prompt?.user).toContain('"id":1');
+            expect(vision.prompt?.user).toContain('Text from image');
+            expect(vision.ocrUnits).toEqual([
+                { id: 1, text: 'Text from image', box_2d: [100, 100, 500, 900] },
+            ]);
             expect(vision.boxes).toEqual([[100, 100, 500, 900]]);
             return {
                 text: '[1] 圖片翻譯',
@@ -458,6 +462,90 @@ describe('TranslationService', () => {
 
         expect(resolveVision).toHaveBeenCalledOnce();
         expect(imageTranslator).toHaveBeenCalledOnce();
+    });
+
+    it('should ground multimodal Hybrid translation with Cloud Vision OCR units and fall back to Direct on Vision quota error', async () => {
+        const resolveVisionOk = vi.fn(async () => ({
+            text: 'Hello hybrid',
+            imageWidth: 100,
+            imageHeight: 50,
+            regions: [{ text: 'Hello hybrid', x: 10, y: 5, width: 80, height: 20 }],
+            units: [
+                {
+                    id: 1,
+                    text: 'Hello hybrid',
+                    box_2d: [100, 100, 500, 900] as [number, number, number, number],
+                },
+            ],
+        }));
+        const resolveVisionQuota = vi.fn(async () => {
+            throw new Error('Babel Lens monthly image limit reached (900/900).');
+        });
+        const imageTranslator = vi.fn(async (_image, _mime, _target, _resolveVision, options) => {
+            const hybrid = await options?.resolveHybridVision?.();
+            if (hybrid) {
+                return {
+                    text: '[1] 混合翻譯',
+                    hasText: true,
+                    regions: [{ translation: '混合翻譯', box_2d: hybrid.ocrUnits![0]!.box_2d }],
+                    route: 'hybrid' as const,
+                    inputTokens: 90,
+                    outputTokens: 15,
+                };
+            }
+            return {
+                text: '[1] 直接翻譯',
+                hasText: true,
+                regions: [{ translation: '直接翻譯', box_2d: [100, 100, 500, 900] }],
+                route: 'direct' as const,
+                inputTokens: 100,
+                outputTokens: 18,
+            };
+        });
+        const { service, loggerState } = createService({
+            imageTranslator,
+            storeOverrides: {
+                vertexAiSupportsImages: true,
+                visionApiKey: 'vision-key',
+                visionMonthlyImageLimit: 900,
+            },
+        });
+
+        const hybridResult = await service.processImage(
+            createImageRequest({ resolveVision: resolveVisionOk }),
+        );
+        expect(hybridResult).toMatchObject({
+            status: 'success',
+            route: 'hybrid',
+            translatedText: '[1] 混合翻譯',
+        });
+
+        const fallbackDirectResult = await service.processImage(
+            createImageRequest({
+                requestId: 'lens-request-fallback',
+                resolveImage: async () => ({
+                    image: Buffer.from('other-image'),
+                    mimeType: 'image/png',
+                    width: 100,
+                    height: 50,
+                    hash: 'other-hash',
+                }),
+                resolveVision: resolveVisionQuota,
+            }),
+        );
+        expect(fallbackDirectResult).toMatchObject({
+            status: 'success',
+            route: 'direct',
+            translatedText: '[1] 直接翻譯',
+        });
+        expect(loggerState.entries).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    level: 'warn',
+                    event: 'lens.vision.hybrid_fallback_to_direct',
+                }),
+            ]),
+        );
     });
 
     it.each([false, true])(

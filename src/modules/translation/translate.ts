@@ -116,6 +116,7 @@ export async function translateImage(
         metrics?: AppMetricsCollector;
         glossaryEntries?: TranslationGlossaryPromptEntry[];
         runtimeConfig?: RuntimeConfig;
+        resolveHybridVision?: () => Promise<VisionTranslationResolution | null>;
     },
 ): Promise<ProviderImageOrchestratorResult> {
     const config = options?.runtimeConfig ?? configRepository.getRuntimeConfig();
@@ -125,7 +126,15 @@ export async function translateImage(
         options?.glossaryEntries,
     );
     return getOrchestrator(config.translationProvider || 'vertex').translateImage(
-        { image, mimeType, prompt, resolveVision },
+        {
+            image,
+            mimeType,
+            prompt,
+            resolveVision,
+            ...(options?.resolveHybridVision
+                ? { resolveHybridVision: options.resolveHybridVision }
+                : {}),
+        },
         config.maxOutputTokens || 4096,
         options,
     );

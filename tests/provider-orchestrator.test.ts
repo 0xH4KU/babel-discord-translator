@@ -419,4 +419,130 @@ describe('ProviderOrchestrator diagnostics', () => {
         expect(vertex.translate).not.toHaveBeenCalled();
         expect(metrics.snapshot().providers.vertex).toBeUndefined();
     });
+
+    it('uses Hybrid OCR units when resolveHybridVision returns grounded units for a multimodal provider', async () => {
+        const vertex = provider('vertex', 'ok', true);
+        const hybridPrompt = { system: 'Hybrid system', user: 'Hybrid OCR units' };
+        const ocrUnits = [
+            { id: 1, text: 'Hello', box_2d: [10, 20, 80, 300] as [number, number, number, number] },
+        ];
+        const resolveHybridVision = vi.fn(async () => ({
+            hasText: true,
+            prompt: hybridPrompt,
+            ocrUnits,
+        }));
+        const orchestrator = createProviderOrchestrator('vertex', new Map([['vertex', vertex]]));
+
+        const result = await orchestrator.translateImage(
+            { ...IMAGE_REQUEST, resolveVision: vi.fn(), resolveHybridVision },
+            100,
+        );
+
+        expect(resolveHybridVision).toHaveBeenCalledOnce();
+        expect(vertex.translateImage).toHaveBeenCalledWith(
+            expect.objectContaining({
+                prompt: hybridPrompt,
+                ocrUnits,
+            }),
+            100,
+            expect.anything(),
+        );
+        expect(result).toMatchObject({
+            provider: 'vertex',
+            route: 'hybrid',
+            fallback: false,
+        });
+    });
+
+    it('skips calling multimodal provider when Hybrid OCR detects no text', async () => {
+        const vertex = provider('vertex', 'ok', true);
+        const orchestrator = createProviderOrchestrator('vertex', new Map([['vertex', vertex]]));
+
+        const result = await orchestrator.translateImage(
+            {
+                ...IMAGE_REQUEST,
+                resolveVision: vi.fn(),
+                resolveHybridVision: async () => ({ hasText: false }),
+            },
+            100,
+        );
+
+        expect(result).toMatchObject({
+            hasText: false,
+            route: 'hybrid',
+            inputTokens: 0,
+            outputTokens: 0,
+        });
+        expect(vertex.translateImage).not.toHaveBeenCalled();
+    });
+
+    it('parses OCR unit JSON responses on text-only Vision fallback and tolerates plain text', async () => {
+        const vertex = provider('vertex', 'ok', false);
+        const ocrUnits = [
+            {
+                id: 1,
+                text: 'Hello world',
+                box_2d: [10, 20, 80, 400] as [number, number, number, number],
+            },
+            {
+                id: 2,
+                text: '5G',
+                box_2d: [0, 900, 20, 990] as [number, number, number, number],
+            },
+        ];
+        vi.mocked(vertex.translate)
+            .mockResolvedValueOnce({
+                text: JSON.stringify({
+                    has_text: true,
+                    regions: [{ ids: [1], translation: '你好世界' }],
+                }),
+                inputTokens: 15,
+                outputTokens: 6,
+            })
+            .mockResolvedValueOnce({
+                text: '純文字回退翻譯',
+                inputTokens: 10,
+                outputTokens: 4,
+            });
+        const orchestrator = createProviderOrchestrator('vertex', new Map([['vertex', vertex]]));
+
+        const structured = await orchestrator.translateImage(
+            {
+                ...IMAGE_REQUEST,
+                resolveVision: async () => ({
+                    hasText: true,
+                    prompt: TRANSLATION_PROMPT,
+                    ocrUnits,
+                    boxes: ocrUnits.map((unit) => unit.box_2d),
+                }),
+            },
+            100,
+        );
+        expect(structured).toMatchObject({
+            text: '[1] 你好世界',
+            hasText: true,
+            route: 'vision',
+            regions: [{ translation: '你好世界', box_2d: [10, 20, 80, 400], source: 'Hello world' }],
+        });
+
+        const plainFallback = await orchestrator.translateImage(
+            {
+                ...IMAGE_REQUEST,
+                resolveVision: async () => ({
+                    hasText: true,
+                    prompt: TRANSLATION_PROMPT,
+                    ocrUnits,
+                    boxes: ocrUnits.map((unit) => unit.box_2d),
+                }),
+            },
+            100,
+        );
+        expect(plainFallback).toMatchObject({
+            text: '純文字回退翻譯',
+            hasText: true,
+            route: 'vision',
+            regions: [],
+            warnings: ['invalid_regions'],
+        });
+    });
 });

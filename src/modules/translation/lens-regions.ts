@@ -1,7 +1,8 @@
 import type { VisionTextResult } from '../../infra/cloud-vision-client.js';
-import type { LensRegion } from '../../shared/types.js';
+import type { LensRegion, OcrTextUnit } from '../../shared/types.js';
 
 const REGION_MARKER_PATTERN = /\[\[BABEL_REGION_(\d+)\]\]/gu;
+const MAX_OCR_PROMPT_UNITS = 250;
 
 function regionMarker(index: number): string {
     return `[[BABEL_REGION_${index}]]`;
@@ -60,7 +61,7 @@ export function extractRegionTranslations(
 
 export function visionRegionsToBoxes(detected: VisionTextResult): LensRegion['box_2d'][] {
     if (detected.imageWidth <= 0 || detected.imageHeight <= 0) return [];
-    return detected.regions.slice(0, 99).map((region) => {
+    return detected.regions.slice(0, MAX_OCR_PROMPT_UNITS).map((region) => {
         const ymin = Math.max(
             0,
             Math.min(999, Math.round((region.y / detected.imageHeight) * 1000)),
@@ -85,4 +86,18 @@ export function visionRegionsToBoxes(detected: VisionTextResult): LensRegion['bo
         );
         return [ymin, xmin, ymax, xmax];
     });
+}
+
+export function visionResultToOcrUnits(detected: VisionTextResult): OcrTextUnit[] {
+    if (Array.isArray(detected.units) && detected.units.length > 0) {
+        return detected.units.slice(0, MAX_OCR_PROMPT_UNITS);
+    }
+    const boxes = visionRegionsToBoxes(detected);
+    return boxes
+        .map((box_2d, index) => ({
+            id: index + 1,
+            text: detected.regions[index]?.text?.trim() ?? '',
+            box_2d,
+        }))
+        .filter((unit) => Boolean(unit.text));
 }

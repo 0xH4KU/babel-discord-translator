@@ -1,7 +1,9 @@
+import type { OcrTextUnit } from '../shared/types.js';
+
 const VISION_ENDPOINT = 'https://vision.googleapis.com/v1/images:annotate';
 const VISION_TIMEOUT_MS = 15_000;
 const MIN_BLOCK_CONFIDENCE = 0.7;
-const MAX_REGION_CHARACTERS = 500;
+const MAX_OCR_UNITS = 250;
 
 interface VisionError {
     code?: number;
@@ -15,6 +17,7 @@ interface VisionSymbol {
 
 interface VisionParagraph {
     boundingBox?: { vertices?: Array<{ x?: number; y?: number }> };
+    confidence?: number;
     words?: Array<{ symbols?: VisionSymbol[] }>;
 }
 
@@ -55,6 +58,7 @@ export interface VisionTextResult {
     imageWidth: number;
     imageHeight: number;
     regions: VisionTextRegion[];
+    units?: OcrTextUnit[];
 }
 
 interface DetectTextOptions {
@@ -63,28 +67,32 @@ interface DetectTextOptions {
     signal?: AbortSignal;
 }
 
-function detectedBreak(type?: string): string | undefined {
+function detectedBreak(type?: string): string {
     if (type === 'SPACE' || type === 'SURE_SPACE') return ' ';
     if (type === 'EOL_SURE_SPACE' || type === 'LINE_BREAK') return '\n';
     if (type === 'HYPHEN') return '-';
-    return undefined;
+    return '';
 }
 
 function paragraphText(paragraph: VisionParagraph): string {
     const words = paragraph.words ?? [];
     return words
-        .map((word) => {
-            const symbols = word.symbols ?? [];
-            const text = symbols.map((symbol) => symbol.text ?? '').join('');
-            const suffix = detectedBreak(symbols.at(-1)?.property?.detectedBreak?.type);
-            return text + (suffix ?? '');
-        })
+        .map((word) =>
+            (word.symbols ?? [])
+                .map(
+                    (symbol) =>
+                        `${symbol.text ?? ''}${detectedBreak(symbol.property?.detectedBreak?.type)}`,
+                )
+                .join(''),
+        )
         .join('')
         .trim();
 }
 
-function blockBounds(block: VisionBlock): Omit<VisionTextRegion, 'text'> | null {
-    const points = (block.boundingBox?.vertices ?? []).map((point) => ({
+function polygonBounds(
+    vertices?: Array<{ x?: number; y?: number }>,
+): Omit<VisionTextRegion, 'text'> | null {
+    const points = (vertices ?? []).map((point) => ({
         x: point.x ?? 0,
         y: point.y ?? 0,
     }));
@@ -99,8 +107,19 @@ function blockBounds(block: VisionBlock): Omit<VisionTextRegion, 'text'> | null 
     return width > 0 && height > 0 ? { x, y, width, height } : null;
 }
 
-function blockText(block: VisionBlock): string {
-    return (block.paragraphs ?? []).map(paragraphText).filter(Boolean).join('\n');
+function boundsToBox2d(
+    bounds: Omit<VisionTextRegion, 'text'>,
+    imageWidth: number,
+    imageHeight: number,
+): [number, number, number, number] | null {
+    if (imageWidth <= 0 || imageHeight <= 0) return null;
+    const scale = (value: number, size: number) =>
+        Math.min(1000, Math.max(0, Math.round((value / size) * 1000)));
+    const ymin = scale(bounds.y, imageHeight);
+    const xmin = scale(bounds.x, imageWidth);
+    const ymax = scale(bounds.y + bounds.height, imageHeight);
+    const xmax = scale(bounds.x + bounds.width, imageWidth);
+    return ymin < ymax && xmin < xmax ? [ymin, xmin, ymax, xmax] : null;
 }
 
 function isMeaningfulBlockText(text: string, confidence?: number): boolean {
@@ -118,33 +137,64 @@ function parseVisionText(result?: VisionImageResponse): VisionTextResult {
     const imageHeight = page?.height ?? 0;
     const blocks =
         page?.blocks?.filter((block) => !block.blockType || block.blockType === 'TEXT') ?? [];
-    const recognizedBlocks = blocks
-        .map((block) => ({
-            text: blockText(block),
-            bounds: blockBounds(block),
-            confidence: block.confidence,
-        }))
-        .filter(({ text, confidence }) => isMeaningfulBlockText(text, confidence));
-    const parsedRegions =
-        imageWidth > 0 && imageHeight > 0
-            ? recognizedBlocks.flatMap(({ text, bounds }) => {
-                  return text && bounds ? [{ text, ...bounds }] : [];
-              })
-            : [];
+
+    const recognizedTexts: string[] = [];
+    const regions: VisionTextRegion[] = [];
+    const units: OcrTextUnit[] = [];
+    let allRecognizedBounded = true;
+
+    const pushBounded = (text: string, bounds: Omit<VisionTextRegion, 'text'> | null) => {
+        recognizedTexts.push(text);
+        if (!bounds || imageWidth <= 0 || imageHeight <= 0) {
+            allRecognizedBounded = false;
+            return;
+        }
+        const box2d = boundsToBox2d(bounds, imageWidth, imageHeight);
+        if (!box2d) {
+            allRecognizedBounded = false;
+            return;
+        }
+        regions.push({ text, ...bounds });
+        if (units.length < MAX_OCR_UNITS) {
+            units.push({ id: units.length + 1, text, box_2d: box2d });
+        }
+    };
+
+    for (const block of blocks) {
+        if (block.confidence !== undefined && block.confidence < MIN_BLOCK_CONFIDENCE) continue;
+        const paragraphs = block.paragraphs ?? [];
+        const hasParagraphBoxes = paragraphs.some((p) => (p.boundingBox?.vertices?.length ?? 0) >= 2);
+
+        if (hasParagraphBoxes) {
+            for (const paragraph of paragraphs) {
+                const text = paragraphText(paragraph);
+                if (!isMeaningfulBlockText(text, paragraph.confidence ?? block.confidence)) continue;
+                pushBounded(
+                    text,
+                    polygonBounds(paragraph.boundingBox?.vertices ?? block.boundingBox?.vertices),
+                );
+            }
+        } else {
+            const text = paragraphs.map(paragraphText).filter(Boolean).join('\n');
+            if (!isMeaningfulBlockText(text, block.confidence)) continue;
+            pushBounded(text, polygonBounds(block.boundingBox?.vertices));
+        }
+    }
+
     const text = (
-        recognizedBlocks.map((block) => block.text).join('\n') ||
+        recognizedTexts.join('\n') ||
         (blocks.length === 0
             ? (annotation?.text ?? result?.textAnnotations?.[0]?.description ?? '')
             : '')
     ).trim();
-    // ponytail: dense pages get a plain caption; add layout analysis if dense-region links matter.
-    const regions =
-        parsedRegions.length === recognizedBlocks.length &&
-        parsedRegions.length <= 99 &&
-        text.replace(/\s/gu, '').length <= MAX_REGION_CHARACTERS
-            ? parsedRegions
-            : [];
-    return { text, imageWidth, imageHeight, regions };
+
+    return {
+        text,
+        imageWidth,
+        imageHeight,
+        regions: allRecognizedBounded ? regions : [],
+        units: allRecognizedBounded ? units : [],
+    };
 }
 
 export async function detectTextWithCloudVision(
@@ -165,7 +215,7 @@ export async function detectTextWithCloudVision(
             requests: [
                 {
                     image: { content: image.toString('base64') },
-                    features: [{ type: 'TEXT_DETECTION' }],
+                    features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
                     imageContext: {
                         textDetectionParams: { enableTextDetectionConfidenceScore: true },
                     },
