@@ -126,7 +126,7 @@ describe('Babel Lens command', () => {
         vi.unstubAllGlobals();
     });
 
-    it('should OCR, translate, render, and return an ephemeral image', async () => {
+    it('should OCR, translate, render, and return native text with an annotated ephemeral image', async () => {
         const interaction = createInteraction();
         const translationService = {
             processImage: vi.fn(async (request) => {
@@ -167,12 +167,11 @@ describe('Babel Lens command', () => {
         expect(mocks.detectText).toHaveBeenCalledWith(expect.any(Buffer), {
             apiKey: 'vision-key',
         });
-        expect(mocks.renderImage).toHaveBeenCalledWith(
-            expect.any(Buffer),
-            '[1] 圖片翻譯',
-            [{ translation: '圖片翻譯', box_2d: [100, 50, 300, 850] }],
-        );
+        expect(mocks.renderImage).toHaveBeenCalledWith(expect.any(Buffer), [
+            { translation: '圖片翻譯', box_2d: [100, 50, 300, 850] },
+        ]);
         expect(interaction.editReply).toHaveBeenCalledWith({
+            content: '[1] 圖片翻譯',
             files: [{ attachment: Buffer.from('rendered-image'), name: 'babel-lens.jpg' }],
         });
         expect(interaction.followUp).not.toHaveBeenCalled();
@@ -229,7 +228,7 @@ describe('Babel Lens command', () => {
         );
     });
 
-    it('should omit region boxes when translated markers do not match', async () => {
+    it('should skip rendering an image when regions are empty and reply with native text', async () => {
         const interaction = createInteraction();
         const translationService = {
             processImage: vi.fn(async (request) => {
@@ -240,7 +239,7 @@ describe('Babel Lens command', () => {
                     translatedText: '圖片翻譯',
                     hasText: true,
                     regions: [],
-                    route: 'direct',
+                    route: 'vision',
                     cached: false,
                     targetLanguage: 'zh-TW',
                     langSource: 'locale',
@@ -252,7 +251,90 @@ describe('Babel Lens command', () => {
 
         await handleBabelLens(interaction as never, createCommandDeps(translationService));
 
-        expect(mocks.renderImage).toHaveBeenCalledWith(expect.any(Buffer), '圖片翻譯', []);
+        expect(mocks.renderImage).not.toHaveBeenCalled();
+        expect(interaction.editReply).toHaveBeenCalledWith({ content: '圖片翻譯' });
+    });
+
+    it('should accept Discord embed proxy images and forwarded message snapshots', async () => {
+        const embedInteraction = createInteraction(false);
+        (embedInteraction.targetMessage as Record<string, unknown>).embeds = [
+            {
+                image: {
+                    url: 'https://pbs.twimg.com/media/example.jpg',
+                    proxyURL:
+                        'https://images-ext-1.discordapp.net/external/abc/https/pbs.twimg.com/media/example.jpg',
+                    width: 800,
+                    height: 600,
+                },
+            },
+        ];
+        expect(_test.findImageAttachment(embedInteraction as never)).toEqual({
+            url: 'https://images-ext-1.discordapp.net/external/abc/https/pbs.twimg.com/media/example.jpg',
+            width: 800,
+            height: 600,
+        });
+
+        const forwardedInteraction = createInteraction(false);
+        (forwardedInteraction.targetMessage as Record<string, unknown>).messageSnapshots = new Map([
+            [
+                'snap-1',
+                {
+                    attachments: [
+                        {
+                            contentType: 'image/webp',
+                            size: 1024,
+                            url: 'https://media.discordapp.net/attachments/1/2/snap.webp',
+                            width: 300,
+                            height: 200,
+                            name: 'snap.webp',
+                        },
+                    ],
+                },
+            ],
+        ]);
+        expect(_test.findImageAttachment(forwardedInteraction as never)).toEqual({
+            url: 'https://media.discordapp.net/attachments/1/2/snap.webp',
+            size: 1024,
+            width: 300,
+            height: 200,
+        });
+
+        expect(_test.isAllowedDiscordImageHost('evil.example.com')).toBe(false);
+        expect(_test.isAllowedDiscordImageHost('images-ext-2.discordapp.net')).toBe(true);
+    });
+
+    it('should chunk long native text across ephemeral follow-ups while attaching the rendered image once', async () => {
+        const interaction = createInteraction();
+        const longText = `[1] ${'長篇翻譯內容'.repeat(220)}\n[2] ${'第二段翻譯內容'.repeat(200)}`;
+        const translationService = {
+            processImage: vi.fn(async (request) => {
+                await request.beforeTranslate();
+                await request.resolveImage();
+                return {
+                    status: 'success',
+                    deferred: true,
+                    translatedText: longText,
+                    hasText: true,
+                    regions: [{ translation: '長篇', box_2d: [100, 50, 300, 850] }],
+                    route: 'hybrid',
+                    cached: false,
+                    targetLanguage: 'zh-TW',
+                    langSource: 'locale',
+                    inputTokens: 50,
+                    outputTokens: 100,
+                };
+            }),
+        };
+
+        await handleBabelLens(interaction as never, createCommandDeps(translationService));
+
+        expect(interaction.editReply).toHaveBeenCalledWith(
+            expect.objectContaining({
+                content: expect.stringContaining('[1]'),
+                files: [{ attachment: Buffer.from('rendered-image'), name: 'babel-lens.jpg' }],
+            }),
+        );
+        expect(interaction.followUp).toHaveBeenCalledOnce();
     });
 
     it('should return translated text when render capacity is full', async () => {

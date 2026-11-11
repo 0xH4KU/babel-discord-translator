@@ -19,7 +19,9 @@ const MAX_IMAGE_BYTES = 7 * 1024 * 1024;
 const MAX_IMAGE_PIXELS = 16_000_000;
 const IMAGE_DOWNLOAD_TIMEOUT_MS = 15_000;
 const ALLOWED_IMAGE_HOSTS = new Set(['cdn.discordapp.com', 'media.discordapp.net']);
+const EXTERNAL_PROXY_HOST_PATTERN = /^images-ext-\d+\.discordapp\.net$/iu;
 const SUPPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const UNSUPPORTED_EMBED_MEDIA_PATTERN = /\.(?:gif|mp4|webm|mov|avi)(?:$|[?#])|[?&]format=gif\b/iu;
 
 interface BabelLensCommandDeps extends CommandDeps {
     ocrCache: TranslationCache;
@@ -27,36 +29,158 @@ interface BabelLensCommandDeps extends CommandDeps {
     profile?: AppProfile;
 }
 
+export interface LensImageSource {
+    url: string;
+    size?: number;
+    width?: number | null;
+    height?: number | null;
+}
+
+interface EmbedMediaCandidate {
+    url?: string | null;
+    proxyURL?: string | null;
+    width?: number | null;
+    height?: number | null;
+    contentType?: string | null;
+}
+
+interface EmbedCandidate {
+    image?: EmbedMediaCandidate | null;
+    thumbnail?: EmbedMediaCandidate | null;
+}
+
+interface SnapshotCandidate {
+    attachments?: unknown;
+    embeds?: Iterable<EmbedCandidate> | null;
+}
+
+function isAllowedDiscordImageHost(hostname: string): boolean {
+    const normalized = hostname.toLowerCase();
+    return ALLOWED_IMAGE_HOSTS.has(normalized) || EXTERNAL_PROXY_HOST_PATTERN.test(normalized);
+}
+
 function isSupportedImage(attachment: Attachment): boolean {
     const contentType = attachment.contentType?.split(';', 1)[0]?.toLowerCase();
     return contentType
         ? SUPPORTED_IMAGE_TYPES.has(contentType)
-        : /\.(?:jpe?g|png|webp)$/iu.test(attachment.name ?? '');
+        : /\.(?:jpe?g|png|webp)$/iu.test(attachment.name ?? attachment.url ?? '');
 }
 
-function findImageAttachment(interaction: MessageContextMenuCommandInteraction): Attachment {
-    const attachment = interaction.targetMessage.attachments.find(isSupportedImage);
-    if (!attachment) {
-        throw new Error(
-            'Babel Lens needs a PNG, JPEG, or WebP attachment on the selected message.',
-        );
-    }
-    if (attachment.size > MAX_IMAGE_BYTES) {
+function validateSourceLimits(source: LensImageSource): LensImageSource {
+    if (source.size !== undefined && source.size > MAX_IMAGE_BYTES) {
         throw new Error('Babel Lens supports images up to 7 MB.');
     }
-    if (
-        attachment.width &&
-        attachment.height &&
-        attachment.width * attachment.height > MAX_IMAGE_PIXELS
-    ) {
+    if (source.width && source.height && source.width * source.height > MAX_IMAGE_PIXELS) {
         throw new Error('Babel Lens supports images up to 16 megapixels.');
     }
-    return attachment;
+    return source;
 }
 
-async function downloadDiscordImage(attachment: Attachment): Promise<Buffer> {
-    const url = new URL(attachment.url);
-    if (url.protocol !== 'https:' || !ALLOWED_IMAGE_HOSTS.has(url.hostname)) {
+function findInCollection<T>(
+    collection: unknown,
+    predicate: (value: T) => boolean,
+): T | undefined {
+    if (!collection || typeof collection !== 'object') return undefined;
+    if ('find' in collection && typeof collection.find === 'function') {
+        return (collection as { find: (fn: (value: T) => boolean) => T | undefined }).find(
+            predicate,
+        );
+    }
+    if (Symbol.iterator in collection) {
+        for (const item of collection as Iterable<T>) {
+            if (predicate(item)) return item;
+        }
+    }
+    return undefined;
+}
+
+function valuesOf<T>(collection: unknown): Iterable<T> {
+    if (!collection || typeof collection !== 'object') return [];
+    if ('values' in collection && typeof collection.values === 'function') {
+        return (collection as { values: () => Iterable<T> }).values();
+    }
+    if (Symbol.iterator in collection) {
+        return collection as Iterable<T>;
+    }
+    return [];
+}
+
+function pickEmbedMedia(media?: EmbedMediaCandidate | null): LensImageSource | null {
+    if (!media) return null;
+    const contentType = media.contentType?.split(';', 1)[0]?.toLowerCase();
+    if (contentType && !SUPPORTED_IMAGE_TYPES.has(contentType)) return null;
+
+    const candidates = [media.proxyURL, media.url].filter((value): value is string =>
+        Boolean(value?.trim()),
+    );
+    for (const candidateUrl of candidates) {
+        if (!contentType && UNSUPPORTED_EMBED_MEDIA_PATTERN.test(candidateUrl)) continue;
+        try {
+            const parsed = new URL(candidateUrl);
+            if (parsed.protocol === 'https:' && isAllowedDiscordImageHost(parsed.hostname)) {
+                return {
+                    url: candidateUrl,
+                    width: media.width,
+                    height: media.height,
+                };
+            }
+        } catch {
+            continue;
+        }
+    }
+    return null;
+}
+
+function findEmbedImage(embeds?: Iterable<EmbedCandidate> | null): LensImageSource | null {
+    if (!embeds) return null;
+    for (const embed of embeds) {
+        const found = pickEmbedMedia(embed.image) ?? pickEmbedMedia(embed.thumbnail);
+        if (found) return found;
+    }
+    return null;
+}
+
+function findImageAttachment(interaction: MessageContextMenuCommandInteraction): LensImageSource {
+    const directAttachment = findInCollection<Attachment>(
+        interaction.targetMessage.attachments,
+        isSupportedImage,
+    );
+    if (directAttachment) {
+        return validateSourceLimits({
+            url: directAttachment.url,
+            size: directAttachment.size,
+            width: directAttachment.width,
+            height: directAttachment.height,
+        });
+    }
+
+    const snapshots = (interaction.targetMessage as { messageSnapshots?: unknown })
+        .messageSnapshots;
+    for (const snapshot of valuesOf<SnapshotCandidate>(snapshots)) {
+        const snapAttachment = findInCollection<Attachment>(snapshot.attachments, isSupportedImage);
+        if (snapAttachment) {
+            return validateSourceLimits({
+                url: snapAttachment.url,
+                size: snapAttachment.size,
+                width: snapAttachment.width,
+                height: snapAttachment.height,
+            });
+        }
+        const snapEmbed = findEmbedImage(snapshot.embeds);
+        if (snapEmbed) return validateSourceLimits(snapEmbed);
+    }
+
+    const directEmbed = findEmbedImage(
+        (interaction.targetMessage as { embeds?: Iterable<EmbedCandidate> | null }).embeds,
+    );
+    if (directEmbed) return validateSourceLimits(directEmbed);
+
+    throw new Error('Babel Lens needs a PNG, JPEG, or WebP image on the selected message.');
+}
+
+async function downloadDiscordImage(source: LensImageSource): Promise<Buffer> {
+    const url = new URL(source.url);
+    if (url.protocol !== 'https:' || !isAllowedDiscordImageHost(url.hostname)) {
         throw new Error('Babel Lens only accepts images hosted by Discord.');
     }
 
@@ -83,19 +207,23 @@ async function sendLensReply(
     translatedText: string,
     image?: Buffer,
 ): Promise<void> {
-    if (image) {
-        await interaction.editReply({
-            files: [{ attachment: image, name: 'babel-lens.jpg' }],
-        });
-        return;
-    }
-
     const messages = buildTranslationMessages({
         originalText: '',
         translatedText,
         targetLanguage: '',
         cached: false,
     });
+    if (image) {
+        await interaction.editReply({
+            content: messages[0] ?? '',
+            files: [{ attachment: image, name: 'babel-lens.jpg' }],
+        });
+        for (const message of messages.slice(1)) {
+            await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
+        }
+        return;
+    }
+
     await sendPrivateChunks(interaction, messages);
 }
 
@@ -120,9 +248,9 @@ export async function handleBabelLens(
         return;
     }
 
-    let attachment: Attachment;
+    let imageSource: LensImageSource;
     try {
-        attachment = findImageAttachment(interaction);
+        imageSource = findImageAttachment(interaction);
     } catch (error) {
         await interaction.reply({
             content: (error as Error).message,
@@ -152,7 +280,7 @@ export async function handleBabelLens(
         locale: interaction.locale,
         requestId,
         resolveImage: async () => {
-            const normalized = await normalizeLensImage(await downloadDiscordImage(attachment));
+            const normalized = await normalizeLensImage(await downloadDiscordImage(imageSource));
             sourceImage = normalized.image;
             return normalized;
         },
@@ -168,6 +296,11 @@ export async function handleBabelLens(
 
     if (!result.hasText) {
         await sendLensReply(interaction, 'Babel Lens found no meaningful text in this image.');
+        return;
+    }
+
+    if (result.regions.length === 0) {
+        await sendLensReply(interaction, result.translatedText);
         return;
     }
 
@@ -188,7 +321,7 @@ export async function handleBabelLens(
 
     try {
         const rendered = await renderAdmission.reservation.run(() =>
-            renderLensImage(sourceImage!, result.translatedText, result.regions),
+            renderLensImage(sourceImage!, result.regions),
         );
         await sendLensReply(interaction, result.translatedText, rendered);
     } catch (error) {
@@ -204,6 +337,7 @@ export const _test = {
     downloadDiscordImage,
     detectTextWithBudget,
     normalizeLensImage,
+    isAllowedDiscordImageHost,
     MAX_IMAGE_BYTES,
     MAX_IMAGE_PIXELS,
 };
