@@ -32,7 +32,7 @@ Right-click any message → **Apps** → **Babel** or **Babel Pocket** for text,
 [![Node.js](https://img.shields.io/badge/Node.js-22.13%2B-green.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue.svg)](https://www.typescriptlang.org/)
 [![discord.js](https://img.shields.io/badge/discord.js-v14-blue.svg)](https://discord.js.org)
-[![Version](https://img.shields.io/badge/version-0.4.0-brightgreen.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-0.5.0-brightgreen.svg)](package.json)
 [![CI](https://github.com/0xH4KU/babel-discord-translator/actions/workflows/ci.yml/badge.svg)](https://github.com/0xH4KU/babel-discord-translator/actions)
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/babel-discord-tran-1?referralCode=euhy-o&utm_medium=integration&utm_source=template&utm_campaign=generic)
@@ -87,13 +87,13 @@ npm run start:pocket
 
 ## Babel Lens
 
-Babel Lens reads text from the first supported image attached to a Discord message, translates it to your usual target language, and returns a private JPEG with the translation below the image. When Cloud Vision finds multiple text regions, matching numbers connect each highlighted source region to its translated line. If image rendering is unavailable, Babel falls back to private translated text.
+Babel Lens reads text from the first supported image on a Discord message (attachments, link/bot embeds, or forwarded snapshots), translates meaningful regions into your target language while skipping peripheral UI noise, and replies ephemerally with collision-free numbered badges on the image alongside native copyable Discord text.
 
-1. Send a PNG, JPEG, or WebP as a Discord attachment.
+1. Send or locate a message containing a PNG, JPEG, or WebP attachment or Discord-proxied embed image.
 2. On desktop, right-click the message; on mobile, long-press it.
 3. Choose **Apps** → **Babel Lens**.
 
-`/setlang` preferences apply to Lens; otherwise Babel uses your Discord locale. Images must be hosted by Discord and may be up to 7 MB and 16 megapixels. The image bytes go to Google Cloud Vision for OCR, and the detected text goes to your configured translation provider. Babel does not persist the image; OCR and translation cache entries remain in memory until restart.
+`/setlang` preferences apply to Lens; otherwise Babel uses your Discord locale. Images must be hosted or proxied by Discord and may be up to 7 MB and 16 megapixels (oversized images are pre-scaled before upload). Multimodal providers run in **Hybrid OCR + multimodal** mode when Cloud Vision is configured (grounding exact paragraph coordinates via `DOCUMENT_TEXT_DETECTION` while visually grouping and translating regions), or fall back automatically to **Direct multimodal**; text-only providers use Cloud Vision OCR fallback. Babel does not persist the image; OCR and translation cache entries remain in memory until restart.
 
 Operators configure the dedicated Cloud Vision API key and global monthly image limit in **Settings**. Babel Guild also requires Lens to be enabled for each server in **Access**; Pocket follows its user-install access policy. The global limit defaults to 900 images per UTC month, and optional per-server or per-user limits can add a tighter ceiling. Only outbound Vision requests count, so OCR cache hits do not consume quota. See the [budget model](docs/operations/budget-model.md) for exact quota semantics and the [deployment guide](docs/operations/deployment.md) for upgrade steps.
 

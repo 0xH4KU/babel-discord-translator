@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.5.0 - 2026-11-11
+
+- Upgraded Babel Lens with Hybrid Cloud Vision OCR box grounding (`DOCUMENT_TEXT_DETECTION` paragraph units + multimodal `ids` grouping) alongside automatic Direct multimodal fallback when Vision is unconfigured or out of quota, and structured OCR unit grouping for text-only providers.
+- Unified image region-translation JSON schemas (`{ box_2d, translation }` and `{ ids, translation }`), filtered UI chrome/status-bar noise and same-language reverse translations, merged fragmented stacked lines, accounted for Gemini thinking tokens, and added automatic OpenAI `json_schema` fallback caching.
+- Replaced the stretched bottom SVG caption bar with collision-free numbered badges directly on the image plus native copyable Discord text replies (with automatic ephemeral chunking), pre-scaled oversized inputs before upload, and added support for Discord embed proxy images and forwarded message snapshots.
+- Exposed Cloud Vision OCR hybrid settings, route status badges (`Hybrid OCR + multimodal`), per-server/per-user Vision monthly limits, and Setup Doctor hybrid readiness checks in the Dashboard, and refreshed vulnerable transitive dependencies.
+
 ## 0.4.0 - 2026-09-05
 
 - Added multimodal Babel Lens routing with Cloud Vision OCR fallback for text-only providers, shared translation pipeline behavior, stricter OCR region filtering, normalized markers, and safer truncated-response handling.
