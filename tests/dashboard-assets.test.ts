@@ -742,9 +742,9 @@ describe('dashboard static assets', () => {
         expect(usage.textContent).toBe('0 / 950 images used · 2026-08');
     });
 
-    it('shows Vision settings only for enabled text-only providers and tracks drafts', () => {
+    it('renders Direct, Hybrid OCR, and Vision fallback Lens routes and tracks drafts', () => {
         const settingsJs = readFileSync('src/public/js/settings.js', 'utf-8');
-        const fallback = { hidden: true };
+        const desc = { textContent: '' };
         const fallbackOptions = [
             { value: '', disabled: false },
             { value: 'vertex', disabled: false },
@@ -760,9 +760,12 @@ describe('dashboard static assets', () => {
             'cfg-provider-fallback': { value: '', options: fallbackOptions },
             'cfg-vertex-images': { checked: false },
             'cfg-openai-images': { checked: false },
+            'cfg-vision-apikey': { value: '' },
+            'cfg-vision-limit': { value: '0' },
             'cfg-model': { value: 'gemini-new' },
             'lens-route-vertex': { textContent: '', className: '' },
             'lens-route-openai': { textContent: '', className: '' },
+            'vision-settings-desc': desc,
             'settings-save-status': status,
             'settings-save-button': button,
         };
@@ -771,8 +774,8 @@ describe('dashboard static assets', () => {
                 getElementById(id: string) {
                     return fields[id as keyof typeof fields] || null;
                 },
-                querySelectorAll(selector: string) {
-                    return selector === '.vision-fallback-only' ? [fallback] : [];
+                querySelectorAll() {
+                    return [];
                 },
             },
         };
@@ -785,15 +788,20 @@ describe('dashboard static assets', () => {
              refreshLensRoutes();`,
             context,
         );
-        expect(fallback.hidden).toBe(false);
+        expect(desc.textContent).toContain('Required because at least one enabled provider');
         expect(fields['lens-route-vertex'].textContent).toBe('Vision fallback');
 
         fields['cfg-vertex-images'].checked = true;
         vm.runInContext('onProviderCapabilityChange();', context);
-        expect(fallback.hidden).toBe(true);
+        expect(desc.textContent).toContain('Optional for multimodal providers');
         expect(fields['lens-route-vertex'].textContent).toBe('Direct multimodal');
         expect(button.disabled).toBe(false);
         expect(status.textContent).toBe('Unsaved changes');
+
+        fields['cfg-vision-apikey'].value = 'vision-key';
+        fields['cfg-vision-limit'].value = '900';
+        vm.runInContext('refreshLensRoutes();', context);
+        expect(fields['lens-route-vertex'].textContent).toBe('Hybrid OCR + multimodal');
 
         vm.runInContext('onVertexIdentityChanged();', context);
         expect(fields['cfg-vertex-images'].checked).toBe(false);

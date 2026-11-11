@@ -60,10 +60,28 @@ function isVisionFallbackRequired() {
   );
 }
 
+function isVisionConfigured() {
+  const typedKey = configElement('cfg-vision-apikey')?.value?.trim();
+  const hasKey = Boolean(typedKey || currentConfig.hasVisionApiKey || currentConfig.visionApiKey);
+  const rawLimit = settingsLoaded
+    ? configElement('cfg-vision-limit')?.value
+    : currentConfig.visionMonthlyImageLimit;
+  const parsedLimit =
+    rawLimit !== undefined && rawLimit !== null && rawLimit !== ''
+      ? Number(rawLimit)
+      : Number(currentConfig.visionMonthlyImageLimit ?? 0);
+  return hasKey && Number.isFinite(parsedLimit) && parsedLimit > 0;
+}
+
+function isVisionActiveOrRequired() {
+  return isVisionConfigured() || isVisionFallbackRequired();
+}
+
 function refreshLensRoutes() {
   const mode = settingsLoaded
     ? selectedProviderMode()
     : currentConfig.translationProvider || 'vertex';
+  const visionConfigured = isVisionConfigured();
   const routes = [
     ['vertex', 'lens-route-vertex', configElement('cfg-vertex-images')?.checked],
     ['openai', 'lens-route-openai', configElement('cfg-openai-images')?.checked],
@@ -75,16 +93,21 @@ function refreshLensRoutes() {
     node.textContent = !providerUses(mode, provider)
       ? 'Disabled'
       : supportsImages
-        ? 'Direct multimodal'
+        ? visionConfigured
+          ? 'Hybrid OCR + multimodal'
+          : 'Direct multimodal'
         : 'Vision fallback';
     node.className =
       supportsImages && providerUses(mode, provider) ? 'route-direct' : 'route-vision';
   });
 
   const needsVision = isVisionFallbackRequired();
-  document.querySelectorAll?.('.vision-fallback-only').forEach((node) => {
-    node.hidden = !needsVision;
-  });
+  const desc = configElement('vision-settings-desc');
+  if (desc) {
+    desc.textContent = needsVision
+      ? 'Required because at least one enabled provider is marked text-only; also grounds multimodal providers via Hybrid OCR.'
+      : 'Optional for multimodal providers: grounds Babel Lens boxes via Hybrid OCR when configured.';
+  }
 }
 
 function onProviderModeChange() {
@@ -143,8 +166,12 @@ function previewVisionLimit(value) {
     Number.isSafeInteger(parsed) && parsed >= 0
       ? parsed
       : (usage.limit ?? currentConfig.visionMonthlyImageLimit ?? 900);
-  document.getElementById('cfg-vision-usage').textContent =
-    `${usage.images || 0} / ${limit} images used · ${usage.month || 'current UTC month'}`;
+  const usageNode = document.getElementById('cfg-vision-usage');
+  if (usageNode) {
+    usageNode.textContent =
+      `${usage.images || 0} / ${limit} images used · ${usage.month || 'current UTC month'}`;
+  }
+  if (settingsLoaded) refreshLensRoutes();
 }
 
 function renderSessions(sessions) {
@@ -382,7 +409,12 @@ function restoreDefaultPrompt() {
 
 if (document.addEventListener) {
   const markConfigInput = (event) => {
-    if (event.target?.id?.startsWith('cfg-')) markSettingsDirty();
+    if (event.target?.id?.startsWith('cfg-')) {
+      markSettingsDirty();
+      if (event.target.id === 'cfg-vision-apikey' || event.target.id === 'cfg-vision-limit') {
+        refreshLensRoutes();
+      }
+    }
   };
   document.addEventListener('input', markConfigInput);
   document.addEventListener('change', markConfigInput);

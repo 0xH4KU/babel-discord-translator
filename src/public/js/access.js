@@ -291,7 +291,9 @@ function renderGuilds() {
         <div class="guild-feature-control"><span class="guild-feature-label">Babel Lens</span><span class="guild-feature-state${lensChecked ? ' is-enabled' : ''}">${lensChecked ? 'Enabled' : 'Disabled'}</span><label class="toggle"><input type="checkbox" aria-label="Enable Babel Lens for ${escapedName}" data-lens-guild-id="${escapedId}" ${actionAttrs('toggleGuildLens', [selected.id], { value: 'checked' })} ${lensChecked ? 'checked' : ''}><span class="slider"></span></label></div>
       </div>`;
         const routeUsesVision =
-            typeof isVisionFallbackRequired !== 'function' || isVisionFallbackRequired();
+            typeof isVisionActiveOrRequired === 'function'
+                ? isVisionActiveOrRequired()
+                : typeof isVisionFallbackRequired !== 'function' || isVisionFallbackRequired();
         const detailHtml = `<button class="access-back-button btn btn-secondary btn-sm" data-action="showAccessMasterList" data-action-args="[&quot;guild&quot;]">Back to servers</button>
           <div class="guild-item guild-item-col access-selected-detail">
         <div class="guild-item-row">
@@ -558,7 +560,9 @@ function renderAllowedUsers() {
               ? formatUsd(defaultBudget) + ' (default)'
               : 'Unlimited';
         const routeUsesVision =
-            typeof isVisionFallbackRequired !== 'function' || isVisionFallbackRequired();
+            typeof isVisionActiveOrRequired === 'function'
+                ? isVisionActiveOrRequired()
+                : typeof isVisionFallbackRequired !== 'function' || isVisionFallbackRequired();
         const detailHtml = `<button class="access-back-button btn btn-secondary btn-sm" data-action="showAccessMasterList" data-action-args="[&quot;user&quot;]">Back to users</button>
           <div class="guild-item guild-item-col access-selected-detail">
       <div class="guild-item-row">

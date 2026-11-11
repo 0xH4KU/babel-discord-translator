@@ -34,7 +34,12 @@ function wizCapabilityChanged() {
   const needsVision =
     (wizProviderUsesVertex(mode) && !document.getElementById('wiz-vertex-images').checked) ||
     (wizProviderUsesOpenai(mode) && !document.getElementById('wiz-openai-images').checked);
-  document.getElementById('wiz-vision-fallback').hidden = !needsVision;
+  const input = document.getElementById('wiz-vision-apikey');
+  if (input) {
+    input.placeholder = needsVision
+      ? 'Required for text-only models'
+      : 'Optional: enables Hybrid OCR box grounding';
+  }
 }
 
 function wizVertexModelChanged() {
