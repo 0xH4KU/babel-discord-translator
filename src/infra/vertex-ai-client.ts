@@ -18,7 +18,10 @@ import type {
     TranslationResult,
     VertexAIResponse,
 } from '../shared/types.js';
-import { parseImageTranslationResponse } from '../modules/translation/lens-model.js';
+import {
+    parseImageTranslationResponse,
+    parseOcrImageTranslationResponse,
+} from '../modules/translation/lens-model.js';
 import { ProviderResponseError } from './provider-errors.js';
 
 export { ProviderHttpError } from './provider-errors.js';
@@ -35,22 +38,76 @@ interface VertexAiConfig {
 
 const LENS_RESPONSE_SCHEMA = {
     type: 'OBJECT',
-    required: ['has_text', 'translation', 'regions'],
+    required: ['has_text', 'regions'],
     properties: {
         has_text: { type: 'BOOLEAN' },
-        translation: { type: 'STRING' },
         regions: {
             type: 'ARRAY',
             maxItems: 99,
             items: {
-                type: 'ARRAY',
-                minItems: 4,
-                maxItems: 4,
-                items: { type: 'NUMBER', minimum: 0, maximum: 1000 },
+                type: 'OBJECT',
+                required: ['box_2d', 'translation'],
+                properties: {
+                    box_2d: {
+                        type: 'ARRAY',
+                        minItems: 4,
+                        maxItems: 4,
+                        items: { type: 'INTEGER', minimum: 0, maximum: 1000 },
+                    },
+                    translation: { type: 'STRING' },
+                },
             },
         },
     },
 } as const;
+
+const LENS_OCR_RESPONSE_SCHEMA = {
+    type: 'OBJECT',
+    required: ['has_text', 'regions'],
+    properties: {
+        has_text: { type: 'BOOLEAN' },
+        regions: {
+            type: 'ARRAY',
+            maxItems: 99,
+            items: {
+                type: 'OBJECT',
+                required: ['ids', 'translation'],
+                properties: {
+                    ids: {
+                        type: 'ARRAY',
+                        items: { type: 'INTEGER' },
+                    },
+                    translation: { type: 'STRING' },
+                },
+            },
+        },
+    },
+} as const;
+
+function extractCandidateText(
+    candidate?: NonNullable<VertexAIResponse['candidates']>[number],
+): string {
+    const parts = candidate?.content?.parts ?? [];
+    return parts
+        .filter((part) => !part.thought)
+        .map((part) => (typeof part.text === 'string' ? part.text : ''))
+        .join('')
+        .trim();
+}
+
+function extractOutputTokenCount(
+    meta: NonNullable<VertexAIResponse['usageMetadata']>,
+    fallback: number,
+): number {
+    const candidatesTokens = normalizeProviderTokenCount(meta.candidatesTokenCount, fallback);
+    const thoughtsTokens =
+        typeof meta.thoughtsTokenCount === 'number' &&
+        Number.isFinite(meta.thoughtsTokenCount) &&
+        meta.thoughtsTokenCount > 0
+            ? Math.round(meta.thoughtsTokenCount)
+            : 0;
+    return candidatesTokens + thoughtsTokens;
+}
 
 function mediaResolutionValue(
     resolution: GeminiMediaResolution,
@@ -130,6 +187,7 @@ async function requestGenerateContent(
             data: Buffer;
             mimeType: ImageTranslationRequest['mimeType'];
             mediaResolution: GeminiMediaResolution;
+            ocrSchema?: boolean;
         };
     },
 ): Promise<{ data: VertexAIResponse; latencyMs: number }> {
@@ -207,7 +265,9 @@ async function requestGenerateContent(
                         ...(image
                             ? {
                                   responseMimeType: 'application/json',
-                                  responseSchema: LENS_RESPONSE_SCHEMA,
+                                  responseSchema: image.ocrSchema
+                                      ? LENS_OCR_RESPONSE_SCHEMA
+                                      : LENS_RESPONSE_SCHEMA,
                               }
                             : {}),
                     },
@@ -264,6 +324,7 @@ export async function generateImageTranslationContent(
     options?: TranslateOptions,
 ): Promise<ImageTranslationResult> {
     const runtimeConfig = options?.runtimeConfig ?? configRepository.getRuntimeConfig();
+    const useOcrSchema = Boolean(request.ocrUnits?.length);
     const { data } = await requestGenerateContent(request.prompt, {
         maxOutputTokens,
         logPrefix: 'Babel Lens',
@@ -274,17 +335,15 @@ export async function generateImageTranslationContent(
             data: request.image,
             mimeType: request.mimeType,
             mediaResolution: runtimeConfig.geminiMediaResolution,
+            ocrSchema: useOcrSchema,
         },
     });
 
     const candidate = data.candidates?.[0];
-    const result = candidate?.content?.parts?.[0]?.text?.trim() ?? '';
+    const result = extractCandidateText(candidate);
     const meta = data.usageMetadata || {};
     const inputTokens = normalizeProviderTokenCount(meta.promptTokenCount, 4096);
-    const outputTokens = normalizeProviderTokenCount(
-        meta.candidatesTokenCount,
-        result ? estimateTokenCount(result) : 0,
-    );
+    const outputTokens = extractOutputTokenCount(meta, result ? estimateTokenCount(result) : 0);
     if (candidate?.finishReason === 'MAX_TOKENS') {
         throw new ProviderResponseError(
             'Babel Lens output was truncated by Max Output Tokens; increase it in Settings.',
@@ -300,7 +359,9 @@ export async function generateImageTranslationContent(
         );
     }
 
-    return parseImageTranslationResponse(result, inputTokens, outputTokens);
+    return useOcrSchema
+        ? parseOcrImageTranslationResponse(result, request.ocrUnits!, inputTokens, outputTokens)
+        : parseImageTranslationResponse(result, inputTokens, outputTokens);
 }
 
 export async function generateTranslationContent(
@@ -316,7 +377,7 @@ export async function generateTranslationContent(
         signal: options?.signal,
     });
 
-    const result = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    const result = extractCandidateText(data.candidates?.[0]);
     if (!result) {
         throw new Error('Empty response from Gemini');
     }
@@ -328,10 +389,7 @@ export async function generateTranslationContent(
             meta.promptTokenCount,
             estimateTokenCount(`${prompt.system}\n${prompt.user}`),
         ),
-        outputTokens: normalizeProviderTokenCount(
-            meta.candidatesTokenCount,
-            estimateTokenCount(result),
-        ),
+        outputTokens: extractOutputTokenCount(meta, estimateTokenCount(result)),
     };
 }
 

@@ -174,7 +174,7 @@ export type ImageTranslationServiceResult =
           translatedText: string;
           hasText: boolean;
           regions: ImageTranslationResult['regions'];
-          route: 'direct' | 'vision';
+          route: 'direct' | 'hybrid' | 'vision';
           cached: boolean;
           targetLanguage: string;
           langSource: LangSource;
@@ -255,7 +255,7 @@ function parseCachedImageTranslation(value: string | null): ImageTranslationResu
             typeof parsed.text !== 'string' ||
             typeof parsed.hasText !== 'boolean' ||
             !Array.isArray(parsed.regions) ||
-            (parsed.route !== 'direct' && parsed.route !== 'vision')
+            (parsed.route !== 'direct' && parsed.route !== 'hybrid' && parsed.route !== 'vision')
         ) {
             return null;
         }

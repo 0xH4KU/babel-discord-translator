@@ -65,7 +65,7 @@ export interface ProviderImageTranslationRequest extends ImageTranslationRequest
 export interface ProviderImageOrchestratorResult extends ImageTranslationResult {
     provider: string;
     fallback: boolean;
-    route: 'direct' | 'vision';
+    route: 'direct' | 'hybrid' | 'vision';
 }
 
 export interface ProviderOrchestratorOptions {
@@ -181,7 +181,7 @@ export function createProviderOrchestrator(
         attempt: (
             provider: TranslationProvider,
             providerOptions: TranslateOptions,
-        ) => Promise<{ result: T; providerCalled: boolean; route?: 'direct' | 'vision' }>,
+        ) => Promise<{ result: T; providerCalled: boolean; route?: 'direct' | 'hybrid' | 'vision' }>,
     ): Promise<T & { provider: string; fallback: boolean }> => {
         const metrics = options?.metrics ?? orchestratorOptions.metrics;
         const ordered = resolveProviderOrder(mode, providers);
