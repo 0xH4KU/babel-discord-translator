@@ -63,7 +63,7 @@ const CHECK_TITLES: Record<string, string> = {
     commands: 'Discord commands',
     'provider-vertex': 'Vertex AI provider',
     'provider-openai': 'OpenAI provider',
-    'lens-fallback': 'Babel Lens fallback',
+    'lens-fallback': 'Babel Lens OCR',
     sqlite: 'SQLite',
     budget: 'Budget',
     webhook: 'Webhook',
@@ -72,6 +72,8 @@ const CHECK_TITLES: Record<string, string> = {
 function lensFallbackCheck(configStore: SetupDoctorConfigStore): SetupDoctorCheckDraft {
     try {
         const config = configStore.getDashboardConfig();
+        const hasVision =
+            Boolean(config.visionApiKey.trim()) && config.visionMonthlyImageLimit > 0;
         const needsVision =
             (providerModeIncludes(config.translationProvider, 'vertex') &&
                 !config.vertexAiSupportsImages) ||
@@ -79,18 +81,25 @@ function lensFallbackCheck(configStore: SetupDoctorConfigStore): SetupDoctorChec
                 !config.openaiSupportsImages);
 
         if (!needsVision) {
+            if (hasVision) {
+                return {
+                    id: 'lens-fallback',
+                    status: 'pass',
+                    detail: 'Cloud Vision OCR is configured for hybrid box grounding',
+                };
+            }
             return {
                 id: 'lens-fallback',
                 status: 'skipped',
-                detail: 'All enabled providers use direct image translation',
+                detail: 'All enabled providers use direct image translation (Cloud Vision OCR optional)',
             };
         }
 
-        if (!config.visionApiKey.trim() || config.visionMonthlyImageLimit <= 0) {
+        if (!hasVision) {
             return {
                 id: 'lens-fallback',
                 status: 'warn',
-                detail: 'A text-only provider needs Cloud Vision, but fallback is not configured',
+                detail: 'A text-only provider needs Cloud Vision, but OCR is not configured',
                 action: 'Configure a Vision key and limit, or confirm image support in Settings.',
             };
         }
@@ -98,7 +107,7 @@ function lensFallbackCheck(configStore: SetupDoctorConfigStore): SetupDoctorChec
         return {
             id: 'lens-fallback',
             status: 'pass',
-            detail: 'Cloud Vision fallback is configured for text-only providers',
+            detail: 'Cloud Vision OCR is configured for text-only providers',
         };
     } catch (error) {
         return {

@@ -34,12 +34,8 @@ import {
 import { PendingUserInstallOwnerRepository } from './pending-user-install-owner-repository.js';
 import { applyProviderCapabilityResets, validateConfigUpdate } from './config-validation.js';
 import { runSetupDoctor } from './setup-doctor.js';
-import {
-    MAX_GLOSSARY_IMPORT_BYTES,
-    parseGlossaryImport,
-    sanitizeGlossaryImportRequest,
-    sanitizeGlossaryInput,
-} from './glossary-input.js';
+import { MAX_GLOSSARY_IMPORT_BYTES } from './glossary-input.js';
+import { createGlossaryRouter } from './glossary-routes.js';
 import {
     budgetRiskForGuilds,
     buildOperationsGuidance,
@@ -51,7 +47,7 @@ import { registerHealthRoutes } from './health-dashboard.js';
 import { applySecurityHeaders } from './security-headers.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import type { DashboardDeps, GuildGlossaryInput } from '../../shared/types.js';
+import type { DashboardDeps } from '../../shared/types.js';
 import {
     resolveBudgetLimits,
     validateBudgetLimits,
@@ -70,18 +66,6 @@ interface DashboardApiScope {
 }
 
 type DashboardCapabilityName = keyof DashboardCapabilities;
-
-function normalizeGlossarySource(sourceText: string): string {
-    return sourceText.trim().toLowerCase();
-}
-
-function normalizeGlossaryLanguage(targetLanguage: string): string {
-    return targetLanguage.trim().toLowerCase();
-}
-
-function normalizeGlossaryKey(sourceText: string, targetLanguage: string): string {
-    return `${normalizeGlossarySource(sourceText)}\u0000${normalizeGlossaryLanguage(targetLanguage)}`;
-}
 
 function sanitizeUserPreferenceRef(value: unknown): { guildId: string; userId: string } | null {
     if (!value || typeof value !== 'object') {
@@ -337,6 +321,9 @@ export function createDashboardApp({
         auth.dispose();
     };
 
+    if (config.dashboardTrustedProxies?.length) {
+        app.set('trust proxy', config.dashboardTrustedProxies);
+    }
     app.use(applySecurityHeaders);
     app.use(express.json({ limit: MAX_GLOSSARY_IMPORT_BYTES * 2 }));
     app.use(express.static(join(__dirname, '../../public')));
@@ -398,70 +385,66 @@ export function createDashboardApp({
         host,
     });
 
-    api.get('/setup-status', auth.requireAuth, (_req: Request, res: Response) => {
+    api.use(auth.requireAuth);
+    api.use((req, res, next) => {
+        if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) next();
+        else auth.requireCsrf(req, res, next);
+    });
+
+    api.get('/setup-status', (_req: Request, res: Response) => {
         res.json({ complete: configRepository.isSetupComplete() });
     });
 
-    api.get('/capabilities', auth.requireAuth, (_req: Request, res: Response) => {
+    api.get('/capabilities', (_req: Request, res: Response) => {
         const scope = getScope(res);
         res.json(buildDashboardCapabilitiesResponse(scope.profile, scope.profiles));
     });
 
-    api.post(
-        '/setup-doctor/run',
-        auth.requireAuth,
-        auth.requireCsrf,
-        async (_req: Request, res: Response) => {
-            const scope = getScope(res);
-            res.json(
-                await runSetupDoctor({
-                    profile: scope.profile,
-                    profiles: scope.profiles,
-                    client: scope.client,
-                    configStore: configRepository,
-                    budgetStore: store,
-                    healthCheck,
-                    openAiHealthCheck,
-                    requireProfileSpecificRegistrationEnv: isCombinedDashboard,
-                }),
-            );
-        },
-    );
+    api.post('/setup-doctor/run', async (_req: Request, res: Response) => {
+        const scope = getScope(res);
+        res.json(
+            await runSetupDoctor({
+                profile: scope.profile,
+                profiles: scope.profiles,
+                client: scope.client,
+                configStore: configRepository,
+                budgetStore: store,
+                healthCheck,
+                openAiHealthCheck,
+                requireProfileSpecificRegistrationEnv: isCombinedDashboard,
+            }),
+        );
+    });
 
-    api.get('/version', auth.requireAuth, (_req: Request, res: Response) => {
+    api.get('/version', (_req: Request, res: Response) => {
         res.json(getVersionMetadata());
     });
 
-    api.get('/sessions', auth.requireAuth, (req: Request, res: Response) => {
+    api.get('/sessions', (req: Request, res: Response) => {
         res.json({ sessions: auth.listSessions(req) });
     });
 
-    api.post(
-        '/sessions/revoke',
-        auth.requireAuth,
-        auth.requireCsrf,
-        (req: Request, res: Response) => {
-            const id = typeof req.body.id === 'string' ? req.body.id.trim() : '';
-            if (!id) {
-                res.status(400).json({ error: 'Session id is required' });
-                return;
-            }
+    api.post('/sessions/revoke', (req: Request, res: Response) => {
+        const id = typeof req.body.id === 'string' ? req.body.id.trim() : '';
+        if (!id) {
+            res.status(400).json({ error: 'Session id is required' });
+            return;
+        }
 
-            const result = auth.revokeSession(req, id);
-            if (!result.revoked) {
-                res.status(404).json({ error: 'Session not found' });
-                return;
-            }
+        const result = auth.revokeSession(req, id);
+        if (!result.revoked) {
+            res.status(404).json({ error: 'Session not found' });
+            return;
+        }
 
-            if (result.current) {
-                res.setHeader('Set-Cookie', auth.logout(req).cookie);
-            }
+        if (result.current) {
+            res.setHeader('Set-Cookie', auth.logout(req).cookie);
+        }
 
-            res.json({ ok: true, revoked: true, current: result.current });
-        },
-    );
+        res.json({ ok: true, revoked: true, current: result.current });
+    });
 
-    api.get('/stats', auth.requireAuth, async (_req: Request, res: Response) => {
+    api.get('/stats', async (_req: Request, res: Response) => {
         const scope = getScope(res);
         const scopedClient = scope.client;
         const cacheStats = cache.stats();
@@ -636,7 +619,7 @@ export function createDashboardApp({
         });
     });
 
-    api.get('/config', auth.requireAuth, (_req: Request, res: Response) => {
+    api.get('/config', (_req: Request, res: Response) => {
         const scope = getScope(res);
         const cfg = configRepository.getDashboardConfig();
         const visionMonth = new Date().toISOString().slice(0, 7);
@@ -662,7 +645,7 @@ export function createDashboardApp({
         });
     });
 
-    api.post('/config', auth.requireAuth, auth.requireCsrf, (req: Request, res: Response) => {
+    api.post('/config', (req: Request, res: Response) => {
         const scope = getScope(res);
         const currentConfig = configRepository.getDashboardConfig();
         const submittedConfig = { ...req.body } as Record<string, unknown>;
@@ -721,7 +704,6 @@ export function createDashboardApp({
     api.get(
         '/guilds',
         requireDashboardCapability('guildAccess'),
-        auth.requireAuth,
         (_req: Request, res: Response) => {
             const scope = getScope(res);
             const guilds = scope.client.guilds.cache.map((g) => ({
@@ -734,7 +716,7 @@ export function createDashboardApp({
         },
     );
 
-    api.get('/usage/history', auth.requireAuth, (req: Request, res: Response) => {
+    api.get('/usage/history', (req: Request, res: Response) => {
         const scope = getScope(res);
         const guildId = req.query.guildId as string | undefined;
         if (guildId) {
@@ -756,7 +738,7 @@ export function createDashboardApp({
         }
     });
 
-    api.get('/usage/export.csv', auth.requireAuth, (_req: Request, res: Response) => {
+    api.get('/usage/export.csv', (_req: Request, res: Response) => {
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
         res.setHeader('Content-Disposition', 'attachment; filename="babel-usage-export.csv"');
         res.send(buildUsageExportCsv(usage.getUsageExportRows()));
@@ -765,7 +747,6 @@ export function createDashboardApp({
     api.get(
         '/guild-budgets',
         requireDashboardCapability('guildAccess'),
-        auth.requireAuth,
         (_req: Request, res: Response) => {
             const scope = getScope(res);
             const guildBudgets = store.listGuildBudgets();
@@ -813,7 +794,6 @@ export function createDashboardApp({
     api.get(
         '/user-budgets',
         requireDashboardCapability('userAccess'),
-        auth.requireAuth,
         async (_req: Request, res: Response) => {
             const userBudgets = store.listUserBudgets();
             const visionMonth = new Date().toISOString().slice(0, 7);
@@ -869,8 +849,6 @@ export function createDashboardApp({
     api.post(
         '/user-budgets/:userId',
         requireDashboardCapability('userAccess'),
-        auth.requireAuth,
-        auth.requireCsrf,
         (req: Request, res: Response) => {
             const userId = String(req.params.userId ?? '').trim();
 
@@ -898,8 +876,6 @@ export function createDashboardApp({
     api.post(
         '/guild-budgets/:guildId',
         requireDashboardCapability('guildAccess'),
-        auth.requireAuth,
-        auth.requireCsrf,
         (req: Request, res: Response) => {
             const guildId = String(req.params.guildId ?? '').trim();
 
@@ -925,164 +901,13 @@ export function createDashboardApp({
         },
     );
 
-    api.get(
-        '/guild-glossary/:guildId',
+    api.use(
+        '/guild-glossary',
         requireDashboardCapability('guildGlossary'),
-        auth.requireAuth,
-        (req: Request, res: Response) => {
-            const guildId = String(req.params.guildId ?? '').trim();
-            if (!guildId) {
-                res.status(400).json({ error: 'Guild id is required' });
-                return;
-            }
-
-            const entries = store.listGuildGlossary(guildId);
-            res.json({ entries, count: entries.length });
-        },
+        createGlossaryRouter(cache),
     );
 
-    api.post(
-        '/guild-glossary/:guildId',
-        requireDashboardCapability('guildGlossary'),
-        auth.requireAuth,
-        auth.requireCsrf,
-        (req: Request, res: Response) => {
-            const guildId = String(req.params.guildId ?? '').trim();
-            if (!guildId) {
-                res.status(400).json({ error: 'Guild id is required' });
-                return;
-            }
-
-            const input = sanitizeGlossaryInput(req.body ?? {});
-            if (!input.ok) {
-                res.status(400).json({ error: input.error });
-                return;
-            }
-
-            try {
-                const entry = store.upsertGuildGlossaryEntry(guildId, input.value);
-                cache.clear();
-                res.json({ ok: true, entry, cacheCleared: true });
-            } catch (error) {
-                res.status(404).json({ error: (error as Error).message });
-            }
-        },
-    );
-
-    api.post(
-        '/guild-glossary/:guildId/import',
-        requireDashboardCapability('guildGlossary'),
-        auth.requireAuth,
-        auth.requireCsrf,
-        (req: Request, res: Response) => {
-            const guildId = String(req.params.guildId ?? '').trim();
-            if (!guildId) {
-                res.status(400).json({ error: 'Guild id is required' });
-                return;
-            }
-
-            const importRequest = sanitizeGlossaryImportRequest(req.body ?? {});
-            if (!importRequest.ok) {
-                res.status(400).json({ error: importRequest.error });
-                return;
-            }
-
-            const parsed = parseGlossaryImport(importRequest.value.text);
-            const existingIdsByKey = new Map(
-                store
-                    .listGuildGlossary(guildId)
-                    .map(
-                        (entry) =>
-                            [
-                                normalizeGlossaryKey(entry.sourceText, entry.targetLanguage),
-                                entry.id,
-                            ] as const,
-                    ),
-            );
-            const pendingIndexesByKey = new Map<string, number>();
-            const upserts: GuildGlossaryInput[] = [];
-            let created = 0;
-            let updated = 0;
-            let skipped = 0;
-
-            for (const row of parsed.rows) {
-                const normalizedKey = normalizeGlossaryKey(
-                    row.input.sourceText,
-                    row.input.targetLanguage,
-                );
-                const existingId = existingIdsByKey.get(normalizedKey);
-                const pendingIndex = pendingIndexesByKey.get(normalizedKey);
-                const duplicate = existingId !== undefined || pendingIndex !== undefined;
-
-                if (duplicate && importRequest.value.duplicateMode === 'skip') {
-                    skipped++;
-                    continue;
-                }
-
-                const input =
-                    existingId === undefined ? row.input : { id: existingId, ...row.input };
-                if (pendingIndex === undefined) {
-                    pendingIndexesByKey.set(normalizedKey, upserts.length);
-                    upserts.push(input);
-                } else {
-                    upserts[pendingIndex] = input;
-                }
-
-                if (duplicate) {
-                    updated++;
-                    continue;
-                }
-
-                created++;
-            }
-
-            store.upsertGuildGlossaryEntries(guildId, upserts);
-
-            const failed = parsed.errors?.length ?? 0;
-            const changed = created + updated > 0;
-            if (changed) {
-                cache.clear();
-            }
-
-            res.json({
-                ok: true,
-                created,
-                updated,
-                skipped,
-                failed,
-                errors: parsed.errors ?? [],
-                cacheCleared: changed,
-            });
-        },
-    );
-
-    api.delete(
-        '/guild-glossary/:guildId/:entryId',
-        requireDashboardCapability('guildGlossary'),
-        auth.requireAuth,
-        auth.requireCsrf,
-        (req: Request, res: Response) => {
-            const guildId = String(req.params.guildId ?? '').trim();
-            const entryId = Number.parseInt(String(req.params.entryId ?? ''), 10);
-
-            if (!guildId || !Number.isInteger(entryId) || entryId < 1) {
-                res.status(400).json({
-                    error: 'Valid guild id and glossary entry id are required',
-                });
-                return;
-            }
-
-            if (!store.deleteGuildGlossaryEntry(guildId, entryId)) {
-                res.status(404).json({ error: 'Glossary entry not found' });
-                return;
-            }
-
-            cache.clear();
-            res.json({ ok: true, deleted: entryId });
-        },
-    );
-
-    api.get('/logs', auth.requireAuth, (req: Request, res: Response) => {
+    api.get('/logs', (req: Request, res: Response) => {
         const scope = getScope(res);
         const scopeProfileId = isCombinedDashboard ? scope.appProfileIdForLogs : undefined;
         const count = Math.min(parseInt(req.query.count as string) || 50, 200);
@@ -1110,7 +935,7 @@ export function createDashboardApp({
         res.json(entries);
     });
 
-    api.get('/user-prefs', auth.requireAuth, async (_req: Request, res: Response) => {
+    api.get('/user-prefs', async (_req: Request, res: Response) => {
         const scope = getScope(res);
         const allPreferences = store.listUserLanguagePreferences();
         const entries = scope.capabilities.guildAccess
@@ -1151,67 +976,57 @@ export function createDashboardApp({
         });
     });
 
-    api.post(
-        '/user-prefs/batch-delete',
-        auth.requireAuth,
-        auth.requireCsrf,
-        (req: Request, res: Response) => {
-            const refs = Array.isArray(req.body.entries)
-                ? (req.body.entries as unknown[])
-                      .map((entry: unknown) => sanitizeUserPreferenceRef(entry))
-                      .filter((entry): entry is { guildId: string; userId: string } => !!entry)
-                : [];
+    api.post('/user-prefs/batch-delete', (req: Request, res: Response) => {
+        const refs = Array.isArray(req.body.entries)
+            ? (req.body.entries as unknown[])
+                  .map((entry: unknown) => sanitizeUserPreferenceRef(entry))
+                  .filter((entry): entry is { guildId: string; userId: string } => !!entry)
+            : [];
 
-            if (refs.length === 0) {
-                res.status(400).json({
-                    error: 'entries must be a non-empty array of guildId/userId pairs',
-                });
-                return;
+        if (refs.length === 0) {
+            res.status(400).json({
+                error: 'entries must be a non-empty array of guildId/userId pairs',
+            });
+            return;
+        }
+
+        const deleted: Array<{ guildId: string; userId: string }> = [];
+        const notFound: Array<{ guildId: string; userId: string }> = [];
+        const seen = new Set<string>();
+
+        for (const ref of refs) {
+            const key = `${ref.guildId}\u0000${ref.userId}`;
+            if (seen.has(key)) {
+                continue;
             }
-
-            const deleted: Array<{ guildId: string; userId: string }> = [];
-            const notFound: Array<{ guildId: string; userId: string }> = [];
-            const seen = new Set<string>();
-
-            for (const ref of refs) {
-                const key = `${ref.guildId}\u0000${ref.userId}`;
-                if (seen.has(key)) {
-                    continue;
-                }
-                seen.add(key);
-                if (store.deleteUserLanguage(ref.guildId, ref.userId)) {
-                    deleted.push(ref);
-                } else {
-                    notFound.push(ref);
-                }
-            }
-
-            res.json({ ok: true, deleted, notFound });
-        },
-    );
-
-    api.delete(
-        '/user-prefs/:userId',
-        auth.requireAuth,
-        auth.requireCsrf,
-        (req: Request, res: Response) => {
-            const scope = getScope(res);
-            const userId = req.params.userId as string;
-            const guildId = String(req.query.guildId ?? '').trim();
-            if (scope.capabilities.guildAccess && !guildId) {
-                res.status(400).json({ error: 'guildId is required' });
-                return;
-            }
-
-            if (store.deleteUserLanguage(guildId, userId)) {
-                res.json({ ok: true, deleted: { guildId, userId } });
+            seen.add(key);
+            if (store.deleteUserLanguage(ref.guildId, ref.userId)) {
+                deleted.push(ref);
             } else {
-                res.status(404).json({ error: dashboardMessages.userPreferences.notFound });
+                notFound.push(ref);
             }
-        },
-    );
+        }
 
-    api.post('/cache/clear', auth.requireAuth, auth.requireCsrf, (_req: Request, res: Response) => {
+        res.json({ ok: true, deleted, notFound });
+    });
+
+    api.delete('/user-prefs/:userId', (req: Request, res: Response) => {
+        const scope = getScope(res);
+        const userId = req.params.userId as string;
+        const guildId = String(req.query.guildId ?? '').trim();
+        if (scope.capabilities.guildAccess && !guildId) {
+            res.status(400).json({ error: 'guildId is required' });
+            return;
+        }
+
+        if (store.deleteUserLanguage(guildId, userId)) {
+            res.json({ ok: true, deleted: { guildId, userId } });
+        } else {
+            res.status(404).json({ error: dashboardMessages.userPreferences.notFound });
+        }
+    });
+
+    api.post('/cache/clear', (_req: Request, res: Response) => {
         const before = cache.stats();
         const ocrBefore = ocrCache.stats();
         cache.clear();
@@ -1224,61 +1039,56 @@ export function createDashboardApp({
         });
     });
 
-    api.post(
-        '/translate/test',
-        auth.requireAuth,
-        auth.requireCsrf,
-        async (req: Request, res: Response) => {
-            const scope = getScope(res);
-            const scopedTranslationService = getDashboardTranslationService(scope);
-            const { text, targetLanguage } = req.body;
-            if (!text?.trim()) {
-                res.status(400).json({ error: dashboardMessages.translationTest.textRequired });
+    api.post('/translate/test', async (req: Request, res: Response) => {
+        const scope = getScope(res);
+        const scopedTranslationService = getDashboardTranslationService(scope);
+        const { text, targetLanguage } = req.body;
+        if (!text?.trim()) {
+            res.status(400).json({ error: dashboardMessages.translationTest.textRequired });
+            return;
+        }
+        try {
+            const start = Date.now();
+            const result = await scopedTranslationService.process({
+                command: 'translate',
+                commandLabel: 'dashboard translation test',
+                guildId: null,
+                guildName: 'Dashboard',
+                userId: 'dashboard-admin',
+                userTag: 'Dashboard Admin',
+                locale: undefined,
+                text,
+                targetLanguageOption: targetLanguage || 'auto',
+                bypassAccessControl: true,
+                beforeTranslate: async () => undefined,
+            });
+
+            if (result.status === 'blocked') {
+                res.status(400).json({ error: result.message });
                 return;
             }
-            try {
-                const start = Date.now();
-                const result = await scopedTranslationService.process({
-                    command: 'translate',
-                    commandLabel: 'dashboard translation test',
-                    guildId: null,
-                    guildName: 'Dashboard',
-                    userId: 'dashboard-admin',
-                    userTag: 'Dashboard Admin',
-                    locale: undefined,
-                    text,
-                    targetLanguageOption: targetLanguage || 'auto',
-                    bypassAccessControl: true,
-                    beforeTranslate: async () => undefined,
-                });
 
-                if (result.status === 'blocked') {
-                    res.status(400).json({ error: result.message });
-                    return;
-                }
-
-                if (result.status === 'error') {
-                    res.status(500).json({ error: sanitizeError(result.message) });
-                    return;
-                }
-
-                res.json({
-                    ok: true,
-                    translation: result.translatedText,
-                    inputTokens: result.inputTokens,
-                    outputTokens: result.outputTokens,
-                    latencyMs: Date.now() - start,
-                    cached: result.cached,
-                    provider: result.provider,
-                    fallback: result.fallback,
-                });
-            } catch (err) {
-                res.status(500).json({ error: sanitizeError((err as Error).message) });
+            if (result.status === 'error') {
+                res.status(500).json({ error: sanitizeError(result.message) });
+                return;
             }
-        },
-    );
 
-    api.get('/health', auth.requireAuth, async (_req: Request, res: Response) => {
+            res.json({
+                ok: true,
+                translation: result.translatedText,
+                inputTokens: result.inputTokens,
+                outputTokens: result.outputTokens,
+                latencyMs: Date.now() - start,
+                cached: result.cached,
+                provider: result.provider,
+                fallback: result.fallback,
+            });
+        } catch (err) {
+            res.status(500).json({ error: sanitizeError((err as Error).message) });
+        }
+    });
+
+    api.get('/health', async (_req: Request, res: Response) => {
         const readiness = await getReadinessStatus({ discordReady: isDiscordReady });
         res.status(readiness.ready ? 200 : 503).json({
             healthy: readiness.ready,

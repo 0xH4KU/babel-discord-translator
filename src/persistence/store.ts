@@ -59,6 +59,13 @@ export interface ScopedUsageRow extends TokenUsage {
     scopeId: string;
 }
 
+const USAGE_SUM_COLUMNS = `
+    COALESCE(SUM(input_tokens), 0) AS inputTokens,
+    COALESCE(SUM(output_tokens), 0) AS outputTokens,
+    COALESCE(SUM(requests), 0) AS requests,
+    COALESCE(SUM(input_cost_usd), 0) AS inputCost,
+    COALESCE(SUM(output_cost_usd), 0) AS outputCost`;
+
 const ROLLING_USAGE_RETENTION_MS = 32 * 24 * 60 * 60 * 1000;
 
 function rollingUsageTimes(timestamp: string): {
@@ -513,11 +520,7 @@ export class ConfigStore {
     ): TokenUsage {
         const row = this.stmt(
             `
-            SELECT COALESCE(SUM(input_tokens), 0) as inputTokens,
-                   COALESCE(SUM(output_tokens), 0) as outputTokens,
-                   COALESCE(SUM(requests), 0) as requests,
-                   COALESCE(SUM(input_cost_usd), 0) as inputCost,
-                   COALESCE(SUM(output_cost_usd), 0) as outputCost
+            SELECT ${USAGE_SUM_COLUMNS}
             FROM scoped_usage
             WHERE scope = ? AND scope_id = ? AND date >= ? AND date < ?
         `,
@@ -566,11 +569,7 @@ export class ConfigStore {
     ): TokenUsage {
         const row = this.stmt(
             `
-            SELECT COALESCE(SUM(input_tokens), 0) as inputTokens,
-                   COALESCE(SUM(output_tokens), 0) as outputTokens,
-                   COALESCE(SUM(requests), 0) as requests,
-                   COALESCE(SUM(input_cost_usd), 0) as inputCost,
-                   COALESCE(SUM(output_cost_usd), 0) as outputCost
+            SELECT ${USAGE_SUM_COLUMNS}
             FROM rolling_usage
             WHERE scope = ? AND scope_id = ?
               AND bucket_start >= ? AND bucket_start < ?
@@ -644,11 +643,7 @@ export class ConfigStore {
     getBudgetPoolUsage(poolId: TranslationBudgetPoolId, date: string): TokenUsage {
         const row = this.stmt(
             `
-            SELECT COALESCE(SUM(input_tokens), 0) AS inputTokens,
-                   COALESCE(SUM(output_tokens), 0) AS outputTokens,
-                   COALESCE(SUM(requests), 0) AS requests,
-                   COALESCE(SUM(input_cost_usd), 0) AS inputCost,
-                   COALESCE(SUM(output_cost_usd), 0) AS outputCost
+            SELECT ${USAGE_SUM_COLUMNS}
             FROM budget_usage
             WHERE pool_id = ? AND date = ?
         `,
@@ -664,11 +659,7 @@ export class ConfigStore {
     ): TokenUsage {
         const row = this.stmt(
             `
-            SELECT COALESCE(SUM(input_tokens), 0) AS inputTokens,
-                   COALESCE(SUM(output_tokens), 0) AS outputTokens,
-                   COALESCE(SUM(requests), 0) AS requests,
-                   COALESCE(SUM(input_cost_usd), 0) AS inputCost,
-                   COALESCE(SUM(output_cost_usd), 0) AS outputCost
+            SELECT ${USAGE_SUM_COLUMNS}
             FROM budget_usage
             WHERE pool_id = ? AND date >= ? AND date < ?
         `,
@@ -714,11 +705,7 @@ export class ConfigStore {
     ): TokenUsage {
         const row = this.stmt(
             `
-            SELECT COALESCE(SUM(input_tokens), 0) AS inputTokens,
-                   COALESCE(SUM(output_tokens), 0) AS outputTokens,
-                   COALESCE(SUM(requests), 0) AS requests,
-                   COALESCE(SUM(input_cost_usd), 0) AS inputCost,
-                   COALESCE(SUM(output_cost_usd), 0) AS outputCost
+            SELECT ${USAGE_SUM_COLUMNS}
             FROM rolling_budget_usage
             WHERE pool_id = ? AND bucket_start >= ? AND bucket_start < ?
         `,

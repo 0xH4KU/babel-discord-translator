@@ -17,11 +17,65 @@ import type {
     TranslationPrompt,
     TranslationResult,
 } from '../shared/types.js';
-import { parseImageTranslationResponse } from '../modules/translation/lens-model.js';
-import { ProviderResponseError } from './provider-errors.js';
+import {
+    parseImageTranslationResponse,
+    parseOcrImageTranslationResponse,
+} from '../modules/translation/lens-model.js';
+import { ProviderHttpError, ProviderResponseError } from './provider-errors.js';
 
 const MAX_RETRIES = DEFAULT_PROVIDER_MAX_RETRIES;
 const REQUEST_TIMEOUT_MS = DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS;
+const structuredOutputFallbackModels = new Set<string>();
+
+const OPENAI_LENS_SCHEMA = {
+    name: 'babel_lens_translation',
+    strict: true,
+    schema: {
+        type: 'object',
+        properties: {
+            has_text: { type: 'boolean' },
+            regions: {
+                type: 'array',
+                items: {
+                    type: 'object',
+                    properties: {
+                        box_2d: { type: 'array', items: { type: 'integer' } },
+                        translation: { type: 'string' },
+                    },
+                    required: ['box_2d', 'translation'],
+                    additionalProperties: false,
+                },
+            },
+        },
+        required: ['has_text', 'regions'],
+        additionalProperties: false,
+    },
+} as const;
+
+const OPENAI_LENS_OCR_SCHEMA = {
+    name: 'babel_lens_ocr_translation',
+    strict: true,
+    schema: {
+        type: 'object',
+        properties: {
+            has_text: { type: 'boolean' },
+            regions: {
+                type: 'array',
+                items: {
+                    type: 'object',
+                    properties: {
+                        ids: { type: 'array', items: { type: 'integer' } },
+                        translation: { type: 'string' },
+                    },
+                    required: ['ids', 'translation'],
+                    additionalProperties: false,
+                },
+            },
+        },
+        required: ['has_text', 'regions'],
+        additionalProperties: false,
+    },
+} as const;
 
 interface OpenAiConfig {
     apiKey: string;
@@ -55,6 +109,26 @@ function buildChatCompletionsUrl(baseUrl: string): string {
     return `${base}/v1/chat/completions`;
 }
 
+function extractChatContent(choice?: NonNullable<OpenAIChatResponse['choices']>[number]): string {
+    const raw = choice?.message?.content;
+    if (typeof raw === 'string') return raw.trim();
+    if (Array.isArray(raw)) {
+        return raw
+            .map((part) => (typeof part?.text === 'string' ? part.text : ''))
+            .join('')
+            .trim();
+    }
+    return '';
+}
+
+function isStructuredOutputUnsupported(error: unknown): boolean {
+    return (
+        error instanceof ProviderHttpError &&
+        (error.statusCode === 400 || error.statusCode === 422) &&
+        /response[_ -]?format|json[_ -]?schema|structured outputs?/iu.test(error.message)
+    );
+}
+
 const classifyOpenAiFailure = classifyProviderFailure;
 
 async function buildOpenAiError(response: Response): Promise<Error> {
@@ -73,6 +147,7 @@ async function requestChatCompletion(
         runtimeConfig,
         signal,
         image,
+        jsonSchema,
     }: {
         maxOutputTokens: number;
         temperature?: number;
@@ -83,8 +158,9 @@ async function requestChatCompletion(
         runtimeConfig?: RuntimeConfig;
         signal?: AbortSignal;
         image?: Pick<ImageTranslationRequest, 'image' | 'mimeType'>;
+        jsonSchema?: typeof OPENAI_LENS_SCHEMA | typeof OPENAI_LENS_OCR_SCHEMA;
     },
-): Promise<{ data: OpenAIChatResponse; latencyMs: number }> {
+): Promise<{ data: OpenAIChatResponse; latencyMs: number; config: OpenAiConfig }> {
     const logger = appLogger.child({
         component: 'openai',
         ...logContext,
@@ -146,6 +222,14 @@ async function requestChatCompletion(
                               ],
                     max_tokens: maxOutputTokens,
                     temperature,
+                    ...(jsonSchema
+                        ? {
+                              response_format: {
+                                  type: 'json_schema',
+                                  json_schema: jsonSchema,
+                              },
+                          }
+                        : {}),
                 }),
             },
             {
@@ -189,6 +273,7 @@ async function requestChatCompletion(
     return {
         data: (await response.json()) as OpenAIChatResponse,
         latencyMs,
+        config,
     };
 }
 
@@ -197,43 +282,68 @@ export async function generateImageTranslationContent(
     maxOutputTokens: number,
     options?: TranslateOptions,
 ): Promise<ImageTranslationResult> {
-    const { data } = await requestChatCompletion(request.prompt, {
-        maxOutputTokens,
-        logPrefix: 'Babel Lens',
-        logContext: options?.logContext,
-        runtimeConfig: options?.runtimeConfig,
-        signal: options?.signal,
-        image: request,
-    });
+    const useOcrSchema = Boolean(request.ocrUnits?.length);
+    const schema = useOcrSchema ? OPENAI_LENS_OCR_SCHEMA : OPENAI_LENS_SCHEMA;
+    const config = getOpenAiConfig(options?.runtimeConfig);
+    const modelKey = `${config.baseUrl}\u0000${config.model}\u0000${schema.name}`;
 
-    const choice = data.choices?.[0];
-    const result = choice?.message?.content?.trim() ?? '';
-    const usage = data.usage || {};
-    const inputTokens = normalizeProviderTokenCount(usage.prompt_tokens, 4096);
-    const outputTokens = normalizeProviderTokenCount(
-        usage.completion_tokens,
-        result ? estimateTokenCount(result) : 0,
-    );
-    if (choice?.finish_reason === 'length') {
-        throw new ProviderResponseError(
-            'Babel Lens output was truncated by Max Output Tokens; increase it in Settings.',
-            inputTokens,
-            outputTokens,
+    const runAttempt = async (useSchema: boolean): Promise<ImageTranslationResult> => {
+        const { data } = await requestChatCompletion(request.prompt, {
+            maxOutputTokens,
+            logPrefix: 'Babel Lens',
+            logContext: options?.logContext,
+            runtimeConfig: options?.runtimeConfig,
+            signal: options?.signal,
+            image: request,
+            ...(useSchema ? { jsonSchema: schema } : {}),
+        });
+
+        const choice = data.choices?.[0];
+        const result = extractChatContent(choice);
+        const usage = data.usage || {};
+        const inputTokens = normalizeProviderTokenCount(usage.prompt_tokens, 4096);
+        const outputTokens = normalizeProviderTokenCount(
+            usage.completion_tokens,
+            result ? estimateTokenCount(result) : 0,
         );
-    }
-    if (!result) {
-        throw new ProviderResponseError(
-            'Empty Babel Lens response from OpenAI',
-            inputTokens,
-            outputTokens,
-        );
-    }
+        if (choice?.finish_reason === 'length') {
+            throw new ProviderResponseError(
+                'Babel Lens output was truncated by Max Output Tokens; increase it in Settings.',
+                inputTokens,
+                outputTokens,
+            );
+        }
+        if (choice?.message?.refusal) {
+            throw new ProviderResponseError(
+                `OpenAI refused Babel Lens translation: ${choice.message.refusal}`,
+                inputTokens,
+                outputTokens,
+            );
+        }
+        if (!result) {
+            throw new ProviderResponseError(
+                'Empty Babel Lens response from OpenAI',
+                inputTokens,
+                outputTokens,
+            );
+        }
+
+        return useOcrSchema
+            ? parseOcrImageTranslationResponse(result, request.ocrUnits!, inputTokens, outputTokens)
+            : parseImageTranslationResponse(result, inputTokens, outputTokens);
+    };
+
+    const shouldUseSchema = !structuredOutputFallbackModels.has(modelKey);
+    if (!shouldUseSchema) return runAttempt(false);
 
     try {
-        return parseImageTranslationResponse(result, inputTokens, outputTokens);
+        return await runAttempt(true);
     } catch (error) {
-        const cause = error instanceof Error ? error : new Error(String(error));
-        throw new ProviderResponseError(cause.message, inputTokens, outputTokens, { cause });
+        if (isStructuredOutputUnsupported(error)) {
+            structuredOutputFallbackModels.add(modelKey);
+            return runAttempt(false);
+        }
+        throw error;
     }
 }
 
@@ -250,7 +360,7 @@ export async function generateTranslationContent(
         signal: options?.signal,
     });
 
-    const result = data.choices?.[0]?.message?.content?.trim();
+    const result = extractChatContent(data.choices?.[0]);
     if (!result) {
         throw new Error('Empty response from OpenAI');
     }
@@ -327,4 +437,5 @@ export const _test = {
     getOpenAiConfig,
     buildOpenAiError,
     classifyOpenAiFailure,
+    resetStructuredOutputFallbacks: () => structuredOutputFallbackModels.clear(),
 };

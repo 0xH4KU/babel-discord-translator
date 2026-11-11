@@ -1,6 +1,6 @@
 {
   "name": "babel-discord-translator",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Self-hosted Discord translation bot with Vertex AI and OpenAI-compatible providers, cost controls, and a web dashboard",
   "private": true,
   "type": "module",
@@ -60,7 +60,7 @@
     "sharp": "^0.35.4"
   },
   "overrides": {
-    "undici": "6.28.0"
+    "undici": "^6.29.1"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",

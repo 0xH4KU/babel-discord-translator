@@ -204,3 +204,21 @@ In the dashboard, check:
 Babel is free and self-hosted. If it saves setup time or helps your community or private install avoid a hosted bot subscription, you can support upstream maintenance on Ko-fi:
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/0xh4ku)
+
+## Reverse proxies and graceful restarts
+
+Set `DASHBOARD_TRUSTED_PROXIES` to the comma-separated IP addresses or CIDRs of your
+actual reverse proxies. For a same-host proxy, `DASHBOARD_TRUSTED_PROXIES=loopback`
+trusts loopback connections. Leave it empty when clients connect directly. The
+trusted proxy must overwrite forwarded headers. Do not use a blanket trust setting:
+login limits and HTTPS session cookies now use Express's trusted proxy resolution.
+For hosted/container proxies, use their actual source addresses instead of copying
+the loopback example; an unset list groups proxied clients under the proxy's IP.
+
+On SIGTERM/SIGINT, Babel stops accepting Discord interactions, closes the HTTP
+listener, and waits for accepted interactions (including Lens rendering and usage
+settlement) before destroying Discord clients and closing SQLite. The application
+has a 90-second shutdown deadline. The supplied Compose and PM2 configurations
+allow 95 seconds; configure other supervisors to allow at least that long. For
+plain Docker, use `docker stop --time 95 babel`. Work exceeding the application
+or supervisor deadline can still be interrupted.

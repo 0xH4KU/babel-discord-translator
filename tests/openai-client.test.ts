@@ -64,6 +64,7 @@ describe('openai-client', () => {
 
     beforeEach(() => {
         originalFetch = globalThis.fetch;
+        _test.resetStructuredOutputFallbacks();
         mockStore._setMock('openaiApiKey', 'test-openai-key');
         mockStore._setMock('openaiBaseUrl', 'https://api.openai.example');
         mockStore._setMock('openaiModel', 'gpt-test');
@@ -119,15 +120,19 @@ describe('openai-client', () => {
         });
     });
 
-    it('should send compatible text and image_url content parts without forcing response format', async () => {
-        globalThis.fetch = vi
-            .fn()
-            .mockResolvedValue(
-                chatResponse(JSON.stringify({ has_text: true, translation: 'hola', regions: [] }), {
+    it('should send text, image_url, and strict json_schema response_format', async () => {
+        globalThis.fetch = vi.fn().mockResolvedValue(
+            chatResponse(
+                JSON.stringify({
+                    has_text: true,
+                    regions: [{ box_2d: [10, 20, 90, 240], translation: 'hola' }],
+                }),
+                {
                     prompt_tokens: 50,
                     completion_tokens: 10,
-                }),
-            );
+                },
+            ),
+        );
 
         const result = await generateImageTranslationContent(
             {
@@ -138,7 +143,12 @@ describe('openai-client', () => {
             512,
         );
 
-        expect(result).toMatchObject({ text: 'hola', inputTokens: 50, outputTokens: 10 });
+        expect(result).toMatchObject({
+            text: '[1] hola',
+            regions: [{ box_2d: [10, 20, 90, 240], translation: 'hola' }],
+            inputTokens: 50,
+            outputTokens: 10,
+        });
         const request = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1];
         const body = JSON.parse(request.body);
         expect(body.messages[1].content).toEqual([
@@ -150,8 +160,67 @@ describe('openai-client', () => {
                 },
             },
         ]);
-        expect(body).not.toHaveProperty('response_format');
+        expect(body.response_format).toMatchObject({
+            type: 'json_schema',
+            json_schema: { name: 'babel_lens_translation', strict: true },
+        });
         expect(body.messages[1].content[1].image_url).not.toHaveProperty('detail');
+    });
+
+    it('should fall back and cache schema bypass when gateway rejects json_schema', async () => {
+        globalThis.fetch = vi
+            .fn()
+            .mockResolvedValueOnce({
+                ok: false,
+                status: 400,
+                statusText: 'Bad Request',
+                headers: new Headers(),
+                text: () => Promise.resolve('response_format json_schema is not supported'),
+            })
+            .mockResolvedValueOnce(
+                chatResponse(
+                    JSON.stringify({
+                        has_text: true,
+                        regions: [{ box_2d: [10, 20, 90, 240], translation: 'hola' }],
+                    }),
+                    { prompt_tokens: 40, completion_tokens: 8 },
+                ),
+            )
+            .mockResolvedValueOnce(
+                chatResponse(
+                    JSON.stringify({ has_text: false, regions: [] }),
+                    { prompt_tokens: 30, completion_tokens: 4 },
+                ),
+            );
+
+        const first = await generateImageTranslationContent(
+            {
+                image: Buffer.from('image'),
+                mimeType: 'image/png',
+                prompt: translationPrompt('Read it.'),
+            },
+            256,
+        );
+        const second = await generateImageTranslationContent(
+            {
+                image: Buffer.from('image'),
+                mimeType: 'image/png',
+                prompt: translationPrompt('Read it again.'),
+            },
+            256,
+        );
+
+        expect(first.text).toBe('[1] hola');
+        expect(second.hasText).toBe(false);
+        expect(globalThis.fetch).toHaveBeenCalledTimes(3);
+        const secondAttemptBody = JSON.parse(
+            (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[1][1].body,
+        );
+        const thirdAttemptBody = JSON.parse(
+            (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[2][1].body,
+        );
+        expect(secondAttemptBody).not.toHaveProperty('response_format');
+        expect(thirdAttemptBody).not.toHaveProperty('response_format');
     });
 
     it('should report image output truncated by the configured token limit', async () => {

@@ -125,8 +125,7 @@ describe('vertex-ai-client', () => {
             geminiResponse(
                 JSON.stringify({
                     has_text: true,
-                    translation: '你好',
-                    regions: [[10, 20, 30, 40]],
+                    regions: [{ box_2d: [10, 20, 80, 240], translation: '你好' }],
                 }),
                 120,
                 20,
@@ -142,7 +141,12 @@ describe('vertex-ai-client', () => {
             512,
         );
 
-        expect(result).toMatchObject({ text: '你好', inputTokens: 120, outputTokens: 20 });
+        expect(result).toMatchObject({
+            text: '[1] 你好',
+            regions: [{ box_2d: [10, 20, 80, 240], translation: '你好' }],
+            inputTokens: 120,
+            outputTokens: 20,
+        });
         const request = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1];
         const body = JSON.parse(request.body);
         expect(body.contents[0].parts).toEqual([
@@ -157,13 +161,20 @@ describe('vertex-ai-client', () => {
         ]);
         expect(body.generationConfig).toMatchObject({
             responseMimeType: 'application/json',
-            responseSchema: { type: 'OBJECT', required: ['has_text', 'translation', 'regions'] },
+            responseSchema: { type: 'OBJECT', required: ['has_text', 'regions'] },
         });
         expect(body.generationConfig.responseSchema.properties.regions.items).toEqual({
-            type: 'ARRAY',
-            minItems: 4,
-            maxItems: 4,
-            items: { type: 'NUMBER', minimum: 0, maximum: 1000 },
+            type: 'OBJECT',
+            required: ['box_2d', 'translation'],
+            properties: {
+                box_2d: {
+                    type: 'ARRAY',
+                    minItems: 4,
+                    maxItems: 4,
+                    items: { type: 'INTEGER', minimum: 0, maximum: 1000 },
+                },
+                translation: { type: 'STRING' },
+            },
         });
 
         mockStore._setMock('geminiMediaResolution', 'default');
@@ -179,6 +190,54 @@ describe('vertex-ai-client', () => {
             (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[1][1].body,
         );
         expect(defaultBody.contents[0].parts[1]).not.toHaveProperty('mediaResolution');
+    });
+
+    it('should ignore Gemini thought parts and include thoughtsTokenCount in output tokens', async () => {
+        globalThis.fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => ({
+                candidates: [
+                    {
+                        content: {
+                            parts: [
+                                { text: 'internal reasoning...', thought: true },
+                                {
+                                    text: JSON.stringify({
+                                        has_text: true,
+                                        regions: [{ ids: [1], translation: '早安' }],
+                                    }),
+                                },
+                            ],
+                        },
+                    },
+                ],
+                usageMetadata: {
+                    promptTokenCount: 80,
+                    candidatesTokenCount: 12,
+                    thoughtsTokenCount: 30,
+                },
+            }),
+            text: async () => '',
+        });
+
+        const result = await generateImageTranslationContent(
+            {
+                image: Buffer.from('image'),
+                mimeType: 'image/png',
+                prompt: translationPrompt('Group OCR units.'),
+                ocrUnits: [{ id: 1, text: 'おはよう', box_2d: [20, 30, 120, 320] }],
+            },
+            512,
+        );
+
+        expect(result).toEqual({
+            text: '[1] 早安',
+            hasText: true,
+            regions: [{ box_2d: [20, 30, 120, 320], source: 'おはよう', translation: '早安' }],
+            inputTokens: 80,
+            outputTokens: 42,
+        });
     });
 
     it('should report image output truncated by the configured token limit', async () => {

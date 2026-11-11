@@ -5,7 +5,10 @@ import { describe, expect, it } from 'vitest';
 describe('dashboard static assets', () => {
     it('filters user language preferences by selected guild', () => {
         const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
-        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const accessJs =
+            readFileSync('src/public/js/access.js', 'utf-8') +
+            '\n' +
+            readFileSync('src/public/js/glossary.js', 'utf-8');
         const nodes = {
             'prefs-count': { textContent: '' },
             'prefs-guild-filter': { disabled: false, innerHTML: '', value: '' },
@@ -64,7 +67,10 @@ describe('dashboard static assets', () => {
 
     it('renders Pocket user preferences without server filtering controls', () => {
         const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
-        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const accessJs =
+            readFileSync('src/public/js/access.js', 'utf-8') +
+            '\n' +
+            readFileSync('src/public/js/glossary.js', 'utf-8');
         const nodes = {
             'prefs-count': { textContent: '' },
             'prefs-guild-filter': { disabled: false, hidden: false, innerHTML: '', value: '' },
@@ -318,7 +324,10 @@ describe('dashboard static assets', () => {
 
     it('escapes glossary table fields rendered from stored import data', () => {
         const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
-        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const accessJs =
+            readFileSync('src/public/js/access.js', 'utf-8') +
+            '\n' +
+            readFileSync('src/public/js/glossary.js', 'utf-8');
         const glossaryContainer = { innerHTML: '' };
         const context = {
             document: {
@@ -360,7 +369,10 @@ describe('dashboard static assets', () => {
 
     it('escapes guild access rows rendered from Discord data', () => {
         const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
-        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const accessJs =
+            readFileSync('src/public/js/access.js', 'utf-8') +
+            '\n' +
+            readFileSync('src/public/js/glossary.js', 'utf-8');
         const visionLimitsJs = readFileSync('src/public/js/vision-limits.js', 'utf-8');
         const nodes = {
             'guild-list': { innerHTML: '' },
@@ -418,7 +430,10 @@ describe('dashboard static assets', () => {
 
     it('keeps Lens access scoped to translation-enabled guilds', () => {
         const utilsJs = readFileSync('src/public/js/utils.js', 'utf-8');
-        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const accessJs =
+            readFileSync('src/public/js/access.js', 'utf-8') +
+            '\n' +
+            readFileSync('src/public/js/glossary.js', 'utf-8');
         const visionLimitsJs = readFileSync('src/public/js/vision-limits.js', 'utf-8');
         const nodes = {
             'guild-list': { innerHTML: '' },
@@ -659,7 +674,10 @@ describe('dashboard static assets', () => {
     });
 
     it('submits per-guild budget limit overrides with blank fields inherited', async () => {
-        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const accessJs =
+            readFileSync('src/public/js/access.js', 'utf-8') +
+            '\n' +
+            readFileSync('src/public/js/glossary.js', 'utf-8');
         const requests: Array<{ path: string; options: { method?: string; body?: string } }> = [];
         const fields = {
             'gbl5-guild-1': { value: '8' },
@@ -724,9 +742,9 @@ describe('dashboard static assets', () => {
         expect(usage.textContent).toBe('0 / 950 images used · 2026-08');
     });
 
-    it('shows Vision settings only for enabled text-only providers and tracks drafts', () => {
+    it('renders Direct, Hybrid OCR, and Vision fallback Lens routes and tracks drafts', () => {
         const settingsJs = readFileSync('src/public/js/settings.js', 'utf-8');
-        const fallback = { hidden: true };
+        const desc = { textContent: '' };
         const fallbackOptions = [
             { value: '', disabled: false },
             { value: 'vertex', disabled: false },
@@ -742,9 +760,12 @@ describe('dashboard static assets', () => {
             'cfg-provider-fallback': { value: '', options: fallbackOptions },
             'cfg-vertex-images': { checked: false },
             'cfg-openai-images': { checked: false },
+            'cfg-vision-apikey': { value: '' },
+            'cfg-vision-limit': { value: '0' },
             'cfg-model': { value: 'gemini-new' },
             'lens-route-vertex': { textContent: '', className: '' },
             'lens-route-openai': { textContent: '', className: '' },
+            'vision-settings-desc': desc,
             'settings-save-status': status,
             'settings-save-button': button,
         };
@@ -753,8 +774,8 @@ describe('dashboard static assets', () => {
                 getElementById(id: string) {
                     return fields[id as keyof typeof fields] || null;
                 },
-                querySelectorAll(selector: string) {
-                    return selector === '.vision-fallback-only' ? [fallback] : [];
+                querySelectorAll() {
+                    return [];
                 },
             },
         };
@@ -767,15 +788,20 @@ describe('dashboard static assets', () => {
              refreshLensRoutes();`,
             context,
         );
-        expect(fallback.hidden).toBe(false);
+        expect(desc.textContent).toContain('Required because at least one enabled provider');
         expect(fields['lens-route-vertex'].textContent).toBe('Vision fallback');
 
         fields['cfg-vertex-images'].checked = true;
         vm.runInContext('onProviderCapabilityChange();', context);
-        expect(fallback.hidden).toBe(true);
+        expect(desc.textContent).toContain('Optional for multimodal providers');
         expect(fields['lens-route-vertex'].textContent).toBe('Direct multimodal');
         expect(button.disabled).toBe(false);
         expect(status.textContent).toBe('Unsaved changes');
+
+        fields['cfg-vision-apikey'].value = 'vision-key';
+        fields['cfg-vision-limit'].value = '900';
+        vm.runInContext('refreshLensRoutes();', context);
+        expect(fields['lens-route-vertex'].textContent).toBe('Hybrid OCR + multimodal');
 
         vm.runInContext('onVertexIdentityChanged();', context);
         expect(fields['cfg-vertex-images'].checked).toBe(false);
@@ -845,7 +871,10 @@ describe('dashboard static assets', () => {
     });
 
     it('submits glossary imports and renders the server result', async () => {
-        const accessJs = readFileSync('src/public/js/access.js', 'utf-8');
+        const accessJs =
+            readFileSync('src/public/js/access.js', 'utf-8') +
+            '\n' +
+            readFileSync('src/public/js/glossary.js', 'utf-8');
         const nodes = {
             'glossary-import-text': { value: '  source,target\nraid,團本  ' },
             'glossary-import-result': { hidden: true, innerHTML: '' },

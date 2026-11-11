@@ -373,34 +373,20 @@ export class UsageTracker {
         budgets = store.listUserBudgets(),
         runtimeConfig = configRepository.getRuntimeConfig(),
     ): Record<string, UsageStats> {
-        return this.getScopedStatsForIds(
-            'user',
-            userIds,
-            budgets,
-            runtimeConfig.defaultUserMonthlyBudgetUsd || 0,
-            runtimeConfig,
-        );
-    }
-
-    private getScopedStatsForIds(
-        scope: 'guild' | 'user',
-        ids: readonly string[],
-        budgets: Record<string, { monthlyBudgetUsd: number }>,
-        defaultBudget: number,
-        runtimeConfig: RuntimeConfig,
-    ): Record<string, UsageStats> {
         const period = currentMonth();
-        const scopedUsage = store.getUsageForIdsBetween(scope, ids, period.start, period.end);
+        const scopedUsage = store.getUsageForIdsBetween('user', userIds, period.start, period.end);
 
         return Object.fromEntries(
-            ids.map((id) => {
+            userIds.map((id) => {
                 const usage = scopedUsage[id] ?? createEmptyUsage(period.start);
                 const cost = withCost(
                     usage,
                     runtimeConfig.inputPricePerMillion || 0,
                     runtimeConfig.outputPricePerMillion || 0,
                 );
-                const budget = budgets[id]?.monthlyBudgetUsd ?? defaultBudget;
+                const budget =
+                    budgets[id]?.monthlyBudgetUsd ??
+                    (runtimeConfig.defaultUserMonthlyBudgetUsd || 0);
 
                 return [id, toUsageStats(cost, budget)];
             }),

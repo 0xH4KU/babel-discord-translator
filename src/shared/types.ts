@@ -160,15 +160,22 @@ export interface TranslationResult {
     fallback?: boolean;
 }
 
+export interface OcrTextUnit {
+    id: number;
+    text: string;
+    box_2d: [number, number, number, number];
+}
+
 export interface LensRegion {
     translation: string;
     box_2d: [number, number, number, number];
+    source?: string;
 }
 
 export interface ImageTranslationResult extends TranslationResult {
     hasText: boolean;
     regions: LensRegion[];
-    route?: 'direct' | 'vision';
+    route?: 'direct' | 'hybrid' | 'vision';
     warnings?: string[];
 }
 
@@ -176,18 +183,20 @@ export interface ImageTranslationRequest {
     image: Buffer;
     mimeType: 'image/jpeg' | 'image/png' | 'image/webp';
     prompt: TranslationPrompt;
+    ocrUnits?: OcrTextUnit[];
 }
 
 export interface VertexAIResponse {
     candidates?: Array<{
         finishReason?: string;
         content?: {
-            parts?: Array<{ text?: string }>;
+            parts?: Array<{ text?: string; thought?: boolean }>;
         };
     }>;
     usageMetadata?: {
         promptTokenCount?: unknown;
         candidatesTokenCount?: unknown;
+        thoughtsTokenCount?: unknown;
     };
 }
 
@@ -195,7 +204,8 @@ export interface OpenAIChatResponse {
     choices?: Array<{
         finish_reason?: string | null;
         message?: {
-            content?: string;
+            content?: string | Array<{ type?: string; text?: string }> | null;
+            refusal?: string | null;
         };
     }>;
     usage?: {

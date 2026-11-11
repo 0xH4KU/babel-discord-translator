@@ -8,6 +8,7 @@ import {
 
 describe('translation service helpers', () => {
     it('classifies translation errors with suggested actions', () => {
+        expect(classifyTranslationError('Server budget exceeded').errorType).toBe('budget');
         expect(classifyTranslationError('Vertex AI 429 rate limit')).toEqual({
             errorType: 'rate_limit',
             suggestedAction:

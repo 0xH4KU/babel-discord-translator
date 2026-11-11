@@ -71,6 +71,33 @@ describe('createGracefulShutdownHandler', () => {
         expect(process.exitCode).toBe(0);
     });
 
+    it('stops admission and drains work before destroying clients or closing SQLite', async () => {
+        const pending = Promise.withResolvers<void>();
+        const stopAccepting = vi.fn();
+        const destroy = vi.fn(async () => undefined);
+        const closeDatabase = vi.fn();
+        const drain = vi.fn(() => pending.promise);
+        const shutdown = createGracefulShutdownHandler({
+            client: { destroy },
+            stopAccepting,
+            drain,
+            cleanupTasks: [closeDatabase],
+            logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        });
+        const completion = shutdown('SIGTERM');
+        await vi.waitFor(() => expect(drain).toHaveBeenCalledOnce());
+        expect(stopAccepting).toHaveBeenCalledOnce();
+        expect(destroy).not.toHaveBeenCalled();
+        expect(closeDatabase).not.toHaveBeenCalled();
+        pending.resolve();
+        await completion;
+        expect(destroy).toHaveBeenCalledOnce();
+        expect(closeDatabase).toHaveBeenCalledOnce();
+        expect(destroy.mock.invocationCallOrder[0]).toBeLessThan(
+            closeDatabase.mock.invocationCallOrder[0]!,
+        );
+    });
+
     it('should force exit when shutdown exceeds the timeout', async () => {
         vi.useFakeTimers();
         const exit = vi.fn();

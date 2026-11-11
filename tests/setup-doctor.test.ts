@@ -135,6 +135,22 @@ describe('runSetupDoctor', () => {
         expect(direct.checks).toContainEqual(
             expect.objectContaining({ id: 'lens-fallback', status: 'skipped' }),
         );
+
+        const hybrid = await runSetupDoctor({
+            ...common,
+            configStore: configStore({
+                vertexAiSupportsImages: true,
+                visionApiKey: 'vision-key',
+                visionMonthlyImageLimit: 900,
+            }),
+        });
+        expect(hybrid.checks).toContainEqual(
+            expect.objectContaining({
+                id: 'lens-fallback',
+                status: 'pass',
+                detail: 'Cloud Vision OCR is configured for hybrid box grounding',
+            }),
+        );
     });
 
     it('returns ok with warnings when only unlimited budgets and webhook inspection are skipped', async () => {

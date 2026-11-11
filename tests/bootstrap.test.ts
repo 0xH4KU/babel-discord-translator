@@ -202,6 +202,35 @@ describe('startBabelApp', () => {
         });
     });
 
+    it('drains accepted interactions and rejects new work during shutdown', async () => {
+        const { startBabelApp } = await import('../src/apps/bootstrap.js');
+        await startBabelApp(BABEL_POCKET_PROFILE);
+        const handler = mocks.clients[0]!.on.mock.calls.find(
+            ([event]) => event === 'interactionCreate',
+        )![1];
+        const pending = Promise.withResolvers<void>();
+        mocks.handleBabelLens.mockImplementationOnce(() => pending.promise);
+        const interaction = {
+            isChatInputCommand: () => false,
+            isMessageContextMenuCommand: () => true,
+            commandName: 'Babel Lens',
+        };
+        const work = handler(interaction);
+        const shutdownDeps = mocks.createGracefulShutdownHandler.mock.calls[0]![0];
+        shutdownDeps.stopAccepting();
+        let drained = false;
+        const draining = shutdownDeps.drain().then(() => {
+            drained = true;
+        });
+        await handler(interaction);
+        expect(mocks.handleBabelLens).toHaveBeenCalledOnce();
+        expect(drained).toBe(false);
+        pending.resolve();
+        await work;
+        await draining;
+        expect(drained).toBe(true);
+    });
+
     it('logs in the selected single profile with its profile-specific token when present', async () => {
         const { startBabelApp } = await import('../src/apps/bootstrap.js');
 

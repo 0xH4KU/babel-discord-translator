@@ -1,3 +1,4 @@
+import { sendPrivateChunks, replyToTranslationFailure } from '../shared/discord-reply.js';
 import { MessageFlags, type MessageContextMenuCommandInteraction } from 'discord.js';
 import { buildTranslationMessages } from '../shared/discord-message-format.js';
 import { extractTranslatableMessageText } from '../shared/message-extraction.js';
@@ -7,21 +8,6 @@ import { BABEL_GUILD_PROFILE, type AppProfile } from '../apps/app-profile.js';
 
 interface BabelCommandDeps extends CommandDeps {
     profile?: AppProfile;
-}
-
-function getUserInstallOwnerId(interaction: MessageContextMenuCommandInteraction): string | null {
-    return interaction.authorizingIntegrationOwners?.['1'] ?? null;
-}
-
-async function editReplyWithChunks(
-    interaction: MessageContextMenuCommandInteraction,
-    messages: string[],
-): Promise<void> {
-    await interaction.editReply({ content: messages[0] ?? '' });
-
-    for (const message of messages.slice(1)) {
-        await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
-    }
 }
 
 /**
@@ -34,7 +20,7 @@ export async function handleBabel(
     const requestId = createRequestId();
     const billingUserId =
         profile.accessMode === 'user-install'
-            ? (getUserInstallOwnerId(interaction) ?? interaction.user.id)
+            ? (interaction.authorizingIntegrationOwners?.['1'] ?? interaction.user.id)
             : null;
     const result = await translationService.process({
         command: 'babel',
@@ -50,24 +36,12 @@ export async function handleBabel(
         beforeTranslate: () => interaction.deferReply({ flags: MessageFlags.Ephemeral }),
     });
 
-    if (result.status === 'blocked') {
-        await interaction.reply({
-            content: result.message,
-            flags: MessageFlags.Ephemeral,
-        });
+    if (result.status !== 'success') {
+        await replyToTranslationFailure(interaction, result);
         return;
     }
 
-    if (result.status === 'error') {
-        if (result.deferred) {
-            await interaction.editReply({ content: result.message });
-        } else {
-            await interaction.reply({ content: result.message, flags: MessageFlags.Ephemeral });
-        }
-        return;
-    }
-
-    await editReplyWithChunks(
+    await sendPrivateChunks(
         interaction,
         buildTranslationMessages({
             originalText: result.originalText,

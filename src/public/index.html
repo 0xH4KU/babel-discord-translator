@@ -186,7 +186,7 @@
                             <input
                                 type="password"
                                 id="wiz-vision-apikey"
-                                placeholder="Required only for text-only models"
+                                placeholder="Optional: enables Hybrid OCR box grounding"
                             />
                         </div>
                         <div class="input-group">
@@ -1104,13 +1104,14 @@
                                     </div>
                                 </div>
                                 <div
-                                    class="settings-section vision-fallback-only"
+                                    class="settings-section"
                                     id="vision-fallback-settings"
                                 >
-                                    <h3>Cloud Vision Fallback</h3>
-                                    <div class="desc-text">
-                                        Shown because at least one enabled provider is marked
-                                        text-only.
+                                    <h3>Cloud Vision OCR</h3>
+                                    <div class="desc-text" id="vision-settings-desc">
+                                        Optional for multimodal providers (enables Hybrid OCR box
+                                        grounding) and required as OCR fallback for text-only
+                                        providers.
                                     </div>
                                     <div class="settings-row">
                                         <div class="input-group">
@@ -1390,6 +1391,7 @@
         <script src="/js/dashboard.js"></script>
         <script src="/js/settings.js"></script>
         <script src="/js/access.js"></script>
+        <script src="/js/glossary.js"></script>
         <script src="/js/vision-limits.js"></script>
         <script src="/js/history.js"></script>
         <script src="/js/logs.js"></script>

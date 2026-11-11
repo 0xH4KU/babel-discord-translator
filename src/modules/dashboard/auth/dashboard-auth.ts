@@ -86,7 +86,7 @@ export function buildSessionCookie(token: string, maxAge: number, req?: Request)
         'SameSite=Strict',
         `Max-Age=${maxAge}`,
     ];
-    const isSecure = req?.secure || req?.headers?.['x-forwarded-proto'] === 'https';
+    const isSecure = req?.secure;
     if (isSecure) parts.push('Secure');
     return parts.join('; ');
 }

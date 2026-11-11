@@ -26,6 +26,8 @@ export interface AppConfig {
     dashboardPort: number;
     /** Host interface for the web dashboard server. */
     dashboardHost: string;
+    /** Trusted reverse-proxy addresses/CIDRs; empty for direct connections. */
+    dashboardTrustedProxies: string[];
     /** Password for dashboard login. */
     dashboardPassword: string;
 }
@@ -148,6 +150,10 @@ export function validateEnv(
         discordTokens,
         dashboardPort: port,
         dashboardHost,
+        dashboardTrustedProxies: (env.DASHBOARD_TRUSTED_PROXIES ?? '')
+            .split(',')
+            .map((value) => value.trim())
+            .filter(Boolean),
         dashboardPassword: password,
     };
 }

@@ -1,3 +1,4 @@
+import { getConfig } from '../src/modules/config/config.js';
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import http from 'http';
 import { AppMetrics } from '../src/shared/app-metrics.js';
@@ -851,14 +852,50 @@ describe('Dashboard API', () => {
     });
 
     it('should not trust spoofed forwarded client addresses by default', async () => {
-        app.get('/test/client-ip', (req, res) => res.json({ ip: req.ip }));
+        app.get('/test/client-ip', (req, res) => res.json({ ip: req.ip, secure: req.secure }));
 
         const response = await request(server, 'GET', '/test/client-ip', {
-            headers: { 'X-Forwarded-For': '203.0.113.10' },
+            headers: { 'X-Forwarded-For': '203.0.113.10', 'X-Forwarded-Proto': 'https' },
         });
 
         expect(app.get('trust proxy')).toBe(false);
         expect(response.body!.ip).not.toBe('203.0.113.10');
+        expect(response.body!.secure).toBe(false);
+    });
+
+    it('separates login limits only through configured trusted proxies', async () => {
+        vi.mocked(getConfig).mockReturnValueOnce({
+            ...getConfig(),
+            dashboardTrustedProxies: ['loopback'],
+        });
+        const trusted = startProfileDashboard();
+        try {
+            for (let i = 0; i < 5; i++) {
+                const rejected = await request(trusted.server, 'POST', '/api/login', {
+                    body: { password: 'wrong' },
+                    headers: { 'X-Forwarded-For': '203.0.113.10' },
+                });
+                expect(rejected.status).toBe(401);
+            }
+            const limited = await request(trusted.server, 'POST', '/api/login', {
+                body: { password: 'wrong' },
+                headers: { 'X-Forwarded-For': '203.0.113.10' },
+            });
+            expect(limited.status).toBe(429);
+            const other = await request(trusted.server, 'POST', '/api/login', {
+                body: { password: 'test-pass-123' },
+                headers: { 'X-Forwarded-For': '203.0.113.11', 'X-Forwarded-Proto': 'https' },
+            });
+            expect(other.status).toBe(200);
+            expect(other.rawHeaders['set-cookie']![0]).toContain('Secure');
+            const cookie = other.rawHeaders['set-cookie']![0].split(';')[0];
+            const withoutCsrf = await request(trusted.server, 'POST', '/api/cache/clear', {
+                cookie,
+            });
+            expect(withoutCsrf.status).toBe(403);
+        } finally {
+            trusted.close();
+        }
     });
 
     it('should report degraded health while Discord is disconnected', async () => {
@@ -1608,7 +1645,7 @@ describe('Dashboard API', () => {
 
         expect(res.status).toBe(200);
         expect(res.body).toEqual({
-            version: '0.4.0',
+            version: '0.5.0',
             repositoryUrl: 'https://github.com/0xH4KU/babel-discord-translator/releases',
         });
     });
@@ -1648,7 +1685,7 @@ describe('Dashboard API', () => {
             expect(res.status).toBe(200);
             expect(res.headers['content-type']).toContain('text/plain');
             expect(res.text).toContain(
-                'babel_app_version_info{version="0.4.0",repository_url="https://github.com/0xH4KU/babel-discord-translator/releases"} 1',
+                'babel_app_version_info{version="0.5.0",repository_url="https://github.com/0xH4KU/babel-discord-translator/releases"} 1',
             );
             expect(res.text).toContain('babel_translations_total');
             expect(res.text).toContain('babel_translation_failures_total');
@@ -2971,7 +3008,7 @@ describe('Dashboard API', () => {
             for (const path of ['/guild', '/pocket']) {
                 const res = await requestText(dashboard.server, 'GET', path);
 
-                expect(res.status).toBe(200);
+                expect(res.status, res.text).toBe(200);
                 expect(res.text).toContain('id="login-view"');
                 expect(res.text).toContain('id="profile-select-view"');
             }

@@ -30,6 +30,16 @@ describe('config validation', () => {
         configModule._test.resetLoadedConfig();
     });
 
+    it('keeps proxy trust opt-in and parses explicit addresses without enabling blanket trust', async () => {
+        const { validateEnv } = await import('../src/modules/config/config.js');
+        const env = { DISCORD_TOKEN: 'test', DASHBOARD_PASSWORD: 'test-password' };
+        expect(validateEnv(env).dashboardTrustedProxies).toEqual([]);
+        expect(
+            validateEnv({ ...env, DASHBOARD_TRUSTED_PROXIES: ' loopback, 10.0.0.5/32, ' })
+                .dashboardTrustedProxies,
+        ).toEqual(['loopback', '10.0.0.5/32']);
+    });
+
     it('should log and throw when DISCORD_TOKEN is missing', async () => {
         const logger = createLoggerMock();
         const { validateEnv } = await import('../src/modules/config/config.js');
